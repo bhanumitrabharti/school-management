@@ -726,83 +726,112 @@
 
       days.forEach(function(day) {
         var periodsCount = (day === 'Saturday') ? 6 : 8;
-        
-        // Track used subjects per class for this day in the draft
-        var classUsedSubjects = {};
+
         classes.forEach(function(c) {
           sections.forEach(function(s) {
             var classSection = c + '-' + s;
-            classUsedSubjects[classSection] = [];
-            if (state.draftTimetable[classSection] && state.draftTimetable[classSection][day]) {
-              for (var p = 1; p <= periodsCount; p++) {
-                var slot = state.draftTimetable[classSection][day][p];
-                if (slot && slot.subject) {
-                  classUsedSubjects[classSection].push(slot.subject.toLowerCase().trim());
+
+            if (!state.draftTimetable[classSection]) {
+              state.draftTimetable[classSection] = {};
+            }
+            if (!state.draftTimetable[classSection][day]) {
+              state.draftTimetable[classSection][day] = {};
+            }
+
+            var usedSubjectsToday = [];
+            var lastPeriodSubject = null;
+
+            // Pre-populate usedSubjectsToday from saved or manually assigned slots for this class and day
+            for (var p = 1; p <= periodsCount; p++) {
+              var slot = state.draftTimetable[classSection][day][p];
+              if (slot && slot.subject) {
+                var subNormalized = slot.subject.toLowerCase().trim();
+                if (usedSubjectsToday.indexOf(subNormalized) === -1) {
+                  usedSubjectsToday.push(subNormalized);
                 }
+              }
+            }
+
+            for (var p = 1; p <= periodsCount; p++) {
+              var existingSlot = state.draftTimetable[classSection][day][p];
+              // Skip slot if it already has a subject and teacher assigned
+              if (existingSlot && existingSlot.subject && existingSlot.teacherId) {
+                lastPeriodSubject = existingSlot.subject;
+                continue;
+              }
+
+              var classSubjects = getSubjectsForClass(c);
+              if (classSubjects.length === 0) {
+                lastPeriodSubject = null;
+                continue;
+              }
+
+              // Shuffle subjects for randomness
+              var shuffledSubjects = classSubjects.slice().sort(function() { return 0.5 - Math.random(); });
+              var assigned = false;
+
+              // Pass 1: Strict Uniqueness
+              for (var i = 0; i < shuffledSubjects.length; i++) {
+                var subject = shuffledSubjects[i];
+                var subNormalized = subject.toLowerCase().trim();
+
+                if (usedSubjectsToday.indexOf(subNormalized) === -1) {
+                  var eligibleTeachers = getTeachersForSubject(c, s, subject);
+                  var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
+
+                  for (var j = 0; j < shuffledTeachers.length; j++) {
+                    var teacher = shuffledTeachers[j];
+                    // Check conflict globally in draft
+                    var conflict = getTeacherConflict(teacher.id, day, p, classSection);
+                    if (!conflict) {
+                      state.draftTimetable[classSection][day][p] = { subject: subject, teacherId: teacher.id };
+                      usedSubjectsToday.push(subNormalized);
+                      lastPeriodSubject = subject;
+                      assigned = true;
+                      break;
+                    }
+                  }
+                }
+                if (assigned) break;
+              }
+
+              // Pass 2: Smart Fallback (No Consecutive Repeats)
+              if (!assigned) {
+                for (var i = 0; i < shuffledSubjects.length; i++) {
+                  var subject = shuffledSubjects[i];
+                  var subNormalized = subject.toLowerCase().trim();
+
+                  if (!lastPeriodSubject || subject.toLowerCase().trim() !== lastPeriodSubject.toLowerCase().trim()) {
+                    var eligibleTeachers = getTeachersForSubject(c, s, subject);
+                    var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
+
+                    for (var j = 0; j < shuffledTeachers.length; j++) {
+                      var teacher = shuffledTeachers[j];
+                      // Check conflict globally in draft
+                      var conflict = getTeacherConflict(teacher.id, day, p, classSection);
+                      if (!conflict) {
+                        state.draftTimetable[classSection][day][p] = { subject: subject, teacherId: teacher.id };
+                        if (usedSubjectsToday.indexOf(subNormalized) === -1) {
+                          usedSubjectsToday.push(subNormalized);
+                        }
+                        lastPeriodSubject = subject;
+                        assigned = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (assigned) break;
+                }
+              }
+
+              // Final Fallback: Graceful Blanking
+              if (!assigned) {
+                delete state.draftTimetable[classSection][day][p];
+                lastPeriodSubject = null;
               }
             }
           });
         });
-
-        // Loop through each period and each class section to auto-assign
-        for (var p = 1; p <= periodsCount; p++) {
-          classes.forEach(function(c) {
-            sections.forEach(function(s) {
-              var classSection = c + '-' + s;
-
-              if (!state.draftTimetable[classSection]) {
-                state.draftTimetable[classSection] = {};
-              }
-              if (!state.draftTimetable[classSection][day]) {
-                state.draftTimetable[classSection][day] = {};
-              }
-
-              var existingSlot = state.draftTimetable[classSection][day][p];
-              // Skip slot if it already has a subject and teacher assigned
-              if (existingSlot && existingSlot.subject && existingSlot.teacherId) {
-                return;
-              }
-
-              var classSubjects = getSubjectsForClass(c);
-              if (classSubjects.length === 0) return;
-
-              // Daily Subject Uniqueness
-              var availableSubjects = classSubjects.filter(function(sub) {
-                return classUsedSubjects[classSection].indexOf(sub.toLowerCase().trim()) === -1;
-              });
-
-              // Shuffle subjects
-              var shuffledSubjects = availableSubjects.slice().sort(function() { return 0.5 - Math.random(); });
-
-              var assigned = false;
-              for (var i = 0; i < shuffledSubjects.length; i++) {
-                var subject = shuffledSubjects[i];
-                var eligibleTeachers = getTeachersForSubject(c, s, subject);
-                var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
-
-                for (var j = 0; j < shuffledTeachers.length; j++) {
-                  var teacher = shuffledTeachers[j];
-                  
-                  // Check conflict globally in draft
-                  var conflict = getTeacherConflict(teacher.id, day, p, classSection);
-                  if (!conflict) {
-                    state.draftTimetable[classSection][day][p] = { subject: subject, teacherId: teacher.id };
-                    classUsedSubjects[classSection].push(subject.toLowerCase().trim());
-                    assigned = true;
-                    break;
-                  }
-                }
-
-                if (assigned) break;
-              }
-
-              // Graceful Blanking: If we were not able to assign a subject, delete/leave empty
-              if (!assigned) {
-                delete state.draftTimetable[classSection][day][p];
-              }
-            });
-          });
-        }
       });
 
       SchoolApp.showToast('School-wide draft generated successfully! Please review and click Save to confirm.', 'success');
