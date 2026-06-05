@@ -7,6 +7,7 @@
 window.SchoolApp = {
   // ---------- Data Store ----------
   store: {
+    seederVersion: 2,
     students: [],
     teachers: [],
     attendance: [],
@@ -88,6 +89,20 @@ window.SchoolApp = {
         var val = snapshot.val();
         if (val) {
           console.log('Cloud database updated. Syncing locally...');
+          if (val.seederVersion !== 2) {
+            console.log('Cloud database has old seederVersion. Reseeding cloud...');
+            self.store.seederVersion = 2;
+            self.store.students = [];
+            self.store.teachers = [];
+            self.store.attendance = [];
+            self.store.trash = [];
+            self.store.fees = [];
+            self.store.marks = [];
+            self.store.notices = [];
+            self.generateDemoData();
+            self.firebaseDbRef.set(self.store);
+            return;
+          }
           self.store = val;
           if (!self.store.students) self.store.students = [];
           if (!self.store.teachers) self.store.teachers = [];
@@ -190,8 +205,22 @@ window.SchoolApp = {
       var data = localStorage.getItem('shishuvikash_data');
       if (data) {
         var parsed = JSON.parse(data);
-        // Merge with defaults to ensure new fields exist
-        this.store = Object.assign({}, this.store, parsed);
+        if (parsed.seederVersion !== 2) {
+          console.log('Local store seederVersion is not 2. Wiping and reseeding...');
+          this.store.seederVersion = 2;
+          this.store.students = [];
+          this.store.teachers = [];
+          this.store.attendance = [];
+          this.store.trash = [];
+          this.store.fees = [];
+          this.store.marks = [];
+          this.store.notices = [];
+          this.generateDemoData();
+          this.save();
+        } else {
+          // Merge with defaults to ensure new fields exist
+          this.store = Object.assign({}, this.store, parsed);
+        }
         if (!this.store.students) this.store.students = [];
         if (!this.store.teachers) this.store.teachers = [];
         if (!this.store.attendance) this.store.attendance = [];
@@ -925,32 +954,43 @@ window.SchoolApp = {
   generateDemoData: function() {
     var self = this;
 
-    // Generate Students: exactly 10 students per class for classes 1 to 12 in Section A
     var firstNamesBoys = ['Aarav', 'Rahul', 'Vikram', 'Arjun', 'Karan', 'Aditya', 'Rohan', 'Ishan', 'Dev', 'Amit', 'Kabir', 'Vihaan', 'Krishna', 'Yash', 'Kunal', 'Pranav', 'Samar', 'Dhruv', 'Aaryan', 'Rudra'];
     var firstNamesGirls = ['Priya', 'Ananya', 'Sneha', 'Meera', 'Divya', 'Riya', 'Kavya', 'Diya', 'Ishita', 'Tanvi', 'Shreya', 'Neha', 'Aisha', 'Pooja', 'Simran', 'Myra', 'Zara', 'Kiara', 'Anika', 'Aanya'];
     var lastNames = ['Sharma', 'Patel', 'Kumar', 'Singh', 'Reddy', 'Gupta', 'Nair', 'Iyer', 'Verma', 'Joshi', 'Mehta', 'Rao', 'Bhat', 'Das', 'Roy', 'Sen', 'Trivedi', 'Saxena', 'Choudhury', 'Pillai'];
 
     var studentsList = [];
-    var baseYear = 2025;
+    var baseYear = 2026;
 
-    for (var c = 1; c <= 12; c++) {
-      var className = String(c);
-      for (var i = 0; i < 10; i++) {
+    var allClasses = ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+    var classCodes = {
+      'Nursery': '01', 'LKG': '02', 'UKG': '03', '1': '04', '2': '05', '3': '06', '4': '07', '5': '08', '6': '09', '7': '10', '8': '11', '9': '12', '10': '13', '11': '14', '12': '15'
+    };
+    var ageMap = {
+      'Nursery': 3, 'LKG': 4, 'UKG': 5, '1': 6, '2': 7, '3': 8, '4': 9, '5': 10, '6': 11, '7': 12, '8': 13, '9': 14, '10': 15, '11': 16, '12': 17
+    };
+
+    allClasses.forEach(function(className) {
+      // Generate randomized number of students between 12 and 25
+      var studentCount = Math.floor(Math.random() * (25 - 12 + 1)) + 12;
+      var classCode = classCodes[className] || '99';
+      var age = ageMap[className] || 6;
+
+      for (var i = 0; i < studentCount; i++) {
         var isBoy = (i % 2 === 0);
-        var fn = isBoy ? firstNamesBoys[(c * 10 + i) % firstNamesBoys.length] : firstNamesGirls[(c * 10 + i) % firstNamesGirls.length];
-        var ln = lastNames[(c * 7 + i) % lastNames.length];
+        var fn = isBoy ? firstNamesBoys[Math.floor(Math.random() * firstNamesBoys.length)] : firstNamesGirls[Math.floor(Math.random() * firstNamesGirls.length)];
+        var ln = lastNames[Math.floor(Math.random() * lastNames.length)];
         var gender = isBoy ? 'Male' : 'Female';
-        var rollNum = '2025' + String(c).padStart(2, '0') + String(i + 1).padStart(2, '0');
+        var rollNum = '2026' + classCode + String(i + 1).padStart(2, '0');
         
-        var birthYear = baseYear - 5 - c;
+        var birthYear = baseYear - age;
         var month = String((i % 12) + 1).padStart(2, '0');
         var day = String((i * 3 % 28) + 1).padStart(2, '0');
         
-        var aadhaar = '';
-        for (var k = 0; k < 12; k++) {
-          aadhaar += Math.floor((c * 3 + i * 7 + k) % 10);
-          if (k === 3 || k === 7) aadhaar += ' ';
-        }
+        var aadhaar = Math.floor(1000 + Math.random() * 9000) + ' ' + Math.floor(1000 + Math.random() * 9000) + ' ' + Math.floor(1000 + Math.random() * 9000);
+        var parentFn = firstNamesBoys[Math.floor(Math.random() * firstNamesBoys.length)];
+        var parentName = 'Mr. ' + parentFn + ' ' + ln;
+        var parentPhone = '+91 98765 ' + String(10000 + Math.floor(Math.random() * 90000));
+        var parentEmail = parentFn.toLowerCase() + '.' + ln.toLowerCase() + '@example.com';
 
         studentsList.push({
           id: self.generateId(),
@@ -962,41 +1002,176 @@ window.SchoolApp = {
           dateOfBirth: birthYear + '-' + month + '-' + day,
           gender: gender,
           aadhaarNumber: aadhaar,
-          address: 'Street No. ' + (i + 1) + ', Sector A, Indiranagar, Bangalore',
-          parentName: 'Mr. ' + fn + ' ' + ln,
-          parentPhone: '+91 98765 ' + String(10000 + (c * 800) + (i * 90)),
-          parentEmail: fn.toLowerCase() + '.' + ln.toLowerCase() + '@email.com',
-          admissionDate: '2024-04-01',
+          address: 'Street No. ' + (i + 1) + ', Indiranagar, Bangalore',
+          parentName: parentName,
+          parentPhone: parentPhone,
+          parentEmail: parentEmail,
+          admissionDate: '2025-04-01',
           status: 'Active'
         });
       }
-    }
+    });
     this.store.students = studentsList;
 
-    // Generate Teachers: strictly Section A classes
-    var teacherData = [
-      { fn: 'Rajesh', ln: 'Menon', sub: 'Mathematics', qual: 'M.Sc., B.Ed., Ph.D.', classes: [{class:'9',section:'A'},{class:'10',section:'A'}], jd: '2018-06-15' },
-      { fn: 'Sunita', ln: 'Sharma', sub: 'Science', qual: 'M.Sc., B.Ed.', classes: [{class:'7',section:'A'},{class:'8',section:'A'}], jd: '2019-04-01' },
-      { fn: 'Amit', ln: 'Desai', sub: 'English', qual: 'M.A., B.Ed.', classes: [{class:'6',section:'A'},{class:'7',section:'A'}], jd: '2020-07-15' },
-      { fn: 'Priyanka', ln: 'Nair', sub: 'Social Studies', qual: 'M.A., M.Ed.', classes: [{class:'8',section:'A'},{class:'9',section:'A'}], jd: '2017-06-01' },
-      { fn: 'Vikram', ln: 'Singh', sub: 'Hindi', qual: 'M.A., B.Ed.', classes: [{class:'6',section:'A'},{class:'10',section:'A'}], jd: '2021-04-01' }
+    var rawTeachers = [
+      { fn: 'Rajesh', ln: 'Menon', globalSubs: ['Mathematics', 'Science'], qual: 'M.Sc., B.Ed., Ph.D.', jd: '2018-06-15' },
+      { fn: 'Sunita', ln: 'Sharma', globalSubs: ['Science'], qual: 'M.Sc., B.Ed.', jd: '2019-04-01' },
+      { fn: 'Amit', ln: 'Desai', globalSubs: ['English'], qual: 'M.A., B.Ed.', jd: '2020-07-15' },
+      { fn: 'Priyanka', ln: 'Nair', globalSubs: ['Social Studies'], qual: 'M.A., M.Ed.', jd: '2017-06-01' },
+      { fn: 'Vikram', ln: 'Singh', globalSubs: ['Hindi'], qual: 'M.A., B.Ed.', jd: '2021-04-01' },
+      { fn: 'Neha', ln: 'Gupta', globalSubs: ['Hindi'], qual: 'B.A., B.Ed.', jd: '2022-08-10' },
+      { fn: 'Manoj', ln: 'Bajpayee', globalSubs: ['Computer Science', 'Science'], qual: 'B.Tech, B.Ed.', jd: '2021-06-12' },
+      { fn: 'Kavita', ln: 'Krishnan', globalSubs: ['English'], qual: 'M.A., M.Phil.', jd: '2020-09-05' },
+      { fn: 'Arvind', ln: 'Kejriwal', globalSubs: ['Mathematics'], qual: 'B.Tech, IIT KGP', jd: '2015-05-15' },
+      { fn: 'Shashi', ln: 'Tharoor', globalSubs: ['English'], qual: 'Ph.D., St. Stephen\'s', jd: '2016-01-10' },
+      { fn: 'Mamta', ln: 'Banerjee', globalSubs: ['Art', 'Hindi'], qual: 'B.A., B.Ed.', jd: '2018-07-20' },
+      { fn: 'Narendra', ln: 'Modi', globalSubs: ['Social Studies'], qual: 'M.A., Political Science', jd: '2014-05-26' },
+      { fn: 'Rahul', ln: 'Gandhi', globalSubs: ['Physical Education', 'Science'], qual: 'M.Phil, Cambridge', jd: '2019-12-01' },
+      { fn: 'Smriti', ln: 'Irani', globalSubs: ['Hindi'], qual: 'B.Com.', jd: '2020-05-30' },
+      { fn: 'Nirmala', ln: 'Sitharaman', globalSubs: ['Mathematics', 'Social Studies'], qual: 'M.A., JNU', jd: '2017-09-18' }
     ];
 
-    this.store.teachers = teacherData.map(function(t) {
+    var teacherSpecs = {
+      0: { // Rajesh Menon
+        assigned: [{class: 'Nursery', section: 'A'}, {class: '9', section: 'A'}, {class: '10', section: 'A'}],
+        subTeacherOf: [
+          {class: 'Nursery', section: 'A', subject: 'Mathematics'},
+          {class: '9', section: 'A', subject: 'Mathematics'},
+          {class: '9', section: 'A', subject: 'Science'},
+          {class: '10', section: 'A', subject: 'Mathematics'},
+          {class: '10', section: 'A', subject: 'Science'}
+        ]
+      },
+      1: { // Sunita Sharma
+        assigned: [{class: 'LKG', section: 'A'}, {class: '7', section: 'A'}, {class: '8', section: 'A'}],
+        subTeacherOf: [
+          {class: 'LKG', section: 'A', subject: 'Drawing'},
+          {class: '7', section: 'A', subject: 'Science'},
+          {class: '8', section: 'A', subject: 'Science'}
+        ]
+      },
+      2: { // Amit Desai
+        assigned: [{class: 'UKG', section: 'A'}, {class: '6', section: 'A'}, {class: '7', section: 'A'}],
+        subTeacherOf: [
+          {class: 'UKG', section: 'A', subject: 'English'},
+          {class: '6', section: 'A', subject: 'English'},
+          {class: '7', section: 'A', subject: 'English'}
+        ]
+      },
+      3: { // Priyanka Nair
+        assigned: [{class: '1', section: 'A'}, {class: '8', section: 'A'}, {class: '9', section: 'A'}],
+        subTeacherOf: [
+          {class: '1', section: 'A', subject: 'Social Studies'},
+          {class: '8', section: 'A', subject: 'Social Studies'},
+          {class: '9', section: 'A', subject: 'Social Studies'}
+        ]
+      },
+      4: { // Vikram Singh
+        assigned: [{class: '1', section: 'A'}, {class: '2', section: 'A'}, {class: '6', section: 'A'}],
+        subTeacherOf: [
+          {class: '1', section: 'A', subject: 'Hindi'},
+          {class: '2', section: 'A', subject: 'Hindi'},
+          {class: '6', section: 'A', subject: 'Hindi'}
+        ]
+      },
+      5: { // Neha Gupta
+        assigned: [{class: '2', section: 'A'}, {class: '3', section: 'A'}, {class: '7', section: 'A'}],
+        subTeacherOf: [
+          {class: '2', section: 'A', subject: 'Hindi'},
+          {class: '3', section: 'A', subject: 'Hindi'},
+          {class: '7', section: 'A', subject: 'Hindi'}
+        ]
+      },
+      6: { // Manoj Bajpayee
+        assigned: [{class: '4', section: 'A'}, {class: '5', section: 'A'}],
+        subTeacherOf: [
+          {class: '4', section: 'A', subject: 'Science'},
+          {class: '5', section: 'A', subject: 'Science'}
+        ]
+      },
+      7: { // Kavita Krishnan
+        assigned: [{class: '5', section: 'A'}, {class: '8', section: 'A'}],
+        subTeacherOf: [
+          {class: '5', section: 'A', subject: 'English'},
+          {class: '8', section: 'A', subject: 'English'}
+        ]
+      },
+      8: { // Arvind Kejriwal
+        assigned: [{class: '6', section: 'A'}, {class: '11', section: 'A'}],
+        subTeacherOf: [
+          {class: '6', section: 'A', subject: 'Mathematics'},
+          {class: '11', section: 'A', subject: 'Mathematics'}
+        ]
+      },
+      9: { // Shashi Tharoor
+        assigned: [{class: '7', section: 'A'}, {class: '12', section: 'A'}],
+        subTeacherOf: [
+          {class: '7', section: 'A', subject: 'English'},
+          {class: '12', section: 'A', subject: 'English'}
+        ]
+      },
+      10: { // Mamta Banerjee
+        assigned: [{class: '8', section: 'A'}, {class: 'Nursery', section: 'A'}],
+        subTeacherOf: [
+          {class: '8', section: 'A', subject: 'Hindi'},
+          {class: 'Nursery', section: 'A', subject: 'Drawing'}
+        ]
+      },
+      11: { // Narendra Modi
+        assigned: [{class: '9', section: 'A'}, {class: '10', section: 'A'}],
+        subTeacherOf: [
+          {class: '9', section: 'A', subject: 'Social Studies'},
+          {class: '10', section: 'A', subject: 'Social Studies'}
+        ]
+      },
+      12: { // Rahul Gandhi
+        assigned: [{class: '10', section: 'A'}, {class: '6', section: 'A'}],
+        subTeacherOf: [
+          {class: '10', section: 'A', subject: 'Science'},
+          {class: '6', section: 'A', subject: 'Science'}
+        ]
+      },
+      13: { // Smriti Irani
+        assigned: [{class: '11', section: 'A'}, {class: '12', section: 'A'}],
+        subTeacherOf: [
+          {class: '11', section: 'A', subject: 'Hindi'},
+          {class: '12', section: 'A', subject: 'Hindi'}
+        ]
+      },
+      14: { // Nirmala Sitharaman
+        assigned: [{class: '12', section: 'A'}, {class: '5', section: 'A'}],
+        subTeacherOf: [
+          {class: '12', section: 'A', subject: 'Mathematics'},
+          {class: '5', section: 'A', subject: 'Mathematics'}
+        ]
+      }
+    };
+
+    var teachersList = rawTeachers.map(function(t, idx) {
       var email = (t.fn.toLowerCase() + '.' + t.ln.toLowerCase()) + '@shishuvikash.edu.in';
-      var classTeacherOf = [t.classes[0]];
-      var subjectTeacherOf = t.classes.map(function(c) {
-        return { class: c.class, section: c.section, subject: t.sub };
+      var className = allClasses[idx];
+      var classTeacherOf = [{ class: className, section: 'A' }];
+      
+      var spec = teacherSpecs[idx] || { assigned: [{ class: className, section: 'A' }], subTeacherOf: [] };
+      var assignedClasses = spec.assigned.slice();
+      var hasCtClass = assignedClasses.some(function(ac) {
+        return ac.class === className && ac.section === 'A';
       });
+      if (!hasCtClass) {
+        assignedClasses.push({ class: className, section: 'A' });
+      }
+
+      var subjectTeacherOf = spec.subTeacherOf.slice();
+
       return {
         id: self.generateId(),
         firstName: t.fn,
         lastName: t.ln,
         email: email,
         phone: '+91 98765 ' + String(20000 + Math.floor(Math.random() * 80000)),
-        subject: t.sub,
+        subject: t.globalSubs.join(', '),
         qualification: t.qual,
-        assignedClasses: t.classes,
+        assignedClasses: assignedClasses,
         classTeacherOf: classTeacherOf,
         subjectTeacherOf: subjectTeacherOf,
         joiningDate: t.jd,
@@ -1004,6 +1179,7 @@ window.SchoolApp = {
         password: 'teacher123'
       };
     });
+    this.store.teachers = teachersList;
 
     // Generate Attendance Data (last 5 weekdays) for classes 6-A and 7-A
     var today = new Date();
