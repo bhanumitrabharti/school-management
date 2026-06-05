@@ -428,7 +428,8 @@ window.SchoolApp = {
       fees: 'Fee Management',
       exams: 'Exams',
       admin: 'Admin Panel',
-      support: 'Help Center'
+      support: 'Help Center',
+      'teacher-attendance': 'Teacher Attendance'
     };
     this.updateHeader(titles[pageName] || 'Dashboard');
 

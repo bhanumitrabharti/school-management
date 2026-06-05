@@ -3444,3 +3444,177 @@ body, .app-layout, #app-layout, .main-content, .content-area {
   font-size: 13px;
 }
 
+/* ==================== TEACHER ATTENDANCE GPS GEOFENCE MODULE ==================== */
+.punch-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  max-width: 500px;
+  margin: 0 auto 32px auto;
+  text-align: center;
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.punch-clock {
+  font-size: 42px;
+  font-family: monospace;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+.punch-date {
+  font-size: 15px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.punch-buttons {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.btn-punch {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+  transition: all var(--transition-normal);
+  font-family: var(--font-family);
+  font-weight: 600;
+  font-size: 14.5px;
+}
+
+.btn-punch:hover:not(:disabled) {
+  transform: translateY(-4px);
+}
+
+.btn-punch:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-punch-in {
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.btn-punch-in:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: var(--success);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.15);
+}
+
+.btn-punch-in .material-icons-round {
+  font-size: 36px;
+  color: var(--success);
+}
+
+.btn-punch-out {
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.btn-punch-out:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--danger);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.15);
+}
+
+.btn-punch-out .material-icons-round {
+  font-size: 36px;
+  color: var(--danger);
+}
+
+.punch-status-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.geofence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.geofence-badge.inside {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: var(--success);
+}
+
+.geofence-badge.outside {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+.geofence-badge .material-icons-round {
+  font-size: 16px;
+}
+
+.gps-info-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Tab buttons for Admin dashboard */
+.teacher-att-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
+}
+
+.teacher-att-tab {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-headings);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.teacher-att-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.teacher-att-tab.active {
+  background: var(--accent-gradient);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+}
+
+
