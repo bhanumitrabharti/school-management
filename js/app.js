@@ -16,7 +16,17 @@ window.SchoolApp = {
     fees: [],
     exams: [],
     subjectMapping: {},
-    timetable: {},
+    timetable: {
+      settings: {
+        startTime: "08:00",
+        periodDuration: 40,
+        lunchAfterPeriod: 4,
+        lunchDuration: 30,
+        satStartTime: "08:00",
+        satPeriodDuration: 35,
+        satLunchAfterPeriod: 0
+      }
+    },
     marks: [],
     notices: [],
     lastAutomatedFeeRun: '2026-04',
@@ -91,6 +101,17 @@ window.SchoolApp = {
           if (!self.store.marks) self.store.marks = [];
           if (!self.store.notices) self.store.notices = [];
           if (!self.store.timetable) self.store.timetable = {};
+          if (!self.store.timetable.settings) {
+            self.store.timetable.settings = {
+              startTime: "08:00",
+              periodDuration: 40,
+              lunchAfterPeriod: 4,
+              lunchDuration: 30,
+              satStartTime: "08:00",
+              satPeriodDuration: 35,
+              satLunchAfterPeriod: 0
+            };
+          }
           if (!self.store.notifications) self.store.notifications = [];
           if (self.store.lastAutomatedFeeRun === undefined || self.store.lastAutomatedFeeRun === '') self.store.lastAutomatedFeeRun = '2026-04';
           if (!self.store.settings) {
@@ -183,6 +204,17 @@ window.SchoolApp = {
         if (!this.store.marks) this.store.marks = [];
         if (!this.store.notices) this.store.notices = [];
         if (!this.store.timetable) this.store.timetable = {};
+        if (!this.store.timetable.settings) {
+          this.store.timetable.settings = {
+            startTime: "08:00",
+            periodDuration: 40,
+            lunchAfterPeriod: 4,
+            lunchDuration: 30,
+            satStartTime: "08:00",
+            satPeriodDuration: 35,
+            satLunchAfterPeriod: 0
+          };
+        }
         if (!this.store.notifications) this.store.notifications = [];
         if (this.store.lastAutomatedFeeRun === undefined || this.store.lastAutomatedFeeRun === '') this.store.lastAutomatedFeeRun = '2026-04';
         this.store.settings = Object.assign({
@@ -819,18 +851,56 @@ window.SchoolApp = {
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   },
 
-  getPeriodTimeStr: function(p) {
-    var times = {
-      1: '09:00 AM - 09:45 AM',
-      2: '09:45 AM - 10:30 AM',
-      3: '10:30 AM - 11:15 AM',
-      4: '11:15 AM - 12:00 PM',
-      5: '12:30 PM - 01:15 PM',
-      6: '01:15 PM - 02:00 PM',
-      7: '02:00 PM - 02:45 PM',
-      8: '02:45 PM - 03:30 PM'
+  getPeriodTimeStr: function(p, day) {
+    var settings = (this.store && this.store.timetable && this.store.timetable.settings) || {
+      startTime: "08:00",
+      periodDuration: 40,
+      lunchAfterPeriod: 4,
+      lunchDuration: 30,
+      satStartTime: "08:00",
+      satPeriodDuration: 35,
+      satLunchAfterPeriod: 0
     };
-    return times[p] || '';
+
+    var isSaturday = false;
+    if (day) {
+      var dStr = String(day).toLowerCase().trim();
+      if (dStr === 'saturday' || dStr === 'sat' || dStr === '6') {
+        isSaturday = true;
+      }
+    }
+
+    var startStr = isSaturday ? (settings.satStartTime || settings.startTime || "08:00") : (settings.startTime || "08:00");
+    var duration = parseInt(isSaturday ? (settings.satPeriodDuration !== undefined ? settings.satPeriodDuration : settings.periodDuration) : settings.periodDuration) || 40;
+    var lunchAfter = parseInt(isSaturday ? (settings.satLunchAfterPeriod !== undefined ? settings.satLunchAfterPeriod : settings.lunchAfterPeriod) : settings.lunchAfterPeriod);
+    if (isNaN(lunchAfter)) lunchAfter = 0;
+    var lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration || 0));
+    if (isNaN(lunchDur)) lunchDur = 0;
+
+    var parts = startStr.split(':');
+    var startHours = parseInt(parts[0]) || 8;
+    var startMinutes = parseInt(parts[1]) || 0;
+
+    var elapsedBefore = (p - 1) * duration;
+    if (lunchAfter > 0 && p > lunchAfter) {
+      elapsedBefore += lunchDur;
+    }
+
+    var periodStartMin = startHours * 60 + startMinutes + elapsedBefore;
+    var periodEndMin = periodStartMin + duration;
+
+    function formatTime(totalMinutes) {
+      var hours = Math.floor(totalMinutes / 60) % 24;
+      var minutes = totalMinutes % 60;
+      var ampm = hours >= 12 ? 'PM' : 'AM';
+      var dispHours = hours % 12;
+      if (dispHours === 0) dispHours = 12;
+      var dispMinStr = minutes < 10 ? '0' + minutes : minutes;
+      var dispHourStr = dispHours < 10 ? '0' + dispHours : dispHours;
+      return dispHourStr + ':' + dispMinStr + ' ' + ampm;
+    }
+
+    return formatTime(periodStartMin) + ' - ' + formatTime(periodEndMin);
   },
 
   getInitials: function(firstName, lastName) {
@@ -1572,7 +1642,7 @@ window.SchoolApp = {
     if (teacherSchedule.length > 0) {
       html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
       teacherSchedule.forEach(function(item) {
-        var timeStr = self.getPeriodTimeStr(item.period);
+        var timeStr = self.getPeriodTimeStr(item.period, currentDayName);
         html += '<div class="activity-item" style="display:flex; align-items:flex-start; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.04);">';
         html += '<div class="activity-icon purple" style="width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(124,58,237,0.15); color:var(--accent-primary-light);"><span class="material-icons-round" style="font-size:18px;">class</span></div>';
         html += '<div class="activity-text" style="font-size:13px; line-height:1.4;"><strong style="font-size:14px; color:var(--text-primary);">Period ' + item.period + ' · Class ' + item.classSection + '</strong><br><span style="color:var(--text-muted); font-size:11px;">' + timeStr + '</span> · <span class="badge badge-purple" style="font-size:9.5px; padding:2px 6px;">' + item.subject + '</span></div>';

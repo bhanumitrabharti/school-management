@@ -136,6 +136,7 @@
     html += '  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding: 16px 20px; flex-wrap: wrap; gap: 10px;">';
     html += '    <h3 style="margin: 0; font-size: 16px;">Schedule for Class ' + currentClassSection + ' (' + state.dayVal + ')</h3>';
     html += '    <div style="display: flex; gap: 10px;">';
+    html += '      <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
     html += '      <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3);"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
     html += '      <button class="btn btn-primary btn-sm" id="save-timetable-btn"><span class="material-icons-round">save</span> Save Timetable</button>';
     html += '    </div>';
@@ -168,7 +169,7 @@
       html += '      <div class="period-card" data-period="' + p + '" style="' + cardStyle + '">';
       html += '        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); padding-bottom: 8px;">';
       html += '          <strong style="color: var(--accent-primary); font-size: 14px;">Period ' + p + '</strong>';
-      html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p) + '</span>';
+      html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p, state.dayVal) + '</span>';
       html += '        </div>';
 
       // Subject Dropdown
@@ -231,6 +232,9 @@
     if (sectionSelect) sectionSelect.addEventListener('change', function() { state.sectionVal = this.value; render(); });
     if (daySelect) daySelect.addEventListener('change', function() { state.dayVal = this.value; render(); });
 
+    var settingsBtn = document.getElementById('timetable-settings-btn');
+    if (settingsBtn) settingsBtn.addEventListener('click', showSettingsModal);
+
     var saveBtn = document.getElementById('save-timetable-btn');
     if (saveBtn) saveBtn.addEventListener('click', saveTimetable);
 
@@ -271,6 +275,115 @@
         state.draftTimetable[state.dayVal][period].teacherId = teachVal;
         render();
       });
+    });
+  }
+
+  function showSettingsModal() {
+    var s = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {
+      startTime: "08:00",
+      periodDuration: 40,
+      lunchAfterPeriod: 4,
+      lunchDuration: 30,
+      satStartTime: "08:00",
+      satPeriodDuration: 35,
+      satLunchAfterPeriod: 0
+    };
+    var satLunchDur = s.satLunchDuration !== undefined ? s.satLunchDuration : (s.lunchDuration || 30);
+
+    var bodyHTML = '<form id="timetable-settings-form" style="display: flex; flex-direction: column; gap: 20px; max-height: 70vh; overflow-y: auto; padding: 4px;">';
+    
+    bodyHTML += '  <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">';
+    bodyHTML += '    <h4 style="margin: 0; color: var(--accent-primary-light); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Weekday Timings</h4>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Start Time *</label>';
+    bodyHTML += '      <input type="time" class="form-input" name="startTime" value="' + (s.startTime || '08:00') + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Period Duration (mins) *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="periodDuration" min="1" value="' + (s.periodDuration || 40) + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Lunch After Period *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="lunchAfterPeriod" min="0" value="' + (s.lunchAfterPeriod !== undefined ? s.lunchAfterPeriod : 4) + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Lunch Duration (mins) *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="lunchDuration" min="0" value="' + (s.lunchDuration !== undefined ? s.lunchDuration : 30) + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-top: 10px;">';
+    bodyHTML += '    <h4 style="margin: 0; color: #a29bfe; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Saturday Timings</h4>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Start Time *</label>';
+    bodyHTML += '      <input type="time" class="form-input" name="satStartTime" value="' + (s.satStartTime || '08:00') + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Period Duration (mins) *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="satPeriodDuration" min="1" value="' + (s.satPeriodDuration || 35) + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Lunch After Period *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="satLunchAfterPeriod" min="0" value="' + (s.satLunchAfterPeriod !== undefined ? s.satLunchAfterPeriod : 0) + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Lunch Duration (mins) *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="satLunchDuration" min="0" value="' + satLunchDur + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="timetable-settings-save-btn"><span class="material-icons-round">save</span> Save Settings</button>';
+
+    SchoolApp.showModal('Timetable Timing Settings', bodyHTML, footerHTML);
+
+    document.getElementById('timetable-settings-save-btn').addEventListener('click', function() {
+      var form = document.getElementById('timetable-settings-form');
+      if (!form) return;
+
+      var inputs = form.querySelectorAll('input');
+      var valid = true;
+      var fields = {};
+      inputs.forEach(function(input) {
+        var val = input.value.trim();
+        fields[input.name] = val;
+        if (input.required && val === '') {
+          input.closest('.form-group').classList.add('error');
+          valid = false;
+        } else {
+          input.closest('.form-group').classList.remove('error');
+        }
+      });
+
+      if (!valid) {
+        SchoolApp.showToast('Please fill all required fields correctly.', 'error');
+        return;
+      }
+
+      if (!SchoolApp.store.timetable) {
+        SchoolApp.store.timetable = {};
+      }
+      
+      SchoolApp.store.timetable.settings = {
+        startTime: fields.startTime,
+        periodDuration: parseInt(fields.periodDuration) || 40,
+        lunchAfterPeriod: parseInt(fields.lunchAfterPeriod) || 0,
+        lunchDuration: parseInt(fields.lunchDuration) || 0,
+        satStartTime: fields.satStartTime,
+        satPeriodDuration: parseInt(fields.satPeriodDuration) || 35,
+        satLunchAfterPeriod: parseInt(fields.satLunchAfterPeriod) || 0,
+        satLunchDuration: parseInt(fields.satLunchDuration) || 0
+      };
+
+      SchoolApp.save();
+      SchoolApp.showToast('Timetable timing settings saved successfully.', 'success');
+      SchoolApp.closeModal();
+      render();
     });
   }
 
