@@ -187,8 +187,12 @@
               <!-- Dynamic Content -->
             </div>
           </div>
-          <div class="header-avatar">
-            <div class="avatar avatar-sm" id="header-avatar">AD</div>
+          <div class="header-avatar" style="position: relative;">
+            <div class="avatar avatar-sm" id="header-avatar" style="cursor: pointer;">AD</div>
+            <div id="profile-dropdown" class="profile-dropdown hidden" style="position: absolute; right: 0; top: 100%; margin-top: 8px; width: 185px; background: rgba(22, 22, 33, 0.98); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.65); backdrop-filter: blur(15px); z-index: 1000; overflow: hidden; display: flex; flex-direction: column;">
+              <a href="#" id="profile-my-profile" style="padding: 12px 16px; color: var(--text-primary); text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); transition: background 0.2s;"><span class="material-icons-round" style="font-size: 18px;">manage_accounts</span> My Profile</a>
+              <a href="#" id="profile-logout" style="padding: 12px 16px; color: var(--danger); text-decoration: none; font-size: 14px; display: flex; align-items: center; gap: 8px; transition: background 0.2s;"><span class="material-icons-round" style="font-size: 18px;">logout</span> Logout</a>
+            </div>
           </div>
         </div>
       </header>

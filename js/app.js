@@ -400,6 +400,108 @@ window.SchoolApp = {
     document.getElementById('login-form').reset();
   },
 
+  showMyProfileModal: function() {
+    var self = this;
+    var user = this.currentUser;
+    if (!user) return;
+
+    var bodyHTML = '<form id="my-profile-form" class="form-grid">';
+    
+    if (this.isAdmin()) {
+      var settings = this.store.settings;
+      bodyHTML += '<div class="form-group"><label class="form-label">Username *</label><input type="text" class="form-input" name="adminUsername" value="' + (settings.adminUsername || 'admin') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (settings.email || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (settings.phone || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><input type="text" class="form-input" name="adminPassword" value="' + (settings.adminPassword || '') + '" required></div>';
+    } else {
+      // Teacher
+      var teacher = this.store.teachers.find(function(t) { return t.id === user.id; });
+      if (!teacher) {
+        self.showToast('Profile error: teacher record not found.', 'error');
+        return;
+      }
+      bodyHTML += '<div class="form-group"><label class="form-label">First Name *</label><input type="text" class="form-input" name="firstName" value="' + (teacher.firstName || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" name="lastName" value="' + (teacher.lastName || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (teacher.email || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher.phone || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><input type="text" class="form-input" name="password" value="' + (teacher.password || '') + '" required></div>';
+    }
+    
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="my-profile-save-btn"><span class="material-icons-round">save</span> Save Changes</button>';
+
+    this.showModal('My Profile', bodyHTML, footerHTML);
+
+    document.getElementById('my-profile-save-btn').addEventListener('click', function() {
+      var form = document.getElementById('my-profile-form');
+      if (!form) return;
+
+      var inputs = form.querySelectorAll('input');
+      var valid = true;
+      var fields = {};
+      inputs.forEach(function(input) {
+        var val = input.value.trim();
+        fields[input.name] = val;
+        if (input.required && !val) {
+          input.closest('.form-group').classList.add('error');
+          valid = false;
+        } else {
+          input.closest('.form-group').classList.remove('error');
+        }
+      });
+
+      if (!valid) {
+        self.showToast('Please fill all required fields correctly.', 'error');
+        return;
+      }
+
+      if (self.isAdmin()) {
+        self.store.settings.adminUsername = fields.adminUsername;
+        self.store.settings.email = fields.email;
+        self.store.settings.phone = fields.phone;
+        self.store.settings.adminPassword = fields.adminPassword;
+        self.currentUser.firstName = fields.adminUsername;
+        self.currentUser.email = fields.email;
+      } else {
+        // Teacher
+        var teacherIdx = self.store.teachers.findIndex(function(t) { return t.id === user.id; });
+        if (teacherIdx !== -1) {
+          Object.assign(self.store.teachers[teacherIdx], fields);
+          // Sync currentUser
+          self.currentUser.firstName = fields.firstName;
+          self.currentUser.lastName = fields.lastName;
+          self.currentUser.email = fields.email;
+        }
+      }
+
+      self.save();
+      // Update UI displays
+      var initials = self.getInitials(self.currentUser.firstName, self.currentUser.lastName);
+      var headerAvatarEl = document.getElementById('header-avatar');
+      if (headerAvatarEl) {
+        headerAvatarEl.textContent = initials;
+      }
+      var sidebarAvatarEl = document.getElementById('sidebar-avatar');
+      if (sidebarAvatarEl) {
+        sidebarAvatarEl.textContent = initials;
+      }
+      var sidebarNameEl = document.getElementById('sidebar-user-name');
+      if (sidebarNameEl) {
+        sidebarNameEl.textContent = self.currentUser.firstName + ' ' + (self.currentUser.lastName || '');
+      }
+
+      self.showToast('Profile details updated successfully.', 'success');
+      self.closeModal();
+      
+      // If current page is dashboard, re-render it
+      if (self.currentPage === 'dashboard') {
+        self.renderDashboard();
+      }
+    });
+  },
+
   isAdmin: function() {
     return this.currentUser && this.currentUser.role === 'admin';
   },
@@ -1675,7 +1777,51 @@ window.SchoolApp = {
           (!btn || !btn.contains(e.target))) {
         dropdown.classList.add('hidden');
       }
+
+      var profileDropdown = document.getElementById('profile-dropdown');
+      var headerAvatar = document.getElementById('header-avatar');
+      if (profileDropdown && !profileDropdown.classList.contains('hidden') &&
+          !profileDropdown.contains(e.target) &&
+          (!headerAvatar || !headerAvatar.contains(e.target))) {
+        profileDropdown.classList.add('hidden');
+      }
     });
+
+    // Profile Avatar Dropdown Click
+    var headerAvatar = document.getElementById('header-avatar');
+    if (headerAvatar) {
+      headerAvatar.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var dropdown = document.getElementById('profile-dropdown');
+        if (dropdown) {
+          dropdown.classList.toggle('hidden');
+        }
+      });
+    }
+
+    // Profile Dropdown items click listeners
+    var profileMyProfile = document.getElementById('profile-my-profile');
+    if (profileMyProfile) {
+      profileMyProfile.addEventListener('click', function(e) {
+        e.preventDefault();
+        var dropdown = document.getElementById('profile-dropdown');
+        if (dropdown) dropdown.classList.add('hidden');
+        self.showMyProfileModal();
+      });
+    }
+
+    var profileLogout = document.getElementById('profile-logout');
+    if (profileLogout) {
+      profileLogout.addEventListener('click', function(e) {
+        e.preventDefault();
+        var dropdown = document.getElementById('profile-dropdown');
+        if (dropdown) dropdown.classList.add('hidden');
+        self.showConfirm('Are you sure you want to logout?', function() {
+          self.logout();
+          self.showToast('Logged out successfully.', 'info');
+        });
+      });
+    }
 
     // Global quick search logic
     var globalSearch = document.getElementById('global-search');

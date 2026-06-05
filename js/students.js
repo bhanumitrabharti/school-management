@@ -25,13 +25,18 @@
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var st = SchoolApp.currentUser.subjectTeacherOf || [];
       students = students.filter(function(s) {
+        var studentClass = String(s.class).replace(/^class\s+/i, '').trim().toLowerCase();
+        var studentSection = String(s.section).trim().toLowerCase();
+
         var isCt = ct.some(function(item) {
-          return String(item.class).toLowerCase().trim() === String(s.class).toLowerCase().trim() &&
-                 String(item.section).toLowerCase().trim() === String(s.section).toLowerCase().trim();
+          var itemClass = String(item.class).replace(/^class\s+/i, '').trim().toLowerCase();
+          var itemSection = String(item.section).trim().toLowerCase();
+          return itemClass === studentClass && itemSection === studentSection;
         });
         var isSt = st.some(function(item) {
-          return String(item.class).toLowerCase().trim() === String(s.class).toLowerCase().trim() &&
-                 String(item.section).toLowerCase().trim() === String(s.section).toLowerCase().trim();
+          var itemClass = String(item.class).replace(/^class\s+/i, '').trim().toLowerCase();
+          var itemSection = String(item.section).trim().toLowerCase();
+          return itemClass === studentClass && itemSection === studentSection;
         });
         return isCt || isSt;
       });
@@ -39,10 +44,17 @@
 
     // Apply filters
     if (state.classFilter !== 'all') {
-      students = students.filter(function(s) { return s.class === state.classFilter; });
+      var filterClass = String(state.classFilter).replace(/^class\s+/i, '').trim().toLowerCase();
+      students = students.filter(function(s) {
+        var studentClass = String(s.class).replace(/^class\s+/i, '').trim().toLowerCase();
+        return studentClass === filterClass;
+      });
     }
     if (state.sectionFilter !== 'all') {
-      students = students.filter(function(s) { return s.section === state.sectionFilter; });
+      var filterSection = String(state.sectionFilter).trim().toLowerCase();
+      students = students.filter(function(s) {
+        return String(s.section).trim().toLowerCase() === filterSection;
+      });
     }
     if (state.statusFilter !== 'all') {
       students = students.filter(function(s) { return s.status === state.statusFilter; });

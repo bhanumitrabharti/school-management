@@ -20,6 +20,22 @@
     }
   };
 
+  function parseClassSection(str) {
+    if (!str) return { class: '', section: '' };
+    var clean = str.replace(/class\s+/i, '').trim();
+    var parts = clean.split('-');
+    if (parts.length === 2) {
+      return {
+        class: parts[0].trim(),
+        section: parts[1].trim()
+      };
+    }
+    return {
+      class: clean,
+      section: ''
+    };
+  }
+
   function getAvailableClasses() {
     if (SchoolApp.isTeacher()) {
       return SchoolApp.currentUser.classTeacherOf || [];
@@ -29,7 +45,10 @@
       (SchoolApp.store.settings.sections || []).forEach(function(s) {
         // Only include classes that have students
         var hasStudents = SchoolApp.store.students.some(function(st) {
-          return st.class === c && st.section === s;
+          var studentClass = String(st.class).replace(/^class\s+/i, '').trim().toLowerCase();
+          var studentSection = String(st.section).trim().toLowerCase();
+          return studentClass === String(c).replace(/^class\s+/i, '').trim().toLowerCase() &&
+                 studentSection === String(s).trim().toLowerCase();
         });
         if (hasStudents) combos.push({ class: c, section: s });
       });
@@ -39,7 +58,11 @@
 
   function getStudentsForClass(cls, section) {
     return SchoolApp.store.students.filter(function(s) {
-      return s.class === cls && s.section === section && s.status === 'Active';
+      var studentClass = String(s.class).replace(/^class\s+/i, '').trim().toLowerCase();
+      var studentSection = String(s.section).trim().toLowerCase();
+      var filterClass = String(cls).replace(/^class\s+/i, '').trim().toLowerCase();
+      var filterSection = String(section).trim().toLowerCase();
+      return studentClass === filterClass && studentSection === filterSection && s.status === 'Active';
     }).sort(function(a, b) {
       return a.rollNumber.localeCompare(b.rollNumber);
     });
@@ -144,7 +167,9 @@
     html += '<select class="form-select" id="att-class-select" style="width:auto;min-width:150px"><option value="">Select Class</option>';
     availableClasses.forEach(function(c) {
       var val = c.class + '-' + c.section;
-      html += '<option value="' + val + '"' + (state.selectedClass === c.class && state.selectedSection === c.section ? ' selected' : '') + '>Class ' + val + '</option>';
+      var isSelected = String(state.selectedClass).replace(/^class\s+/i, '').trim().toLowerCase() === String(c.class).replace(/^class\s+/i, '').trim().toLowerCase() &&
+                       String(state.selectedSection).trim().toLowerCase() === String(c.section).trim().toLowerCase();
+      html += '<option value="' + val + '"' + (isSelected ? ' selected' : '') + '>Class ' + val + '</option>';
     });
     html += '</select>';
 
@@ -154,7 +179,9 @@
 
       // Check for existing record
       var existing = SchoolApp.store.attendance.find(function(a) {
-        return a.date === state.selectedDate && a.class === state.selectedClass && a.section === state.selectedSection;
+        return a.date === state.selectedDate &&
+               String(a.class).replace(/^class\s+/i, '').trim().toLowerCase() === String(state.selectedClass).replace(/^class\s+/i, '').trim().toLowerCase() &&
+               String(a.section).trim().toLowerCase() === String(state.selectedSection).trim().toLowerCase();
       });
       if (existing) {
         html += '<span class="badge badge-warning" style="font-size:13px;padding:8px 16px">⚠ Already submitted for this date</span>';
@@ -341,9 +368,9 @@
       classSelect.addEventListener('change', function() {
         var val = this.value;
         if (val) {
-          var parts = val.split('-');
-          state.selectedClass = parts[0];
-          state.selectedSection = parts[1];
+          var parsed = parseClassSection(val);
+          state.selectedClass = parsed.class;
+          state.selectedSection = parsed.section;
           // Initialize all as present
           var students = getStudentsForClass(state.selectedClass, state.selectedSection);
           state.attendanceStatus = {};
@@ -351,7 +378,9 @@
 
           // Load existing record if any
           var existing = SchoolApp.store.attendance.find(function(a) {
-            return a.date === state.selectedDate && a.class === state.selectedClass && a.section === state.selectedSection;
+            return a.date === state.selectedDate &&
+                   String(a.class).replace(/^class\s+/i, '').trim().toLowerCase() === String(state.selectedClass).replace(/^class\s+/i, '').trim().toLowerCase() &&
+                   String(a.section).trim().toLowerCase() === String(state.selectedSection).trim().toLowerCase();
           });
           if (existing) {
             existing.records.forEach(function(rec) {
