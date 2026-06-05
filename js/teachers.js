@@ -292,6 +292,14 @@
     }
 
     fields.assignedClasses = assignedClasses;
+    fields.classTeacherOf = assignedClasses.length > 0 ? [assignedClasses[0]] : [];
+    fields.subjectTeacherOf = assignedClasses.map(function(ac) {
+      return {
+        class: ac.class,
+        section: ac.section,
+        subject: fields.subject
+      };
+    });
 
     if (existing) {
       var idx = SchoolApp.store.teachers.findIndex(function(t) { return t.id === existing.id; });

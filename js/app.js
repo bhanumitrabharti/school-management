@@ -369,6 +369,11 @@ window.SchoolApp = {
         return t.email === credentials.email && t.password === credentials.password && t.status === 'Active';
       });
       if (teacher) {
+        var classTeacherOf = teacher.classTeacherOf || (teacher.assignedClasses && teacher.assignedClasses.length > 0 ? [teacher.assignedClasses[0]] : []);
+        var subjectTeacherOf = teacher.subjectTeacherOf || (teacher.assignedClasses || []).map(function(ac) {
+          return { class: ac.class, section: ac.section, subject: teacher.subject };
+        });
+
         this.currentUser = {
           id: teacher.id,
           firstName: teacher.firstName,
@@ -376,7 +381,9 @@ window.SchoolApp = {
           role: 'teacher',
           email: teacher.email,
           subject: teacher.subject,
-          assignedClasses: teacher.assignedClasses
+          assignedClasses: teacher.assignedClasses,
+          classTeacherOf: classTeacherOf,
+          subjectTeacherOf: subjectTeacherOf
         };
         return true;
       }
@@ -404,7 +411,7 @@ window.SchoolApp = {
   // ---------- Navigation ----------
   navigate: function(pageName) {
     // Strict role check
-    var adminOnlyPages = ['admin', 'fees', 'teachers'];
+    var adminOnlyPages = ['admin', 'fees'];
     if (adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
@@ -783,6 +790,10 @@ window.SchoolApp = {
 
     this.store.teachers = teacherData.map(function(t) {
       var email = (t.fn.toLowerCase() + '.' + t.ln.toLowerCase()) + '@shishuvikash.edu.in';
+      var classTeacherOf = [t.classes[0]];
+      var subjectTeacherOf = t.classes.map(function(c) {
+        return { class: c.class, section: c.section, subject: t.sub };
+      });
       return {
         id: self.generateId(),
         firstName: t.fn,
@@ -792,6 +803,8 @@ window.SchoolApp = {
         subject: t.sub,
         qualification: t.qual,
         assignedClasses: t.classes,
+        classTeacherOf: classTeacherOf,
+        subjectTeacherOf: subjectTeacherOf,
         joiningDate: t.jd,
         status: 'Active',
         password: 'teacher123'
@@ -1285,15 +1298,35 @@ window.SchoolApp = {
   renderTeacherDashboard: function(container) {
     var self = this;
     
-    // 1. My Class Strength: Count unique students belonging to any class/section in assignedClasses
-    var teacherStudents = this.store.students.filter(function(s) {
-      return (self.currentUser.assignedClasses || []).some(function(ac) {
-        return s.class === ac.class && s.section === ac.section;
+    var ctClasses = this.currentUser.classTeacherOf || [];
+    var stClasses = this.currentUser.subjectTeacherOf || [];
+
+    // 1. My Class Strength: Count unique students belonging to any class/section in classTeacherOf
+    var classTeacherStudents = this.store.students.filter(function(s) {
+      return ctClasses.some(function(ct) {
+        return s.class === ct.class && s.section === ct.section;
       });
     });
-    var classStrength = teacherStudents.length;
+    var classStrength = classTeacherStudents.length;
 
-    // 2. My Attendance (This Month %):
+    // 2. Class Attendance % (Today) for Class Teacher classes
+    var todayStr = new Date().toISOString().split('T')[0];
+    var ctAttendanceRecords = this.store.attendance.filter(function(a) {
+      return a.date === todayStr && ctClasses.some(function(ct) { return a.class === ct.class && a.section === ct.section; });
+    });
+    var ctPresent = 0, ctTotal = 0;
+    ctAttendanceRecords.forEach(function(r) {
+      r.records.forEach(function(rec) {
+        ctTotal++;
+        if (rec.status === 'present' || rec.status === 'late') ctPresent++;
+      });
+    });
+    var ctAttendancePerc = ctTotal > 0 ? Math.round((ctPresent / ctTotal) * 100) : 0;
+
+    // 3. My Teaching Periods: Count of subjectTeacherOf classes
+    var upcomingCount = stClasses.length;
+
+    // 4. My Attendance (This Month %): Teacher's own attendance
     var now = new Date();
     var currentYear = now.getFullYear();
     var currentMonth = now.getMonth(); // 0-11
@@ -1323,19 +1356,26 @@ window.SchoolApp = {
     var teacherAttendancePerc = workingDays > 0 ? Math.round((presentDays / workingDays) * 100) : 0;
     if (teacherAttendancePerc > 100) teacherAttendancePerc = 100;
 
-    // 3. Upcoming Classes: Number of assigned classes
-    var upcomingCount = (this.currentUser.assignedClasses || []).length;
-
     var html = '';
 
-    // Stats Grid (3 columns for teachers)
-    html += '<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">';
-    html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + classStrength + '">0</div><div class="stat-label">My Class Strength</div></div></div>';
-    html += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">fingerprint</span></div><div class="stat-info"><div class="stat-number" data-count="' + teacherAttendancePerc + '">0</div><div class="stat-label">My Attendance % (This Month)</div></div></div>';
-    html += '<div class="stat-card amber"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + upcomingCount + '">0</div><div class="stat-label">Assigned Classes</div></div></div>';
+    // Stats Grid
+    html += '<div class="stats-grid">';
+    
+    // Class Strength Card
+    var classLabel = ctClasses.length > 0 ? 'My Class Strength (' + ctClasses.map(function(c) { return c.class + '-' + c.section; }).join(', ') + ')' : 'My Class Strength';
+    html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + classStrength + '">0</div><div class="stat-label">' + classLabel + '</div></div></div>';
+    
+    // Class Attendance Card
+    html += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div><div class="stat-info"><div class="stat-number" data-count="' + ctAttendancePerc + '">0</div><div class="stat-label">Class Attendance (Today)</div></div></div>';
+    
+    // Teaching Periods Card
+    html += '<div class="stat-card amber"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + upcomingCount + '">0</div><div class="stat-label">My Teaching Periods</div></div></div>';
+    
+    // Teacher's own Attendance Card
+    html += '<div class="stat-card cyan"><div class="stat-icon"><span class="material-icons-round">fingerprint</span></div><div class="stat-info"><div class="stat-number" data-count="' + teacherAttendancePerc + '">0</div><div class="stat-label">My Attendance % (This Month)</div></div></div>';
     html += '</div>';
 
-    // Digital Notice Board Widget (Identical to Admin but styled cleanly)
+    // Digital Notice Board Widget (published notices only)
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Digital Notice Board</h3></div>';
     html += '<div class="card-body" style="max-height: 250px; overflow-y: auto; padding: 16px;">';
     
@@ -1373,16 +1413,16 @@ window.SchoolApp = {
     html += '<div class="dashboard-grid">';
 
     // Teaching Schedule Card
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schedule</span> Upcoming Classes Schedule</h3></div><div class="card-body" style="padding: 16px 24px;">';
-    if ((this.currentUser.assignedClasses || []).length > 0) {
+    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schedule</span> Upcoming Subject Periods</h3></div><div class="card-body" style="padding: 16px 24px;">';
+    if (stClasses.length > 0) {
       html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
-      (this.currentUser.assignedClasses || []).forEach(function(ac, index) {
+      stClasses.forEach(function(ac, index) {
         var periodNum = index + 1;
         var timeSlots = ["09:15 AM - 10:00 AM", "10:00 AM - 10:45 AM", "11:00 AM - 11:45 AM", "11:45 AM - 12:30 PM", "01:15 PM - 02:00 PM"];
         var slot = timeSlots[index % timeSlots.length];
         html += '<div class="activity-item" style="display:flex; align-items:flex-start; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.04);">';
         html += '<div class="activity-icon purple" style="width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(124,58,237,0.15); color:var(--accent-primary-light);"><span class="material-icons-round" style="font-size:18px;">class</span></div>';
-        html += '<div class="activity-text" style="font-size:13px; line-height:1.4;"><strong style="font-size:14px; color:var(--text-primary);">Period ' + periodNum + ' · Class ' + ac.class + '-' + ac.section + '</strong><br><span style="color:var(--text-muted); font-size:11px;">' + slot + '</span> · <span class="badge badge-purple" style="font-size:9.5px; padding:2px 6px;">' + (self.currentUser.subject || "General") + '</span></div>';
+        html += '<div class="activity-text" style="font-size:13px; line-height:1.4;"><strong style="font-size:14px; color:var(--text-primary);">Period ' + periodNum + ' · Class ' + ac.class + '-' + ac.section + '</strong><br><span style="color:var(--text-muted); font-size:11px;">' + slot + '</span> · <span class="badge badge-purple" style="font-size:9.5px; padding:2px 6px;">' + (ac.subject || self.currentUser.subject || "General") + '</span></div>';
         html += '</div>';
       });
       html += '</div>';
@@ -1393,11 +1433,10 @@ window.SchoolApp = {
 
     // My Class Attendance Summary Card
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">fact_check</span> Class Attendance (Today)</h3></div><div class="card-body" style="padding: 16px 24px;">';
-    var todayStr = new Date().toISOString().split('T')[0];
     
-    if ((this.currentUser.assignedClasses || []).length > 0) {
+    if (ctClasses.length > 0) {
       html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
-      (this.currentUser.assignedClasses || []).forEach(function(ac) {
+      ctClasses.forEach(function(ac) {
         var record = self.store.attendance.find(function(a) {
           return a.date === todayStr && a.class === ac.class && a.section === ac.section;
         });
@@ -1420,7 +1459,7 @@ window.SchoolApp = {
       });
       html += '</div>';
     } else {
-      html += '<div class="empty-state"><span class="material-icons-round">fact_check</span><h3>No Class Attendance</h3><p>No classes assigned to display attendance for.</p></div>';
+      html += '<div class="empty-state"><span class="material-icons-round">fact_check</span><h3>No Class Assigned</h3><p>You are not assigned as Class Teacher for any class. Attendance is restricted to Class Teachers.</p></div>';
     }
     html += '</div></div>';
 

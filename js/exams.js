@@ -38,6 +38,19 @@
     var classes = SchoolApp.store.settings.classes || [];
     var sections = SchoolApp.store.settings.sections || [];
 
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      var st = SchoolApp.currentUser.subjectTeacherOf || [];
+      classes = classes.filter(function(c) {
+        return ct.some(function(item) { return item.class === c; }) ||
+               st.some(function(item) { return item.class === c; });
+      });
+      sections = sections.filter(function(s) {
+        return ct.some(function(item) { return item.section === s; }) ||
+               st.some(function(item) { return item.section === s; });
+      });
+    }
+
     var html = '';
 
     // Page Header
@@ -102,12 +115,53 @@
     // Marks Entry / Listing Panel
     if (!state.isCombined) {
       if (state.examTerm && state.classVal && state.sectionVal) {
+        if (SchoolApp.isTeacher()) {
+          var ct = SchoolApp.currentUser.classTeacherOf || [];
+          var st = SchoolApp.currentUser.subjectTeacherOf || [];
+          var isAssigned = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; }) ||
+                            st.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+          if (!isAssigned) {
+            html += '<div class="card"><div class="card-body">';
+            html += '<div class="empty-state"><span class="material-icons-round">lock</span><h3>Access Denied</h3><p>You are not assigned to Class ' + state.classVal + '-' + state.sectionVal + ' as either a Class Teacher or Subject Teacher.</p></div>';
+            html += '</div></div>';
+            container.innerHTML = html;
+            attachEvents();
+            return;
+          }
+        }
+
+        var isClassTeacher = true;
+        if (SchoolApp.isTeacher()) {
+          var ct = SchoolApp.currentUser.classTeacherOf || [];
+          isClassTeacher = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+        }
+
         var students = (SchoolApp.store.students || []).filter(function(s) {
           return s.class === state.classVal && s.section === state.sectionVal && s.status === 'Active';
         });
 
         var mappingKey = state.examTerm + '_' + state.classVal;
         var subjects = (SchoolApp.store.subjectMapping || {})[mappingKey] || (SchoolApp.store.subjectMapping || {})[state.classVal] || [];
+
+        if (SchoolApp.isTeacher() && !isClassTeacher) {
+          var st = SchoolApp.currentUser.subjectTeacherOf || [];
+          var assignedSubjects = st.filter(function(item) {
+            return item.class === state.classVal && item.section === state.sectionVal;
+          }).map(function(item) { return item.subject; });
+          
+          subjects = subjects.filter(function(sub) {
+            return assignedSubjects.some(function(asName) {
+              var sName = sub.name.toLowerCase().trim();
+              var aName = asName.toLowerCase().trim();
+              if (sName === aName) return true;
+              if (sName === 'mathematics' && (aName === 'maths' || aName === 'mathematics')) return true;
+              if (sName === 'maths' && (aName === 'mathematics' || aName === 'maths')) return true;
+              if (sName === 'social studies' && (aName === 'sst' || aName === 'social studies')) return true;
+              if (sName === 'sst' && (aName === 'social studies' || aName === 'sst')) return true;
+              return false;
+            });
+          });
+        }
 
         html += '<div class="card"><div class="card-header">';
         var termName = (examsList.find(function(ex) { return ex.id === state.examTerm; }) || { name: '' }).name;
@@ -164,7 +218,11 @@
               html += '<td class="center"><span class="badge ' + stColor + '">' + savedMarks.status + '</span></td>';
               
               html += '<td class="center">';
-              html += '<button class="btn btn-secondary btn-sm generate-reportcard-btn" data-student-id="' + s.id + '"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+              if (isClassTeacher) {
+                html += '<button class="btn btn-secondary btn-sm generate-reportcard-btn" data-student-id="' + s.id + '"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+              } else {
+                html += '<button class="btn btn-secondary btn-sm" disabled title="Only Class Teachers can print report cards"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+              }
               html += '</td>';
             } else {
               html += '<td class="center text-muted">—</td><td class="center text-muted">—</td><td class="center text-muted">—</td><td class="center text-muted">—</td>';
@@ -186,6 +244,27 @@
     } else {
       // Consolidated Combined Matrix Panel
       if (state.combinedTerm1 && state.combinedTerm2 && state.classVal && state.sectionVal) {
+        if (SchoolApp.isTeacher()) {
+          var ct = SchoolApp.currentUser.classTeacherOf || [];
+          var st = SchoolApp.currentUser.subjectTeacherOf || [];
+          var isAssigned = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; }) ||
+                            st.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+          if (!isAssigned) {
+            html += '<div class="card"><div class="card-body">';
+            html += '<div class="empty-state"><span class="material-icons-round">lock</span><h3>Access Denied</h3><p>You are not assigned to Class ' + state.classVal + '-' + state.sectionVal + ' as either a Class Teacher or Subject Teacher.</p></div>';
+            html += '</div></div>';
+            container.innerHTML = html;
+            attachEvents();
+            return;
+          }
+        }
+
+        var isClassTeacher = true;
+        if (SchoolApp.isTeacher()) {
+          var ct = SchoolApp.currentUser.classTeacherOf || [];
+          isClassTeacher = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+        }
+
         var students = (SchoolApp.store.students || []).filter(function(s) {
           return s.class === state.classVal && s.section === state.sectionVal && s.status === 'Active';
         });
@@ -288,7 +367,11 @@
               html += '<td class="center"><span class="badge badge-purple">' + combinedGrade + '</span></td>';
               html += '<td class="center"><span class="badge ' + statusColor + '">' + combinedStatus + '</span></td>';
               html += '<td class="center">';
-              html += '<button class="btn btn-secondary btn-sm generate-combined-reportcard-btn" data-student-id="' + s.id + '"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+              if (isClassTeacher) {
+                html += '<button class="btn btn-secondary btn-sm generate-combined-reportcard-btn" data-student-id="' + s.id + '"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+              } else {
+                html += '<button class="btn btn-secondary btn-sm" disabled title="Only Class Teachers can print report cards"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+              }
               html += '</td>';
             } else {
               html += '<td class="center text-muted">—</td><td class="center text-muted">—</td><td class="center text-muted">—</td><td class="center text-muted">—</td>';
@@ -315,6 +398,15 @@
   function printStudentMarksheet(studentId) {
     var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
     if (!s) return;
+
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      var isCt = ct.some(function(c) { return c.class === s.class && c.section === s.section; });
+      if (!isCt) {
+        SchoolApp.showToast('Access Denied: Only Class Teachers can print/view student report cards.', 'error');
+        return;
+      }
+    }
 
     var mappingKey = '';
     if (state.isCombined) {
@@ -756,6 +848,17 @@
     var saveBtn = document.getElementById('exam-save-all-marks-btn');
     if (saveBtn) {
       saveBtn.addEventListener('click', function() {
+        if (SchoolApp.isTeacher()) {
+          var ct = SchoolApp.currentUser.classTeacherOf || [];
+          var st = SchoolApp.currentUser.subjectTeacherOf || [];
+          var isAssigned = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; }) ||
+                            st.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+          if (!isAssigned) {
+            SchoolApp.showToast('Access Denied: You are not assigned to this class/section.', 'error');
+            return;
+          }
+        }
+
         var scoreInputs = document.querySelectorAll('.exam-score-input');
         
         var studentScores = {};
@@ -802,12 +905,25 @@
           var scores = studentScores[s.id];
           if (!scores) return;
 
+          // Find existing mark entry for this student and exam
+          var existingIdx = SchoolApp.store.marks.findIndex(function(m) {
+            return m.studentId === s.id && m.examId === state.examTerm;
+          });
+          var existingEntry = existingIdx !== -1 ? SchoolApp.store.marks[existingIdx] : null;
+
+          var mergedScores = {};
+          if (existingEntry && existingEntry.scores) {
+            Object.assign(mergedScores, existingEntry.scores);
+          }
+          Object.assign(mergedScores, scores);
+
           var totalScored = 0;
           var maxTotal = 0;
           var passedAll = true;
 
           subjects.forEach(function(sub) {
-            var score = parseFloat(scores[sub.id] || 0);
+            var scoreVal = mergedScores[sub.id];
+            var score = scoreVal !== undefined && scoreVal !== '' ? parseFloat(scoreVal) : 0;
             totalScored += score;
             maxTotal += sub.maxMarks;
             if (score < sub.passMarks) passedAll = false;
@@ -816,17 +932,12 @@
           var percentage = Math.round((totalScored / maxTotal) * 100);
           var grade = calculateGrade(percentage);
 
-          // Find existing mark entry for this student and exam
-          var existingIdx = SchoolApp.store.marks.findIndex(function(m) {
-            return m.studentId === s.id && m.examId === state.examTerm;
-          });
-
           var entry = {
             studentId: s.id,
             examId: state.examTerm,
             class: state.classVal,
             section: state.sectionVal,
-            scores: scores,
+            scores: mergedScores,
             totalScored: totalScored,
             maxTotal: maxTotal,
             percentage: percentage,

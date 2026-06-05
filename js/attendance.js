@@ -21,8 +21,8 @@
   };
 
   function getAvailableClasses() {
-    if (SchoolApp.isTeacher() && SchoolApp.currentUser.assignedClasses) {
-      return SchoolApp.currentUser.assignedClasses;
+    if (SchoolApp.isTeacher()) {
+      return SchoolApp.currentUser.classTeacherOf || [];
     }
     var combos = [];
     (SchoolApp.store.settings.classes || []).forEach(function(c) {
@@ -229,6 +229,16 @@
     var classes = SchoolApp.store.settings.classes || [];
     var sections = SchoolApp.store.settings.sections || [];
 
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      classes = classes.filter(function(c) {
+        return ct.some(function(item) { return item.class === c; });
+      });
+      sections = sections.filter(function(s) {
+        return ct.some(function(item) { return item.section === s; });
+      });
+    }
+
     html += '<div class="card mt-2"><div class="card-header"><h3><span class="material-icons-round">history</span> Attendance History</h3></div><div class="card-body">';
 
     // Filters
@@ -247,11 +257,11 @@
     // Filter attendance records
     var records = SchoolApp.store.attendance.slice();
 
-    // Teacher filter
-    if (SchoolApp.isTeacher() && SchoolApp.currentUser.assignedClasses) {
-      var ac = SchoolApp.currentUser.assignedClasses;
+    // Teacher filter (only show class teacher classes)
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
       records = records.filter(function(r) {
-        return ac.some(function(c) { return c.class === r.class && c.section === r.section; });
+        return ct.some(function(c) { return c.class === r.class && c.section === r.section; });
       });
     }
 
@@ -440,6 +450,15 @@
       return;
     }
 
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      var isCt = ct.some(function(c) { return c.class === state.selectedClass && c.section === state.selectedSection; });
+      if (!isCt) {
+        SchoolApp.showToast('Access Denied: You are not the Class Teacher for this class.', 'error');
+        return;
+      }
+    }
+
     // Check for existing record
     var existingIdx = SchoolApp.store.attendance.findIndex(function(a) {
       return a.date === state.selectedDate && a.class === state.selectedClass && a.section === state.selectedSection;
@@ -478,6 +497,15 @@
   function viewAttendanceDetail(id) {
     var record = SchoolApp.store.attendance.find(function(a) { return a.id === id; });
     if (!record) return;
+
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      var isCt = ct.some(function(c) { return c.class === record.class && c.section === record.section; });
+      if (!isCt) {
+        SchoolApp.showToast('Access Denied: You do not have permission to view attendance for this class.', 'error');
+        return;
+      }
+    }
 
     var teacher = SchoolApp.store.teachers.find(function(t) { return t.id === record.teacherId; });
     var teacherName = teacher ? teacher.firstName + ' ' + teacher.lastName : 'Unknown';
