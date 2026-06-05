@@ -91,12 +91,6 @@
     var filteredStudents = getFilteredStudents();
     var isAdmin = SchoolApp.isAdmin();
 
-    // Pagination
-    var totalPages = Math.ceil(filteredStudents.length / state.perPage);
-    if (state.currentPage > totalPages && totalPages > 0) state.currentPage = totalPages;
-    var start = (state.currentPage - 1) * state.perPage;
-    var pageStudents = filteredStudents.slice(start, start + state.perPage);
-
     // Calculate Dashboard Stats
     var schoolDues = 0;
     var schoolPaid = 0;
@@ -104,70 +98,129 @@
       if (f.type === 'due') schoolDues += parseFloat(f.amount || 0);
       else if (f.type === 'payment') schoolPaid += parseFloat(f.amount || 0);
     });
-
-    var html = '';
-
-    // Page Header
-    html += '<div class="page-header">';
-    html += '<h2>Fee Management</h2>';
-    html += '<div class="header-actions">';
-    if (isAdmin) {
-      html += '<button class="btn btn-primary" id="bulk-charge-fee-btn"><span class="material-icons-round">campaign</span> Bulk Charge Class</button>';
-    }
-    html += '</div></div>';
-
-    // Summary Cards Grid
-    html += '<div class="stats-grid">';
-    html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">assignment</span></div>';
-    html += '<div class="stat-info"><div class="stat-number">₹' + schoolDues.toLocaleString('en-IN') + '</div><div class="stat-label">Total Dues Charged</div></div></div>';
-    html += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div>';
-    html += '<div class="stat-info"><div class="stat-number">₹' + schoolPaid.toLocaleString('en-IN') + '</div><div class="stat-label">Total Fees Collected</div></div></div>';
-    
     var outstandingAmt = schoolDues - schoolPaid;
-    html += '<div class="stat-card ' + (outstandingAmt > 0 ? 'amber' : 'cyan') + '"><div class="stat-icon"><span class="material-icons-round">error</span></div>';
-    html += '<div class="stat-info"><div class="stat-number">₹' + outstandingAmt.toLocaleString('en-IN') + '</div><div class="stat-label">Outstanding Balance</div></div></div>';
-    html += '</div>';
 
-    // Toolbar
-    html += '<div class="toolbar">';
-    html += '<div class="search-wrapper"><span class="material-icons-round">search</span>';
-    html += '<input type="text" id="fees-search" placeholder="Search student by name/roll..." value="' + (state.searchQuery || '') + '">';
-    html += '</div>';
+    // Check if the shell layout is already rendered for the current user role
+    var dataContainer = document.getElementById('fees-data-container');
+    var currentRenderedRole = container.getAttribute('data-rendered-role');
+    var userRole = isAdmin ? 'admin' : 'teacher';
 
-    // Show Defaulters Checkbox Toggle
-    html += '<div class="defaulter-toggle-wrapper" style="display:flex; align-items:center; gap:6px; margin-left: 12px; margin-right: auto;">';
-    html += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-secondary);">';
-    html += '<input type="checkbox" id="defaulters-only-toggle"' + (state.statusFilter === 'unpaid' ? ' checked' : '') + ' style="width:16px; height:16px; cursor:pointer; accent-color:var(--danger);">';
-    html += '<span>Show Defaulters</span>';
-    html += '</label>';
-    html += '</div>';
+    if (!dataContainer || currentRenderedRole !== userRole) {
+      container.setAttribute('data-rendered-role', userRole);
+      var shellHtml = '';
 
-    html += '<div class="filter-group">';
+      // Page Header
+      shellHtml += '<div class="page-header">';
+      shellHtml += '<h2>Fee Management</h2>';
+      shellHtml += '<div class="header-actions">';
+      if (isAdmin) {
+        shellHtml += '<button class="btn btn-primary" id="bulk-charge-fee-btn"><span class="material-icons-round">campaign</span> Bulk Charge Class</button>';
+      }
+      shellHtml += '</div></div>';
+
+      // Summary Cards Grid
+      shellHtml += '<div class="stats-grid">';
+      shellHtml += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">assignment</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="fees-dues-value">₹' + schoolDues.toLocaleString('en-IN') + '</div><div class="stat-label">Total Dues Charged</div></div></div>';
+      shellHtml += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="fees-collected-value">₹' + schoolPaid.toLocaleString('en-IN') + '</div><div class="stat-label">Total Fees Collected</div></div></div>';
+      
+      shellHtml += '<div class="stat-card ' + (outstandingAmt > 0 ? 'amber' : 'cyan') + '" id="fees-outstanding-card"><div class="stat-icon"><span class="material-icons-round">error</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="fees-outstanding-value">₹' + outstandingAmt.toLocaleString('en-IN') + '</div><div class="stat-label">Outstanding Balance</div></div></div>';
+      shellHtml += '</div>';
+
+      // Toolbar
+      shellHtml += '<div class="toolbar">';
+      shellHtml += '<div class="search-wrapper"><span class="material-icons-round">search</span>';
+      shellHtml += '<input type="text" id="fees-search" placeholder="Search student by name/roll..." value="' + (state.searchQuery || '') + '">';
+      shellHtml += '</div>';
+
+      // Show Defaulters Checkbox Toggle
+      shellHtml += '<div class="defaulter-toggle-wrapper" style="display:flex; align-items:center; gap:6px; margin-left: 12px; margin-right: auto;">';
+      shellHtml += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-secondary);">';
+      shellHtml += '<input type="checkbox" id="defaulters-only-toggle"' + (state.statusFilter === 'unpaid' ? ' checked' : '') + ' style="width:16px; height:16px; cursor:pointer; accent-color:var(--danger);">';
+      shellHtml += '<span>Show Defaulters</span>';
+      shellHtml += '</label>';
+      shellHtml += '</div>';
+
+      shellHtml += '<div class="filter-group">';
+      
+      // Class Select
+      shellHtml += '<select class="form-select" id="fees-class-filter"><option value="all">All Classes</option>';
+      (SchoolApp.store.settings.classes || []).forEach(function(c) {
+        shellHtml += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
+      });
+      shellHtml += '</select>';
+
+      // Section Select
+      shellHtml += '<select class="form-select" id="fees-section-filter"><option value="all">All Sections</option>';
+      (SchoolApp.store.settings.sections || []).forEach(function(s) {
+        shellHtml += '<option value="' + s + '"' + (state.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>';
+      });
+      shellHtml += '</select>';
+
+      // Fee Status Select
+      shellHtml += '<select class="form-select" id="fees-status-filter">';
+      shellHtml += '<option value="all"' + (state.statusFilter === 'all' ? ' selected' : '') + '>All Statuses</option>';
+      shellHtml += '<option value="unpaid"' + (state.statusFilter === 'unpaid' ? ' selected' : '') + '>Outstanding Balance</option>';
+      shellHtml += '<option value="paid"' + (state.statusFilter === 'paid' ? ' selected' : '') + '>Fully Paid</option>';
+      shellHtml += '</select>';
+
+      shellHtml += '</div></div>';
+
+      // Dynamic Data Container Placeholder
+      shellHtml += '<div id="fees-data-container"></div>';
+
+      container.innerHTML = shellHtml;
+      attachStaticEvents();
+      dataContainer = document.getElementById('fees-data-container');
+    }
+
+    // Programmatically sync stats card text contents and styles
+    var duesVal = document.getElementById('fees-dues-value');
+    if (duesVal) duesVal.textContent = '₹' + schoolDues.toLocaleString('en-IN');
     
-    // Class Select
-    html += '<select class="form-select" id="fees-class-filter"><option value="all">All Classes</option>';
-    (SchoolApp.store.settings.classes || []).forEach(function(c) {
-      html += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
-    });
-    html += '</select>';
+    var colVal = document.getElementById('fees-collected-value');
+    if (colVal) colVal.textContent = '₹' + schoolPaid.toLocaleString('en-IN');
+    
+    var outVal = document.getElementById('fees-outstanding-value');
+    if (outVal) outVal.textContent = '₹' + outstandingAmt.toLocaleString('en-IN');
+    
+    var outCard = document.getElementById('fees-outstanding-card');
+    if (outCard) {
+      outCard.className = 'stat-card ' + (outstandingAmt > 0 ? 'amber' : 'cyan');
+    }
 
-    // Section Select
-    html += '<select class="form-select" id="fees-section-filter"><option value="all">All Sections</option>';
-    (SchoolApp.store.settings.sections || []).forEach(function(s) {
-      html += '<option value="' + s + '"' + (state.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>';
-    });
-    html += '</select>';
+    // Keep inputs/dropdowns updated in sync with state without full re-render
+    var searchInput = document.getElementById('fees-search');
+    if (searchInput && searchInput.value !== state.searchQuery) {
+      searchInput.value = state.searchQuery;
+    }
+    var defaulterToggle = document.getElementById('defaulters-only-toggle');
+    if (defaulterToggle) {
+      defaulterToggle.checked = (state.statusFilter === 'unpaid');
+    }
+    var classFilter = document.getElementById('fees-class-filter');
+    if (classFilter && classFilter.value !== state.classFilter) {
+      classFilter.value = state.classFilter;
+    }
+    var sectionFilter = document.getElementById('fees-section-filter');
+    if (sectionFilter && sectionFilter.value !== state.sectionFilter) {
+      sectionFilter.value = state.sectionFilter;
+    }
+    var statusFilter = document.getElementById('fees-status-filter');
+    if (statusFilter && statusFilter.value !== state.statusFilter) {
+      statusFilter.value = state.statusFilter;
+    }
 
-    // Fee Status Select
-    html += '<select class="form-select" id="fees-status-filter">';
-    html += '<option value="all"' + (state.statusFilter === 'all' ? ' selected' : '') + '>All Statuses</option>';
-    html += '<option value="unpaid"' + (state.statusFilter === 'unpaid' ? ' selected' : '') + '>Outstanding Balance</option>';
-    html += '<option value="paid"' + (state.statusFilter === 'paid' ? ' selected' : '') + '>Fully Paid</option>';
-    html += '</select>';
+    // Pagination calculations
+    var totalPages = Math.ceil(filteredStudents.length / state.perPage);
+    if (state.currentPage > totalPages && totalPages > 0) state.currentPage = totalPages;
+    var start = (state.currentPage - 1) * state.perPage;
+    var pageStudents = filteredStudents.slice(start, start + state.perPage);
 
-    html += '</div></div>';
-
-    // Table List
+    // Table list dynamic render
+    var html = '';
     if (pageStudents.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
       html += '<th>Student</th><th>Class</th><th>Roll No.</th><th>Total Dues</th><th>Total Paid</th><th>Outstanding</th><th>Actions</th>';
@@ -213,8 +266,8 @@
       html += '<div class="empty-state"><span class="material-icons-round">payments</span><h3>No Students Found</h3><p>No student match your current filters.</p></div>';
     }
 
-    container.innerHTML = html;
-    attachEvents();
+    dataContainer.innerHTML = html;
+    attachDynamicEvents();
   }
 
   function getStudentLedger(studentId) {
@@ -679,7 +732,7 @@
     }
   }
 
-  function attachEvents() {
+  function attachStaticEvents() {
     // Search
     var searchInput = document.getElementById('fees-search');
     if (searchInput) {
@@ -735,7 +788,9 @@
     if (bulkChargeBtn) {
       bulkChargeBtn.addEventListener('click', showBulkChargeModal);
     }
+  }
 
+  function attachDynamicEvents() {
     // Record Payment
     document.querySelectorAll('.fees-collect-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {

@@ -1439,6 +1439,127 @@ window.SchoolApp = {
         dropdown.classList.add('hidden');
       }
     });
+
+    // Global quick search logic
+    var globalSearch = document.getElementById('global-search');
+    if (globalSearch) {
+      globalSearch.addEventListener('input', function(e) {
+        var query = this.value.trim().toLowerCase();
+        
+        // Remove existing dropdown first
+        var existingDropdown = document.querySelector('.global-search-results');
+        if (existingDropdown) {
+          existingDropdown.remove();
+        }
+
+        if (query.length < 2) return;
+
+        // Search students
+        var students = self.store.students || [];
+        // Teacher class assignment filter
+        if (self.isTeacher() && self.currentUser.assignedClasses) {
+          var ac = self.currentUser.assignedClasses;
+          students = students.filter(function(s) {
+            return ac.some(function(c) { return c.class === s.class && c.section === s.section; });
+          });
+        }
+        var matchedStudents = students.filter(function(s) {
+          return (s.firstName + ' ' + s.lastName).toLowerCase().indexOf(query) !== -1 ||
+                 s.rollNumber.toLowerCase().indexOf(query) !== -1;
+        }).map(function(s) {
+          return {
+            id: s.id,
+            name: s.firstName + ' ' + s.lastName,
+            role: 'Student · Class ' + s.class + '-' + s.section,
+            type: 'student'
+          };
+        });
+
+        // Search teachers
+        var teachers = self.store.teachers || [];
+        var matchedTeachers = teachers.filter(function(t) {
+          return (t.firstName + ' ' + t.lastName).toLowerCase().indexOf(query) !== -1 ||
+                 t.subject.toLowerCase().indexOf(query) !== -1;
+        }).map(function(t) {
+          return {
+            id: t.id,
+            name: t.firstName + ' ' + t.lastName,
+            role: 'Teacher · ' + t.subject,
+            type: 'teacher'
+          };
+        });
+
+        var matches = matchedStudents.concat(matchedTeachers).slice(0, 10);
+
+        // Render search results dropdown
+        var dropdown = document.createElement('div');
+        dropdown.className = 'global-search-results';
+
+        if (matches.length > 0) {
+          matches.forEach(function(item) {
+            var initials = self.getInitials(item.name.split(' ')[0], item.name.split(' ')[1] || '');
+            var color = self.getAvatarColor(item.name);
+
+            var itemEl = document.createElement('div');
+            itemEl.className = 'global-search-item';
+            itemEl.innerHTML = 
+              '<div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div>' +
+              '<div class="info">' +
+                '<span class="name">' + item.name + '</span>' +
+                '<span class="role">' + item.role + '</span>' +
+              '</div>';
+
+            itemEl.addEventListener('click', function() {
+              self.navigate(item.type === 'student' ? 'students' : 'teachers');
+              
+              // Trigger detail modal display
+              setTimeout(function() {
+                if (item.type === 'student' && self.modules.students && self.modules.students.viewStudent) {
+                  self.modules.students.viewStudent(item.id);
+                } else if (item.type === 'teacher' && self.modules.teachers && self.modules.teachers.viewTeacher) {
+                  self.modules.teachers.viewTeacher(item.id);
+                }
+              }, 100);
+
+              globalSearch.value = '';
+              dropdown.remove();
+            });
+
+            dropdown.appendChild(itemEl);
+          });
+        } else {
+          var noResults = document.createElement('div');
+          noResults.className = 'global-search-no-results';
+          noResults.textContent = 'No results found';
+          dropdown.appendChild(noResults);
+        }
+
+        var searchWrapper = globalSearch.closest('.header-search');
+        if (searchWrapper) {
+          searchWrapper.appendChild(dropdown);
+        }
+      });
+    }
+
+    // Close global search dropdown on clicking outside or pressing Escape
+    document.addEventListener('click', function(e) {
+      var searchWrapper = document.querySelector('.header-search');
+      if (searchWrapper && !searchWrapper.contains(e.target)) {
+        var dropdown = document.querySelector('.global-search-results');
+        if (dropdown) {
+          dropdown.remove();
+        }
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        var dropdown = document.querySelector('.global-search-results');
+        if (dropdown) {
+          dropdown.remove();
+        }
+      }
+    });
   }
 };
 

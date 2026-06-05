@@ -56,57 +56,105 @@
     var container = document.getElementById('page-students');
     if (!container) return;
 
+    var classes = SchoolApp.store.settings.classes || [];
+    var sections = SchoolApp.store.settings.sections || [];
+    var isAdmin = SchoolApp.isAdmin();
+
+    // Check if the shell layout is already rendered for the current user role
+    var dataContainer = document.getElementById('students-data-container');
+    var currentRenderedRole = container.getAttribute('data-rendered-role');
+    var userRole = isAdmin ? 'admin' : 'teacher';
+
+    if (!dataContainer || currentRenderedRole !== userRole) {
+      container.setAttribute('data-rendered-role', userRole);
+      var shellHtml = '';
+
+      // Page Header
+      shellHtml += '<div class="page-header">';
+      shellHtml += '<h2><span class="material-icons-round">school</span> Student Management <span class="badge badge-purple" id="students-total-badge">' + SchoolApp.store.students.length + '</span></h2>';
+      shellHtml += '<div class="header-actions">';
+      if (isAdmin) {
+        shellHtml += '<button class="btn btn-secondary btn-sm" id="student-import-btn"><span class="material-icons-round">upload_file</span> Import</button>';
+      }
+      shellHtml += '<button class="btn btn-secondary btn-sm" id="student-export-btn"><span class="material-icons-round">download</span> Export</button>';
+      if (isAdmin) {
+        shellHtml += '<button class="btn btn-primary" id="student-add-btn"><span class="material-icons-round">add</span> Add Student</button>';
+      }
+      shellHtml += '</div></div>';
+
+      // Toolbar
+      shellHtml += '<div class="toolbar">';
+      shellHtml += '<div class="search-wrapper"><span class="material-icons-round">search</span><input type="text" id="student-search" placeholder="Search students..." value="' + (state.searchQuery || '') + '"></div>';
+      shellHtml += '<div class="filter-group">';
+      shellHtml += '<select class="form-select" id="student-class-filter"><option value="all">All Classes</option>';
+      classes.forEach(function(c) { shellHtml += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
+      shellHtml += '</select>';
+      shellHtml += '<select class="form-select" id="student-section-filter"><option value="all">All Sections</option>';
+      sections.forEach(function(s) { shellHtml += '<option value="' + s + '"' + (state.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
+      shellHtml += '</select>';
+      shellHtml += '<select class="form-select" id="student-status-filter"><option value="all">All Status</option><option value="Active"' + (state.statusFilter === 'Active' ? ' selected' : '') + '>Active</option><option value="Inactive"' + (state.statusFilter === 'Inactive' ? ' selected' : '') + '>Inactive</option></select>';
+      shellHtml += '</div></div>';
+
+      // Bulk actions container
+      shellHtml += '<div id="students-bulk-actions-container"></div>';
+
+      // Hidden file input for import
+      shellHtml += '<input type="file" id="student-file-input" accept=".xlsx,.xls,.csv" style="display:none">';
+
+      // Dynamic Data container
+      shellHtml += '<div id="students-data-container"></div>';
+
+      container.innerHTML = shellHtml;
+      attachStaticEvents();
+      dataContainer = document.getElementById('students-data-container');
+    }
+
+    // Keep search and filter controls in sync with state without full re-render
+    var searchInput = document.getElementById('student-search');
+    if (searchInput && searchInput.value !== state.searchQuery) {
+      searchInput.value = state.searchQuery;
+    }
+    var classFilter = document.getElementById('student-class-filter');
+    if (classFilter && classFilter.value !== state.classFilter) {
+      classFilter.value = state.classFilter;
+    }
+    var sectionFilter = document.getElementById('student-section-filter');
+    if (sectionFilter && sectionFilter.value !== state.sectionFilter) {
+      sectionFilter.value = state.sectionFilter;
+    }
+    var statusFilter = document.getElementById('student-status-filter');
+    if (statusFilter && statusFilter.value !== state.statusFilter) {
+      statusFilter.value = state.statusFilter;
+    }
+
+    // Update total badge count
+    var totalBadge = document.getElementById('students-total-badge');
+    if (totalBadge) {
+      totalBadge.textContent = SchoolApp.store.students.length;
+    }
+
     var students = getFilteredStudents();
     var totalPages = Math.ceil(students.length / state.perPage) || 1;
     if (state.currentPage > totalPages) state.currentPage = totalPages;
     var start = (state.currentPage - 1) * state.perPage;
     var pageStudents = students.slice(start, start + state.perPage);
 
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
-    var isAdmin = SchoolApp.isAdmin();
+    // Update bulk actions bar
+    var bulkActionsContainer = document.getElementById('students-bulk-actions-container');
+    if (bulkActionsContainer) {
+      var bulkHtml = '';
+      if (state.selectedIds.length > 0 && isAdmin) {
+        bulkHtml += '<div class="bulk-actions">';
+        bulkHtml += '<span class="selected-count">' + state.selectedIds.length + ' selected</span>';
+        bulkHtml += '<button class="btn btn-secondary btn-sm" id="bulk-export-btn"><span class="material-icons-round">download</span> Export Selected</button>';
+        bulkHtml += '<button class="btn btn-danger btn-sm" id="bulk-delete-btn"><span class="material-icons-round">delete</span> Delete Selected</button>';
+        bulkHtml += '</div>';
+      }
+      bulkActionsContainer.innerHTML = bulkHtml;
+    }
 
+    // Dynamic data content
     var html = '';
-
-    // Page Header
-    html += '<div class="page-header">';
-    html += '<h2><span class="material-icons-round">school</span> Student Management <span class="badge badge-purple">' + SchoolApp.store.students.length + '</span></h2>';
-    html += '<div class="header-actions">';
-    if (isAdmin) {
-      html += '<button class="btn btn-secondary btn-sm" id="student-import-btn"><span class="material-icons-round">upload_file</span> Import</button>';
-    }
-    html += '<button class="btn btn-secondary btn-sm" id="student-export-btn"><span class="material-icons-round">download</span> Export</button>';
-    if (isAdmin) {
-      html += '<button class="btn btn-primary" id="student-add-btn"><span class="material-icons-round">add</span> Add Student</button>';
-    }
-    html += '</div></div>';
-
-    // Toolbar
-    html += '<div class="toolbar">';
-    html += '<div class="search-wrapper"><span class="material-icons-round">search</span><input type="text" id="student-search" placeholder="Search students..." value="' + (state.searchQuery || '') + '"></div>';
-    html += '<div class="filter-group">';
-    html += '<select class="form-select" id="student-class-filter"><option value="all">All Classes</option>';
-    classes.forEach(function(c) { html += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
-    html += '</select>';
-    html += '<select class="form-select" id="student-section-filter"><option value="all">All Sections</option>';
-    sections.forEach(function(s) { html += '<option value="' + s + '"' + (state.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
-    html += '</select>';
-    html += '<select class="form-select" id="student-status-filter"><option value="all">All Status</option><option value="Active"' + (state.statusFilter === 'Active' ? ' selected' : '') + '>Active</option><option value="Inactive"' + (state.statusFilter === 'Inactive' ? ' selected' : '') + '>Inactive</option></select>';
-    html += '</div></div>';
-
-    // Bulk actions bar
-    if (state.selectedIds.length > 0 && isAdmin) {
-      html += '<div class="bulk-actions">';
-      html += '<span class="selected-count">' + state.selectedIds.length + ' selected</span>';
-      html += '<button class="btn btn-secondary btn-sm" id="bulk-export-btn"><span class="material-icons-round">download</span> Export Selected</button>';
-      html += '<button class="btn btn-danger btn-sm" id="bulk-delete-btn"><span class="material-icons-round">delete</span> Delete Selected</button>';
-      html += '</div>';
-    }
-
-    // Hidden file input for import
-    html += '<input type="file" id="student-file-input" accept=".xlsx,.xls,.csv" style="display:none">';
-
-    // Table
     if (pageStudents.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
       if (isAdmin) html += '<th><input type="checkbox" id="select-all-students" ' + (state.selectedIds.length === pageStudents.length && pageStudents.length > 0 ? 'checked' : '') + ' style="cursor:pointer"></th>';
@@ -153,11 +201,11 @@
       html += '<div class="empty-state"><span class="material-icons-round">school</span><h3>No Students Found</h3><p>No students match your current filters. Try adjusting your search or filters.</p></div>';
     }
 
-    container.innerHTML = html;
-    attachEvents();
+    dataContainer.innerHTML = html;
+    attachDynamicEvents();
   }
 
-  function attachEvents() {
+  function attachStaticEvents() {
     // Search
     var searchInput = document.getElementById('student-search');
     if (searchInput) {
@@ -192,6 +240,10 @@
 
     var fileInput = document.getElementById('student-file-input');
     if (fileInput) fileInput.addEventListener('change', function() { if (this.files[0]) importStudents(this.files[0]); this.value = ''; });
+  }
+
+  function attachDynamicEvents() {
+    var isAdmin = SchoolApp.isAdmin();
 
     // Select all
     var selectAll = document.getElementById('select-all-students');
@@ -227,7 +279,7 @@
       btn.addEventListener('click', function() { viewStudent(this.getAttribute('data-id')); });
     });
 
-    // Edit buttons
+    // Edit/delete buttons (admin-only check occurs dynamically in template, bind if present)
     document.querySelectorAll('.student-edit-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var student = SchoolApp.store.students.find(function(s) { return s.id === btn.getAttribute('data-id'); });
@@ -235,12 +287,11 @@
       });
     });
 
-    // Delete buttons
     document.querySelectorAll('.student-delete-btn').forEach(function(btn) {
       btn.addEventListener('click', function() { deleteStudent(this.getAttribute('data-id')); });
     });
 
-    // Bulk delete
+    // Bulk actions
     var bulkDeleteBtn = document.getElementById('bulk-delete-btn');
     if (bulkDeleteBtn) {
       bulkDeleteBtn.addEventListener('click', function() {
@@ -262,7 +313,6 @@
       });
     }
 
-    // Bulk export
     var bulkExportBtn = document.getElementById('bulk-export-btn');
     if (bulkExportBtn) {
       bulkExportBtn.addEventListener('click', function() {
@@ -282,6 +332,7 @@
       });
     });
   }
+
 
   function showStudentForm(student) {
     var isEdit = !!student;
@@ -514,7 +565,8 @@
   // Register Module
   SchoolApp.registerModule('students', {
     init: function() {},
-    render: render
+    render: render,
+    viewStudent: viewStudent
   });
 
 })();

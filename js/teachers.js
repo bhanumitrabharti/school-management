@@ -41,32 +41,69 @@
     var container = document.getElementById('page-teachers');
     if (!container) return;
 
-    var teachers = getFilteredTeachers();
     var isAdmin = SchoolApp.isAdmin();
 
-    var html = '';
+    // Check if the shell layout is already rendered for the current user role
+    var dataContainer = document.getElementById('teachers-data-container');
+    var currentRenderedRole = container.getAttribute('data-rendered-role');
+    var userRole = isAdmin ? 'admin' : 'teacher';
 
-    // Page Header
-    html += '<div class="page-header">';
-    html += '<h2><span class="material-icons-round">person</span> Teacher Management <span class="badge badge-purple">' + SchoolApp.store.teachers.length + '</span></h2>';
-    html += '<div class="header-actions">';
-    html += '<button class="btn btn-secondary btn-sm" id="teacher-export-btn"><span class="material-icons-round">download</span> Export</button>';
-    if (isAdmin) {
-      html += '<button class="btn btn-primary" id="teacher-add-btn"><span class="material-icons-round">add</span> Add Teacher</button>';
+    if (!dataContainer || currentRenderedRole !== userRole) {
+      container.setAttribute('data-rendered-role', userRole);
+      var shellHtml = '';
+
+      // Page Header
+      shellHtml += '<div class="page-header">';
+      shellHtml += '<h2><span class="material-icons-round">person</span> Teacher Management <span class="badge badge-purple" id="teachers-total-badge">' + SchoolApp.store.teachers.length + '</span></h2>';
+      shellHtml += '<div class="header-actions">';
+      shellHtml += '<button class="btn btn-secondary btn-sm" id="teacher-export-btn"><span class="material-icons-round">download</span> Export</button>';
+      if (isAdmin) {
+        shellHtml += '<button class="btn btn-primary" id="teacher-add-btn"><span class="material-icons-round">add</span> Add Teacher</button>';
+      }
+      shellHtml += '</div></div>';
+
+      // Toolbar
+      shellHtml += '<div class="toolbar">';
+      shellHtml += '<div class="search-wrapper"><span class="material-icons-round">search</span><input type="text" id="teacher-search" placeholder="Search teachers..." value="' + (state.searchQuery || '') + '"></div>';
+      shellHtml += '<div class="filter-group">';
+      shellHtml += '<select class="form-select" id="teacher-subject-filter"><option value="all">All Subjects</option>';
+      getSubjects().forEach(function(s) { shellHtml += '<option value="' + s + '"' + (state.subjectFilter === s ? ' selected' : '') + '>' + s + '</option>'; });
+      shellHtml += '</select>';
+      shellHtml += '<select class="form-select" id="teacher-status-filter"><option value="all">All Status</option><option value="Active"' + (state.statusFilter === 'Active' ? ' selected' : '') + '>Active</option><option value="Inactive"' + (state.statusFilter === 'Inactive' ? ' selected' : '') + '>Inactive</option></select>';
+      shellHtml += '</div></div>';
+
+      // Dynamic Data container
+      shellHtml += '<div id="teachers-data-container"></div>';
+
+      container.innerHTML = shellHtml;
+      attachStaticEvents();
+      dataContainer = document.getElementById('teachers-data-container');
     }
-    html += '</div></div>';
 
-    // Toolbar
-    html += '<div class="toolbar">';
-    html += '<div class="search-wrapper"><span class="material-icons-round">search</span><input type="text" id="teacher-search" placeholder="Search teachers..." value="' + (state.searchQuery || '') + '"></div>';
-    html += '<div class="filter-group">';
-    html += '<select class="form-select" id="teacher-subject-filter"><option value="all">All Subjects</option>';
-    getSubjects().forEach(function(s) { html += '<option value="' + s + '"' + (state.subjectFilter === s ? ' selected' : '') + '>' + s + '</option>'; });
-    html += '</select>';
-    html += '<select class="form-select" id="teacher-status-filter"><option value="all">All Status</option><option value="Active"' + (state.statusFilter === 'Active' ? ' selected' : '') + '>Active</option><option value="Inactive"' + (state.statusFilter === 'Inactive' ? ' selected' : '') + '>Inactive</option></select>';
-    html += '</div></div>';
+    // Keep search and filter controls in sync with state without full re-render
+    var searchInput = document.getElementById('teacher-search');
+    if (searchInput && searchInput.value !== state.searchQuery) {
+      searchInput.value = state.searchQuery;
+    }
+    var subjectFilter = document.getElementById('teacher-subject-filter');
+    if (subjectFilter && subjectFilter.value !== state.subjectFilter) {
+      subjectFilter.value = state.subjectFilter;
+    }
+    var statusFilter = document.getElementById('teacher-status-filter');
+    if (statusFilter && statusFilter.value !== state.statusFilter) {
+      statusFilter.value = state.statusFilter;
+    }
 
-    // Teacher Cards Grid
+    // Update total badge count
+    var totalBadge = document.getElementById('teachers-total-badge');
+    if (totalBadge) {
+      totalBadge.textContent = SchoolApp.store.teachers.length;
+    }
+
+    var teachers = getFilteredTeachers();
+
+    // Teacher Cards Grid dynamic render
+    var html = '';
     if (teachers.length > 0) {
       html += '<div class="teachers-grid">';
       teachers.forEach(function(t) {
@@ -106,11 +143,11 @@
       html += '<div class="empty-state"><span class="material-icons-round">person_off</span><h3>No Teachers Found</h3><p>No teachers match your current filters.</p></div>';
     }
 
-    container.innerHTML = html;
-    attachEvents();
+    dataContainer.innerHTML = html;
+    attachDynamicEvents();
   }
 
-  function attachEvents() {
+  function attachStaticEvents() {
     var searchInput = document.getElementById('teacher-search');
     if (searchInput) searchInput.addEventListener('input', function() { state.searchQuery = this.value; render(); });
 
@@ -125,7 +162,9 @@
 
     var exportBtn = document.getElementById('teacher-export-btn');
     if (exportBtn) exportBtn.addEventListener('click', function() { exportTeachers(); });
+  }
 
+  function attachDynamicEvents() {
     document.querySelectorAll('.teacher-view-btn').forEach(function(btn) {
       btn.addEventListener('click', function() { viewTeacher(this.getAttribute('data-id')); });
     });
@@ -357,7 +396,8 @@
   // Register Module
   SchoolApp.registerModule('teachers', {
     init: function() {},
-    render: render
+    render: render,
+    viewTeacher: viewTeacher
   });
 
 })();
