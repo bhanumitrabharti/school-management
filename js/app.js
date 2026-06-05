@@ -16,6 +16,7 @@ window.SchoolApp = {
     fees: [],
     exams: [],
     subjectMapping: {},
+    timetable: {},
     marks: [],
     notices: [],
     lastAutomatedFeeRun: '2026-04',
@@ -89,6 +90,7 @@ window.SchoolApp = {
           if (!self.store.subjectMapping) self.store.subjectMapping = {};
           if (!self.store.marks) self.store.marks = [];
           if (!self.store.notices) self.store.notices = [];
+          if (!self.store.timetable) self.store.timetable = {};
           if (!self.store.notifications) self.store.notifications = [];
           if (self.store.lastAutomatedFeeRun === undefined || self.store.lastAutomatedFeeRun === '') self.store.lastAutomatedFeeRun = '2026-04';
           if (!self.store.settings) {
@@ -180,6 +182,7 @@ window.SchoolApp = {
         if (!this.store.subjectMapping) this.store.subjectMapping = {};
         if (!this.store.marks) this.store.marks = [];
         if (!this.store.notices) this.store.notices = [];
+        if (!this.store.timetable) this.store.timetable = {};
         if (!this.store.notifications) this.store.notifications = [];
         if (this.store.lastAutomatedFeeRun === undefined || this.store.lastAutomatedFeeRun === '') this.store.lastAutomatedFeeRun = '2026-04';
         this.store.settings = Object.assign({
@@ -513,7 +516,7 @@ window.SchoolApp = {
   // ---------- Navigation ----------
   navigate: function(pageName) {
     // Strict role check
-    var adminOnlyPages = ['admin', 'fees'];
+    var adminOnlyPages = ['admin', 'fees', 'timetable'];
     if (adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
@@ -543,6 +546,7 @@ window.SchoolApp = {
       teachers: 'Teachers',
       attendance: 'Attendance',
       fees: 'Fee Management',
+      timetable: 'Timetable Management',
       exams: 'Exams',
       admin: 'Admin Panel',
       support: 'Help Center',
@@ -813,6 +817,20 @@ window.SchoolApp = {
     var d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  },
+
+  getPeriodTimeStr: function(p) {
+    var times = {
+      1: '09:00 AM - 09:45 AM',
+      2: '09:45 AM - 10:30 AM',
+      3: '10:30 AM - 11:15 AM',
+      4: '11:15 AM - 12:00 PM',
+      5: '12:30 PM - 01:15 PM',
+      6: '01:15 PM - 02:00 PM',
+      7: '02:00 PM - 02:45 PM',
+      8: '02:45 PM - 03:30 PM'
+    };
+    return times[p] || '';
   },
 
   getInitials: function(firstName, lastName) {
@@ -1522,22 +1540,47 @@ window.SchoolApp = {
     // Columns Row: Teaching Schedule & Class Attendance Summary
     html += '<div class="dashboard-grid">';
 
-    // Teaching Schedule Card
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schedule</span> Upcoming Subject Periods</h3></div><div class="card-body" style="padding: 16px 24px;">';
-    if (stClasses.length > 0) {
+    // Dynamic Timetable-based Schedule Card
+    var daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var currentDayName = daysOfWeek[new Date().getDay()];
+    if (currentDayName === 'Sunday') {
+      currentDayName = 'Monday'; // Default to Monday on weekends
+    }
+
+    var teacherSchedule = [];
+    var timetable = this.store.timetable || {};
+    for (var classSection in timetable) {
+      var daySchedule = timetable[classSection][currentDayName];
+      if (daySchedule) {
+        for (var period in daySchedule) {
+          var slot = daySchedule[period];
+          if (slot && slot.teacherId === this.currentUser.id) {
+            teacherSchedule.push({
+              period: parseInt(period),
+              classSection: classSection,
+              subject: slot.subject
+            });
+          }
+        }
+      }
+    }
+
+    teacherSchedule.sort(function(a, b) { return a.period - b.period; });
+
+    var dayLabelText = (daysOfWeek[new Date().getDay()] === 'Sunday') ? 'Monday (Next Week)' : currentDayName;
+    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schedule</span> Today\'s Schedule (' + dayLabelText + ')</h3></div><div class="card-body" style="padding: 16px 24px;">';
+    if (teacherSchedule.length > 0) {
       html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
-      stClasses.forEach(function(ac, index) {
-        var periodNum = index + 1;
-        var timeSlots = ["09:15 AM - 10:00 AM", "10:00 AM - 10:45 AM", "11:00 AM - 11:45 AM", "11:45 AM - 12:30 PM", "01:15 PM - 02:00 PM"];
-        var slot = timeSlots[index % timeSlots.length];
+      teacherSchedule.forEach(function(item) {
+        var timeStr = self.getPeriodTimeStr(item.period);
         html += '<div class="activity-item" style="display:flex; align-items:flex-start; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.04);">';
         html += '<div class="activity-icon purple" style="width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(124,58,237,0.15); color:var(--accent-primary-light);"><span class="material-icons-round" style="font-size:18px;">class</span></div>';
-        html += '<div class="activity-text" style="font-size:13px; line-height:1.4;"><strong style="font-size:14px; color:var(--text-primary);">Period ' + periodNum + ' · Class ' + ac.class + '-' + ac.section + '</strong><br><span style="color:var(--text-muted); font-size:11px;">' + slot + '</span> · <span class="badge badge-purple" style="font-size:9.5px; padding:2px 6px;">' + (ac.subject || self.currentUser.subject || "General") + '</span></div>';
+        html += '<div class="activity-text" style="font-size:13px; line-height:1.4;"><strong style="font-size:14px; color:var(--text-primary);">Period ' + item.period + ' · Class ' + item.classSection + '</strong><br><span style="color:var(--text-muted); font-size:11px;">' + timeStr + '</span> · <span class="badge badge-purple" style="font-size:9.5px; padding:2px 6px;">' + item.subject + '</span></div>';
         html += '</div>';
       });
       html += '</div>';
     } else {
-      html += '<div class="empty-state"><span class="material-icons-round">schedule</span><h3>No Classes Assigned</h3><p>Contact admin to allocate teaching classes.</p></div>';
+      html += '<div class="empty-state"><span class="material-icons-round">calendar_today</span><h3>No Periods Scheduled</h3><p>You have no teaching periods scheduled for ' + (daysOfWeek[new Date().getDay()] === 'Sunday' ? 'Monday' : 'today') + '.</p></div>';
     }
     html += '</div></div>';
 
