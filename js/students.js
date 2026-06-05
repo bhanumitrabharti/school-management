@@ -58,6 +58,18 @@
 
     var classes = SchoolApp.store.settings.classes || [];
     var sections = SchoolApp.store.settings.sections || [];
+
+    // Filter classes and sections for teacher to prevent bypassing filters
+    if (SchoolApp.isTeacher() && SchoolApp.currentUser.assignedClasses) {
+      var ac = SchoolApp.currentUser.assignedClasses;
+      classes = classes.filter(function(c) {
+        return ac.some(function(item) { return item.class === c; });
+      });
+      sections = sections.filter(function(s) {
+        return ac.some(function(item) { return item.section === s; });
+      });
+    }
+
     var isAdmin = SchoolApp.isAdmin();
 
     // Check if the shell layout is already rendered for the current user role
@@ -446,6 +458,16 @@
   function viewStudent(id) {
     var student = SchoolApp.store.students.find(function(s) { return s.id === id; });
     if (!student) return;
+
+    // Strict access control check for teachers
+    if (SchoolApp.isTeacher() && SchoolApp.currentUser.assignedClasses) {
+      var ac = SchoolApp.currentUser.assignedClasses;
+      var isAssigned = ac.some(function(c) { return c.class === student.class && c.section === student.section; });
+      if (!isAssigned) {
+        SchoolApp.showToast('Access Denied: This student is not in your assigned class.', 'error');
+        return;
+      }
+    }
 
     var initials = SchoolApp.getInitials(student.firstName, student.lastName);
     var color = SchoolApp.getAvatarColor(student.firstName + student.lastName);

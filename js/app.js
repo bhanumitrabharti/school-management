@@ -403,6 +403,14 @@ window.SchoolApp = {
 
   // ---------- Navigation ----------
   navigate: function(pageName) {
+    // Strict role check
+    var adminOnlyPages = ['admin', 'fees', 'teachers'];
+    if (adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
+      this.showToast('Access Denied: You do not have permission to view this page.', 'error');
+      this.navigate('dashboard');
+      return;
+    }
+
     this.currentPage = pageName;
 
     // Hide all pages
@@ -1085,6 +1093,11 @@ window.SchoolApp = {
     var container = document.getElementById('page-dashboard');
     if (!container) return;
 
+    if (this.isTeacher()) {
+      this.renderTeacherDashboard(container);
+      return;
+    }
+
     // Securely run auto-fee reconciliation and display toast feedback to Admin on Dashboard load
     if (this.isAdmin()) {
       this.runAutoFeeReconciliation();
@@ -1269,6 +1282,179 @@ window.SchoolApp = {
     }, 100);
   },
 
+  renderTeacherDashboard: function(container) {
+    var self = this;
+    
+    // 1. My Class Strength: Count unique students belonging to any class/section in assignedClasses
+    var teacherStudents = this.store.students.filter(function(s) {
+      return (self.currentUser.assignedClasses || []).some(function(ac) {
+        return s.class === ac.class && s.section === ac.section;
+      });
+    });
+    var classStrength = teacherStudents.length;
+
+    // 2. My Attendance (This Month %):
+    var now = new Date();
+    var currentYear = now.getFullYear();
+    var currentMonth = now.getMonth(); // 0-11
+    
+    var currentMonthPunches = (this.store.teacherAttendance || []).filter(function(p) {
+      var pDate = new Date(p.date);
+      return p.teacherId === self.currentUser.id &&
+             p.type === 'in' &&
+             pDate.getFullYear() === currentYear &&
+             pDate.getMonth() === currentMonth;
+    });
+
+    var uniqueDays = {};
+    currentMonthPunches.forEach(function(p) {
+      uniqueDays[p.date] = true;
+    });
+    var presentDays = Object.keys(uniqueDays).length;
+
+    var workingDays = 0;
+    var todayDay = now.getDate();
+    for (var d = 1; d <= todayDay; d++) {
+      var checkDate = new Date(currentYear, currentMonth, d);
+      if (checkDate.getDay() !== 0) { // Exclude Sundays
+        workingDays++;
+      }
+    }
+    var teacherAttendancePerc = workingDays > 0 ? Math.round((presentDays / workingDays) * 100) : 0;
+    if (teacherAttendancePerc > 100) teacherAttendancePerc = 100;
+
+    // 3. Upcoming Classes: Number of assigned classes
+    var upcomingCount = (this.currentUser.assignedClasses || []).length;
+
+    var html = '';
+
+    // Stats Grid (3 columns for teachers)
+    html += '<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">';
+    html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + classStrength + '">0</div><div class="stat-label">My Class Strength</div></div></div>';
+    html += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">fingerprint</span></div><div class="stat-info"><div class="stat-number" data-count="' + teacherAttendancePerc + '">0</div><div class="stat-label">My Attendance % (This Month)</div></div></div>';
+    html += '<div class="stat-card amber"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + upcomingCount + '">0</div><div class="stat-label">Assigned Classes</div></div></div>';
+    html += '</div>';
+
+    // Digital Notice Board Widget (Identical to Admin but styled cleanly)
+    html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Digital Notice Board</h3></div>';
+    html += '<div class="card-body" style="max-height: 250px; overflow-y: auto; padding: 16px;">';
+    
+    var noticesList = (this.store.notices || []).filter(function(n) { return n.status === 'published'; });
+    noticesList = noticesList.slice().sort(function(a, b) {
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    if (noticesList.length > 0) {
+      html += '<div class="notices-dashboard-list" style="display:flex; flex-direction:column; gap:12px;">';
+      noticesList.forEach(function(notice) {
+        var priorityClass = notice.priority === 'Urgent' ? 'urgent-notice' : 'normal-notice';
+        var dateFormatted = self.formatDate(notice.date);
+        
+        html += '<div class="notice-item ' + priorityClass + '" style="padding:14px; border-radius:8px; border-left:4px solid; transition:all var(--transition-fast);">';
+        html += '<div class="flex justify-between" style="align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">';
+        html += '<h4 style="margin:0; font-size:14px; font-weight:700;">' + notice.title + '</h4>';
+        
+        var badgeColor = notice.priority === 'Urgent' ? 'badge-danger' : 'badge-purple';
+        html += '<div class="flex gap-2" style="align-items:center;">';
+        html += '<span class="badge ' + badgeColor + '">' + notice.priority + '</span>';
+        html += '<span style="font-size:11px; color:var(--text-muted);">' + dateFormatted + '</span>';
+        html += '</div>';
+        html += '</div>';
+        html += '<p style="margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5;">' + notice.message + '</p>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="empty-state" style="padding: 20px 0;"><span class="material-icons-round" style="font-size:36px; opacity:0.3;">campaign</span><p>No active announcements currently.</p></div>';
+    }
+    html += '</div></div>';
+
+    // Columns Row: Teaching Schedule & Class Attendance Summary
+    html += '<div class="dashboard-grid">';
+
+    // Teaching Schedule Card
+    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schedule</span> Upcoming Classes Schedule</h3></div><div class="card-body" style="padding: 16px 24px;">';
+    if ((this.currentUser.assignedClasses || []).length > 0) {
+      html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
+      (this.currentUser.assignedClasses || []).forEach(function(ac, index) {
+        var periodNum = index + 1;
+        var timeSlots = ["09:15 AM - 10:00 AM", "10:00 AM - 10:45 AM", "11:00 AM - 11:45 AM", "11:45 AM - 12:30 PM", "01:15 PM - 02:00 PM"];
+        var slot = timeSlots[index % timeSlots.length];
+        html += '<div class="activity-item" style="display:flex; align-items:flex-start; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.04);">';
+        html += '<div class="activity-icon purple" style="width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(124,58,237,0.15); color:var(--accent-primary-light);"><span class="material-icons-round" style="font-size:18px;">class</span></div>';
+        html += '<div class="activity-text" style="font-size:13px; line-height:1.4;"><strong style="font-size:14px; color:var(--text-primary);">Period ' + periodNum + ' · Class ' + ac.class + '-' + ac.section + '</strong><br><span style="color:var(--text-muted); font-size:11px;">' + slot + '</span> · <span class="badge badge-purple" style="font-size:9.5px; padding:2px 6px;">' + (self.currentUser.subject || "General") + '</span></div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="empty-state"><span class="material-icons-round">schedule</span><h3>No Classes Assigned</h3><p>Contact admin to allocate teaching classes.</p></div>';
+    }
+    html += '</div></div>';
+
+    // My Class Attendance Summary Card
+    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">fact_check</span> Class Attendance (Today)</h3></div><div class="card-body" style="padding: 16px 24px;">';
+    var todayStr = new Date().toISOString().split('T')[0];
+    
+    if ((this.currentUser.assignedClasses || []).length > 0) {
+      html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
+      (this.currentUser.assignedClasses || []).forEach(function(ac) {
+        var record = self.store.attendance.find(function(a) {
+          return a.date === todayStr && a.class === ac.class && a.section === ac.section;
+        });
+
+        html += '<div class="activity-item" style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.04);">';
+        html += '<div style="display:flex; align-items:center; gap:12px;">';
+        html += '<div class="activity-icon cyan" style="width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:rgba(6,182,212,0.15); color:var(--accent-secondary);"><span class="material-icons-round" style="font-size:18px;">people</span></div>';
+        html += '<div style="font-size:13px;"><strong style="color:var(--text-primary);">Class ' + ac.class + '-' + ac.section + '</strong></div>';
+        html += '</div>';
+
+        if (record) {
+          var present = record.records.filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
+          var total = record.records.length;
+          var rate = total > 0 ? Math.round((present / total) * 100) : 0;
+          html += '<div><span class="badge badge-success" style="font-size:11px; padding:4px 8px;">' + rate + '% Marked</span></div>';
+        } else {
+          html += '<div><button class="btn btn-secondary btn-xs" onclick="SchoolApp.navigate(\'attendance\')" style="font-size:10.5px; padding:4px 8px;">Mark Now</button></div>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div class="empty-state"><span class="material-icons-round">fact_check</span><h3>No Class Attendance</h3><p>No classes assigned to display attendance for.</p></div>';
+    }
+    html += '</div></div>';
+
+    html += '</div>'; // End dashboard-grid
+
+    // Custom Quick Actions
+    html += '<div class="card mt-3"><div class="card-header"><h3><span class="material-icons-round">flash_on</span> Quick Actions</h3></div><div class="card-body"><div class="quick-actions-grid">';
+    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'students\')"><span class="material-icons-round">school</span>My Students</button>';
+    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'attendance\')"><span class="material-icons-round">fact_check</span>Mark Attendance</button>';
+    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'teacher-attendance\')"><span class="material-icons-round">fingerprint</span>My Attendance</button>';
+    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'support\')"><span class="material-icons-round">help_outline</span>Help Center</button>';
+    html += '</div></div></div>';
+
+    container.innerHTML = html;
+
+    // Animate stat counters
+    setTimeout(function() {
+      var counters = container.querySelectorAll('.stat-number[data-count]');
+      counters.forEach(function(el) {
+        var target = parseInt(el.getAttribute('data-count'));
+        var current = 0;
+        var step = Math.max(1, Math.floor(target / 30));
+        var interval = setInterval(function() {
+          current += step;
+          if (current >= target) {
+            current = target;
+            clearInterval(interval);
+          }
+          el.textContent = current + (el.parentElement.querySelector('.stat-label').textContent.indexOf('%') !== -1 ? '%' : '');
+        }, 30);
+      });
+    }, 100);
+  },
+
   // ---------- UI Setup ----------
   showLoginPage: function() {
     document.getElementById('login-page').classList.remove('hidden');
@@ -1291,16 +1477,17 @@ window.SchoolApp = {
     }
 
     // Show/hide admin nav
-    var adminNav = document.querySelector('.nav-admin-only');
-    if (adminNav) {
-      if (this.isAdmin()) {
-        adminNav.style.display = '';
-        adminNav.classList.remove('hidden');
+    var self = this;
+    var adminNavs = document.querySelectorAll('.nav-admin-only');
+    adminNavs.forEach(function(el) {
+      if (self.isAdmin()) {
+        el.style.display = '';
+        el.classList.remove('hidden');
       } else {
-        adminNav.style.display = 'none';
-        adminNav.classList.add('hidden');
+        el.style.display = 'none';
+        el.classList.add('hidden');
       }
-    }
+    });
 
     // Navigate to dashboard
     this.navigate('dashboard');
