@@ -616,7 +616,8 @@ window.SchoolApp = {
       timetable: 'Timetable Management',
       exams: 'Exams',
       admin: 'Admin Panel',
-      support: 'Help Center',
+      help: 'Help Center',
+      support: 'Contact Support',
       'teacher-attendance': 'Teacher Attendance'
     };
     var pageTitle = titles[pageName] || 'Dashboard';
@@ -1909,7 +1910,7 @@ window.SchoolApp = {
     html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'students\')"><span class="material-icons-round">school</span>My Students</button>';
     html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'attendance\')"><span class="material-icons-round">fact_check</span>Mark Attendance</button>';
     html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'teacher-attendance\')"><span class="material-icons-round">fingerprint</span>My Attendance</button>';
-    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'support\')"><span class="material-icons-round">help_outline</span>Help Center</button>';
+    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'help\')"><span class="material-icons-round">help</span>Help Center</button>';
     html += '</div></div></div>';
 
     container.innerHTML = html;
