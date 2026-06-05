@@ -232,10 +232,10 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       classes = classes.filter(function(c) {
-        return ct.some(function(item) { return item.class === c; });
+        return ct.some(function(item) { return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim(); });
       });
       sections = sections.filter(function(s) {
-        return ct.some(function(item) { return item.section === s; });
+        return ct.some(function(item) { return String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim(); });
       });
     }
 
@@ -261,7 +261,10 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       records = records.filter(function(r) {
-        return ct.some(function(c) { return c.class === r.class && c.section === r.section; });
+        return ct.some(function(c) {
+          return String(c.class).toLowerCase().trim() === String(r.class).toLowerCase().trim() &&
+                 String(c.section).toLowerCase().trim() === String(r.section).toLowerCase().trim();
+        });
       });
     }
 
@@ -452,7 +455,10 @@
 
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
-      var isCt = ct.some(function(c) { return c.class === state.selectedClass && c.section === state.selectedSection; });
+      var isCt = ct.some(function(c) {
+        return String(c.class).toLowerCase().trim() === String(state.selectedClass).toLowerCase().trim() &&
+               String(c.section).toLowerCase().trim() === String(state.selectedSection).toLowerCase().trim();
+      });
       if (!isCt) {
         SchoolApp.showToast('Access Denied: You are not the Class Teacher for this class.', 'error');
         return;
@@ -500,7 +506,10 @@
 
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
-      var isCt = ct.some(function(c) { return c.class === record.class && c.section === record.section; });
+      var isCt = ct.some(function(c) {
+        return String(c.class).toLowerCase().trim() === String(record.class).toLowerCase().trim() &&
+               String(c.section).toLowerCase().trim() === String(record.section).toLowerCase().trim();
+      });
       if (!isCt) {
         SchoolApp.showToast('Access Denied: You do not have permission to view attendance for this class.', 'error');
         return;

@@ -273,11 +273,17 @@
     // Get assigned classes
     var assignedClasses = [];
     form.querySelectorAll('.class-assign-cb:checked').forEach(function(cb) {
-      assignedClasses.push({
-        class: cb.getAttribute('data-class'),
-        section: cb.getAttribute('data-section')
-      });
+      var clsVal = cb.getAttribute('data-class');
+      var secVal = cb.getAttribute('data-section');
+      if (clsVal && secVal) {
+        assignedClasses.push({
+          class: String(clsVal).trim(),
+          section: String(secVal).trim()
+        });
+      }
     });
+
+    console.log("Assigned Classes captured:", assignedClasses);
 
     if (assignedClasses.length === 0) {
       document.getElementById('class-error').style.display = 'block';
@@ -292,14 +298,20 @@
     }
 
     fields.assignedClasses = assignedClasses;
-    fields.classTeacherOf = assignedClasses.length > 0 ? [assignedClasses[0]] : [];
+    
+    // Generate classTeacherOf and subjectTeacherOf with robust fallbacks
+    var teacherSubject = fields.subject || (existing ? existing.subject : '') || 'General';
+    fields.classTeacherOf = assignedClasses.length > 0 ? [{ class: String(assignedClasses[0].class).trim(), section: String(assignedClasses[0].section).trim() }] : [];
     fields.subjectTeacherOf = assignedClasses.map(function(ac) {
       return {
-        class: ac.class,
-        section: ac.section,
-        subject: fields.subject
+        class: String(ac.class).trim(),
+        section: String(ac.section).trim(),
+        subject: String(teacherSubject).trim()
       };
     });
+    
+    console.log("Generated classTeacherOf:", fields.classTeacherOf);
+    console.log("Generated subjectTeacherOf:", fields.subjectTeacherOf);
 
     if (existing) {
       var idx = SchoolApp.store.teachers.findIndex(function(t) { return t.id === existing.id; });

@@ -446,7 +446,11 @@ window.SchoolApp = {
       support: 'Help Center',
       'teacher-attendance': 'Teacher Attendance'
     };
-    this.updateHeader(titles[pageName] || 'Dashboard');
+    var pageTitle = titles[pageName] || 'Dashboard';
+    if (pageName === 'exams' && !this.isAdmin()) {
+      pageTitle = 'Marks Entry';
+    }
+    this.updateHeader(pageTitle);
 
     // Toggle floating Contact Admin button visibility (only on support page)
     var contactBtn = document.getElementById('contact-admin-btn');
@@ -1304,7 +1308,8 @@ window.SchoolApp = {
     // 1. My Class Strength: Count unique students belonging to any class/section in classTeacherOf
     var classTeacherStudents = this.store.students.filter(function(s) {
       return ctClasses.some(function(ct) {
-        return s.class === ct.class && s.section === ct.section;
+        return String(s.class).toLowerCase().trim() === String(ct.class).toLowerCase().trim() &&
+               String(s.section).toLowerCase().trim() === String(ct.section).toLowerCase().trim();
       });
     });
     var classStrength = classTeacherStudents.length;
@@ -1312,7 +1317,10 @@ window.SchoolApp = {
     // 2. Class Attendance % (Today) for Class Teacher classes
     var todayStr = new Date().toISOString().split('T')[0];
     var ctAttendanceRecords = this.store.attendance.filter(function(a) {
-      return a.date === todayStr && ctClasses.some(function(ct) { return a.class === ct.class && a.section === ct.section; });
+      return a.date === todayStr && ctClasses.some(function(ct) {
+        return String(a.class).toLowerCase().trim() === String(ct.class).toLowerCase().trim() &&
+               String(a.section).toLowerCase().trim() === String(ct.section).toLowerCase().trim();
+      });
     });
     var ctPresent = 0, ctTotal = 0;
     ctAttendanceRecords.forEach(function(r) {
@@ -1438,7 +1446,9 @@ window.SchoolApp = {
       html += '<div class="activity-list" style="display:flex; flex-direction:column; gap:16px;">';
       ctClasses.forEach(function(ac) {
         var record = self.store.attendance.find(function(a) {
-          return a.date === todayStr && a.class === ac.class && a.section === ac.section;
+          return a.date === todayStr &&
+                 String(a.class).toLowerCase().trim() === String(ac.class).toLowerCase().trim() &&
+                 String(a.section).toLowerCase().trim() === String(ac.section).toLowerCase().trim();
         });
 
         html += '<div class="activity-item" style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.04);">';

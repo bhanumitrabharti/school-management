@@ -34,6 +34,10 @@
     var container = document.getElementById('page-exams');
     if (!container) return;
 
+    if (SchoolApp.isTeacher()) {
+      state.isCombined = false;
+    }
+
     var examsList = SchoolApp.store.exams || [];
     var classes = SchoolApp.store.settings.classes || [];
     var sections = SchoolApp.store.settings.sections || [];
@@ -55,17 +59,23 @@
 
     // Page Header
     html += '<div class="page-header">';
-    html += '<h2><span class="material-icons-round">assignment</span> Examination & Marksheet Generator</h2>';
+    if (SchoolApp.isTeacher()) {
+      html += '<h2><span class="material-icons-round">edit_note</span> Marks Entry</h2>';
+    } else {
+      html += '<h2><span class="material-icons-round">assignment</span> Examination & Marksheet Generator</h2>';
+    }
     html += '</div>';
 
     // Filters / Selectors Panel
     html += '<div class="card mb-3"><div class="card-body">';
     
     // Toggle for Single vs Combined Mode
-    html += '<div class="flex gap-2 mb-3" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; flex-wrap: wrap;">';
-    html += '<button class="btn ' + (!state.isCombined ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="exam-mode-single"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">looks_one</span> Single Term View</button>';
-    html += '<button class="btn ' + (state.isCombined ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="exam-mode-combined"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">looks_two</span> Combined Report Card Mode</button>';
-    html += '</div>';
+    if (!SchoolApp.isTeacher()) {
+      html += '<div class="flex gap-2 mb-3" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; flex-wrap: wrap;">';
+      html += '<button class="btn ' + (!state.isCombined ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="exam-mode-single"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">looks_one</span> Single Term View</button>';
+      html += '<button class="btn ' + (state.isCombined ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="exam-mode-combined"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">looks_two</span> Combined Report Card Mode</button>';
+      html += '</div>';
+    }
 
     html += '<div class="form-grid exams-filter-grid">';
     
@@ -118,8 +128,13 @@
         if (SchoolApp.isTeacher()) {
           var ct = SchoolApp.currentUser.classTeacherOf || [];
           var st = SchoolApp.currentUser.subjectTeacherOf || [];
-          var isAssigned = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; }) ||
-                            st.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+          var isAssigned = ct.some(function(c) {
+            return String(c.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                   String(c.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+          }) || st.some(function(c) {
+            return String(c.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                   String(c.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+          });
           if (!isAssigned) {
             html += '<div class="card"><div class="card-body">';
             html += '<div class="empty-state"><span class="material-icons-round">lock</span><h3>Access Denied</h3><p>You are not assigned to Class ' + state.classVal + '-' + state.sectionVal + ' as either a Class Teacher or Subject Teacher.</p></div>';
@@ -133,11 +148,16 @@
         var isClassTeacher = true;
         if (SchoolApp.isTeacher()) {
           var ct = SchoolApp.currentUser.classTeacherOf || [];
-          isClassTeacher = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+          isClassTeacher = ct.some(function(c) {
+            return String(c.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                   String(c.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+          });
         }
 
         var students = (SchoolApp.store.students || []).filter(function(s) {
-          return s.class === state.classVal && s.section === state.sectionVal && s.status === 'Active';
+          return String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                 String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim() &&
+                 s.status === 'Active';
         });
 
         var mappingKey = state.examTerm + '_' + state.classVal;
@@ -146,7 +166,8 @@
         if (SchoolApp.isTeacher() && !isClassTeacher) {
           var st = SchoolApp.currentUser.subjectTeacherOf || [];
           var assignedSubjects = st.filter(function(item) {
-            return item.class === state.classVal && item.section === state.sectionVal;
+            return String(item.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                   String(item.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
           }).map(function(item) { return item.subject; });
           
           subjects = subjects.filter(function(sub) {
@@ -185,7 +206,10 @@
             html += '<th class="center">' + sub.name + '<br><span style="font-size:10px;font-weight:normal;color:var(--text-muted)">Max: ' + sub.maxMarks + ' · Pass: ' + sub.passMarks + '</span></th>';
           });
 
-          html += '<th class="center">Total</th><th class="center">Perc (%)</th><th class="center">Grade</th><th class="center">Status</th><th class="center">Action</th>';
+          html += '<th class="center">Total</th><th class="center">Perc (%)</th><th class="center">Grade</th><th class="center">Status</th>';
+          if (!SchoolApp.isTeacher() || isClassTeacher) {
+            html += '<th class="center">Action</th>';
+          }
           html += '</tr></thead><tbody>';
 
           students.forEach(function(s) {
@@ -217,16 +241,16 @@
               var stColor = savedMarks.status === 'Pass' ? 'badge-success' : 'badge-danger';
               html += '<td class="center"><span class="badge ' + stColor + '">' + savedMarks.status + '</span></td>';
               
-              html += '<td class="center">';
-              if (isClassTeacher) {
+              if (!SchoolApp.isTeacher() || isClassTeacher) {
+                html += '<td class="center">';
                 html += '<button class="btn btn-secondary btn-sm generate-reportcard-btn" data-student-id="' + s.id + '"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
-              } else {
-                html += '<button class="btn btn-secondary btn-sm" disabled title="Only Class Teachers can print report cards"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button>';
+                html += '</td>';
               }
-              html += '</td>';
             } else {
               html += '<td class="center text-muted">—</td><td class="center text-muted">—</td><td class="center text-muted">—</td><td class="center text-muted">—</td>';
-              html += '<td class="center"><button class="btn btn-secondary btn-sm" disabled><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button></td>';
+              if (!SchoolApp.isTeacher() || isClassTeacher) {
+                html += '<td class="center"><button class="btn btn-secondary btn-sm" disabled><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">print</span> Report Card</button></td>';
+              }
             }
 
             html += '</tr>';
@@ -401,7 +425,10 @@
 
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
-      var isCt = ct.some(function(c) { return c.class === s.class && c.section === s.section; });
+      var isCt = ct.some(function(c) {
+        return String(c.class).toLowerCase().trim() === String(s.class).toLowerCase().trim() &&
+               String(c.section).toLowerCase().trim() === String(s.section).toLowerCase().trim();
+      });
       if (!isCt) {
         SchoolApp.showToast('Access Denied: Only Class Teachers can print/view student report cards.', 'error');
         return;
@@ -851,8 +878,13 @@
         if (SchoolApp.isTeacher()) {
           var ct = SchoolApp.currentUser.classTeacherOf || [];
           var st = SchoolApp.currentUser.subjectTeacherOf || [];
-          var isAssigned = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; }) ||
-                            st.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
+          var isAssigned = ct.some(function(c) {
+            return String(c.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                   String(c.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+          }) || st.some(function(c) {
+            return String(c.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
+                   String(c.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+          });
           if (!isAssigned) {
             SchoolApp.showToast('Access Denied: You are not assigned to this class/section.', 'error');
             return;

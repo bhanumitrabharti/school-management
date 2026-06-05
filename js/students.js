@@ -25,8 +25,14 @@
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var st = SchoolApp.currentUser.subjectTeacherOf || [];
       students = students.filter(function(s) {
-        var isCt = ct.some(function(item) { return item.class === s.class && item.section === s.section; });
-        var isSt = st.some(function(item) { return item.class === s.class && item.section === s.section; });
+        var isCt = ct.some(function(item) {
+          return String(item.class).toLowerCase().trim() === String(s.class).toLowerCase().trim() &&
+                 String(item.section).toLowerCase().trim() === String(s.section).toLowerCase().trim();
+        });
+        var isSt = st.some(function(item) {
+          return String(item.class).toLowerCase().trim() === String(s.class).toLowerCase().trim() &&
+                 String(item.section).toLowerCase().trim() === String(s.section).toLowerCase().trim();
+        });
         return isCt || isSt;
       });
     }
@@ -67,13 +73,13 @@
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var st = SchoolApp.currentUser.subjectTeacherOf || [];
       classes = classes.filter(function(c) {
-        var inCt = ct.some(function(item) { return item.class === c; });
-        var inSt = st.some(function(item) { return item.class === c; });
+        var inCt = ct.some(function(item) { return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim(); });
+        var inSt = st.some(function(item) { return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim(); });
         return inCt || inSt;
       });
       sections = sections.filter(function(s) {
-        var inCt = ct.some(function(item) { return item.section === s; });
-        var inSt = st.some(function(item) { return item.section === s; });
+        var inCt = ct.some(function(item) { return String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim(); });
+        var inSt = st.some(function(item) { return String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim(); });
         return inCt || inSt;
       });
     }
@@ -471,8 +477,13 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var st = SchoolApp.currentUser.subjectTeacherOf || [];
-      var isAssigned = ct.some(function(c) { return c.class === student.class && c.section === student.section; }) ||
-                       st.some(function(c) { return c.class === student.class && c.section === student.section; });
+      var isAssigned = ct.some(function(c) {
+        return String(c.class).toLowerCase().trim() === String(student.class).toLowerCase().trim() &&
+               String(c.section).toLowerCase().trim() === String(student.section).toLowerCase().trim();
+      }) || st.some(function(c) {
+        return String(c.class).toLowerCase().trim() === String(student.class).toLowerCase().trim() &&
+               String(c.section).toLowerCase().trim() === String(student.section).toLowerCase().trim();
+      });
       if (!isAssigned) {
         SchoolApp.showToast('Access Denied: This student is not in your assigned class.', 'error');
         return;
