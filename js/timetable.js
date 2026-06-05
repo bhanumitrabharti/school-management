@@ -161,6 +161,7 @@
     html += '    <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
     html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
     html += '    <button class="btn btn-primary btn-sm" id="save-timetable-btn" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">save</span> Save Timetable</button>';
+    html += '    <button class="btn btn-danger btn-sm" id="btn-reset-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">delete_sweep</span> Reset Timetable</button>';
     html += '  </div>';
     html += '</div>';
 
@@ -455,6 +456,9 @@
         render();
       });
     });
+
+    var resetBtn = document.getElementById('btn-reset-timetable');
+    if (resetBtn) resetBtn.addEventListener('click', resetTimetable);
   }
 
   function showSettingsModal() {
@@ -909,6 +913,35 @@
     state.draftTimetable = null; // Clear draft state
     SchoolApp.showToast('Timetable saved successfully for all classes.', 'success');
     render();
+  }
+
+  function resetTimetable() {
+    if (state.viewMode === 'class') {
+      var currentClassSection = state.classVal + '-' + state.sectionVal;
+      SchoolApp.showConfirm("Are you sure you want to clear the entire week's timetable for " + currentClassSection + "? This cannot be undone.", function() {
+        if (SchoolApp.store.timetable) {
+          delete SchoolApp.store.timetable[currentClassSection];
+        }
+        if (state.draftTimetable) {
+          delete state.draftTimetable[currentClassSection];
+        }
+        SchoolApp.save();
+        SchoolApp.showToast("Timetable for " + currentClassSection + " has been cleared.", "success");
+        render();
+      }, "Reset Timetable");
+    } else {
+      SchoolApp.showConfirm("WARNING: Are you sure you want to completely clear the timetable for the ENTIRE SCHOOL? All assigned periods for all classes will be wiped.", function() {
+        var settings = SchoolApp.store.timetable ? SchoolApp.store.timetable.settings : null;
+        SchoolApp.store.timetable = {};
+        if (settings) {
+          SchoolApp.store.timetable.settings = settings;
+        }
+        state.draftTimetable = null;
+        SchoolApp.save();
+        SchoolApp.showToast("School-wide timetable has been cleared.", "success");
+        render();
+      }, "Reset School Timetable");
+    }
   }
 
   // Register Module
