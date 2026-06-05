@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Shishu Vikash Mandir - A modern school management system for managing students, teachers, attendance, and administration.">
+  <meta name="keywords" content="school management, student management, teacher management, attendance tracking">
+  <meta name="author" content="Shishu Vikash Mandir">
+  <title>Shishu Vikash Mandir - School Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <!-- Firebase Compatibility SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ==================== LOGIN PAGE ==================== -->
+  <div id="login-page" class="login-page">
+    <div class="login-bg-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+      <div class="shape shape-4"></div>
+      <div class="shape shape-5"></div>
+    </div>
+    <div class="login-card">
+      <div class="login-logo">
+        <img src="./school-logo-updated.jpg" class="login-logo-img" alt="School Logo">
+        <h1 class="login-title">Shishu Vikash Mandir</h1>
+        <p class="login-subtitle">School Management System</p>
+      </div>
+      <div class="login-tabs">
+        <button class="login-tab active" data-role="admin">
+          <span class="material-icons-round">admin_panel_settings</span>
+          Admin
+        </button>
+        <button class="login-tab" data-role="teacher">
+          <span class="material-icons-round">person</span>
+          Teacher
+        </button>
+      </div>
+      <form id="login-form" class="login-form">
+        <div id="admin-fields">
+          <div class="form-group">
+            <label class="form-label" for="admin-username">Username</label>
+            <div class="input-wrapper">
+              <span class="material-icons-round input-icon">person</span>
+              <input type="text" id="admin-username" class="form-input" placeholder="Enter username" autocomplete="username">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="admin-password">Password</label>
+            <div class="input-wrapper">
+              <span class="material-icons-round input-icon">lock</span>
+              <input type="password" id="admin-password" class="form-input" placeholder="Enter password" autocomplete="current-password">
+              <button type="button" class="password-toggle" onclick="this.previousElementSibling.type = this.previousElementSibling.type === 'password' ? 'text' : 'password'">
+                <span class="material-icons-round">visibility</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div id="teacher-fields" class="hidden">
+          <div class="form-group">
+            <label class="form-label" for="teacher-email">Email</label>
+            <div class="input-wrapper">
+              <span class="material-icons-round input-icon">email</span>
+              <input type="email" id="teacher-email" class="form-input" placeholder="Enter your email" autocomplete="email">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="teacher-password">Password</label>
+            <div class="input-wrapper">
+              <span class="material-icons-round input-icon">lock</span>
+              <input type="password" id="teacher-password" class="form-input" placeholder="Enter password" autocomplete="current-password">
+              <button type="button" class="password-toggle" onclick="this.previousElementSibling.type = this.previousElementSibling.type === 'password' ? 'text' : 'password'">
+                <span class="material-icons-round">visibility</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-login">
+          <span class="material-icons-round">login</span>
+          Sign In
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- ==================== MAIN APP LAYOUT ==================== -->
+  <div id="app-layout" class="app-layout hidden">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <img src="./school-logo-updated.jpg" class="logo-img" alt="Logo">
+          <span class="logo-text">Shishu Vikash Mandir</span>
+        </div>
+        <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle Sidebar">
+          <span class="material-icons-round">menu</span>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard">
+          <span class="material-icons-round nav-icon">dashboard</span>
+          <span class="nav-text">Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-page="students">
+          <span class="material-icons-round nav-icon">school</span>
+          <span class="nav-text">Students</span>
+        </a>
+        <a href="#" class="nav-item" data-page="teachers">
+          <span class="material-icons-round nav-icon">person</span>
+          <span class="nav-text">Teachers</span>
+        </a>
+        <a href="#" class="nav-item" data-page="attendance">
+          <span class="material-icons-round nav-icon">fact_check</span>
+          <span class="nav-text">Attendance</span>
+        </a>
+        <a href="#" class="nav-item" data-page="fees">
+          <span class="material-icons-round nav-icon">payments</span>
+          <span class="nav-text">Fees</span>
+        </a>
+        <a href="#" class="nav-item" data-page="exams">
+          <span class="material-icons-round nav-icon">assignment</span>
+          <span class="nav-text">Exams</span>
+        </a>
+        <a href="#" class="nav-item nav-admin-only" data-page="admin" title="Admin Settings, Fees, and Class Promotion">
+          <span class="material-icons-round nav-icon">admin_panel_settings</span>
+          <span class="nav-text">Admin Panel</span>
+        </a>
+        <a href="#" class="nav-item" data-page="support">
+          <span class="material-icons-round nav-icon">help_outline</span>
+          <span class="nav-text">Help Center</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-profile">
+          <div class="avatar avatar-sm" id="sidebar-avatar">AD</div>
+          <div class="user-info">
+            <span class="user-name" id="sidebar-user-name">Admin</span>
+            <span class="user-role badge badge-purple" id="sidebar-user-role">Admin</span>
+          </div>
+        </div>
+        <button id="logout-btn" class="btn-icon logout-btn" title="Logout">
+          <span class="material-icons-round">logout</span>
+        </button>
+      </div>
+    </aside>
+    <!-- Sidebar Overlay for mobile -->
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main-content">
+      <!-- Header -->
+      <header id="app-header" class="app-header">
+        <div class="header-left">
+          <button id="mobile-menu-btn" class="btn-icon mobile-only">
+            <span class="material-icons-round">menu</span>
+          </button>
+          <h2 class="header-title" id="header-title">Dashboard</h2>
+        </div>
+        <div class="header-right">
+          <div class="header-search">
+            <span class="material-icons-round">search</span>
+            <input type="text" id="global-search" placeholder="Search..." class="form-input">
+          </div>
+          <div class="notification-wrapper" style="position: relative; display: inline-block;">
+            <button class="btn-icon notification-btn" id="notification-btn" title="Notifications">
+              <span class="material-icons-round">notifications</span>
+              <span class="notification-badge" id="notification-badge">0</span>
+            </button>
+            <div id="notification-dropdown" class="notification-dropdown hidden" style="position: absolute; right: 0; top: 100%; margin-top: 8px; width: 320px; background: rgba(22, 22, 33, 0.98); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.65); backdrop-filter: blur(15px); z-index: 1000; overflow: hidden; display: flex; flex-direction: column;">
+              <!-- Dynamic Content -->
+            </div>
+          </div>
+          <div class="header-avatar">
+            <div class="avatar avatar-sm" id="header-avatar">AD</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Content Area -->
+      <div id="content-area" class="content-area">
+        <section class="page active" id="page-dashboard"></section>
+        <section class="page" id="page-students"></section>
+        <section class="page" id="page-teachers"></section>
+        <section class="page" id="page-attendance"></section>
+        <section class="page" id="page-fees"></section>
+        <section class="page" id="page-exams"></section>
+        <section class="page" id="page-admin"></section>
+        <section class="page" id="page-support"></section>
+      </div>
+    </main>
+    <button id="contact-admin-btn" class="contact-admin-btn" title="Contact System Administrator">
+      <span class="material-icons-round">contact_support</span>
+    </button>
+  </div>
+
+  <!-- ==================== MODAL ==================== -->
+  <div id="modal-overlay" class="modal-overlay">
+    <div id="modal-container" class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-title">Modal Title</h3>
+        <button class="modal-close" id="modal-close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- ==================== CONFIRM DIALOG ==================== -->
+  <div id="confirm-dialog" class="confirm-overlay">
+    <div class="confirm-container">
+      <div class="confirm-icon">
+        <span class="material-icons-round">warning</span>
+      </div>
+      <h3 class="confirm-title" id="confirm-title">Are you sure?</h3>
+      <p class="confirm-message" id="confirm-message">This action cannot be undone.</p>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TOAST CONTAINER ==================== -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- ==================== SUGGESTION DATALISTS ==================== -->
+  <datalist id="fee-head-suggestions">
+    <option value="Tuition Fee"></option>
+    <option value="Examination Fee"></option>
+    <option value="Transport Fee"></option>
+    <option value="Annual Charges"></option>
+    <option value="Late Fine"></option>
+    <option value="Admission Fee"></option>
+  </datalist>
+
+  <datalist id="subject-suggestions">
+    <option value="Mathematics"></option>
+    <option value="Science"></option>
+    <option value="English"></option>
+    <option value="Hindi"></option>
+    <option value="Social Studies"></option>
+    <option value="Computer"></option>
+    <option value="Sanskrit"></option>
+    <option value="General Knowledge"></option>
+  </datalist>
+
+  <!-- ==================== SCRIPTS ==================== -->
+  <script src="js/app.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/students.js"></script>
+  <script src="js/teachers.js"></script>
+  <script src="js/attendance.js"></script>
+  <script src="js/fees.js"></script>
+  <script src="js/exams.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/support.js"></script>
+  <script src="js/chatbot.js"></script>
+</body>
+</html>
