@@ -369,8 +369,8 @@ window.SchoolApp = {
         return t.email === credentials.email && t.password === credentials.password && t.status === 'Active';
       });
       if (teacher) {
-        var classTeacherOf = teacher.classTeacherOf || (teacher.assignedClasses && teacher.assignedClasses.length > 0 ? [teacher.assignedClasses[0]] : []);
-        var subjectTeacherOf = teacher.subjectTeacherOf || (teacher.assignedClasses || []).map(function(ac) {
+        var classTeacherOf = Array.isArray(teacher.classTeacherOf) ? teacher.classTeacherOf : (teacher.assignedClasses && teacher.assignedClasses.length > 0 ? [teacher.assignedClasses[0]] : []);
+        var subjectTeacherOf = Array.isArray(teacher.subjectTeacherOf) ? teacher.subjectTeacherOf : (teacher.assignedClasses || []).map(function(ac) {
           return { class: ac.class, section: ac.section, subject: teacher.subject };
         });
 

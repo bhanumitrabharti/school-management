@@ -16,7 +16,11 @@
     var teachers = SchoolApp.store.teachers || [];
 
     if (state.subjectFilter !== 'all') {
-      teachers = teachers.filter(function(t) { return t.subject === state.subjectFilter; });
+      teachers = teachers.filter(function(t) {
+        if (!t.subject) return false;
+        var subjectsList = t.subject.split(',').map(function(s) { return s.trim().toLowerCase(); });
+        return subjectsList.indexOf(state.subjectFilter.toLowerCase()) !== -1;
+      });
     }
     if (state.statusFilter !== 'all') {
       teachers = teachers.filter(function(t) { return t.status === state.statusFilter; });
@@ -181,6 +185,94 @@
     });
   }
 
+  function updateClassSubjectMappingUI(existingTeacher) {
+    var containerSection = document.getElementById('class-subject-mapping-section');
+    var container = document.getElementById('class-subject-mapping-container');
+    if (!containerSection || !container) return;
+
+    var checkedCbs = document.querySelectorAll('.class-assign-cb:checked');
+    if (checkedCbs.length === 0) {
+      containerSection.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    containerSection.style.display = 'block';
+
+    var selectedGlobalSubjects = [];
+    document.querySelectorAll('.subject-cb:checked').forEach(function(cb) {
+      selectedGlobalSubjects.push(cb.value);
+    });
+
+    if (selectedGlobalSubjects.length === 0) {
+      container.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; padding: 8px 0;">Please select at least one Subject above.</div>';
+      return;
+    }
+
+    var html = '';
+    checkedCbs.forEach(function(cb) {
+      var c = cb.getAttribute('data-class');
+      var s = cb.getAttribute('data-section');
+      var classSectionStr = c + '-' + s;
+
+      var isCT = false;
+      if (existingTeacher && existingTeacher.classTeacherOf) {
+        isCT = existingTeacher.classTeacherOf.some(function(item) {
+          return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
+                 String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim();
+        });
+      }
+
+      var existingCTInput = document.querySelector('input[name="ct-' + classSectionStr + '"]');
+      if (existingCTInput) {
+        isCT = existingCTInput.checked;
+      }
+
+      html += '<div class="mapping-row" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">';
+      html += '  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">';
+      html += '    <strong style="color: var(--text-primary); font-size: 14px;">Class ' + classSectionStr + '</strong>';
+      html += '    <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--accent-secondary); font-weight: 600;">';
+      html += '      <input type="checkbox" name="ct-' + classSectionStr + '" value="1"' + (isCT ? ' checked' : '') + ' style="width: 14px; height: 14px;"> Is Class Teacher';
+      html += '    </label>';
+      html += '  </div>';
+      
+      html += '  <div style="display: flex; flex-direction: column; gap: 4px;">';
+      html += '    <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Subjects taught in Class ' + classSectionStr + ' *</span>';
+      html += '    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">';
+      
+      selectedGlobalSubjects.forEach(function(sub) {
+        var isSubAssigned = false;
+        if (existingTeacher && existingTeacher.subjectTeacherOf) {
+          isSubAssigned = existingTeacher.subjectTeacherOf.some(function(item) {
+            return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
+                   String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim() &&
+                   String(item.subject).toLowerCase().trim() === String(sub).toLowerCase().trim();
+          });
+        }
+
+        var existingSubInput = document.querySelector('input[name="sub-' + classSectionStr + '"][value="' + sub + '"]');
+        if (existingSubInput) {
+          isSubAssigned = existingSubInput.checked;
+        } else if (!existingTeacher) {
+          if (selectedGlobalSubjects.length === 1) {
+            isSubAssigned = true;
+          }
+        }
+
+        html += '      <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; background: rgba(255,255,255,0.05); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-light);">';
+        html += '        <input type="checkbox" name="sub-' + classSectionStr + '" value="' + sub + '"' + (isSubAssigned ? ' checked' : '') + ' style="width: 14px; height: 14px;"> ' + sub;
+        html += '      </label>';
+      });
+
+      html += '    </div>';
+      html += '    <span class="form-error" id="sub-error-' + classSectionStr + '" style="display: none; font-size: 11px; margin-top: 4px; color: var(--danger);">Select at least one subject</span>';
+      html += '  </div>';
+      html += '</div>';
+    });
+
+    container.innerHTML = html;
+  }
+
   function showTeacherForm(teacher) {
     var isEdit = !!teacher;
     var classes = SchoolApp.store.settings.classes || [];
@@ -193,9 +285,21 @@
     bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (teacher ? teacher.email : '') + '" required><span class="form-error">Valid email required</span></div>';
     bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher ? teacher.phone : '') + '" required><span class="form-error">Required</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Subject *</label><select class="form-select" name="subject" required><option value="">Select Subject</option>';
-    getSubjects().forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (teacher && teacher.subject === s ? ' selected' : '') + '>' + s + '</option>'; });
-    bodyHTML += '</select><span class="form-error">Required</span></div>';
+    // Global subjects checkboxes selection
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Subjects Taught *</label>';
+    bodyHTML += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-top: 6px;">';
+    getSubjects().forEach(function(s) {
+      var isChecked = false;
+      if (teacher) {
+        if (Array.isArray(teacher.subject)) {
+          isChecked = teacher.subject.indexOf(s) !== -1;
+        } else if (typeof teacher.subject === 'string') {
+          isChecked = teacher.subject.split(',').map(function(sub) { return sub.trim(); }).indexOf(s) !== -1;
+        }
+      }
+      bodyHTML += '<label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500;"><input type="checkbox" value="' + s + '"' + (isChecked ? ' checked' : '') + ' class="subject-cb" style="width: 16px; height: 16px;"> ' + s + '</label>';
+    });
+    bodyHTML += '</div><span class="form-error" id="subject-error" style="display: none;">Select at least one subject</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Qualification *</label><input type="text" class="form-input" name="qualification" value="' + (teacher ? teacher.qualification : '') + '" required><span class="form-error">Required</span></div>';
 
@@ -222,7 +326,13 @@
         bodyHTML += '<div class="class-grid-cell"><input type="checkbox" class="class-assign-cb" data-class="' + c + '" data-section="' + s + '"' + (checked ? ' checked' : '') + '></div>';
       });
     });
-    bodyHTML += '</div><span class="form-error" id="class-error">Select at least one class</span></div>';
+    bodyHTML += '</div><span class="form-error" id="class-error" style="display: none;">Select at least one class</span></div>';
+
+    // Class-Subject and Class Teacher Mapping Section
+    bodyHTML += '<div class="form-group full-width" id="class-subject-mapping-section" style="margin-top: 15px; display: none;">';
+    bodyHTML += '<label class="form-label">Class-Subject & Class Teacher Mapping *</label>';
+    bodyHTML += '<div id="class-subject-mapping-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;"></div>';
+    bodyHTML += '</div>';
 
     bodyHTML += '</form>';
 
@@ -230,6 +340,22 @@
     footerHTML += '<button class="btn btn-primary" id="teacher-save-btn"><span class="material-icons-round">save</span> ' + (isEdit ? 'Update' : 'Add') + ' Teacher</button>';
 
     SchoolApp.showModal((isEdit ? 'Edit' : 'Add New') + ' Teacher', bodyHTML, footerHTML);
+
+    // Initial load of class-subject mapping
+    updateClassSubjectMappingUI(teacher);
+
+    // Attach dynamic listeners
+    document.querySelectorAll('.class-assign-cb').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        updateClassSubjectMappingUI(teacher);
+      });
+    });
+
+    document.querySelectorAll('.subject-cb').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        updateClassSubjectMappingUI(teacher);
+      });
+    });
 
     document.getElementById('teacher-save-btn').addEventListener('click', function() {
       saveTeacher(teacher);
@@ -246,6 +372,9 @@
 
     inputs.forEach(function(input) {
       var name = input.name;
+      // Skip Class Teacher / Subject checkbox inputs, they are processed separately
+      if (name.indexOf('ct-') === 0 || name.indexOf('sub-') === 0) return;
+
       var value = input.value.trim();
       fields[name] = value;
 
@@ -270,20 +399,61 @@
       valid = false;
     }
 
-    // Get assigned classes
+    // Collect global subjects
+    var selectedGlobalSubjects = [];
+    form.querySelectorAll('.subject-cb:checked').forEach(function(cb) {
+      selectedGlobalSubjects.push(cb.value);
+    });
+
+    if (selectedGlobalSubjects.length === 0) {
+      document.getElementById('subject-error').style.display = 'block';
+      valid = false;
+    } else {
+      document.getElementById('subject-error').style.display = 'none';
+    }
+
+    // Collect assigned classes and mappings
     var assignedClasses = [];
+    var classTeacherOf = [];
+    var subjectTeacherOf = [];
+
     form.querySelectorAll('.class-assign-cb:checked').forEach(function(cb) {
       var clsVal = cb.getAttribute('data-class');
       var secVal = cb.getAttribute('data-section');
       if (clsVal && secVal) {
+        var classSectionStr = clsVal + '-' + secVal;
         assignedClasses.push({
           class: String(clsVal).trim(),
           section: String(secVal).trim()
         });
+
+        // Check if Class Teacher checkbox is checked for this class
+        var ctInput = form.querySelector('input[name="ct-' + classSectionStr + '"]');
+        if (ctInput && ctInput.checked) {
+          classTeacherOf.push({
+            class: String(clsVal).trim(),
+            section: String(secVal).trim()
+          });
+        }
+
+        // Collect checked subjects for this class
+        var classSubCbs = form.querySelectorAll('input[name="sub-' + classSectionStr + '"]:checked');
+        var subErrorEl = document.getElementById('sub-error-' + classSectionStr);
+        if (classSubCbs.length === 0) {
+          if (subErrorEl) subErrorEl.style.display = 'block';
+          valid = false;
+        } else {
+          if (subErrorEl) subErrorEl.style.display = 'none';
+          classSubCbs.forEach(function(subCb) {
+            subjectTeacherOf.push({
+              class: String(clsVal).trim(),
+              section: String(secVal).trim(),
+              subject: String(subCb.value).trim()
+            });
+          });
+        }
       }
     });
-
-    console.log("Assigned Classes captured:", assignedClasses);
 
     if (assignedClasses.length === 0) {
       document.getElementById('class-error').style.display = 'block';
@@ -297,21 +467,42 @@
       return;
     }
 
+    // Enforce strict One Class Teacher Per Class Validation
+    var conflictFound = false;
+    var conflictingTeacherName = '';
+    
+    for (var i = 0; i < classTeacherOf.length; i++) {
+      var proposedCT = classTeacherOf[i];
+      var propClass = String(proposedCT.class).toLowerCase().trim();
+      var propSection = String(proposedCT.section).toLowerCase().trim();
+
+      // Find if any other teacher has this class/section in classTeacherOf
+      var conflictingTeacher = (SchoolApp.store.teachers || []).find(function(t) {
+        if (existing && t.id === existing.id) return false; // skip current teacher
+        var otherCT = t.classTeacherOf || [];
+        return otherCT.some(function(item) {
+          return String(item.class).toLowerCase().trim() === propClass &&
+                 String(item.section).toLowerCase().trim() === propSection;
+        });
+      });
+
+      if (conflictingTeacher) {
+        conflictFound = true;
+        conflictingTeacherName = conflictingTeacher.firstName + ' ' + conflictingTeacher.lastName;
+        break;
+      }
+    }
+
+    if (conflictFound) {
+      SchoolApp.showToast('Validation Error: ' + conflictingTeacherName + ' is already assigned as the Class Teacher for this class.', 'error');
+      return;
+    }
+
+    // Assign collected values
+    fields.subject = selectedGlobalSubjects.join(', ');
     fields.assignedClasses = assignedClasses;
-    
-    // Generate classTeacherOf and subjectTeacherOf with robust fallbacks
-    var teacherSubject = fields.subject || (existing ? existing.subject : '') || 'General';
-    fields.classTeacherOf = assignedClasses.length > 0 ? [{ class: String(assignedClasses[0].class).trim(), section: String(assignedClasses[0].section).trim() }] : [];
-    fields.subjectTeacherOf = assignedClasses.map(function(ac) {
-      return {
-        class: String(ac.class).trim(),
-        section: String(ac.section).trim(),
-        subject: String(teacherSubject).trim()
-      };
-    });
-    
-    console.log("Generated classTeacherOf:", fields.classTeacherOf);
-    console.log("Generated subjectTeacherOf:", fields.subjectTeacherOf);
+    fields.classTeacherOf = classTeacherOf;
+    fields.subjectTeacherOf = subjectTeacherOf;
 
     if (existing) {
       var idx = SchoolApp.store.teachers.findIndex(function(t) { return t.id === existing.id; });
