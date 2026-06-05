@@ -11,7 +11,8 @@
     sectionVal: '',
     dayVal: 'Monday',
     draftTimetable: null,
-    currentDraftKey: ''
+    currentDraftKey: '',
+    viewMode: 'class'
   };
 
   function getSubjectsForClass(classVal) {
@@ -103,114 +104,200 @@
     var html = '';
 
     // Page Header
-    html += '<div class="page-header">';
-    html += '<h2><span class="material-icons-round">schedule</span> Timetable Management</h2>';
+    html += '<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">';
+    html += '  <h2><span class="material-icons-round">schedule</span> Timetable Management</h2>';
+    html += '  <div class="toggle-group" style="display: flex; gap: 2px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 2px;">';
+    
+    var classActiveStyle = state.viewMode === 'class' ? 'background: var(--accent-primary); color: white;' : 'background: transparent; color: var(--text-secondary);';
+    var teacherActiveStyle = state.viewMode === 'teacher' ? 'background: var(--accent-primary); color: white;' : 'background: transparent; color: var(--text-secondary);';
+    
+    html += '    <button class="btn btn-xs" id="toggle-view-class" style="border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; font-size: 12px; transition: all var(--transition-fast); ' + classActiveStyle + '"><span class="material-icons-round" style="font-size:14px; margin-right:4px; vertical-align:middle;">class</span>Class View</button>';
+    html += '    <button class="btn btn-xs" id="toggle-view-teacher" style="border: none; padding: 6px 12px; border-radius: 4px; font-weight: 600; font-size: 12px; transition: all var(--transition-fast); ' + teacherActiveStyle + '"><span class="material-icons-round" style="font-size:14px; margin-right:4px; vertical-align:middle;">person</span>Teacher View</button>';
+    html += '  </div>';
     html += '</div>';
 
     // Toolbar / Filters Row
     html += '<div class="toolbar" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 16px 20px;">';
-    html += '  <div class="filter-group" style="display: flex; gap: 16px; width: 100%; align-items: flex-end;">';
-    html += '    <div style="flex: 1; min-width: 140px;">';
-    html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Class</label>';
-    html += '      <select class="form-select" id="timetable-class-select" style="width: 100%;">';
-    classes.forEach(function(c) { html += '<option value="' + c + '"' + (state.classVal === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
-    html += '      </select>';
-    html += '    </div>';
-    html += '    <div style="flex: 1; min-width: 100px;">';
-    html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Section</label>';
-    html += '      <select class="form-select" id="timetable-section-select" style="width: 100%;">';
-    sections.forEach(function(s) { html += '<option value="' + s + '"' + (state.sectionVal === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
-    html += '      </select>';
-    html += '    </div>';
-    html += '    <div style="flex: 2; min-width: 160px;">';
-    html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Day</label>';
-    html += '      <select class="form-select" id="timetable-day-select" style="width: 100%;">';
-    days.forEach(function(d) { html += '<option value="' + d + '"' + (state.dayVal === d ? ' selected' : '') + '>Select Day</option>'; });
-    html += '      </select>';
-    html += '    </div>';
-    html += '  </div>';
+    
+    if (state.viewMode === 'class') {
+      html += '  <div class="filter-group" style="display: flex; gap: 16px; width: 100%; align-items: flex-end; flex-wrap: wrap;">';
+      html += '    <div style="flex: 1; min-width: 140px;">';
+      html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Class</label>';
+      html += '      <select class="form-select" id="timetable-class-select" style="width: 100%;">';
+      classes.forEach(function(c) { html += '<option value="' + c + '"' + (state.classVal === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
+      html += '      </select>';
+      html += '    </div>';
+      html += '    <div style="flex: 1; min-width: 100px;">';
+      html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Section</label>';
+      html += '      <select class="form-select" id="timetable-section-select" style="width: 100%;">';
+      sections.forEach(function(s) { html += '<option value="' + s + '"' + (state.sectionVal === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
+      html += '      </select>';
+      html += '    </div>';
+      html += '    <div style="flex: 2; min-width: 160px;">';
+      html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Day</label>';
+      html += '      <select class="form-select" id="timetable-day-select" style="width: 100%;">';
+      days.forEach(function(d) { html += '<option value="' + d + '"' + (state.dayVal === d ? ' selected' : '') + '>' + d + '</option>'; });
+      html += '      </select>';
+      html += '    </div>';
+      html += '  </div>';
+    } else {
+      html += '  <div class="filter-group" style="display: flex; gap: 16px; width: 100%; align-items: flex-end;">';
+      html += '    <div style="flex: 1; min-width: 200px;">';
+      html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Day</label>';
+      html += '      <select class="form-select" id="timetable-day-select" style="width: 100%;">';
+      days.forEach(function(d) { html += '<option value="' + d + '"' + (state.dayVal === d ? ' selected' : '') + '>' + d + '</option>'; });
+      html += '      </select>';
+      html += '    </div>';
+      html += '  </div>';
+    }
     html += '</div>';
 
-    // Main Period Grid Card list
-    html += '<div class="card" style="margin-top: 20px;">';
-    html += '  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding: 16px 20px; flex-wrap: wrap; gap: 10px;">';
-    html += '    <h3 style="margin: 0; font-size: 16px;">Schedule for Class ' + currentClassSection + ' (' + state.dayVal + ')</h3>';
-    html += '    <div style="display: flex; gap: 10px;">';
-    html += '      <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
-    html += '      <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3);"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
-    html += '      <button class="btn btn-primary btn-sm" id="save-timetable-btn"><span class="material-icons-round">save</span> Save Timetable</button>';
-    html += '    </div>';
-    html += '  </div>';
-    html += '  <div class="card-body" style="padding: 20px;">';
-    html += '    <div class="timetable-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
+    if (state.viewMode === 'class') {
+      // Main Period Grid Card list
+      html += '<div class="card" style="margin-top: 20px;">';
+      html += '  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding: 16px 20px; flex-wrap: wrap; gap: 10px;">';
+      html += '    <h3 style="margin: 0; font-size: 16px;">Schedule for Class ' + currentClassSection + ' (' + state.dayVal + ')</h3>';
+      html += '    <div style="display: flex; gap: 10px;">';
+      html += '      <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3);"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
+      html += '      <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3);"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
+      html += '      <button class="btn btn-primary btn-sm" id="save-timetable-btn"><span class="material-icons-round">save</span> Save Timetable</button>';
+      html += '    </div>';
+      html += '  </div>';
+      html += '  <div class="card-body" style="padding: 20px;">';
+      html += '    <div class="timetable-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
 
-    var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
-    var classSubjects = getSubjectsForClass(state.classVal);
+      var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
+      var classSubjects = getSubjectsForClass(state.classVal);
 
-    for (var p = 1; p <= periodsCount; p++) {
-      var savedSlot = savedDayData[p] || {};
-      var draftSlot = dayData[p] || {};
+      for (var p = 1; p <= periodsCount; p++) {
+        var savedSlot = savedDayData[p] || {};
+        var draftSlot = dayData[p] || {};
+        
+        var savedSubject = draftSlot.subject || '';
+        var savedTeacherId = draftSlot.teacherId || '';
+
+        // Check if slot differs from the database (draft indicator)
+        var isDraft = false;
+        if ((draftSlot.subject || draftSlot.teacherId) &&
+            (draftSlot.subject !== savedSlot.subject || draftSlot.teacherId !== savedSlot.teacherId)) {
+          isDraft = true;
+        }
+
+        var cardStyle = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+        if (isDraft) {
+          cardStyle = 'background: rgba(251, 191, 36, 0.05); border: 1px dashed #fbbf24; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+        }
+
+        html += '      <div class="period-card" data-period="' + p + '" style="' + cardStyle + '">';
+        html += '        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); padding-bottom: 8px;">';
+        html += '          <strong style="color: var(--accent-primary); font-size: 14px;">Period ' + p + '</strong>';
+        html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p, state.dayVal) + '</span>';
+        html += '        </div>';
+
+        // Subject Dropdown
+        html += '        <div>';
+        html += '          <label class="form-label" style="font-size: 11px;">Subject</label>';
+        html += '          <select class="form-select period-subject" data-period="' + p + '" style="width: 100%;"><option value="">Free Period</option>';
+        classSubjects.forEach(function(sub) {
+          html += '<option value="' + sub + '"' + (savedSubject === sub ? ' selected' : '') + '>' + sub + '</option>';
+        });
+        html += '          </select>';
+        html += '        </div>';
+
+        // Teacher Dropdown
+        html += '        <div>';
+        html += '          <label class="form-label" style="font-size: 11px;">Teacher</label>';
+        html += '          <select class="form-select period-teacher" data-period="' + p + '"' + (savedSubject ? '' : ' disabled') + ' style="width: 100%;"><option value="">Select Teacher</option>';
+        
+        if (savedSubject) {
+          var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, savedSubject);
+          eligibleTeachers.forEach(function(teacher) {
+            var conflict = getTeacherConflict(teacher.id, state.dayVal, p, currentClassSection);
+            var label = teacher.firstName + ' ' + teacher.lastName;
+            var disabledAttr = '';
+            if (conflict) {
+              label += ' [Busy in ' + conflict + ']';
+              if (teacher.id !== savedTeacherId) {
+                disabledAttr = ' disabled';
+              }
+            }
+            html += '<option value="' + teacher.id + '"' + (savedTeacherId === teacher.id ? ' selected' : '') + disabledAttr + '>' + label + '</option>';
+          });
+        }
+
+        html += '          </select>';
+        html += '        </div>';
+        html += '      </div>';
+      }
+
+      html += '    </div>';
+      html += '  </div>';
+      html += '</div>';
+    } else {
+      // Teacher View Matrix Table (Read-Only)
+      var activeTeachers = (SchoolApp.store.teachers || []).filter(function(t) { return t.status === 'Active'; });
+      var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
+
+      html += '<div class="card" style="margin-top: 20px;">';
+      html += '  <div class="card-header" style="border-bottom: 1px solid var(--border-light); padding: 16px 20px;">';
+      html += '    <h3 style="margin: 0; font-size: 16px;">Teacher Schedule Matrix (' + state.dayVal + ')</h3>';
+      html += '  </div>';
+      html += '  <div class="card-body" style="padding: 20px;">';
+      html += '    <div class="table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%;">';
+      html += '      <table class="table" style="width: 100%; border-collapse: collapse; min-width: 1000px;">';
+      html += '        <thead>';
+      html += '          <tr style="border-bottom: 2px solid var(--border-light);">';
+      html += '            <th style="padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); font-weight: 700; text-align: left; width: 150px; color: var(--text-primary);">Period / Time</th>';
       
-      var savedSubject = draftSlot.subject || '';
-      var savedTeacherId = draftSlot.teacherId || '';
-
-      // Check if slot differs from the database (draft indicator)
-      var isDraft = false;
-      if ((draftSlot.subject || draftSlot.teacherId) &&
-          (draftSlot.subject !== savedSlot.subject || draftSlot.teacherId !== savedSlot.teacherId)) {
-        isDraft = true;
-      }
-
-      var cardStyle = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
-      if (isDraft) {
-        cardStyle = 'background: rgba(251, 191, 36, 0.05); border: 1px dashed #fbbf24; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
-      }
-
-      html += '      <div class="period-card" data-period="' + p + '" style="' + cardStyle + '">';
-      html += '        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); padding-bottom: 8px;">';
-      html += '          <strong style="color: var(--accent-primary); font-size: 14px;">Period ' + p + '</strong>';
-      html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p, state.dayVal) + '</span>';
-      html += '        </div>';
-
-      // Subject Dropdown
-      html += '        <div>';
-      html += '          <label class="form-label" style="font-size: 11px;">Subject</label>';
-      html += '          <select class="form-select period-subject" data-period="' + p + '" style="width: 100%;"><option value="">Free Period</option>';
-      classSubjects.forEach(function(sub) {
-        html += '<option value="' + sub + '"' + (savedSubject === sub ? ' selected' : '') + '>' + sub + '</option>';
+      activeTeachers.forEach(function(t) {
+        html += '            <th style="padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); font-weight: 700; text-align: center; color: var(--text-primary);">' + t.firstName + ' ' + t.lastName + '<br><span style="font-size: 9px; font-weight: 400; color: var(--text-muted);">' + t.subject + '</span></th>';
       });
-      html += '          </select>';
-      html += '        </div>';
+      html += '          </tr>';
+      html += '        </thead>';
+      html += '        <tbody>';
 
-      // Teacher Dropdown
-      html += '        <div>';
-      html += '          <label class="form-label" style="font-size: 11px;">Teacher</label>';
-      html += '          <select class="form-select period-teacher" data-period="' + p + '"' + (savedSubject ? '' : ' disabled') + ' style="width: 100%;"><option value="">Select Teacher</option>';
-      
-      if (savedSubject) {
-        var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, savedSubject);
-        eligibleTeachers.forEach(function(teacher) {
-          var conflict = getTeacherConflict(teacher.id, state.dayVal, p, currentClassSection);
-          var label = teacher.firstName + ' ' + teacher.lastName;
-          var disabledAttr = '';
-          if (conflict) {
-            label += ' [Busy in ' + conflict + ']';
-            if (teacher.id !== savedTeacherId) {
-              disabledAttr = ' disabled';
+      var timetable = SchoolApp.store.timetable || {};
+
+      for (var p = 1; p <= periodsCount; p++) {
+        var timeStr = SchoolApp.getPeriodTimeStr(p, state.dayVal);
+        html += '          <tr style="border-bottom: 1px solid var(--border-light);">';
+        html += '            <td style="padding: 12px 16px; border: 1px solid var(--border-light); font-weight: 600;"><strong style="color: var(--accent-primary);">Period ' + p + '</strong><br><span style="font-size: 10px; color: var(--text-muted);">' + timeStr + '</span></td>';
+        
+        activeTeachers.forEach(function(t) {
+          var assignment = null;
+          for (var classSection in timetable) {
+            var daySchedule = timetable[classSection][state.dayVal];
+            if (daySchedule && daySchedule[p]) {
+              if (daySchedule[p].teacherId === t.id) {
+                assignment = {
+                  classSection: classSection,
+                  subject: daySchedule[p].subject
+                };
+                break;
+              }
             }
           }
-          html += '<option value="' + teacher.id + '"' + (savedTeacherId === teacher.id ? ' selected' : '') + disabledAttr + '>' + label + '</option>';
+
+          if (assignment) {
+            html += '            <td style="padding: 12px 16px; border: 1px solid var(--border-light); text-align: center; vertical-align: middle; background: rgba(124, 58, 237, 0.03);">';
+            html += '              <strong style="color: var(--accent-primary-light); font-size: 13px;">Class ' + assignment.classSection + '</strong><br>';
+            html += '              <span class="badge badge-purple" style="font-size: 10px; margin-top: 4px;">' + assignment.subject + '</span>';
+            html += '            </td>';
+          } else {
+            html += '            <td style="padding: 12px 16px; border: 1px solid var(--border-light); text-align: center; vertical-align: middle;">';
+            html += '              <span style="color: var(--success); font-weight: 500; font-size: 12px;">[ Free Period ]</span>';
+            html += '            </td>';
+          }
         });
+        html += '          </tr>';
       }
 
-      html += '          </select>';
-      html += '        </div>';
-      html += '      </div>';
+      html += '        </tbody>';
+      html += '      </table>';
+      html += '    </div>';
+      html += '  </div>';
+      html += '</div>';
     }
-
-    html += '    </div>';
-    html += '  </div>';
-    html += '</div>';
 
     container.innerHTML = html;
     
@@ -240,6 +327,23 @@
 
     var autoGenBtn = document.getElementById('auto-generate-btn');
     if (autoGenBtn) autoGenBtn.addEventListener('click', generateAutoTimetable);
+
+    var classToggle = document.getElementById('toggle-view-class');
+    var teacherToggle = document.getElementById('toggle-view-teacher');
+
+    if (classToggle) {
+      classToggle.addEventListener('click', function() {
+        state.viewMode = 'class';
+        render();
+      });
+    }
+
+    if (teacherToggle) {
+      teacherToggle.addEventListener('click', function() {
+        state.viewMode = 'teacher';
+        render();
+      });
+    }
 
     // Subject dropdown change listeners
     document.querySelectorAll('.period-subject').forEach(function(select) {
@@ -405,6 +509,15 @@
           state.draftTimetable[day] = {};
         }
 
+        // Build usedSubjects set for the day (from already assigned slots)
+        var usedSubjects = [];
+        for (var p = 1; p <= periodsCount; p++) {
+          var slot = state.draftTimetable[day][p];
+          if (slot && slot.subject) {
+            usedSubjects.push(slot.subject);
+          }
+        }
+
         for (var p = 1; p <= periodsCount; p++) {
           // Skip check: respect manual inputs
           var existingSlot = state.draftTimetable[day][p];
@@ -412,15 +525,20 @@
             continue; 
           }
 
-          // Shuffle subjects
-          var shuffledSubjects = classSubjects.slice().sort(function() { return 0.5 - Math.random(); });
+          // Filter out subjects already used on this day for Daily Subject Uniqueness
+          var availableSubjects = classSubjects.filter(function(sub) {
+            return usedSubjects.indexOf(sub) === -1;
+          });
+
+          // Shuffle available subjects
+          var shuffledSubjects = availableSubjects.slice().sort(function() { return 0.5 - Math.random(); });
 
           var assigned = false;
           for (var i = 0; i < shuffledSubjects.length; i++) {
             var subject = shuffledSubjects[i];
             var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, subject);
             
-            // Shuffle teachers
+            // Shuffle eligible teachers
             var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
 
             for (var j = 0; j < shuffledTeachers.length; j++) {
@@ -428,12 +546,18 @@
               var conflict = getTeacherConflict(teacher.id, day, p, currentClassSection);
               if (!conflict) {
                 state.draftTimetable[day][p] = { subject: subject, teacherId: teacher.id };
+                usedSubjects.push(subject);
                 assigned = true;
                 break;
               }
             }
 
             if (assigned) break;
+          }
+
+          // Graceful Blanking: If we were not able to assign a subject, delete the draft slot to leave it blank
+          if (!assigned) {
+            delete state.draftTimetable[day][p];
           }
         }
       });
@@ -444,6 +568,7 @@
   }
 
   function saveTimetable() {
+    if (state.viewMode === 'teacher') return;
     var currentClassSection = state.classVal + '-' + state.sectionVal;
     var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
     var valid = true;
