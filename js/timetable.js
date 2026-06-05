@@ -9,7 +9,9 @@
   var state = {
     classVal: '',
     sectionVal: '',
-    dayVal: 'Monday'
+    dayVal: 'Monday',
+    draftTimetable: null,
+    currentDraftKey: ''
   };
 
   function getSubjectsForClass(classVal) {
@@ -86,8 +88,17 @@
     if (!state.sectionVal && sections.length > 0) state.sectionVal = sections[0];
 
     var currentClassSection = state.classVal + '-' + state.sectionVal;
-    var timetableData = (SchoolApp.store.timetable || {})[currentClassSection] || {};
-    var dayData = timetableData[state.dayVal] || {};
+    
+    // Reactive draft initialization
+    if (!state.draftTimetable || state.currentDraftKey !== currentClassSection) {
+      var savedData = (SchoolApp.store.timetable && SchoolApp.store.timetable[currentClassSection]) || {};
+      state.draftTimetable = JSON.parse(JSON.stringify(savedData));
+      state.currentDraftKey = currentClassSection;
+    }
+
+    var dayData = state.draftTimetable[state.dayVal] || {};
+    var savedClassData = (SchoolApp.store.timetable || {})[currentClassSection] || {};
+    var savedDayData = savedClassData[state.dayVal] || {};
 
     var html = '';
 
@@ -114,7 +125,7 @@
     html += '    <div style="flex: 2; min-width: 160px;">';
     html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Day</label>';
     html += '      <select class="form-select" id="timetable-day-select" style="width: 100%;">';
-    days.forEach(function(d) { html += '<option value="' + d + '"' + (state.dayVal === d ? ' selected' : '') + '>' + d + '</option>'; });
+    days.forEach(function(d) { html += '<option value="' + d + '"' + (state.dayVal === d ? ' selected' : '') + '>Select Day</option>'; });
     html += '      </select>';
     html += '    </div>';
     html += '  </div>';
@@ -122,9 +133,12 @@
 
     // Main Period Grid Card list
     html += '<div class="card" style="margin-top: 20px;">';
-    html += '  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding: 16px 20px;">';
+    html += '  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding: 16px 20px; flex-wrap: wrap; gap: 10px;">';
     html += '    <h3 style="margin: 0; font-size: 16px;">Schedule for Class ' + currentClassSection + ' (' + state.dayVal + ')</h3>';
-    html += '    <button class="btn btn-primary" id="save-timetable-btn"><span class="material-icons-round">save</span> Save Timetable</button>';
+    html += '    <div style="display: flex; gap: 10px;">';
+    html += '      <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3);"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
+    html += '      <button class="btn btn-primary btn-sm" id="save-timetable-btn"><span class="material-icons-round">save</span> Save Timetable</button>';
+    html += '    </div>';
     html += '  </div>';
     html += '  <div class="card-body" style="padding: 20px;">';
     html += '    <div class="timetable-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
@@ -133,11 +147,25 @@
     var classSubjects = getSubjectsForClass(state.classVal);
 
     for (var p = 1; p <= periodsCount; p++) {
-      var savedSlot = dayData[p] || {};
-      var savedSubject = savedSlot.subject || '';
-      var savedTeacherId = savedSlot.teacherId || '';
+      var savedSlot = savedDayData[p] || {};
+      var draftSlot = dayData[p] || {};
+      
+      var savedSubject = draftSlot.subject || '';
+      var savedTeacherId = draftSlot.teacherId || '';
 
-      html += '      <div class="period-card" data-period="' + p + '" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;">';
+      // Check if slot differs from the database (draft indicator)
+      var isDraft = false;
+      if ((draftSlot.subject || draftSlot.teacherId) &&
+          (draftSlot.subject !== savedSlot.subject || draftSlot.teacherId !== savedSlot.teacherId)) {
+        isDraft = true;
+      }
+
+      var cardStyle = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+      if (isDraft) {
+        cardStyle = 'background: rgba(251, 191, 36, 0.05); border: 1px dashed #fbbf24; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+      }
+
+      html += '      <div class="period-card" data-period="' + p + '" style="' + cardStyle + '">';
       html += '        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); padding-bottom: 8px;">';
       html += '          <strong style="color: var(--accent-primary); font-size: 14px;">Period ' + p + '</strong>';
       html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p) + '</span>';
@@ -184,6 +212,13 @@
     html += '</div>';
 
     container.innerHTML = html;
+    
+    // Day Select needs correct dropdown selection
+    var daySelect = document.getElementById('timetable-day-select');
+    if (daySelect) {
+      daySelect.value = state.dayVal;
+    }
+    
     attachEvents();
   }
 
@@ -199,103 +234,175 @@
     var saveBtn = document.getElementById('save-timetable-btn');
     if (saveBtn) saveBtn.addEventListener('click', saveTimetable);
 
-    // Subject dropdown change listeners to dynamically populate and check teacher overlap
+    var autoGenBtn = document.getElementById('auto-generate-btn');
+    if (autoGenBtn) autoGenBtn.addEventListener('click', generateAutoTimetable);
+
+    // Subject dropdown change listeners
     document.querySelectorAll('.period-subject').forEach(function(select) {
       select.addEventListener('change', function() {
         var period = this.getAttribute('data-period');
-        var teacherSelect = document.querySelector('.period-teacher[data-period="' + period + '"]');
-        if (!teacherSelect) return;
-
         var subVal = this.value;
-        if (!subVal) {
-          teacherSelect.innerHTML = '<option value="">Select Teacher</option>';
-          teacherSelect.value = '';
-          teacherSelect.disabled = true;
-          return;
+
+        if (!state.draftTimetable[state.dayVal]) {
+          state.draftTimetable[state.dayVal] = {};
         }
 
-        teacherSelect.disabled = false;
-        var currentClassSection = state.classVal + '-' + state.sectionVal;
-        var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, subVal);
-        
-        var html = '<option value="">Select Teacher</option>';
-        eligibleTeachers.forEach(function(teacher) {
-          var conflict = getTeacherConflict(teacher.id, state.dayVal, period, currentClassSection);
-          var label = teacher.firstName + ' ' + teacher.lastName;
-          var disabledAttr = '';
-          if (conflict) {
-            label += ' [Busy in ' + conflict + ']';
-            disabledAttr = ' disabled';
-          }
-          html += '<option value="' + teacher.id + '"' + disabledAttr + '>' + label + '</option>';
-        });
-        teacherSelect.innerHTML = html;
-        teacherSelect.value = '';
+        if (!subVal) {
+          delete state.draftTimetable[state.dayVal][period];
+        } else {
+          state.draftTimetable[state.dayVal][period] = { subject: subVal, teacherId: '' };
+        }
+        render();
       });
     });
+
+    // Teacher dropdown change listeners
+    document.querySelectorAll('.period-teacher').forEach(function(select) {
+      select.addEventListener('change', function() {
+        var period = this.getAttribute('data-period');
+        var teachVal = this.value;
+
+        if (!state.draftTimetable[state.dayVal]) {
+          state.draftTimetable[state.dayVal] = {};
+        }
+        if (!state.draftTimetable[state.dayVal][period]) {
+          state.draftTimetable[state.dayVal][period] = { subject: '', teacherId: '' };
+        }
+        state.draftTimetable[state.dayVal][period].teacherId = teachVal;
+        render();
+      });
+    });
+  }
+
+  function generateAutoTimetable() {
+    var currentClassSection = state.classVal + '-' + state.sectionVal;
+    var classSubjects = getSubjectsForClass(state.classVal);
+
+    if (classSubjects.length === 0) {
+      SchoolApp.showToast('No subjects mapped to this class. Setup subjects in Admin Panel first.', 'error');
+      return;
+    }
+
+    SchoolApp.showConfirm('This will auto-fill empty slots for the selected Class for the entire week. Existing saved slots will not be overwritten. Proceed?', function() {
+      var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+      days.forEach(function(day) {
+        var periodsCount = (day === 'Saturday') ? 6 : 8;
+        if (!state.draftTimetable[day]) {
+          state.draftTimetable[day] = {};
+        }
+
+        for (var p = 1; p <= periodsCount; p++) {
+          // Skip check: respect manual inputs
+          var existingSlot = state.draftTimetable[day][p];
+          if (existingSlot && existingSlot.subject && existingSlot.teacherId) {
+            continue; 
+          }
+
+          // Shuffle subjects
+          var shuffledSubjects = classSubjects.slice().sort(function() { return 0.5 - Math.random(); });
+
+          var assigned = false;
+          for (var i = 0; i < shuffledSubjects.length; i++) {
+            var subject = shuffledSubjects[i];
+            var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, subject);
+            
+            // Shuffle teachers
+            var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
+
+            for (var j = 0; j < shuffledTeachers.length; j++) {
+              var teacher = shuffledTeachers[j];
+              var conflict = getTeacherConflict(teacher.id, day, p, currentClassSection);
+              if (!conflict) {
+                state.draftTimetable[day][p] = { subject: subject, teacherId: teacher.id };
+                assigned = true;
+                break;
+              }
+            }
+
+            if (assigned) break;
+          }
+        }
+      });
+
+      SchoolApp.showToast('Draft generated successfully! Please review and click Save to confirm.', 'success');
+      render();
+    }, 'Auto-Generate Draft');
   }
 
   function saveTimetable() {
     var currentClassSection = state.classVal + '-' + state.sectionVal;
     var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
-    var dayData = {};
     var valid = true;
 
+    // 1. Sync current page selections from the DOM into draftTimetable before checking
     for (var p = 1; p <= periodsCount; p++) {
       var subVal = document.querySelector('.period-subject[data-period="' + p + '"]').value;
       var teacherSelect = document.querySelector('.period-teacher[data-period="' + p + '"]');
       var teachVal = teacherSelect ? teacherSelect.value : '';
 
-      // Validate that slot is not partially filled
-      if ((subVal && !teachVal) || (!subVal && teachVal)) {
+      if (!state.draftTimetable[state.dayVal]) {
+        state.draftTimetable[state.dayVal] = {};
+      }
+
+      if (subVal && teachVal) {
+        state.draftTimetable[state.dayVal][p] = { subject: subVal, teacherId: teachVal };
+      } else if (!subVal && !teachVal) {
+        delete state.draftTimetable[state.dayVal][p];
+      } else {
+        // Partially filled slot validation
         SchoolApp.showToast('Please select both Subject and Teacher for Period ' + p + '.', 'error');
         valid = false;
         
         var pCard = document.querySelector('.period-card[data-period="' + p + '"]');
         if (pCard) {
           pCard.style.borderColor = 'var(--danger)';
+          pCard.style.borderStyle = 'solid';
           setTimeout(function() {
             pCard.style.borderColor = 'var(--border-light)';
           }, 3000);
         }
         return;
       }
-
-      if (subVal && teachVal) {
-        // Double check teacher conflict on save to prevent any bypassing
-        var conflict = getTeacherConflict(teachVal, state.dayVal, p, currentClassSection);
-        if (conflict) {
-          var teachers = SchoolApp.store.teachers || [];
-          var tObj = teachers.find(function(t) { return t.id === teachVal; });
-          var tName = tObj ? (tObj.firstName + ' ' + tObj.lastName) : 'Teacher';
-          SchoolApp.showToast('Conflict detected: ' + tName + ' is already busy in Class ' + conflict + ' during Period ' + p + '.', 'error');
-          
-          var pCard = document.querySelector('.period-card[data-period="' + p + '"]');
-          if (pCard) {
-            pCard.style.borderColor = 'var(--danger)';
-            setTimeout(function() {
-              pCard.style.borderColor = 'var(--border-light)';
-            }, 3000);
-          }
-          return;
-        }
-
-        dayData[p] = { subject: subVal, teacherId: teachVal };
-      }
     }
 
     if (!valid) return;
 
+    // 2. Validate the ENTIRE week's draft for completeness and overlap conflicts
+    for (var day in state.draftTimetable) {
+      var daySchedule = state.draftTimetable[day];
+      for (var p in daySchedule) {
+        var slot = daySchedule[p];
+        if (slot) {
+          // Completeness check
+          if ((slot.subject && !slot.teacherId) || (!slot.subject && slot.teacherId)) {
+            SchoolApp.showToast('Please select both Subject and Teacher for Period ' + p + ' on ' + day + '.', 'error');
+            return;
+          }
+
+          // Conflict overlap check
+          if (slot.teacherId) {
+            var conflict = getTeacherConflict(slot.teacherId, day, p, currentClassSection);
+            if (conflict) {
+              var teachers = SchoolApp.store.teachers || [];
+              var tObj = teachers.find(function(t) { return t.id === slot.teacherId; });
+              var tName = tObj ? (tObj.firstName + ' ' + tObj.lastName) : 'Teacher';
+              SchoolApp.showToast('Conflict detected in draft: ' + tName + ' is already busy in Class ' + conflict + ' on ' + day + ' during Period ' + p + '.', 'error');
+              return;
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Commit weekly draft to database
     if (!SchoolApp.store.timetable) {
       SchoolApp.store.timetable = {};
     }
-    if (!SchoolApp.store.timetable[currentClassSection]) {
-      SchoolApp.store.timetable[currentClassSection] = {};
-    }
-
-    SchoolApp.store.timetable[currentClassSection][state.dayVal] = dayData;
+    SchoolApp.store.timetable[currentClassSection] = JSON.parse(JSON.stringify(state.draftTimetable));
+    
     SchoolApp.save();
-    SchoolApp.showToast('Timetable for Class ' + currentClassSection + ' (' + state.dayVal + ') saved successfully.', 'success');
+    SchoolApp.showToast('Timetable for Class ' + currentClassSection + ' saved successfully.', 'success');
     render();
   }
 
