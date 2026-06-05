@@ -174,7 +174,8 @@
       html += '  <div class="card-body" style="padding: 20px;">';
       html += '    <div class="timetable-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
 
-      var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
+      var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
+      var periodsCount = (state.dayVal === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
       var classSubjects = getSubjectsForClass(state.classVal);
 
       var classTimetable = state.draftTimetable[currentClassSection] || {};
@@ -251,7 +252,8 @@
     } else {
       // Teacher View Matrix Table (Interactive)
       var activeTeachers = (SchoolApp.store.teachers || []).filter(function(t) { return t.status === 'Active'; });
-      var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
+      var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
+      var periodsCount = (state.dayVal === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
 
       html += '<div class="card" style="margin-top: 20px;">';
       html += '  <div class="card-header" style="border-bottom: 1px solid var(--border-light); padding: 16px 20px;">';
@@ -464,11 +466,13 @@
   function showSettingsModal() {
     var s = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {
       startTime: "08:00",
-      periodDuration: 40,
+      endTime: "14:00",
+      totalPeriods: 8,
       lunchAfterPeriod: 4,
       lunchDuration: 30,
       satStartTime: "08:00",
-      satPeriodDuration: 35,
+      satEndTime: "12:30",
+      satTotalPeriods: 6,
       satLunchAfterPeriod: 0
     };
     var satLunchDur = s.satLunchDuration !== undefined ? s.satLunchDuration : (s.lunchDuration || 30);
@@ -484,8 +488,12 @@
     bodyHTML += '      <input type="time" class="form-input" name="startTime" value="' + (s.startTime || '08:00') + '" required>';
     bodyHTML += '    </div>';
     bodyHTML += '    <div class="form-group">';
-    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Period Duration (mins) *</label>';
-    bodyHTML += '      <input type="number" class="form-input" name="periodDuration" min="1" value="' + (s.periodDuration || 40) + '" required>';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">School End Time *</label>';
+    bodyHTML += '      <input type="time" class="form-input" name="endTime" value="' + (s.endTime || '14:00') + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Total Periods *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="totalPeriods" min="1" value="' + (s.totalPeriods || 8) + '" required>';
     bodyHTML += '    </div>';
     bodyHTML += '    <div class="form-group">';
     bodyHTML += '      <label class="form-label" style="font-size: 11px;">Lunch After Period *</label>';
@@ -506,8 +514,12 @@
     bodyHTML += '      <input type="time" class="form-input" name="satStartTime" value="' + (s.satStartTime || '08:00') + '" required>';
     bodyHTML += '    </div>';
     bodyHTML += '    <div class="form-group">';
-    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Period Duration (mins) *</label>';
-    bodyHTML += '      <input type="number" class="form-input" name="satPeriodDuration" min="1" value="' + (s.satPeriodDuration || 35) + '" required>';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">School End Time *</label>';
+    bodyHTML += '      <input type="time" class="form-input" name="satEndTime" value="' + (s.satEndTime || '12:30') + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size: 11px;">Total Periods *</label>';
+    bodyHTML += '      <input type="number" class="form-input" name="satTotalPeriods" min="1" value="' + (s.satTotalPeriods || 6) + '" required>';
     bodyHTML += '    </div>';
     bodyHTML += '    <div class="form-group">';
     bodyHTML += '      <label class="form-label" style="font-size: 11px;">Lunch After Period *</label>';
@@ -554,11 +566,13 @@
       
       SchoolApp.store.timetable.settings = {
         startTime: fields.startTime,
-        periodDuration: parseInt(fields.periodDuration) || 40,
+        endTime: fields.endTime,
+        totalPeriods: parseInt(fields.totalPeriods) || 8,
         lunchAfterPeriod: parseInt(fields.lunchAfterPeriod) || 0,
         lunchDuration: parseInt(fields.lunchDuration) || 0,
         satStartTime: fields.satStartTime,
-        satPeriodDuration: parseInt(fields.satPeriodDuration) || 35,
+        satEndTime: fields.satEndTime,
+        satTotalPeriods: parseInt(fields.satTotalPeriods) || 6,
         satLunchAfterPeriod: parseInt(fields.satLunchAfterPeriod) || 0,
         satLunchDuration: parseInt(fields.satLunchDuration) || 0
       };
@@ -725,7 +739,8 @@
       initGlobalDraft();
 
       days.forEach(function(day) {
-        var periodsCount = (day === 'Saturday') ? 6 : 8;
+        var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
+        var periodsCount = (day === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
 
         classes.forEach(function(c) {
           sections.forEach(function(s) {
@@ -846,7 +861,8 @@
     // 1. If in Class View, sync current page selections from the DOM into draftTimetable before checking
     if (state.viewMode === 'class') {
       var currentClassSection = state.classVal + '-' + state.sectionVal;
-      var periodsCount = (state.dayVal === 'Saturday') ? 6 : 8;
+       var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
+      var periodsCount = (state.dayVal === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
 
       for (var p = 1; p <= periodsCount; p++) {
         var subSelect = document.querySelector('.period-subject[data-period="' + p + '"]');

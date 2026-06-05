@@ -20,11 +20,13 @@ window.SchoolApp = {
     timetable: {
       settings: {
         startTime: "08:00",
-        periodDuration: 40,
+        endTime: "14:00",
+        totalPeriods: 8,
         lunchAfterPeriod: 4,
         lunchDuration: 30,
         satStartTime: "08:00",
-        satPeriodDuration: 35,
+        satEndTime: "12:30",
+        satTotalPeriods: 6,
         satLunchAfterPeriod: 0
       }
     },
@@ -119,11 +121,13 @@ window.SchoolApp = {
           if (!self.store.timetable.settings) {
             self.store.timetable.settings = {
               startTime: "08:00",
-              periodDuration: 40,
+              endTime: "14:00",
+              totalPeriods: 8,
               lunchAfterPeriod: 4,
               lunchDuration: 30,
               satStartTime: "08:00",
-              satPeriodDuration: 35,
+              satEndTime: "12:30",
+              satTotalPeriods: 6,
               satLunchAfterPeriod: 0
             };
           }
@@ -236,11 +240,13 @@ window.SchoolApp = {
         if (!this.store.timetable.settings) {
           this.store.timetable.settings = {
             startTime: "08:00",
-            periodDuration: 40,
+            endTime: "14:00",
+            totalPeriods: 8,
             lunchAfterPeriod: 4,
             lunchDuration: 30,
             satStartTime: "08:00",
-            satPeriodDuration: 35,
+            satEndTime: "12:30",
+            satTotalPeriods: 6,
             satLunchAfterPeriod: 0
           };
         }
@@ -883,11 +889,13 @@ window.SchoolApp = {
   getPeriodTimeStr: function(p, day) {
     var settings = (this.store && this.store.timetable && this.store.timetable.settings) || {
       startTime: "08:00",
-      periodDuration: 40,
+      endTime: "14:00",
+      totalPeriods: 8,
       lunchAfterPeriod: 4,
       lunchDuration: 30,
       satStartTime: "08:00",
-      satPeriodDuration: 35,
+      satEndTime: "12:30",
+      satTotalPeriods: 6,
       satLunchAfterPeriod: 0
     };
 
@@ -899,24 +907,54 @@ window.SchoolApp = {
       }
     }
 
-    var startStr = isSaturday ? (settings.satStartTime || settings.startTime || "08:00") : (settings.startTime || "08:00");
-    var duration = parseInt(isSaturday ? (settings.satPeriodDuration !== undefined ? settings.satPeriodDuration : settings.periodDuration) : settings.periodDuration) || 40;
-    var lunchAfter = parseInt(isSaturday ? (settings.satLunchAfterPeriod !== undefined ? settings.satLunchAfterPeriod : settings.lunchAfterPeriod) : settings.lunchAfterPeriod);
+    var startTime = isSaturday ? (settings.satStartTime || "08:00") : (settings.startTime || "08:00");
+    var endTime = isSaturday ? (settings.satEndTime || "12:30") : (settings.endTime || "14:00");
+    var totalPeriods = parseInt(isSaturday ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8)) || 8;
+    var lunchAfter = parseInt(isSaturday ? settings.satLunchAfterPeriod : settings.lunchAfterPeriod);
     if (isNaN(lunchAfter)) lunchAfter = 0;
     var lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration || 0));
     if (isNaN(lunchDur)) lunchDur = 0;
 
-    var parts = startStr.split(':');
-    var startHours = parseInt(parts[0]) || 8;
-    var startMinutes = parseInt(parts[1]) || 0;
-
-    var elapsedBefore = (p - 1) * duration;
-    if (lunchAfter > 0 && p > lunchAfter) {
-      elapsedBefore += lunchDur;
+    function timeToMin(timeStr) {
+      var parts = String(timeStr || "08:00").split(':');
+      var hours = parseInt(parts[0]) || 0;
+      var minutes = parseInt(parts[1]) || 0;
+      return hours * 60 + minutes;
     }
 
-    var periodStartMin = startHours * 60 + startMinutes + elapsedBefore;
-    var periodEndMin = periodStartMin + duration;
+    var startMin = timeToMin(startTime);
+    var endMin = timeToMin(endTime);
+    var effectiveLunchDur = (lunchAfter > 0 && lunchAfter < totalPeriods) ? lunchDur : 0;
+    
+    var totalAvailMin = endMin - startMin;
+    var totalTeachingMin = totalAvailMin - effectiveLunchDur;
+    var periodDur = Math.floor(totalTeachingMin / totalPeriods);
+    var remainder = totalTeachingMin % totalPeriods;
+
+    var currentMin = startMin;
+    var pStart = startMin;
+    var pEnd = startMin;
+
+    for (var i = 1; i <= totalPeriods; i++) {
+      var currentPeriodDur = periodDur;
+      if (i === totalPeriods) {
+        currentPeriodDur += remainder;
+      }
+      
+      var startOfPeriod = currentMin;
+      var endOfPeriod = currentMin + currentPeriodDur;
+      
+      if (i === p) {
+        pStart = startOfPeriod;
+        pEnd = endOfPeriod;
+        break;
+      }
+      
+      currentMin = endOfPeriod;
+      if (lunchAfter > 0 && i === lunchAfter) {
+        currentMin += lunchDur;
+      }
+    }
 
     function formatTime(totalMinutes) {
       var hours = Math.floor(totalMinutes / 60) % 24;
@@ -929,7 +967,7 @@ window.SchoolApp = {
       return dispHourStr + ':' + dispMinStr + ' ' + ampm;
     }
 
-    return formatTime(periodStartMin) + ' - ' + formatTime(periodEndMin);
+    return formatTime(pStart) + ' - ' + formatTime(pEnd);
   },
 
   getInitials: function(firstName, lastName) {
