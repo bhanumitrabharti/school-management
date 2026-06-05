@@ -3260,6 +3260,10 @@ body, .app-layout, #app-layout, .main-content, .content-area {
   display: none;
 }
 
+.accordion-panel.active {
+  display: block !important;
+}
+
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
