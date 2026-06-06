@@ -19,205 +19,204 @@
   var articles = {
     timetable: [
       {
-        title: "How to use the Interactive Timetable Grid & Views",
-        description: "The Timetable Management module offers a real-time scheduling dashboard with dual perspectives: a Class-specific grid and an interactive Teacher-centric schedule matrix.",
+        title: "How to view and change timetables",
+        description: "Learn how to view class timetables and make changes to daily schedules.",
         steps: [
-          "Click on the **Timetable** module from the left menu panel.",
-          "Use the **Class View** / **Teacher View** toggle buttons in the toolbar to swap layouts.",
-          "In **Class View**, select a Class, Section, and Day to inspect periods and schedule slots.",
-          "In **Teacher View**, empty periods for any teacher are highlighted with a green dashed **[+ Assign]** button.",
-          "Click the **[+ Assign]** button to launch the interactive scheduling modal.",
-          "Select the target class-section and subject for that teacher, then click **Save Assignment**.",
-          "Any unsaved modifications or newly added draft slots will display with a **dashed yellow border** representing their active local draft state."
+          "Go to the **Timetable** page from the left menu.",
+          "Use the **Class View** / **Teacher View** buttons at the top to switch layouts.",
+          "In **Class View**, select a Class, Section, and Day to see the periods.",
+          "In **Teacher View**, any free period has a green **[+ Assign]** button.",
+          "Click the **[+ Assign]** button to open the schedule box.",
+          "Select the Class, Section, and Subject for the teacher, then click **Save Assignment**.",
+          "If you see a yellow dashed border around a class block, it means the changes are not saved yet."
         ]
       },
       {
-        title: "How to Configure Smart Timing Settings",
-        description: "Instead of manually calculating period durations, input the school hours and total periods to let the timing engine automatically configure slot lengths.",
+        title: "How to set school timings",
+        description: "Set when school starts and ends, and let the system calculate period timings for you.",
         steps: [
-          "Click the blue **Timing Settings** gear button in the Timetable toolbar.",
-          "Input the **School Start Time**, **School End Time**, and the **Total Periods** count separately for Weekdays and Saturdays.",
-          "Configure the **Lunch Break Offset** (after which period lunch starts) and **Lunch Duration** in minutes.",
-          "Click **Save Settings**. The timing engine automatically calculates matching period durations.",
-          "Note: Any remaining minutes after division are automatically distributed to the last period so the day ends exactly at your specified School End Time."
+          "Click the blue **Timing Settings** gear button on the Timetable page.",
+          "Enter the **School Start Time** (like 08:00) and **School End Time** (like 14:00).",
+          "Enter the **Total Periods** count for normal weekdays and Saturdays.",
+          "Set the **Lunch Break** period offset and duration in minutes.",
+          "Click **Save Settings**. The system will automatically divide the school day into equal periods and assign the start and end times for each period."
         ]
       },
       {
-        title: "How to Auto-Generate School Timetable Drafts",
-        description: "Generate a conflict-free draft for the entire school using a two-pass scheduling algorithm that respects teacher availability and subject limits.",
+        title: "How to auto-generate class schedules",
+        description: "Let the system automatically fill in empty periods with qualified teachers and subjects.",
         steps: [
-          "Click the purple **Auto-Generate Draft** lightning button in the Timetable toolbar.",
-          "Confirm the action in the prompt. This clears existing unsaved timetable drafts.",
-          "The system will execute a **Two-Pass Algorithm** globally for all class sections:",
-          "- **Pass 1 (Strict Uniqueness)**: Assigns subjects that have not yet been taught today.",
-          "- **Pass 2 (Smart Fallback)**: If unique subjects are exhausted, allows repetitions as long as they are non-consecutive.",
-          "The algorithm automatically checks teacher conflicts globally to prevent double-bookings, leaving irresolvable slots blank for manual review."
+          "Click the purple **Auto-Generate Draft** lightning button.",
+          "Click **Confirm** in the popup box. This will create a fresh draft timetable for the whole school.",
+          "The system works in two passes: first it tries to schedule subjects that haven't been taught today. If there are still empty periods, it repeats subjects but ensures they are not consecutive.",
+          "If a teacher is already busy in another class, the system will leave the period empty so you can manually assign it later."
         ]
       },
       {
-        title: "How to Reset or Clear Schedules",
-        description: "Clean up draft and committed schedules at the class level or across the entire school.",
+        title: "How to reset or clear timetables",
+        description: "Wipe schedules clean if you want to start over.",
         steps: [
-          "Locate and click the red **Reset Timetable** trash icon button in the Timetable toolbar.",
-          "Wipe behavior changes dynamically depending on your active view mode:",
-          "- **Class View**: Prompts to wipe the entire week's schedule for the selected class section.",
-          "- **Teacher View**: Shows a high-warning prompt to completely clear schedules for the **ENTIRE SCHOOL**.",
-          "Confirm the dialog to execute the clear operation. Resetting always preserves timing configurations."
+          "Click the red **Reset Timetable** trash button.",
+          "If you are in **Class View**, this will clear the schedule only for the selected class.",
+          "If you are in **Teacher View**, this will clear the schedule for the **entire school**. Be careful, as this cannot be undone.",
+          "Confirm the warning popup to clear the schedule slots. This does not change your timing settings."
         ]
       }
     ],
     students: [
       {
-        title: "How to Admit a New Student",
-        description: "Add individual student profiles to the school database with their parent contact details.",
+        title: "How to add a new student",
+        description: "Add a new student profile to the school records.",
         steps: [
-          "Click on the **Students** button on the left sidebar menu.",
-          "Click the green **+ Add Student** button at the top of the roster view.",
-          "Fill out the student's details: **Name**, **Class**, **Section**, **Roll No.**, and **Parent Phone**.",
-          "Click **Save Student** to submit. The student is immediately registered in the active database."
+          "Go to the **Students** page from the left menu.",
+          "Click the green **+ Add Student** button at the top.",
+          "Fill in the student's name, class, section, roll number, and parent's phone number.",
+          "Click **Save Student** to save the record."
         ]
       },
       {
-        title: "How to Edit and Manage Student Profiles",
-        description: "Update details or delete student records from the roster as needed.",
+        title: "How to change or delete student info",
+        description: "Update student details or remove a student from the list.",
         steps: [
-          "Navigate to the **Students** roster list and locate the student using the search input.",
-          "Click the blue edit icon (**edit** symbol) in that student's row.",
-          "Modify the student's details in the modal form and click **Save Student**.",
-          "To delete a student, click the red trash icon (**delete** symbol). The student record is safely sent to the Recycle Bin."
+          "Go to the **Students** list and find the student.",
+          "Click the blue edit icon (pencil symbol) in the student's row.",
+          "Change any details in the form and click **Save Student** to update.",
+          "To delete a student, click the red trash icon in their row. This moves the student to the Recycle Bin."
         ]
       },
       {
-        title: "How to Import Students in Bulk",
-        description: "Save time by uploading a spreadsheet file to admit entire class sections at once.",
+        title: "How to upload students using Excel",
+        description: "Add a large list of students all at once using an Excel spreadsheet.",
+        steps: [
+          "On the **Students** page, click the **Import Excel** button.",
+          "Choose the Excel file from your computer.",
+          "The system will read the columns (like Name, Class, Section, Roll No, and Phone Number) and add all students to the system automatically."
+        ]
+      },
+      {
+        title: "How to download student lists",
+        description: "Save your student roster as an Excel spreadsheet.",
         steps: [
           "Go to the **Students** page.",
-          "Click the **Import Excel** button at the top of the toolbar.",
-          "Select your `.xlsx`, `.xls`, or `.csv` spreadsheet file from your local computer.",
-          "The import engine maps the columns (Name, Class, Section, Roll No, Parent Phone) and creates student profiles automatically."
-        ]
-      },
-      {
-        title: "How to Export the Student Roster",
-        description: "Export filtered student records into an Excel spreadsheet file for records or printing.",
-        steps: [
-          "Go to the **Students** page.",
-          "Use the Class and Section dropdown filters to narrow down the student list, or leave them blank for the full list.",
-          "Click the **Export Excel** button to download the spreadsheet file to your device."
+          "Use the filters to choose a specific class or section, or leave it empty to get all students.",
+          "Click the **Export Excel** button to download the file to your computer."
         ]
       }
     ],
     teachers: [
       {
-        title: "How to Add and Manage Teacher Accounts",
-        description: "Create user credentials and manage active statuses for teachers in the system.",
+        title: "How to add a new teacher",
+        description: "Create a login account and profile for a new teacher.",
         steps: [
-          "Navigate to the **Admin Panel** from the sidebar menu.",
-          "Select the **User Management** tab at the top of the admin page.",
-          "Scroll to the teacher list, click **Add Teacher**, fill in their details (Name, Email, password) and select their default qualifying subjects.",
-          "Save the account. You can reset teacher passwords or toggle their Active status from this same list."
+          "Go to the **Admin Panel** and select the **User Management** tab.",
+          "Scroll to the teacher list and click **Add Teacher**.",
+          "Enter the teacher's name, email, password, and the subjects they teach.",
+          "Click **Save Account**."
         ]
       },
       {
-        title: "How to Assign Classes, Mapped Subjects, and Designated Class Teachers",
-        description: "Configure subject assignments for teachers and enforce the single Class Teacher business rule.",
+        title: "How to assign classes and subjects to teachers",
+        description: "Assign classes, map subjects, and set who is the class teacher.",
         steps: [
-          "Open the **User Management** tab in the Admin Panel.",
-          "Click the blue edit icon (**edit** symbol) on a teacher's row.",
-          "In the Class Assignment grid, tick the class-section checkboxes representing their assignments.",
-          "Under the class checkmarks, map specific subjects for each section.",
-          "Toggle if they are the **Class Teacher** for that section.",
-          "Note: Only one teacher can be designated as the Class Teacher for a class section. The system will block saving and show a warning toast if a duplicate assignment is attempted."
+          "In the **User Management** tab under Admin Panel, click the blue edit icon next to the teacher's name.",
+          "Check the boxes for the classes and sections they will teach.",
+          "Below each checked class, select the subjects they will teach.",
+          "If they are the primary class teacher for a section, check the **Class Teacher** box.",
+          "Note: Only one teacher can be the class teacher for any section. The system will show a warning if you try to assign two class teachers.",
+          "Click **Save Assignments** to save changes."
         ]
       }
     ],
     fees: [
       {
-        title: "How to Record Fee Payments",
-        description: "Track student outstanding dues, record incoming payments, and keep student ledgers up to date.",
+        title: "How to collect fees",
+        description: "Record fee payments from parents and update their account balances.",
         steps: [
-          "Go to the **Fees** module from the left menu.",
-          "Find the target student and click the green pay icon (**payments** symbol) in their row.",
-          "Verify the outstanding balance, select the **Payment Mode** (Cash, UPI, or Bank Transfer), enter the amount paid, and click **Record Payment**."
+          "Go to the **Fees** page from the left menu.",
+          "Find the student and click the green pay icon (currency symbol) in their row.",
+          "Verify how much they owe, select the payment method (Cash, UPI, or Bank Transfer), enter the amount paid, and click **Record Payment**."
         ]
       },
       {
-        title: "How to Send WhatsApp Bilingual Fee Receipts",
-        description: "Send professional English-Hindi transaction invoices directly to parent contact numbers.",
+        title: "How to send receipts on WhatsApp",
+        description: "Send a payment receipt message in English and Hindi to the parent's phone.",
         steps: [
-          "When recording a fee payment, confirm the pop-up prompt to send a WhatsApp receipt.",
-          "Alternatively, click the green WhatsApp icon next to any receipt transaction inside the student's digital ledger modal.",
-          "The system will encode a bilingual English-Hindi receipt message with payment details and redirect to WhatsApp Web or application with parent phone prefilled."
+          "After saving a fee payment, click **Confirm** on the popup to send a receipt.",
+          "Alternatively, open the student's fee ledger and click the green **WhatsApp** icon next to any previous payment.",
+          "The system will automatically write a bilingual message with the receipt number, amount paid, and remaining balance, and open WhatsApp for you to send it."
         ]
       },
       {
-        title: "How to Bulk Charge Classes & Auto-Reconcile Dues",
-        description: "Apply fee heads across entire classes and let the background billing scheduler manage recurring charges.",
+        title: "How to charge fees in bulk and auto-bill",
+        description: "Apply monthly fees to a whole class at once and let the system bill recurring fees.",
         steps: [
-          "To charge a cohort, click **Bulk Charge Class** at the top of the Fees page, select the target class, choose the fee head, and apply.",
-          "The **Auto-Fee Catch-Up Engine** automatically runs in the background. If the system month advances, it auto-charges standard class tuition rates to student ledgers and displays a toast on admin login."
+          "Click **Bulk Charge Class** at the top of the Fees page.",
+          "Select the class, choose the fee type (like Tuition Fee), enter the amount, and click **Apply Charge**.",
+          "The system also bills tuition fees automatically at the start of each month in the background and displays a message when you log in."
         ]
       }
     ],
     attendance: [
       {
-        title: "How to Mark Daily Student Attendance",
-        description: "Record daily student rosters and mark presents, absents, or lates.",
+        title: "How to mark student attendance",
+        description: "Record who is present, absent, or late for class today.",
         steps: [
-          "Click on the **Attendance** link in the left menu.",
-          "Select the Class, Section, and Date, then click **Mark Attendance** to load the student cards.",
-          "Choose the status button for each student (Present: **P**, Absent: **A**, Late: **L**).",
-          "Quick controls like **Mark All Present** or **Mark All Absent** can be used to set all statuses at once.",
-          "Click **Submit Attendance** at the bottom to commit the register."
+          "Go to the **Attendance** page from the left menu.",
+          "Select the Class, Section, and Date, then click **Mark Attendance**.",
+          "Click **P** for present, **A** for absent, or **L** for late for each student.",
+          "You can use **Mark All Present** or **Mark All Absent** to set everyone at once.",
+          "Click **Submit Attendance** at the bottom to save."
         ]
       },
       {
-        title: "How to Check Attendance History Logs",
-        description: "Retrieve historical registers and print daily lists.",
+        title: "How to view attendance history",
+        description: "Check attendance records from previous days.",
         steps: [
-          "Go to the **Attendance** page and select the **History** tab at the top.",
-          "Set the date filters (**From Date**, **To Date**), and select the Class/Section to load the records list.",
-          "Click the blue view icon (**visibility** symbol) on any row to open the detailed student attendance register."
+          "On the **Attendance** page, select the **History** tab at the top.",
+          "Choose the dates and the Class/Section to see the records.",
+          "Click the blue view icon (eye symbol) on any row to see the attendance list for that day."
         ]
       },
       {
-        title: "How to Use Teacher Punch GPS Geofencing",
-        description: "Enforce location checks to verify teachers are on campus during punch in/out actions.",
+        title: "How teachers mark their own attendance with GPS",
+        description: "How staff check in and check out using their phone's location.",
         steps: [
-          "Teachers can punch in/out on their dashboard using browser GPS location checks.",
-          "Checks verify the teacher is within **200 meters** of school coordinates before recording.",
-          "If check-ins are missed or GPS coordinate fetching fails, teachers can submit a Correction Request with reasons.",
-          "Admins can review, approve, or reject correction logs under the User Management or logs tab."
+          "Teachers can click **Punch In** or **Punch Out** on their dashboard.",
+          "The browser will check their device location. They must be within **200 meters** of the school campus to check in.",
+          "If check-in fails or they forget, teachers can submit a **Correction Request** with the correct times.",
+          "Admins can review, approve, or reject these requests under the User Management or logs tab."
         ]
       }
     ],
     exams: [
       {
-        title: "How to Configure Exam Terms and Mapped Class Subjects",
-        description: "Configure academic terms, passing marks, and subject limits.",
+        title: "How to set up exams and subjects",
+        description: "Set up academic terms and subject passing marks for each class.",
         steps: [
-          "Open **Admin Panel** -> **Examinations** tab.",
-          "Click **Add Exam Term** to create an academic term (e.g., Annual Exams).",
-          "Select a Class, click **Add Subject Mapping**, type the subject name, set the Max and Passing Marks, and click **Save Mapping**."
+          "Go to the **Admin Panel** -> **Examinations** tab.",
+          "Click **Add Exam Term** to create an exam term (like Mid-Term or Annual Exam).",
+          "Select a class, click **Add Subject Mapping**, type the subject name, and enter the Max Marks and Passing Marks.",
+          "Click **Save Mapping**."
         ]
       },
       {
-        title: "How to Enter Student Exam Marks",
-        description: "Record marks for student test scores and automatically recalculate statistics.",
+        title: "How to enter exam marks",
+        description: "Enter test scores for students and calculate grades.",
         steps: [
-          "Go to the **Exams** tab from the left sidebar.",
-          "Select the Exam Term, Class, and Section, then input marks for subjects.",
-          "Click **Save Marks**. Note: Inputting scores recalculates totals, percentages, results status, and grades dynamically."
+          "Go to the **Exams** page from the left menu.",
+          "Select the Exam Term, Class, and Section.",
+          "Type in the marks for each student. The system will automatically calculate total marks, percentages, pass/fail status, and letter grades (like A, B, C, F).",
+          "Click **Save Marks** to save."
         ]
       },
       {
-        title: "How to Generate and Print A4 Report Cards",
-        description: "Generate report card layouts with school logos, passing criteria, and rankings.",
+        title: "How to print report cards",
+        description: "Generate print-ready A4 report cards for parents.",
         steps: [
-          "Open the **Exams** page and load the marks matrix for a class.",
-          "Click the green **Report Card** button next to a student's row.",
-          "Verify the official school branding, grading legend, trophy rank badge, and structured signature boxes in the popup, then click **Print**.",
-          "Use the **Consolidated View** button to view side-by-side term comparisons and print combined marks sheets."
+          "Open the **Exams** marks page for a class.",
+          "Click the green **Report Card** button next to a student's name.",
+          "A preview will pop up showing their scores, rank, grades, and signature boxes. Click **Print** to print it out or save it as a PDF.",
+          "You can also click **Consolidated View** to compare and print marks from two terms side-by-side."
         ]
       }
     ]
@@ -260,38 +259,38 @@
 
     html += '  <div class="support-card" data-category="timetable" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">📅</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Timetable & Grid Scheduling</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Configure school start/end times, auto-generate school drafts, and reset timetable schedules.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Timetable & Classes</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to set timings, schedule periods, auto-fill classes, and clear schedules.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="students" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">🎓</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Student Roster CRUD</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Admit student profiles, import Excel spreadsheets in bulk, and execute bulk exports.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Student Details & Admissions</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to add new students, change their details, and upload lists using Excel.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="teachers" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">🏫</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Teachers & Assignments</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Set Class Teachers, map subject credentials, and assign teacher classrooms.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Teachers & Subjects</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to add teachers, assign their classes, map subjects, and set class teachers.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="fees" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">💰</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Fees & Ledgers</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Record dues, trace student ledger balances, and dispatch Hindi-English receipts on WhatsApp.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Fees & Payments</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to collect payments, check outstanding dues, and send WhatsApp receipts.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="attendance" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">📅</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Attendance & GPS Geofence</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Mark daily student rosters, monitor geo-fenced teacher punch registers, and correct missed logs.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Attendance Tracking</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to mark student attendance daily, check past logs, and punch in with GPS.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="exams" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">📝</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Exams & Report Cards</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Record term marks, calculate passing grades, print marksheets, and view consolidated matrices.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Exams & Results</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to set up exams, enter subject marks, and print A4 student report cards.</p>';
     html += '  </div>';
 
     html += '</div>';
@@ -302,12 +301,12 @@
     var cat = state.selectedCategory;
     var list = articles[cat] || [];
     var catNames = {
-      timetable: '📅 Timetable & Grid Scheduling Help',
-      students: '🎓 Student Management Help',
-      teachers: '🏫 Teachers & Staff Help',
-      fees: '💰 Fees, Ledgers & WhatsApp Billing Help',
-      attendance: '📅 Attendance registers & GPS Geofence Help',
-      exams: '📝 Exams & A4 Report Cards Help'
+      timetable: '📅 Timetable & Classes Help',
+      students: '🎓 Student Details & Admissions Help',
+      teachers: '🏫 Teachers & Subjects Help',
+      fees: '💰 Fees & Payments Help',
+      attendance: '📅 Attendance Tracking Help',
+      exams: '📝 Exams & Results Help'
     };
 
     var html = '';
@@ -416,14 +415,14 @@
     html += '      <form id="support-ticket-form">';
     html += '        <div class="form-group" style="margin-bottom: 12px;">';
     html += '          <label class="form-label" style="font-size: 11px; margin-bottom: 6px; display: block; color: var(--text-muted); font-weight:600;">Category</label>';
-    html += '          <select id="ticket-category" class="form-input" style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-size: 13px;">';
-    html += '            <option value="timetable">Timetable & Scheduling</option>';
-    html += '            <option value="students">Students Roster & CRUD</option>';
-    html += '            <option value="teachers">Teachers & Mappings</option>';
-    html += '            <option value="fees">Fees & Ledgers</option>';
-    html += '            <option value="attendance">Attendance & GPS Geofence</option>';
-    html += '            <option value="exams">Exams & Report Cards</option>';
-    html += '            <option value="other">Other Technical Issue</option>';
+    html += '          <select id="ticket-category" class="form-select" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-size: 13px;">';
+    html += '            <option value="timetable">Timetable & Classes</option>';
+    html += '            <option value="students">Student Details & Admissions</option>';
+    html += '            <option value="teachers">Teachers & Subjects</option>';
+    html += '            <option value="fees">Fees & Payments</option>';
+    html += '            <option value="attendance">Attendance Tracking</option>';
+    html += '            <option value="exams">Exams & Results</option>';
+    html += '            <option value="other">Other Help</option>';
     html += '          </select>';
     html += '        </div>';
     html += '        <div class="form-group" style="margin-bottom: 12px;">';

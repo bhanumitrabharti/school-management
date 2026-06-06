@@ -3621,4 +3621,15 @@ body, .app-layout, #app-layout, .main-content, .content-area {
   box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
 }
 
+/* Support Ticket Form Dropdown Dark Theme UI Fix */
+#ticket-category {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+#ticket-category option {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
 
