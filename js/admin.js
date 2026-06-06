@@ -119,7 +119,8 @@
 
   function renderSettingsTab() {
     var s = SchoolApp.store.settings;
-    var html = '<div class="tab-content' + (state.activeTab === 'settings' ? ' active' : '') + '" id="tab-settings" style="display:flex; flex-direction:column; gap:20px;">';
+    var displayStyle = (state.activeTab === 'settings' ? 'display:flex;' : 'display:none;');
+    var html = '<div class="tab-content' + (state.activeTab === 'settings' ? ' active' : '') + '" id="tab-settings" style="' + displayStyle + ' flex-direction:column; gap:20px;">';
     
     html += '<form id="settings-form" style="display:flex; flex-direction:column; gap:20px;">';
 
@@ -827,8 +828,35 @@
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
-        state.activeTab = this.getAttribute('data-tab');
+        var tabId = this.getAttribute('data-tab');
+        state.activeTab = tabId;
+        
+        // Hide all content sections first
+        var sections = document.querySelectorAll('.tab-content');
+        sections.forEach(function(sec) {
+          sec.style.setProperty('display', 'none', 'important');
+          sec.classList.remove('active');
+        });
+        
+        // Render
         render();
+        
+        // Enforce visibility of only target section
+        var allSections = document.querySelectorAll('.tab-content');
+        allSections.forEach(function(sec) {
+          sec.style.setProperty('display', 'none', 'important');
+          sec.classList.remove('active');
+        });
+        
+        var targetSec = document.getElementById('tab-' + tabId);
+        if (targetSec) {
+          targetSec.classList.add('active');
+          if (tabId === 'settings') {
+            targetSec.style.setProperty('display', 'flex', 'important');
+          } else {
+            targetSec.style.setProperty('display', 'block', 'important');
+          }
+        }
       });
     });
 
