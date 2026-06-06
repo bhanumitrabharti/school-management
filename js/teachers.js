@@ -305,7 +305,7 @@
 
     bodyHTML += '<div class="form-group"><label class="form-label">Joining Date</label><input type="date" class="form-input" name="joiningDate" value="' + (teacher ? teacher.joiningDate : new Date().toISOString().split('T')[0]) + '"></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Password' + (isEdit ? '' : ' *') + '</label><input type="text" class="form-input" name="password" value="' + (isEdit ? '' : 'teacher123') + '" placeholder="' + (isEdit ? 'Leave blank to keep current' : 'Minimum 6 characters') + '"><span class="form-error">Min 6 characters</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Password' + (isEdit ? '' : ' *') + '</label><div class="password-wrapper"><input type="password" class="form-input" name="password" value="' + (isEdit ? '' : 'teacher123') + '" placeholder="' + (isEdit ? 'Leave blank to keep current' : 'Minimum 6 characters') + '"><i class="fa fa-eye toggle-password"></i></div><span class="form-error">Min 6 characters</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Status</label><select class="form-select" name="status">';
     ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (teacher && teacher.status === s ? ' selected' : '') + '>' + s + '</option>'; });

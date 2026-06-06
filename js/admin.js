@@ -218,7 +218,7 @@
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">admin_panel_settings</span> Admin Account</h3></div><div class="card-body">';
     html += '<form id="admin-creds-form" class="form-grid">';
     html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" name="adminUsername" value="' + (s.adminUsername || 'admin') + '"></div>';
-    html += '<div class="form-group"><label class="form-label">Password</label><input type="text" class="form-input" name="adminPassword" value="' + (s.adminPassword || 'admin123') + '"></div>';
+    html += '<div class="form-group"><label class="form-label">Password</label><div class="password-wrapper"><input type="password" class="form-input" name="adminPassword" value="' + (s.adminPassword || 'admin123') + '"><i class="fa fa-eye toggle-password"></i></div></div>';
     html += '</form>';
     html += '<button class="btn btn-primary btn-sm mt-2" id="save-admin-creds"><span class="material-icons-round">save</span> Update Credentials</button>';
     html += '</div></div>';
@@ -922,6 +922,21 @@
       });
     }
 
+    // Theme change listener
+    var themeSelect = document.querySelector('select[name="theme"]');
+    if (themeSelect) {
+      themeSelect.addEventListener('change', function() {
+        var theme = this.value;
+        if (theme === 'light') {
+          document.body.classList.add('light-theme');
+          localStorage.setItem('appTheme', 'light');
+        } else {
+          document.body.classList.remove('light-theme');
+          localStorage.setItem('appTheme', 'dark');
+        }
+      });
+    }
+
     // Save settings
     var saveBtn = document.getElementById('save-settings-btn');
     if (saveBtn) {
@@ -968,6 +983,8 @@
             enableCloudSync: false,
             firebaseConfig: ''
           };
+          document.body.classList.remove('light-theme');
+          localStorage.setItem('appTheme', 'dark');
           SchoolApp.save();
           SchoolApp.showToast('Settings reset to defaults.', 'info');
           render();

@@ -482,7 +482,7 @@ window.SchoolApp = {
       bodyHTML += '<div class="form-group"><label class="form-label">Username *</label><input type="text" class="form-input" name="adminUsername" value="' + (settings.adminUsername || 'admin') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (settings.email || '') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (settings.phone || '') + '" required></div>';
-      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><input type="text" class="form-input" name="adminPassword" value="' + (settings.adminPassword || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><div class="password-wrapper"><input type="password" class="form-input" name="adminPassword" value="' + (settings.adminPassword || '') + '" required><i class="fa fa-eye toggle-password"></i></div></div>';
     } else {
       // Teacher
       var teacher = this.store.teachers.find(function(t) { return t.id === user.id; });
@@ -494,7 +494,7 @@ window.SchoolApp = {
       bodyHTML += '<div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" name="lastName" value="' + (teacher.lastName || '') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (teacher.email || '') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher.phone || '') + '" required></div>';
-      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><input type="text" class="form-input" name="password" value="' + (teacher.password || '') + '" required></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><div class="password-wrapper"><input type="password" class="form-input" name="password" value="' + (teacher.password || '') + '" required><i class="fa fa-eye toggle-password"></i></div></div>';
     }
     
     bodyHTML += '</form>';
@@ -2275,12 +2275,42 @@ window.SchoolApp = {
         }
       }
     });
+
+    // Delegated click listener for password fields toggle icons
+    document.addEventListener('click', function(e) {
+      if (e.target && e.target.classList.contains('toggle-password')) {
+        var icon = e.target;
+        var wrapper = icon.closest('.password-wrapper');
+        if (wrapper) {
+          var input = wrapper.querySelector('input');
+          if (input) {
+            if (input.type === 'password') {
+              input.type = 'text';
+              icon.classList.remove('fa-eye');
+              icon.classList.add('fa-eye-slash');
+            } else {
+              input.type = 'password';
+              icon.classList.remove('fa-eye-slash');
+              icon.classList.add('fa-eye');
+            }
+          }
+        }
+      }
+    });
   }
 };
 
 // ---------- Initialization ----------
 document.addEventListener('DOMContentLoaded', function() {
   var hasData = SchoolApp.load();
+
+  // Apply saved theme on page load
+  var savedTheme = localStorage.getItem('appTheme') || (SchoolApp.store.settings && SchoolApp.store.settings.theme) || 'dark';
+  if (savedTheme === 'light') {
+    document.body.classList.add('light-theme');
+  } else {
+    document.body.classList.remove('light-theme');
+  }
 
   if (!hasData || !SchoolApp.store.students || SchoolApp.store.students.length === 0) {
     console.log('Database is empty. Seeding for new 120 students mobile-first setup...');
