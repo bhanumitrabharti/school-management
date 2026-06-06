@@ -582,6 +582,11 @@ window.SchoolApp = {
 
   // ---------- Navigation ----------
   navigate: function(pageName) {
+    // Graceful redirection of old support route to unified help route
+    if (pageName === 'support') {
+      pageName = 'help';
+    }
+
     // Strict role check
     var adminOnlyPages = ['admin', 'fees', 'timetable'];
     if (adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
@@ -616,8 +621,7 @@ window.SchoolApp = {
       timetable: 'Timetable Management',
       exams: 'Exams',
       admin: 'Admin Panel',
-      help: 'Help Center',
-      support: 'Contact Support',
+      help: 'Help & Support',
       'teacher-attendance': 'Teacher Attendance'
     };
     var pageTitle = titles[pageName] || 'Dashboard';
@@ -626,10 +630,10 @@ window.SchoolApp = {
     }
     this.updateHeader(pageTitle);
 
-    // Toggle floating Contact Admin button visibility (only on support page)
+    // Toggle floating Contact Admin button visibility (only on unified help page)
     var contactBtn = document.getElementById('contact-admin-btn');
     if (contactBtn) {
-      contactBtn.style.display = (pageName === 'support') ? 'flex' : 'none';
+      contactBtn.style.display = (pageName === 'help') ? 'flex' : 'none';
     }
 
     // Render module
@@ -1910,7 +1914,7 @@ window.SchoolApp = {
     html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'students\')"><span class="material-icons-round">school</span>My Students</button>';
     html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'attendance\')"><span class="material-icons-round">fact_check</span>Mark Attendance</button>';
     html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'teacher-attendance\')"><span class="material-icons-round">fingerprint</span>My Attendance</button>';
-    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'help\')"><span class="material-icons-round">help</span>Help Center</button>';
+    html += '<button class="quick-action-btn" onclick="SchoolApp.navigate(\'help\')"><span class="material-icons-round">support</span>Help & Support</button>';
     html += '</div></div></div>';
 
     container.innerHTML = html;

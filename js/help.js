@@ -231,7 +231,7 @@
 
     // Hero Search Section
     html += '<div class="support-hero" style="text-align: center; margin-bottom: 30px;">';
-    html += '  <h1 style="font-size: 24px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary);">Documentation & Guides</h1>';
+    html += '  <h1 style="font-size: 24px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary);">Documentation & Support</h1>';
     html += '  <p style="color: var(--text-secondary); margin-bottom: 20px;">Search our self-help guides to understand timetable settings, scheduling rules, and ERP modules.</p>';
     html += '  <div class="support-search-bar" style="max-width: 600px; margin: 0 auto; position: relative;">';
     html += '    <input type="text" id="help-search-input" placeholder="Search documentation (e.g. timetable, auto-generate, reset)..." value="' + state.searchQuery + '" style="width:100%; padding: 12px 16px 12px 40px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-primary);">';
@@ -246,6 +246,9 @@
     } else {
       html += renderCategoryGrid();
     }
+
+    // Append visually distinct Contact Technical Support Section at the bottom of the page
+    html += renderContactSupportSection();
 
     container.innerHTML = html;
     attachEvents();
@@ -382,6 +385,67 @@
     return html;
   }
 
+  function renderContactSupportSection() {
+    var html = '';
+    html += '<div id="contact-technical-support" style="margin-top: 40px; padding-top: 30px; border-top: 1px solid var(--border-light);">';
+    html += '  <div style="background: linear-gradient(135deg, rgba(108, 92, 231, 0.04) 0%, rgba(0, 206, 201, 0.04) 100%); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 16px; padding: 28px; text-align: center; backdrop-filter: blur(10px);">';
+    html += '    <span class="material-icons-round" style="font-size: 44px; color: var(--accent-secondary); margin-bottom: 12px; display: block;">support_agent</span>';
+    html += '    <h3 style="font-size: 18px; font-weight: 700; margin: 0 0 8px 0; color: var(--text-primary);">Didn\'t find what you were looking for? We are here to help.</h3>';
+    html += '    <p style="font-size: 13.5px; color: var(--text-secondary); max-width: 600px; margin: 0 auto 20px auto; line-height: 1.6;">If our self-help guides and documentation didn\'t resolve your issue, please contact SVM Technical Support directly or raise a ticket.</p>';
+    
+    // Support Details Grid
+    html += '    <div class="support-details-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; max-width: 750px; margin: 0 auto 24px auto; text-align: left; font-size: 13px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 16px;">';
+    html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--success); font-size: 20px;">call</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">PHONE / WHATSAPP</div><div style="font-weight: 600;">+91 91555 15505</div></div></div>';
+    html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--info); font-size: 20px;">email</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">EMAIL SUPPORT</div><div style="font-weight: 600;">admin@shishuvikash.edu.in</div></div></div>';
+    html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--warning); font-size: 20px;">schedule</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">OFFICE HOURS</div><div style="font-weight: 600;">Mon-Sat (9:00 AM - 5:00 PM)</div></div></div>';
+    html += '    </div>';
+
+    // Call-to-action buttons
+    html += '    <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-bottom: 28px;">';
+    html += '      <a href="https://wa.me/919155515505" target="_blank" class="btn btn-primary" style="background: #25D366; border: none; color: white; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 20px; border-radius: 8px; text-decoration: none; transition: transform 0.2s; box-shadow: 0 4px 14px rgba(37,211,102,0.2);">';
+    html += '        <span class="material-icons-round">chat</span> WhatsApp Support';
+    html += '      </a>';
+    html += '      <a href="mailto:admin@shishuvikash.edu.in?subject=SVM%20ERP%20Support%20Request" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 20px; border-radius: 8px; text-decoration: none;">';
+    html += '        <span class="material-icons-round">email</span> Email Support';
+    html += '      </a>';
+    html += '    </div>';
+
+    // Support Ticket Form
+    html += '    <div style="max-width: 500px; margin: 0 auto; text-align: left; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">';
+    html += '      <h4 style="font-size: 13.5px; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 18px; color: var(--accent-secondary);">confirmation_number</span> Raise a Support Ticket</h4>';
+    html += '      <form id="support-ticket-form">';
+    html += '        <div class="form-group" style="margin-bottom: 12px;">';
+    html += '          <label class="form-label" style="font-size: 11px; margin-bottom: 6px; display: block; color: var(--text-muted); font-weight:600;">Category</label>';
+    html += '          <select id="ticket-category" class="form-input" style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-size: 13px;">';
+    html += '            <option value="timetable">Timetable & Scheduling</option>';
+    html += '            <option value="students">Students Roster & CRUD</option>';
+    html += '            <option value="teachers">Teachers & Mappings</option>';
+    html += '            <option value="fees">Fees & Ledgers</option>';
+    html += '            <option value="attendance">Attendance & GPS Geofence</option>';
+    html += '            <option value="exams">Exams & Report Cards</option>';
+    html += '            <option value="other">Other Technical Issue</option>';
+    html += '          </select>';
+    html += '        </div>';
+    html += '        <div class="form-group" style="margin-bottom: 12px;">';
+    html += '          <label class="form-label" style="font-size: 11px; margin-bottom: 6px; display: block; color: var(--text-muted); font-weight:600;">Subject</label>';
+    html += '          <input type="text" id="ticket-subject" placeholder="Summarize the issue..." required class="form-input" style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-size: 13px;">';
+    html += '        </div>';
+    html += '        <div class="form-group" style="margin-bottom: 16px;">';
+    html += '          <label class="form-label" style="font-size: 11px; margin-bottom: 6px; display: block; color: var(--text-muted); font-weight:600;">Description</label>';
+    html += '          <textarea id="ticket-description" rows="3" placeholder="Describe the problem or help required..." required class="form-input" style="width: 100%; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); resize: vertical; font-family: inherit; font-size: 13px;"></textarea>';
+    html += '        </div>';
+    html += '        <button type="submit" class="btn btn-primary" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; padding: 10px 16px; border-radius: 6px;">';
+    html += '          <span class="material-icons-round" style="font-size: 18px;">send</span> Submit Support Ticket';
+    html += '          <div id="ticket-spinner" class="spinner spinner-sm hidden" style="border-top-color: white; margin-left: 8px;"></div>';
+    html += '        </button>';
+    html += '      </form>';
+    html += '    </div>';
+
+    html += '  </div>';
+    html += '</div>';
+    return html;
+  }
+
   function attachEvents() {
     var searchInput = document.getElementById('help-search-input');
     if (searchInput) {
@@ -429,11 +493,96 @@
         }
       });
     });
+
+    // Support Ticket Form Submit Event Listener
+    var ticketForm = document.getElementById('support-ticket-form');
+    if (ticketForm) {
+      ticketForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var category = document.getElementById('ticket-category').value;
+        var subject = document.getElementById('ticket-subject').value.trim();
+        var description = document.getElementById('ticket-description').value.trim();
+        
+        if (!subject || !description) return;
+
+        var btn = ticketForm.querySelector('button[type="submit"]');
+        var spinner = document.getElementById('ticket-spinner');
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.classList.remove('hidden');
+
+        setTimeout(function() {
+          if (window.SchoolApp) {
+            if (!SchoolApp.store) SchoolApp.store = {};
+            if (!SchoolApp.store.supportTickets) SchoolApp.store.supportTickets = [];
+            
+            var newTicket = {
+              id: 'TCK-' + Date.now().toString().slice(-6),
+              user: SchoolApp.currentUser ? SchoolApp.currentUser.name : 'Unknown User',
+              role: SchoolApp.currentUser ? SchoolApp.currentUser.role : 'Guest',
+              category: category,
+              subject: subject,
+              description: description,
+              status: 'Open',
+              createdAt: new Date().toISOString()
+            };
+
+            SchoolApp.store.supportTickets.unshift(newTicket);
+            
+            // Log to system notifications so admins see it
+            if (!SchoolApp.store.notifications) SchoolApp.store.notifications = [];
+            SchoolApp.store.notifications.unshift({
+              id: 'NOT-' + Date.now(),
+              title: 'New Support Ticket Raised',
+              description: 'Ticket ' + newTicket.id + ' (' + newTicket.category + ') by ' + newTicket.user + ': ' + subject,
+              time: new Date().toISOString(),
+              unread: true,
+              type: 'system'
+            });
+
+            SchoolApp.saveStore();
+            SchoolApp.showToast('Support ticket ' + newTicket.id + ' submitted successfully!', 'success');
+          }
+
+          ticketForm.reset();
+          if (btn) btn.disabled = false;
+          if (spinner) spinner.classList.add('hidden');
+        }, 800);
+      });
+    }
+
+    // Scroll Contact Button click listener
+    var contactBtn = document.getElementById('contact-admin-btn');
+    if (contactBtn) {
+      // Clean up previous listeners
+      var newContactBtn = contactBtn.cloneNode(true);
+      contactBtn.parentNode.replaceChild(newContactBtn, contactBtn);
+      newContactBtn.addEventListener('click', function() {
+        var el = document.getElementById('contact-technical-support');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
+    }
   }
 
   SchoolApp.registerModule('help', {
     init: function() {},
-    render: render
+    render: render,
+    selectCategory: function(cat) {
+      state.selectedCategory = cat;
+      state.searchQuery = '';
+      SchoolApp.navigate('help');
+      render();
+    },
+    openContactModal: function() {
+      SchoolApp.navigate('help');
+      setTimeout(function() {
+        var el = document.getElementById('contact-technical-support');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    }
   });
 
 })();

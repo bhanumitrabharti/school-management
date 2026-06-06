@@ -188,18 +188,18 @@
 
   function handleOptionClick(action) {
     if (action === 'fee-help') {
-      if (window.SchoolApp && window.SchoolApp.modules.support) {
-        window.SchoolApp.modules.support.selectCategory('fees');
+      if (window.SchoolApp && window.SchoolApp.modules.help) {
+        window.SchoolApp.modules.help.selectCategory('fees');
         toggleChatbot();
       }
     } else if (action === 'attendance-help') {
-      if (window.SchoolApp && window.SchoolApp.modules.support) {
-        window.SchoolApp.modules.support.selectCategory('attendance');
+      if (window.SchoolApp && window.SchoolApp.modules.help) {
+        window.SchoolApp.modules.help.selectCategory('attendance');
         toggleChatbot();
       }
     } else if (action === 'contact-dev') {
-      if (window.SchoolApp && window.SchoolApp.modules.support) {
-        window.SchoolApp.modules.support.openContactModal();
+      if (window.SchoolApp && window.SchoolApp.modules.help) {
+        window.SchoolApp.modules.help.openContactModal();
         toggleChatbot();
       }
     }
