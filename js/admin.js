@@ -11,8 +11,38 @@
     promotionSourceClass: '',
     promotionDestClass: '',
     examsSelectedClass: '',
-    examsSelectedTerm: ''
+    examsSelectedTerm: '',
+    txnSearchQuery: '',
+    txnStartDate: '',
+    txnEndDate: ''
   };
+
+  // Get dynamic dates for today, yesterday, etc. to keep dashboard metrics populated
+  var todayISO = new Date();
+  var getRelativeDateString = function(daysAgo, hours, minutes) {
+    var d = new Date(todayISO);
+    d.setDate(todayISO.getDate() - daysAgo);
+    d.setHours(hours, minutes, 0, 0);
+    var yyyy = d.getFullYear();
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    var hh = String(d.getHours()).padStart(2, '0');
+    var min = String(d.getMinutes()).padStart(2, '0');
+    return yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + min + ':00';
+  };
+
+  var mockTransactions = [
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10001", date_time: getRelativeDateString(0, 9, 15), student_name: "Aarav Sharma", class_section: "10-A", payment_method: "Cash", amount: 1500 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10002", date_time: getRelativeDateString(0, 10, 30), student_name: "Priya Patel", class_section: "10-A", payment_method: "UPI", amount: 2500 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10003", date_time: getRelativeDateString(0, 11, 45), student_name: "Rahul Kumar", class_section: "7-B", payment_method: "Cash", amount: 1200 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10004", date_time: getRelativeDateString(0, 14, 0), student_name: "Ananya Singh", class_section: "7-B", payment_method: "Bank", amount: 3000 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10005", date_time: getRelativeDateString(1, 8, 30), student_name: "Vikram Reddy", class_section: "8-A", payment_method: "UPI", amount: 1500 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10006", date_time: getRelativeDateString(2, 12, 0), student_name: "Sneha Gupta", class_section: "8-A", payment_method: "Cash", amount: 1800 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10007", date_time: getRelativeDateString(4, 10, 0), student_name: "Arjun Nair", class_section: "9-C", payment_method: "Bank", amount: 4500 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10008", date_time: getRelativeDateString(15, 11, 0), student_name: "Meera Iyer", class_section: "9-C", payment_method: "UPI", amount: 2000 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10009", date_time: getRelativeDateString(18, 14, 30), student_name: "Karan Verma", class_section: "6-A", payment_method: "Cash", amount: 1200 },
+    { school_id: "svm_bokaro_001", transaction_id: "TXN10010", date_time: getRelativeDateString(22, 15, 15), student_name: "Divya Joshi", class_section: "6-A", payment_method: "Bank", amount: 3500 }
+  ];
 
   function autoCarryoverSubjects(termId, classId) {
     if (!termId || !classId) return;
@@ -90,6 +120,7 @@
     html += '    <button class="tab-btn' + (state.activeTab === 'settings' ? ' active' : '') + '" data-tab="settings"><span class="material-icons-round">settings</span> School Settings</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'transactions' ? ' active' : '') + '" data-tab="transactions"><span class="material-icons-round">receipt_long</span> Fee Ledger</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'exams' ? ' active' : '') + '" data-tab="exams"><span class="material-icons-round">assignment</span> Examinations</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
@@ -103,6 +134,7 @@
     html += renderSettingsTab();
     html += renderUsersTab();
     html += renderFeesTab();
+    html += renderTransactionsTab();
     html += renderExamsTab();
     html += renderNoticesTab();
     html += renderPromotionTab();
@@ -114,6 +146,9 @@
     html += '</div>'; // End Two-Column Layout Container
 
     container.innerHTML = html;
+    if (state.activeTab === 'transactions') {
+      renderTransactionsTable();
+    }
     attachEvents();
   }
 
@@ -675,6 +710,231 @@
 
     html += '</div></div></div>';
     return html;
+  }
+
+  function calculateTransactionStats() {
+    var todayStr = getRelativeDateString(0, 0, 0).split('T')[0];
+    var currentMonthStr = todayStr.substring(0, 7);
+    
+    var ftd = 0;
+    var mtd = 0;
+    var cashInHand = 0;
+    
+    mockTransactions.forEach(function(t) {
+      var tDate = t.date_time.split('T')[0];
+      var tMonth = t.date_time.substring(0, 7);
+      
+      if (tDate === todayStr) {
+        ftd += t.amount;
+        if (t.payment_method === 'Cash') {
+          cashInHand += t.amount;
+        }
+      }
+      
+      if (tMonth === currentMonthStr) {
+        mtd += t.amount;
+      }
+    });
+    
+    return {
+      ftd: ftd,
+      mtd: mtd,
+      cashInHand: cashInHand
+    };
+  }
+
+  function getFilteredTransactions() {
+    var filtered = mockTransactions;
+    
+    if (state.txnSearchQuery) {
+      var q = state.txnSearchQuery.toLowerCase();
+      filtered = filtered.filter(function(t) {
+        return t.student_name.toLowerCase().indexOf(q) !== -1 ||
+               t.transaction_id.toLowerCase().indexOf(q) !== -1 ||
+               t.school_id.toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    
+    if (state.txnStartDate) {
+      filtered = filtered.filter(function(t) {
+        var tDate = t.date_time.split('T')[0];
+        return tDate >= state.txnStartDate;
+      });
+    }
+    
+    if (state.txnEndDate) {
+      filtered = filtered.filter(function(t) {
+        var tDate = t.date_time.split('T')[0];
+        return tDate <= state.txnEndDate;
+      });
+    }
+    
+    filtered.sort(function(a, b) {
+      return new Date(b.date_time) - new Date(a.date_time);
+    });
+    
+    return filtered;
+  }
+
+  function renderTransactionsTab() {
+    var displayStyle = (state.activeTab === 'transactions' ? 'display:block;' : 'display:none;');
+    var html = '<div class="tab-content' + (state.activeTab === 'transactions' ? ' active' : '') + '" id="tab-transactions" style="' + displayStyle + '">';
+    
+    var stats = calculateTransactionStats();
+    
+    html += '<div class="stats-grid mb-3">';
+    html += '  <div class="stat-card purple">';
+    html += '    <div class="stat-icon"><span class="material-icons-round">payments</span></div>';
+    html += '    <div class="stat-info">';
+    html += '      <div class="stat-number">₹' + stats.ftd.toLocaleString('en-IN') + '</div>';
+    html += '      <div class="stat-label">FTD Collection (Today)</div>';
+    html += '    </div>';
+    html += '  </div>';
+    
+    html += '  <div class="stat-card green">';
+    html += '    <div class="stat-icon"><span class="material-icons-round">trending_up</span></div>';
+    html += '    <div class="stat-info">';
+    html += '      <div class="stat-number">₹' + stats.mtd.toLocaleString('en-IN') + '</div>';
+    html += '      <div class="stat-label">MTD Collection (This Month)</div>';
+    html += '    </div>';
+    html += '  </div>';
+    
+    html += '  <div class="stat-card amber">';
+    html += '    <div class="stat-icon"><span class="material-icons-round">account_balance_wallet</span></div>';
+    html += '    <div class="stat-info">';
+    html += '      <div class="stat-number">₹' + stats.cashInHand.toLocaleString('en-IN') + '</div>';
+    html += '      <div class="stat-label">Cash in Hand (Today)</div>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+    
+    html += '<div class="card">';
+    html += '  <div class="card-header">';
+    html += '    <h3><span class="material-icons-round">receipt_long</span> Fee Ledger & Transactions</h3>';
+    html += '  </div>';
+    html += '  <div class="card-body">';
+    
+    html += '    <div class="toolbar" style="flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">';
+    html += '      <div class="search-wrapper" style="flex: 1; min-width: 200px;">';
+    html += '        <span class="material-icons-round">search</span>';
+    html += '        <input type="text" id="txn-search" placeholder="Search by student name or txn ID..." value="' + (state.txnSearchQuery || '') + '">';
+    html += '      </div>';
+    
+    html += '      <div class="filter-group" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end;">';
+    html += '        <label style="font-size: 12px; font-weight:600; color: var(--text-secondary);">FROM:</label>';
+    html += '        <input type="date" id="txn-start-date" class="form-input" style="width: auto;" value="' + (state.txnStartDate || '') + '">';
+    html += '        <label style="font-size: 12px; font-weight:600; color: var(--text-secondary);">TO:</label>';
+    html += '        <input type="date" id="txn-end-date" class="form-input" style="width: auto;" value="' + (state.txnEndDate || '') + '">';
+    html += '        <button class="btn btn-primary" id="txn-export-csv-btn"><span class="material-icons-round">file_download</span> Export CSV</button>';
+    html += '      </div>';
+    html += '    </div>';
+    
+    html += '    <div id="txn-table-container"></div>';
+    
+    html += '  </div>';
+    html += '</div>';
+    
+    html += '</div>';
+    return html;
+  }
+
+  function renderTransactionsTable() {
+    var tblContainer = document.getElementById('txn-table-container');
+    if (!tblContainer) return;
+    
+    var filtered = getFilteredTransactions();
+    
+    var html = '';
+    if (filtered.length > 0) {
+      html += '<div class="table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">';
+      html += '  <table class="data-table" id="txn-ledger-table">';
+      html += '    <thead>';
+      html += '      <tr>';
+      html += '        <th>School ID</th>';
+      html += '        <th>Transaction ID</th>';
+      html += '        <th>Date & Time</th>';
+      html += '        <th>Student Name</th>';
+      html += '        <th>Class & Section</th>';
+      html += '        <th>Payment Method</th>';
+      html += '        <th>Amount</th>';
+      html += '      </tr>';
+      html += '    </thead>';
+      html += '    <tbody>';
+      
+      filtered.forEach(function(t) {
+        var dateObj = new Date(t.date_time);
+        var formattedDate = dateObj.toLocaleDateString('en-IN') + ' ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        
+        var methodBadge = '';
+        if (t.payment_method === 'Cash') methodBadge = 'badge-success';
+        else if (t.payment_method === 'UPI') methodBadge = 'badge-purple';
+        else methodBadge = 'badge-info';
+        
+        html += '      <tr>';
+        html += '        <td><span style="font-family: monospace; font-size: 12px; color: var(--text-muted);">' + t.school_id + '</span></td>';
+        html += '        <td><strong>' + t.transaction_id + '</strong></td>';
+        html += '        <td>' + formattedDate + '</td>';
+        html += '        <td><strong>' + t.student_name + '</strong></td>';
+        html += '        <td><span class="badge badge-info">' + t.class_section + '</span></td>';
+        html += '        <td><span class="badge ' + methodBadge + '">' + t.payment_method + '</span></td>';
+        html += '        <td><strong>₹' + t.amount.toLocaleString('en-IN') + '</strong></td>';
+        html += '      </tr>';
+      });
+      
+      html += '    </tbody>';
+      html += '  </table>';
+      html += '</div>';
+    } else {
+      html += '<div class="empty-state">';
+      html += '  <span class="material-icons-round">receipt_long</span>';
+      html += '  <h3>No Transactions Found</h3>';
+      html += '  <p>No records match your filters.</p>';
+      html += '</div>';
+    }
+    
+    tblContainer.innerHTML = html;
+  }
+
+  function exportTransactionsToCSV() {
+    var filtered = getFilteredTransactions();
+    if (filtered.length === 0) {
+      SchoolApp.showToast('No transaction data to export.', 'error');
+      return;
+    }
+    
+    var csvContent = 'School ID,Transaction ID,Date & Time,Student Name,Class & Section,Payment Method,Amount\n';
+    
+    filtered.forEach(function(t) {
+      var dateObj = new Date(t.date_time);
+      var formattedDate = dateObj.toLocaleDateString('en-IN') + ' ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+      
+      var name = t.student_name.replace(/"/g, '""');
+      if (name.indexOf(',') !== -1) {
+        name = '"' + name + '"';
+      }
+      
+      csvContent += [
+        t.school_id,
+        t.transaction_id,
+        formattedDate,
+        name,
+        t.class_section,
+        t.payment_method,
+        t.amount
+      ].join(',') + '\n';
+    });
+    
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    var link = document.createElement('a');
+    if (link.download !== undefined) {
+      var url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'Fee_Ledger_Transactions_' + new Date().toISOString().split('T')[0] + '.csv');
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   }
 
   function renderPromotionTab() {
@@ -2049,6 +2309,37 @@
       });
     });
 
+    // Transactions Tab Event Bindings
+    if (state.activeTab === 'transactions') {
+      var txnSearch = document.getElementById('txn-search');
+      if (txnSearch) {
+        txnSearch.addEventListener('input', function() {
+          state.txnSearchQuery = this.value;
+          renderTransactionsTable();
+        });
+      }
+
+      var txnStartDate = document.getElementById('txn-start-date');
+      if (txnStartDate) {
+        txnStartDate.addEventListener('change', function() {
+          state.txnStartDate = this.value;
+          renderTransactionsTable();
+        });
+      }
+
+      var txnEndDate = document.getElementById('txn-end-date');
+      if (txnEndDate) {
+        txnEndDate.addEventListener('change', function() {
+          state.txnEndDate = this.value;
+          renderTransactionsTable();
+        });
+      }
+
+      var txnExportBtn = document.getElementById('txn-export-csv-btn');
+      if (txnExportBtn) {
+        txnExportBtn.addEventListener('click', exportTransactionsToCSV);
+      }
+    }
   }
 
   // Register Module
