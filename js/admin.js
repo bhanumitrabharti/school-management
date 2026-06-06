@@ -82,20 +82,24 @@
     // Page Header
     html += '<div class="page-header"><h2><span class="material-icons-round">admin_panel_settings</span> Admin Panel</h2></div>';
 
-    // Tab Navigation
-    html += '<div class="tab-nav">';
-    html += '<button class="tab-btn' + (state.activeTab === 'settings' ? ' active' : '') + '" data-tab="settings"><span class="material-icons-round">settings</span> School Settings</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'exams' ? ' active' : '') + '" data-tab="exams"><span class="material-icons-round">assignment</span> Examinations</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
-    html += '<button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
-    html += '</div>';
+    // Two-Column Layout Container
+    html += '<div class="admin-panel-container">';
 
-    // Tab Contents
+    // Left Column: Vertical Inner Sidebar Navigation
+    html += '  <aside class="admin-sidebar">';
+    html += '    <button class="tab-btn' + (state.activeTab === 'settings' ? ' active' : '') + '" data-tab="settings"><span class="material-icons-round">settings</span> School Settings</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'exams' ? ' active' : '') + '" data-tab="exams"><span class="material-icons-round">assignment</span> Examinations</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
+    html += '  </aside>';
+
+    // Right Column: Content Area
+    html += '  <main class="admin-content-area">';
     html += renderSettingsTab();
     html += renderUsersTab();
     html += renderFeesTab();
@@ -105,6 +109,9 @@
     html += renderDataTab();
     html += renderRecoveryTab();
     html += renderSystemTab();
+    html += '  </main>';
+
+    html += '</div>'; // End Two-Column Layout Container
 
     container.innerHTML = html;
     attachEvents();
@@ -112,46 +119,94 @@
 
   function renderSettingsTab() {
     var s = SchoolApp.store.settings;
-    var html = '<div class="tab-content' + (state.activeTab === 'settings' ? ' active' : '') + '" id="tab-settings">';
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">school</span> School Information</h3></div><div class="card-body">';
-    html += '<form id="settings-form" class="form-grid">';
-    html += '<div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + (s.schoolName || '') + '"></div>';
-    html += '<div class="form-group"><label class="form-label">Academic Year</label><input type="text" class="form-input" name="academicYear" value="' + (s.academicYear || '') + '"></div>';
-    html += '<div class="form-group full-width"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + (s.address || '') + '</textarea></div>';
-    html += '<div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + (s.phone || '') + '"></div>';
-    html += '<div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + (s.email || '') + '"></div>';
-    html += '<div class="form-group"><label class="form-label">Attendance Time</label><input type="time" class="form-input" name="attendanceTime" value="' + (s.attendanceTime || '09:00') + '"></div>';
-    html += '<div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
-
-    // Available Classes
-    html += '<div class="form-group full-width"><label class="form-label">Available Classes</label><div class="flex gap-1" style="flex-wrap:wrap">';
+    var html = '<div class="tab-content' + (state.activeTab === 'settings' ? ' active' : '') + '" id="tab-settings" style="display:flex; flex-direction:column; gap:20px;">';
     
-    // Pre-primary classes
+    html += '<form id="settings-form" style="display:flex; flex-direction:column; gap:20px;">';
+
+    // Card 1: Basic Information
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">info</span> Basic Information</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <div class="admin-form-grid">';
+    html += '        <div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + (s.schoolName || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Academic Year</label><input type="text" class="form-input" name="academicYear" value="' + (s.academicYear || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 2: Contact Details
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">contact_mail</span> Contact Details</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <div class="admin-form-grid">';
+    html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + (s.phone || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + (s.email || '') + '"></div>';
+    html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + (s.address || '') + '</textarea></div>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 3: Attendance Settings
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">schedule</span> Attendance Settings</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <div class="admin-form-grid">';
+    html += '        <div class="form-group"><label class="form-label">Default Attendance Time</label><input type="time" class="form-input" name="attendanceTime" value="' + (s.attendanceTime || '09:00') + '"></div>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 4: Class & Section Config
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">class</span> Classes & Sections Configuration</h3></div>';
+    html += '    <div class="card-body" style="display:flex; flex-direction:column; gap:20px;">';
+    
+    // Available Classes (Chips)
+    html += '      <div class="form-group"><label class="form-label" style="margin-bottom: 12px; display:block;">Available Classes</label>';
+    html += '        <div class="chip-toggle-container">';
     var prePrimary = ['Nursery', 'LKG', 'UKG'];
     prePrimary.forEach(function(c) {
       var checked = (s.classes || []).indexOf(c) !== -1;
-      html += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border-radius:6px;background:' + (checked ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (checked ? 'var(--accent-primary)' : 'var(--border-color)') + '"><input type="checkbox" class="class-cb" value="' + c + '"' + (checked ? ' checked' : '') + '> ' + c + '</label>';
+      html += '        <label class="chip-toggle">';
+      html += '          <input type="checkbox" class="class-cb chip-checkbox" value="' + c + '"' + (checked ? ' checked' : '') + '>';
+      html += '          <span class="chip-label">' + c + '</span>';
+      html += '        </label>';
     });
-
     for (var i = 1; i <= 12; i++) {
       var checked = (s.classes || []).indexOf(String(i)) !== -1;
-      html += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border-radius:6px;background:' + (checked ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (checked ? 'var(--accent-primary)' : 'var(--border-color)') + '"><input type="checkbox" class="class-cb" value="' + i + '"' + (checked ? ' checked' : '') + '> Class ' + i + '</label>';
+      html += '        <label class="chip-toggle">';
+      html += '          <input type="checkbox" class="class-cb chip-checkbox" value="' + i + '"' + (checked ? ' checked' : '') + '>';
+      html += '          <span class="chip-label">Class ' + i + '</span>';
+      html += '        </label>';
     }
-    html += '</div></div>';
+    html += '        </div>';
+    html += '      </div>';
 
-    // Available Sections
-    html += '<div class="form-group full-width"><label class="form-label">Available Sections</label><div class="flex gap-1" style="flex-wrap:wrap">';
+    // Available Sections (Chips)
+    html += '      <div class="form-group"><label class="form-label" style="margin-bottom: 12px; display:block;">Available Sections</label>';
+    html += '        <div class="chip-toggle-container">';
     ['A','B','C','D','E','F'].forEach(function(sec) {
       var checked = (s.sections || []).indexOf(sec) !== -1;
-      html += '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;border-radius:6px;background:' + (checked ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (checked ? 'var(--accent-secondary)' : 'var(--border-color)') + '"><input type="checkbox" class="section-cb" value="' + sec + '"' + (checked ? ' checked' : '') + '> Section ' + sec + '</label>';
+      html += '        <label class="chip-toggle">';
+      html += '          <input type="checkbox" class="section-cb chip-checkbox" value="' + sec + '"' + (checked ? ' checked' : '') + '>';
+      html += '          <span class="chip-label cyan">' + sec + '</span>';
+      html += '        </label>';
     });
-    html += '</div></div>';
+    html += '        </div>';
+    html += '      </div>';
+
+    html += '    </div>';
+    html += '  </div>';
 
     html += '</form>';
 
-    html += '<div class="flex gap-2 mt-3"><button class="btn btn-primary" id="save-settings-btn"><span class="material-icons-round">save</span> Save Settings</button>';
-    html += '<button class="btn btn-secondary" id="reset-settings-btn"><span class="material-icons-round">refresh</span> Reset to Defaults</button></div>';
-    html += '</div></div></div>';
+    html += '<div class="flex gap-2 mt-2">';
+    html += '  <button class="btn btn-primary" id="save-settings-btn"><span class="material-icons-round">save</span> Save Settings</button>';
+    html += '  <button class="btn btn-secondary" id="reset-settings-btn"><span class="material-icons-round">refresh</span> Reset to Defaults</button>';
+    html += '</div>';
+
+    html += '</div>';
     return html;
   }
 
