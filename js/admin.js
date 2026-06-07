@@ -857,6 +857,7 @@
       html += '        <th>Class & Section</th>';
       html += '        <th>Payment Method</th>';
       html += '        <th>Amount</th>';
+      html += '        <th style="text-align: center;">Action</th>';
       html += '      </tr>';
       html += '    </thead>';
       html += '    <tbody>';
@@ -878,6 +879,11 @@
         html += '        <td><span class="badge badge-info">' + t.class_section + '</span></td>';
         html += '        <td><span class="badge ' + methodBadge + '">' + t.payment_method + '</span></td>';
         html += '        <td><strong>₹' + t.amount.toLocaleString('en-IN') + '</strong></td>';
+        html += '        <td style="text-align: center;">';
+        html += '          <button class="btn btn-primary btn-sm txn-print-btn" data-id="' + t.transaction_id + '" style="padding: 4px 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; justify-content: center; margin: 0 auto;">';
+        html += '            <span class="material-icons-round" style="font-size: 14px;">print</span> Print';
+        html += '          </button>';
+        html += '        </td>';
         html += '      </tr>';
       });
       
@@ -935,6 +941,34 @@
       link.click();
       document.body.removeChild(link);
     }
+  }
+
+  function printTransactionReceipt(txnId) {
+    var t = mockTransactions.find(function(item) { return item.transaction_id === txnId; });
+    if (!t) {
+      SchoolApp.showToast('Transaction not found.', 'error');
+      return;
+    }
+    
+    var schoolName = SchoolApp.store.settings.schoolName || "Shishu Vikash Mandir";
+    var schoolPhone = SchoolApp.store.settings.phone || "";
+    var schoolEmail = SchoolApp.store.settings.email || "";
+    
+    document.getElementById('receipt-school-name').innerText = schoolName;
+    document.getElementById('receipt-school-address').innerText = "Bokaro Steel City, Jharkhand" + (schoolPhone ? " | Ph: " + schoolPhone : "") + (schoolEmail ? " | Email: " + schoolEmail : "");
+    
+    document.getElementById('receipt-txn-id').innerText = t.transaction_id;
+    
+    var dateObj = new Date(t.date_time);
+    var formattedDate = dateObj.toLocaleDateString('en-IN') + ' ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('receipt-date').innerText = formattedDate;
+    
+    document.getElementById('receipt-student-name').innerText = t.student_name;
+    document.getElementById('receipt-class').innerText = t.class_section;
+    document.getElementById('receipt-payment-method').innerText = t.payment_method;
+    document.getElementById('receipt-amount').innerText = '₹' + t.amount.toLocaleString('en-IN');
+    
+    window.print();
   }
 
   function renderPromotionTab() {
@@ -2338,6 +2372,17 @@
       var txnExportBtn = document.getElementById('txn-export-csv-btn');
       if (txnExportBtn) {
         txnExportBtn.addEventListener('click', exportTransactionsToCSV);
+      }
+
+      var txnTableContainer = document.getElementById('txn-table-container');
+      if (txnTableContainer) {
+        txnTableContainer.addEventListener('click', function(e) {
+          var printBtn = e.target.closest('.txn-print-btn');
+          if (printBtn) {
+            var txnId = printBtn.getAttribute('data-id');
+            printTransactionReceipt(txnId);
+          }
+        });
       }
     }
   }

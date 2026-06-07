@@ -4018,4 +4018,154 @@ body.light-theme .data-table th {
   display: none !important;
 }
 
+/* ============================================================
+   FEE LEDGER PRINT RECEIPT STYLES
+   ============================================================ */
+.print-receipt-container {
+  display: none;
+  font-family: 'Inter', sans-serif;
+  padding: 30px;
+  background: #ffffff;
+  color: #000000;
+  border-radius: 8px;
+  max-width: 500px;
+  margin: 20px auto;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  border: 1px solid #e2e8f0;
+}
+
+.receipt-header {
+  text-align: center;
+  margin-bottom: 25px;
+  border-bottom: 2px dashed #cbd5e1;
+  padding-bottom: 15px;
+}
+
+.receipt-header h2 {
+  margin: 0 0 5px 0;
+  color: #1e293b;
+  font-size: 24px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.receipt-header p {
+  margin: 0 0 10px 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.receipt-header h3 {
+  margin: 0;
+  color: #334155;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.receipt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 25px;
+}
+
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 15px;
+  padding: 4px 0;
+}
+
+.receipt-row .label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.receipt-row .value {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.receipt-row.amount-row {
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 0;
+  margin-top: 8px;
+}
+
+.receipt-row.amount-row .label {
+  font-size: 18px;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.receipt-row.amount-row .value {
+  font-size: 20px;
+  color: #10b981;
+  font-weight: 800;
+}
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.receipt-footer p {
+  margin: 0 0 30px 0;
+  color: #64748b;
+  font-style: italic;
+  font-size: 14px;
+}
+
+.signature-area {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-top: 20px;
+}
+
+.signature-line {
+  width: 180px;
+  border-bottom: 1px solid #0f172a;
+  margin-bottom: 5px;
+}
+
+.signature-area p {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  margin: 0;
+  text-align: center;
+  width: 180px;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  .login-page, 
+  .app-layout, 
+  .modal-overlay, 
+  .confirm-overlay, 
+  .toast-container, 
+  .support-chatbot-toggle, 
+  .support-chatbot-window {
+    display: none !important;
+  }
+  
+  .print-receipt-container {
+    display: block !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 450px !important;
+  }
+}
+
 

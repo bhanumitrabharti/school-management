@@ -270,6 +270,48 @@
     <option value="General Knowledge"></option>
   </datalist>
 
+  <!-- ==================== PRINT RECEIPT TEMPLATE ==================== -->
+  <div id="print-receipt-container" class="print-receipt-container">
+    <div class="receipt-header">
+      <h2 id="receipt-school-name">Shishu Vikash Mandir</h2>
+      <p id="receipt-school-address">Bokaro Steel City, Jharkhand</p>
+      <h3>FEE RECEIPT</h3>
+    </div>
+    <div class="receipt-body">
+      <div class="receipt-row">
+        <span class="label">Receipt No:</span>
+        <span class="value" id="receipt-txn-id"></span>
+      </div>
+      <div class="receipt-row">
+        <span class="label">Date & Time:</span>
+        <span class="value" id="receipt-date"></span>
+      </div>
+      <div class="receipt-row">
+        <span class="label">Student Name:</span>
+        <span class="value" id="receipt-student-name"></span>
+      </div>
+      <div class="receipt-row">
+        <span class="label">Class & Section:</span>
+        <span class="value" id="receipt-class"></span>
+      </div>
+      <div class="receipt-row">
+        <span class="label">Payment Method:</span>
+        <span class="value" id="receipt-payment-method"></span>
+      </div>
+      <div class="receipt-row amount-row">
+        <span class="label">Amount Paid:</span>
+        <span class="value" id="receipt-amount"></span>
+      </div>
+    </div>
+    <div class="receipt-footer">
+      <p>Thank you for your payment!</p>
+      <div class="signature-area">
+        <div class="signature-line"></div>
+        <p>Authorized Signature / Cashier</p>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== SCRIPTS ==================== -->
   <script src="js/app.js"></script>
   <script src="js/utils.js"></script>
