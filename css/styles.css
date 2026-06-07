@@ -4199,4 +4199,171 @@ body.light-theme .data-table th {
   border: 1px solid rgba(100, 116, 139, 0.4) !important;
 }
 
+/* ========================================
+   IMPERSONATION BANNER
+   ======================================== */
+.impersonation-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #1a1a2e;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.4);
+  animation: impBannerSlideDown 0.3s ease-out;
+}
 
+@keyframes impBannerSlideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.imp-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0 20px;
+}
+
+.imp-banner-icon {
+  font-size: 18px;
+  animation: impPulse 2s ease-in-out infinite;
+}
+
+@keyframes impPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.imp-banner-text {
+  color: #1a1a2e;
+}
+
+.imp-banner-text strong {
+  color: #000;
+}
+
+.imp-banner-exit {
+  background: rgba(0, 0, 0, 0.2);
+  color: #1a1a2e;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  padding: 4px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+.imp-banner-exit:hover {
+  background: rgba(0, 0, 0, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Super Admin specific overrides */
+.sa-page {
+  font-family: 'Inter', sans-serif;
+}
+
+/* ========================================
+   SUPER ADMIN DASHBOARD STYLES
+   ======================================== */
+.sa-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+@media (max-width: 1024px) {
+  .sa-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .sa-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sa-metric-card {
+  background: var(--bg-card, rgba(255,255,255,0.04));
+  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(12px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sa-metric-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 32px rgba(124, 58, 237, 0.15);
+}
+
+.sa-metric-value {
+  font-size: 36px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.sa-metric-label {
+  font-size: 12px;
+  color: var(--text-muted, rgba(255,255,255,0.5));
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+.sa-expandable-row {
+  display: none;
+  background: rgba(124, 58, 237, 0.05);
+  border-left: 3px solid var(--accent-primary, #7c3aed);
+}
+
+.sa-expandable-row.expanded {
+  display: table-row;
+}
+
+.sa-expandable-content {
+  padding: 20px 24px;
+}
+
+.sa-feature-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  margin: 3px;
+  background: rgba(124, 58, 237, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+}
+
+.sa-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .sa-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

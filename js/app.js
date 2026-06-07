@@ -503,6 +503,13 @@ window.SchoolApp = {
   logout: function() {
     this.currentUser = null;
     this.currentPage = 'dashboard';
+    // Clear any impersonation state
+    localStorage.removeItem('impersonate_school_id');
+    localStorage.removeItem('impersonate_role');
+    var banner = document.getElementById('impersonation-banner');
+    if (banner) banner.remove();
+    var appLayout = document.getElementById('app-layout');
+    if (appLayout) appLayout.style.marginTop = '';
     document.getElementById('app-layout').classList.add('hidden');
     document.getElementById('login-page').classList.remove('hidden');
     // Reset login form
@@ -2398,6 +2405,36 @@ window.SchoolApp = {
         }
       }
     });
+  },
+
+  showImpersonationBanner: function(schoolName, role) {
+    // Remove existing banner if any
+    var existing = document.getElementById('impersonation-banner');
+    if (existing) existing.remove();
+    
+    var banner = document.createElement('div');
+    banner.id = 'impersonation-banner';
+    banner.className = 'impersonation-banner';
+    banner.innerHTML = '<div class="imp-banner-content">' +
+      '<span class="imp-banner-icon">⚡</span>' +
+      '<span class="imp-banner-text">Impersonating <strong>' + schoolName + '</strong> as <strong>' + (role === 'teacher' ? 'Teacher' : 'Administrator') + '</strong> (View-Only Mode)</span>' +
+      '<button class="imp-banner-exit" id="exit-impersonation-btn">Exit Impersonation</button>' +
+      '</div>';
+    
+    document.body.insertBefore(banner, document.body.firstChild);
+    
+    // Shift app layout down
+    var appLayout = document.getElementById('app-layout');
+    if (appLayout) {
+      appLayout.style.marginTop = '48px';
+    }
+    
+    // Bind exit button
+    document.getElementById('exit-impersonation-btn').addEventListener('click', function() {
+      localStorage.removeItem('impersonate_school_id');
+      localStorage.removeItem('impersonate_role');
+      window.location.href = 'super-admin.html';
+    });
   }
 };
 
@@ -2411,6 +2448,63 @@ document.addEventListener('DOMContentLoaded', function() {
     document.body.classList.add('light-theme');
   } else {
     document.body.classList.remove('light-theme');
+  }
+
+  // ---- Impersonation Auto-Login Check ----
+  var impSchoolId = localStorage.getItem('impersonate_school_id');
+  var impRole = localStorage.getItem('impersonate_role');
+  if (impSchoolId && impRole) {
+    var allSchools = SchoolApp.store.schools || [];
+    var targetSchool = null;
+    for (var i = 0; i < allSchools.length; i++) {
+      if (allSchools[i].school_id === impSchoolId) {
+        targetSchool = allSchools[i];
+        break;
+      }
+    }
+    if (targetSchool) {
+      // Override school settings for impersonation
+      SchoolApp.store.currentSchoolId = impSchoolId;
+      SchoolApp.store.settings.schoolName = targetSchool.school_name;
+      if (targetSchool.address) SchoolApp.store.settings.address = targetSchool.address;
+      if (targetSchool.phone) SchoolApp.store.settings.phone = targetSchool.phone;
+      if (targetSchool.email) SchoolApp.store.settings.email = targetSchool.email;
+      
+      // Set user session based on role
+      if (impRole === 'teacher') {
+        var teachers = SchoolApp.store.teachers || [];
+        SchoolApp.currentUser = {
+          role: 'teacher',
+          id: teachers.length > 0 ? teachers[0].id : 'imp_teacher',
+          name: teachers.length > 0 ? teachers[0].name : 'Impersonated Teacher',
+          email: teachers.length > 0 ? teachers[0].email : 'teacher@school.edu.in'
+        };
+      } else {
+        SchoolApp.currentUser = {
+          role: 'admin',
+          name: 'Administrator',
+          username: SchoolApp.store.settings.adminUsername || 'admin'
+        };
+      }
+      
+      // Skip login, go directly to app
+      SchoolApp.setupEventListeners();
+      SchoolApp.updateSidebarLockBadges();
+      SchoolApp.updateNotificationBadge();
+      SchoolApp.runAutoFeeReconciliation();
+      setTimeout(function() {
+        Object.keys(SchoolApp.modules).forEach(function(name) {
+          var mod = SchoolApp.modules[name];
+          if (mod.init) mod.init();
+        });
+      }, 50);
+      SchoolApp.showApp();
+      SchoolApp.navigate('dashboard');
+      
+      // Show impersonation banner
+      SchoolApp.showImpersonationBanner(targetSchool.school_name, impRole);
+      return; // Skip normal login flow
+    }
   }
 
   if (!hasData || !SchoolApp.store.students || SchoolApp.store.students.length === 0) {
