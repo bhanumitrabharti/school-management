@@ -1,7 +1,7 @@
 /**
  * ===================================================
  *  SUPER ADMIN PORTAL — JavaScript Controller
- *  Shishu Vikash Mandir — SaaS Control Center
+ *  CTRL Shift Solutions — SaaS Control Center
  * ===================================================
  */
 
@@ -270,7 +270,7 @@
                 '<td>' +
                     '<div class="sa-school-info">' +
                         '<span class="sa-school-name">' + escapeHTML(school.school_name) + '</span>' +
-                        '<span class="sa-school-subdomain">' + escapeHTML(school.subdomain) + '.shishuvikash.app</span>' +
+                        '<span class="sa-school-subdomain">' + escapeHTML(school.subdomain) + '.ctrlshift.app</span>' +
                     '</div>' +
                 '</td>' +
                 '<td>' +
