@@ -39,6 +39,10 @@
   }
 
   function getFilteredStudents() {
+    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
+    if (currentSchoolId !== 'svm_bokaro_001') {
+      return [];
+    }
     var students = SchoolApp.store.students || [];
 
     // Teacher restrictions: only assigned classes

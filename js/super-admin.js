@@ -13,6 +13,12 @@
     var SESSION_KEY = 'sa_session';
     var CREDENTIALS = { username: 'superadmin', password: 'superadmin123' };
 
+    // ─── Filter State ───────────────────────────────────
+    var state = {
+        searchQuery: '',
+        statusFilter: 'all' // 'all', 'Active', 'Paused'
+    };
+
     // Feature key → human-readable label map
     var FEATURE_LABELS = {
         dashboard:     'Dashboard',
@@ -203,28 +209,45 @@
         }
 
         renderMetricsCards(total, active, paused, lastActivity);
-        renderSchoolsTable(schools);
+
+        // Apply filters
+        var filteredSchools = schools;
+        if (state.statusFilter !== 'all') {
+            filteredSchools = filteredSchools.filter(function(s) {
+                return s.status === state.statusFilter;
+            });
+        }
+        if (state.searchQuery) {
+            var q = state.searchQuery.toLowerCase();
+            filteredSchools = filteredSchools.filter(function(s) {
+                return s.school_name.toLowerCase().indexOf(q) !== -1 ||
+                       s.subdomain.toLowerCase().indexOf(q) !== -1 ||
+                       (s.email && s.email.toLowerCase().indexOf(q) !== -1);
+            });
+        }
+
+        renderSchoolsTable(filteredSchools);
     }
 
     /** Render the 4 metric cards. */
     function renderMetricsCards(total, active, paused, lastActivity) {
         metricsGrid.innerHTML = '' +
-            '<div class="sa-metric-card mc-total">' +
+            '<div class="sa-metric-card mc-total' + (state.statusFilter === 'all' ? ' active-filter' : '') + '" style="cursor: pointer;" data-filter="all">' +
                 '<div class="sa-metric-icon"><span class="material-icons-round">domain</span></div>' +
                 '<div class="sa-metric-value">' + total + '</div>' +
                 '<div class="sa-metric-label">Total Schools</div>' +
             '</div>' +
-            '<div class="sa-metric-card mc-active">' +
+            '<div class="sa-metric-card mc-active' + (state.statusFilter === 'Active' ? ' active-filter' : '') + '" style="cursor: pointer;" data-filter="Active">' +
                 '<div class="sa-metric-icon"><span class="material-icons-round">check_circle</span></div>' +
                 '<div class="sa-metric-value">' + active + '</div>' +
                 '<div class="sa-metric-label">Active Schools</div>' +
             '</div>' +
-            '<div class="sa-metric-card mc-paused">' +
+            '<div class="sa-metric-card mc-paused' + (state.statusFilter === 'Paused' ? ' active-filter' : '') + '" style="cursor: pointer;" data-filter="Paused">' +
                 '<div class="sa-metric-icon"><span class="material-icons-round">pause_circle</span></div>' +
                 '<div class="sa-metric-value">' + paused + '</div>' +
                 '<div class="sa-metric-label">Inactive / Paused</div>' +
             '</div>' +
-            '<div class="sa-metric-card mc-monitor">' +
+            '<div class="sa-metric-card mc-monitor" style="cursor: pointer;" id="sa-trigger-activity-monitor">' +
                 '<div class="sa-metric-icon"><span class="material-icons-round">monitoring</span></div>' +
                 '<div class="sa-metric-value" style="font-size:1.15rem;line-height:1.4">' + escapeHTML(lastActivity) + '</div>' +
                 '<div class="sa-metric-label">Activity Monitor</div>' +
@@ -637,10 +660,121 @@
         return slug + '_' + Date.now().toString(36);
     }
 
+    // ─── Sales Activity Monitor Modal ───────────────────
+    var activityModal    = document.getElementById('sa-activity-modal-overlay');
+    var activityClose    = document.getElementById('sa-activity-modal-close');
+    var activityCloseBtn = document.getElementById('sa-activity-modal-close-btn');
+
+    function openActivityModal() {
+        renderActivityLogs();
+        if (activityModal) activityModal.classList.add('active');
+    }
+
+    function closeActivityModal() {
+        if (activityModal) activityModal.classList.remove('active');
+    }
+
+    function renderActivityLogs() {
+        var data = loadData();
+        var schools = data.schools || [];
+        var logsContainer = document.getElementById('sa-activity-logs');
+        if (!logsContainer) return;
+
+        var templates = [
+            { text: "{name} generated 45 Fee Receipts today", tag: "Activity", type: "activity", time: "Just now" },
+            { text: "{name} has not logged in for 5 days (High Churn Risk)", tag: "Churn Risk", type: "churn", time: "10 mins ago" },
+            { text: "{name} scheduled 12 exams", tag: "Activity", type: "activity", time: "1 hour ago" },
+            { text: "{name} updated their fee structures", tag: "Activity", type: "activity", time: "3 hours ago" },
+            { text: "{name} system storage usage crossed 80%", tag: "Warning", type: "warning", time: "5 hours ago" },
+            { text: "{name} added 15 new teacher accounts", tag: "Activity", type: "activity", time: "Yesterday" },
+            { text: "{name} subscription renewal is due in 3 days", tag: "Warning", type: "warning", time: "2 days ago" },
+            { text: "{name} class promotion batch processed", tag: "Activity", type: "activity", time: "3 days ago" }
+        ];
+
+        var html = '';
+        var entryIndex = 0;
+        
+        schools.forEach(function (school, sIdx) {
+            var numLogs = school.status === 'Paused' ? 2 : 3;
+            for (var j = 0; j < numLogs; j++) {
+                var template = templates[(sIdx * 3 + j) % templates.length];
+                var tagClass = 'sa-tag-' + template.type;
+                var text = template.text.replace('{name}', school.school_name);
+                
+                var currentTag = template.tag;
+                var currentTypeClass = tagClass;
+                var currentText = text;
+                
+                if (school.status === 'Paused' && j === 0) {
+                    currentTag = 'Churn Risk';
+                    currentTypeClass = 'sa-tag-churn';
+                    currentText = school.school_name + ' is paused and has not logged in for 15 days (High Churn Risk)';
+                }
+
+                html += '<div class="sa-activity-item">' +
+                    '<span class="sa-activity-tag ' + currentTypeClass + '">' + currentTag + '</span>' +
+                    '<div style="font-size:13px; font-weight:600; line-height:1.4; color: inherit;">' + escapeHTML(currentText) + '</div>' +
+                    '<span class="sa-activity-time">' + template.time + '</span>' +
+                '</div>';
+            }
+        });
+
+        if (schools.length === 0) {
+            html = '<div style="text-align:center; padding: 24px; color:rgba(255,255,255,0.4)">No active logs. Onboard a school to see logs.</div>';
+        }
+
+        logsContainer.innerHTML = html;
+    }
 
     // ─── Event Listeners ────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', function () {
+        // Load theme preference
+        var theme = localStorage.getItem('sa_theme') || 'dark';
+        if (theme === 'light') {
+            document.body.classList.add('sa-light-theme');
+            var themeIcon = document.getElementById('sa-theme-icon');
+            if (themeIcon) themeIcon.textContent = 'dark_mode';
+        }
+
+        // Theme toggle listener
+        var themeToggle = document.getElementById('sa-theme-toggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function () {
+                var isLight = document.body.classList.toggle('sa-light-theme');
+                var themeIcon = document.getElementById('sa-theme-icon');
+                if (themeIcon) {
+                    themeIcon.textContent = isLight ? 'dark_mode' : 'light_mode';
+                }
+                localStorage.setItem('sa_theme', isLight ? 'light' : 'dark');
+                showToast('Theme switched to ' + (isLight ? 'Light' : 'Dark') + ' mode.', 'info');
+            });
+        }
+
+        // Click metrics to filter OR open activity monitor
+        metricsGrid.addEventListener('click', function (e) {
+            var card = e.target.closest('.sa-metric-card');
+            if (card) {
+                if (card.classList.contains('mc-monitor')) {
+                    openActivityModal();
+                } else {
+                    var filter = card.getAttribute('data-filter');
+                    if (filter) {
+                        state.statusFilter = filter;
+                        renderDashboard();
+                    }
+                }
+            }
+        });
+
+        // Search input
+        var searchInput = document.getElementById('sa-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                state.searchQuery = this.value;
+                renderDashboard();
+            });
+        }
 
         // Check for existing session
         if (sessionStorage.getItem(SESSION_KEY) === 'active') {
@@ -680,10 +814,22 @@
             if (e.target === modalOverlay) closeModal();
         });
 
+        // Close activity modal
+        var activityClose = document.getElementById('sa-activity-modal-close');
+        var activityCloseBtn = document.getElementById('sa-activity-modal-close-btn');
+        if (activityClose) activityClose.addEventListener('click', closeActivityModal);
+        if (activityCloseBtn) activityCloseBtn.addEventListener('click', closeActivityModal);
+        if (activityModal) {
+            activityModal.addEventListener('click', function(e) {
+                if (e.target === activityModal) closeActivityModal();
+            });
+        }
+
         // Close modal on Escape key
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && modalOverlay.classList.contains('active')) {
-                closeModal();
+            if (e.key === 'Escape') {
+                if (modalOverlay.classList.contains('active')) closeModal();
+                if (activityModal && activityModal.classList.contains('active')) closeActivityModal();
             }
         });
 

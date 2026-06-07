@@ -641,6 +641,12 @@ window.SchoolApp = {
       return;
     }
 
+    // Strict paywall logic
+    if (pageName && !this.checkFeatureAccess(pageName)) {
+      this.showUpsellModal(pageName);
+      return;
+    }
+
     this.currentPage = pageName;
 
     // Hide all pages
@@ -805,14 +811,26 @@ window.SchoolApp = {
 
   updateSidebarLockBadges: function() {
     var self = this;
+    var currentSchoolId = this.store.currentSchoolId || "svm_bokaro_001";
+    var isSVM = currentSchoolId === "svm_bokaro_001";
+
     document.querySelectorAll('.nav-item').forEach(function(item) {
       var page = item.getAttribute('data-page');
-      var existingBadge = item.querySelector('.sidebar-lock-badge');
-      if (existingBadge) existingBadge.remove();
+      
+      // Remove any existing badges
+      var existingLockBadge = item.querySelector('.sidebar-lock-badge');
+      if (existingLockBadge) existingLockBadge.remove();
+      var existingProBadge = item.querySelector('.pro-badge');
+      if (existingProBadge) existingProBadge.remove();
+      
+      // SVM must show zero badges
+      if (isSVM) {
+        return;
+      }
       
       if (page && !self.checkFeatureAccess(page)) {
         var badge = document.createElement('span');
-        badge.className = 'badge badge-warning sidebar-lock-badge';
+        badge.className = 'badge badge-warning sidebar-lock-badge pro-badge';
         badge.style.cssText = 'margin-left: auto; font-size: 10px; padding: 2px 6px; background-color: var(--warning) !important; color: #000; border-radius: 4px; font-weight: bold; display: inline-block;';
         badge.innerHTML = '🔒 Pro';
         item.appendChild(badge);
@@ -1631,13 +1649,16 @@ window.SchoolApp = {
       }
     }
 
-    var totalStudents = this.store.students.length;
-    var totalTeachers = this.store.teachers.length;
-    var totalClasses = this.store.settings.classes.length;
+    var currentSchoolId = this.store.currentSchoolId || 'svm_bokaro_001';
+    var isSVM = currentSchoolId === 'svm_bokaro_001';
+
+    var totalStudents = isSVM ? this.store.students.length : 0;
+    var totalTeachers = isSVM ? this.store.teachers.length : 0;
+    var totalClasses = isSVM ? this.store.settings.classes.length : 0;
 
     // Calculate today's attendance
     var todayStr = new Date().toISOString().split('T')[0];
-    var todayRecords = this.store.attendance.filter(function(a) { return a.date === todayStr; });
+    var todayRecords = isSVM ? this.store.attendance.filter(function(a) { return a.date === todayStr; }) : [];
     var todayPresent = 0, todayTotal = 0;
     todayRecords.forEach(function(r) {
       r.records.forEach(function(rec) {
@@ -1648,25 +1669,27 @@ window.SchoolApp = {
     var attendancePerc = todayTotal > 0 ? Math.round((todayPresent / todayTotal) * 100) : 0;
 
     // Attendance chart data (last 7 entries)
-    var attData = this.store.attendance.slice(-7).map(function(a) {
+    var attData = isSVM ? this.store.attendance.slice(-7).map(function(a) {
       var present = a.records.filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
       var total = a.records.length;
       return {
         label: a.date.substr(5),
         value: total > 0 ? Math.round((present / total) * 100) : 0
       };
-    });
+    }) : [];
 
     // Class distribution
     var classDist = {};
-    this.store.students.forEach(function(s) {
-      var key = 'Class ' + s.class;
-      classDist[key] = (classDist[key] || 0) + 1;
-    });
+    if (isSVM) {
+      this.store.students.forEach(function(s) {
+        var key = 'Class ' + s.class;
+        classDist[key] = (classDist[key] || 0) + 1;
+      });
+    }
 
     // Recent activity
-    var recentAtt = this.store.attendance.slice(-5).reverse();
-    var teachers = this.store.teachers;
+    var recentAtt = isSVM ? this.store.attendance.slice(-5).reverse() : [];
+    var teachers = isSVM ? this.store.teachers : [];
     var self = this;
 
     var html = '';
@@ -1683,7 +1706,7 @@ window.SchoolApp = {
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Digital Notice Board</h3></div>';
     html += '<div class="card-body" style="max-height: 250px; overflow-y: auto; padding: 16px;">';
     
-    var noticesList = (this.store.notices || []).filter(function(n) { return n.status === 'published'; });
+    var noticesList = isSVM ? (this.store.notices || []).filter(function(n) { return n.status === 'published'; }) : [];
     // Sort by date newest first
     noticesList = noticesList.slice().sort(function(a, b) {
       return new Date(b.date) - new Date(a.date);
@@ -2114,14 +2137,16 @@ window.SchoolApp = {
     // Sidebar navigation
     document.querySelectorAll('.nav-item').forEach(function(item) {
       item.addEventListener('click', function(e) {
-        e.preventDefault();
         var page = this.getAttribute('data-page');
+        if (page && !self.checkFeatureAccess(page)) {
+          e.preventDefault();
+          e.stopPropagation();
+          self.showUpsellModal(page);
+          return;
+        }
+        e.preventDefault();
         if (page) {
-          if (!self.checkFeatureAccess(page)) {
-            self.showUpsellModal(page);
-          } else {
-            self.navigate(page);
-          }
+          self.navigate(page);
         }
       });
     });

@@ -223,6 +223,266 @@
       .sa-metrics-grid { grid-template-columns: 1fr; }
       .sa-actions { flex-direction: column; }
     }
+
+    /* ---- LOGO ENHANCEMENTS ---- */
+    .sa-logo {
+      transition: all 0.3s ease;
+    }
+    .sa-login-logo .sa-logo {
+      width: 140px !important;
+      height: 140px !important;
+    }
+    .sa-header-left .sa-logo {
+      width: 60px !important;
+      height: 60px !important;
+      border-radius: 12px;
+    }
+
+    /* ---- CLICKABLE METRIC ACTIVE STATE ---- */
+    .sa-metric-card.active-filter {
+      border-color: #2563eb !important;
+      background: rgba(37, 99, 235, 0.08) !important;
+      box-shadow: 0 0 12px rgba(37, 99, 235, 0.2);
+    }
+    .sa-light-theme .sa-metric-card.active-filter {
+      border-color: #2563eb !important;
+      background: rgba(37, 99, 235, 0.06) !important;
+      box-shadow: 0 0 12px rgba(37, 99, 235, 0.15);
+    }
+
+    /* ---- ACTIVITY LOGS STYLES ---- */
+    .sa-activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+      margin-bottom: 8px;
+    }
+    .sa-activity-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.1);
+      transform: translateX(4px);
+    }
+    .sa-activity-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+    .sa-tag-activity { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
+    .sa-tag-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25); }
+    .sa-tag-churn { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
+    .sa-activity-time {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* ---- LIGHT THEME OVERRIDES ---- */
+    body.sa-body.sa-light-theme {
+      background: #f4f6fa;
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-login-card {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15);
+    }
+    .sa-light-theme .sa-login-logo h1 {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .sa-light-theme .sa-login-logo p {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .sa-light-theme .sa-form-label {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .sa-light-theme .sa-form-input {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-form-input:focus {
+      border-color: #2563eb;
+      background: rgba(37, 99, 235, 0.02);
+    }
+    .sa-light-theme .sa-input-wrapper .input-icon {
+      color: rgba(0, 0, 0, 0.4);
+    }
+    .sa-light-theme .sa-password-wrapper .toggle-password {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    
+    .sa-light-theme .sa-header {
+      background: rgba(255, 255, 255, 0.95);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-header-left h2 {
+      color: #0f172a;
+    }
+    .sa-light-theme .sa-header-left span {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    
+    .sa-light-theme .sa-metric-card {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .sa-light-theme .sa-metric-card:hover {
+      box-shadow: 0 10px 25px rgba(37, 99, 235, 0.1);
+    }
+    .sa-light-theme .sa-metric-label {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    .sa-light-theme .sa-metric-value {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .sa-light-theme .mc-active .sa-metric-value {
+      background: linear-gradient(135deg, #047857, #10b981);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+    .sa-light-theme .mc-paused .sa-metric-value {
+      background: linear-gradient(135deg, #b91c1c, #ef4444);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+    
+    .sa-light-theme .sa-search-wrapper input {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-search-wrapper input:focus {
+      border-color: #2563eb;
+    }
+    .sa-light-theme .sa-search-wrapper .material-icons-round {
+      color: rgba(0, 0, 0, 0.4);
+    }
+    
+    .sa-light-theme .sa-table-card {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .sa-light-theme .sa-table thead th {
+      background: #f8fafc;
+      color: rgba(0, 0, 0, 0.6);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-table tbody tr {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .sa-light-theme .sa-table tbody tr:hover {
+      background: rgba(37, 99, 235, 0.05);
+    }
+    .sa-light-theme .sa-school-name {
+      color: #0f172a;
+    }
+    .sa-light-theme .sa-school-subdomain {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    .sa-light-theme .sa-features-count {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    
+    .sa-light-theme .sa-badge-basic {
+      background: rgba(0, 0, 0, 0.05);
+      color: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    
+    .sa-light-theme .sa-expand-row {
+      background: rgba(37, 99, 235, 0.02);
+    }
+    .sa-light-theme .sa-expand-section h4 {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    .sa-light-theme .sa-expand-stat {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .sa-light-theme .sa-expand-stat strong {
+      color: #0f172a;
+    }
+    .sa-light-theme .sa-expand-stat .material-icons-round {
+      color: rgba(0, 0, 0, 0.3);
+    }
+    .sa-light-theme .sa-btn-secondary {
+      background: #ffffff;
+      color: #1e293b;
+      border: 1px solid rgba(0, 0, 0, 0.15) !important;
+    }
+    .sa-light-theme .sa-btn-secondary:hover {
+      background: #f1f5f9;
+    }
+    .sa-light-theme .sa-modal {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-modal-header {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      color: #0f172a;
+    }
+    .sa-light-theme .sa-modal-close {
+      color: rgba(0, 0, 0, 0.4);
+    }
+    .sa-light-theme .sa-modal-footer {
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-modal-form-group label {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .sa-light-theme .sa-modal-form-group input,
+    .sa-light-theme .sa-modal-form-group select,
+    .sa-light-theme .sa-modal-form-group textarea {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-modal-form-group select option {
+      background: #ffffff;
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-features-section-label {
+      color: rgba(0, 0, 0, 0.7);
+    }
+    .sa-light-theme .sa-feature-toggle {
+      background: #f8fafc;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      color: rgba(0, 0, 0, 0.7);
+    }
+    .sa-light-theme .sa-feature-toggle:hover {
+      background: rgba(37, 99, 235, 0.05);
+      border-color: rgba(37, 99, 235, 0.25);
+    }
+    
+    .sa-light-theme .sa-activity-item {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-activity-item:hover {
+      background: #f8fafc;
+      border-color: rgba(0, 0, 0, 0.12);
+    }
+    .sa-light-theme .sa-activity-time {
+      color: rgba(0, 0, 0, 0.5);
+    }
   </style>
 </head>
 <body class="sa-body">
@@ -236,7 +496,7 @@
     </div>
     <div class="sa-login-card">
       <div class="sa-login-logo">
-        <img src="./ctrl-shift-logo.png" alt="CTRL Shift Solutions Logo">
+        <img src="./ctrl-shift-logo.png" class="sa-logo" alt="CTRL Shift Solutions Logo">
         <h1>CTRL Shift Solutions</h1>
         <p>Control Today. Shift Tomorrow.</p>
       </div>
@@ -273,13 +533,16 @@
   <div id="sa-dashboard" class="sa-dashboard">
     <header class="sa-header">
       <div class="sa-header-left">
-        <img src="./ctrl-shift-logo.png" alt="Logo">
+        <img src="./ctrl-shift-logo.png" class="sa-logo" alt="Logo">
         <div>
           <h2>CTRL Shift Solutions</h2>
           <span>SaaS Control Center</span>
         </div>
       </div>
       <div class="sa-header-right">
+        <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-theme-toggle" title="Toggle Light/Dark Mode" style="padding: 10px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;">
+          <span class="material-icons-round" id="sa-theme-icon" style="font-size:18px;">light_mode</span>
+        </button>
         <button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.open('index.html','_blank')" title="Open Tenant ERP">
           <span class="material-icons-round" style="font-size:16px;">open_in_new</span>
           Tenant ERP
@@ -416,6 +679,29 @@
           <span class="material-icons-round" style="font-size:16px;">save</span>
           Save School
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== ACTIVITY MONITOR MODAL ==================== -->
+  <div id="sa-activity-modal-overlay" class="sa-modal-overlay">
+    <div class="sa-modal" style="max-width: 760px;">
+      <div class="sa-modal-header">
+        <h3><span class="material-icons-round" style="color:#fbbf24; vertical-align:middle; margin-right:6px;">analytics</span> Sales Activity Monitor</h3>
+        <button class="sa-modal-close" id="sa-activity-modal-close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="sa-modal-body">
+        <p style="color:rgba(255,255,255,0.6); font-size:13px; margin-bottom:16px;">
+          Real-time user engagement and health signals tracked across school tenants to help identify high churn risks and active usage patterns.
+        </p>
+        <div id="sa-activity-logs" style="display:flex; flex-direction:column; gap:10px; max-height:450px; overflow-y:auto; padding-right:6px;">
+          <!-- Log entries will be populated here -->
+        </div>
+      </div>
+      <div class="sa-modal-footer">
+        <button class="sa-btn sa-btn-secondary" id="sa-activity-modal-close-btn">Close</button>
       </div>
     </div>
   </div>
