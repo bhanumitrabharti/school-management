@@ -34,6 +34,8 @@ window.SchoolApp = {
     notices: [],
     lastAutomatedFeeRun: '2026-04',
     notifications: [],
+    schools: [],
+    currentSchoolId: '',
     settings: {
       schoolName: 'Shishu Vikash Mandir',
       academicYear: '2025-2026',
@@ -237,6 +239,43 @@ window.SchoolApp = {
         if (!this.store.marks) this.store.marks = [];
         if (!this.store.notices) this.store.notices = [];
         if (!this.store.timetable) this.store.timetable = {};
+        if (!this.store.schools || this.store.schools.length === 0) {
+          this.store.schools = [
+            {
+              school_id: "svm_bokaro_001",
+              school_name: "Shishu Vikash Mandir (Bokaro)",
+              subdomain: "shishu-vikash-mandir",
+              plan: "Premium",
+              status: "Active",
+              storage_used: "1.2 GB",
+              renewal_date: "2027-04-15",
+              allowed_features: ["dashboard", "students", "teachers", "attendance", "teacher-attendance", "fees", "timetable", "exams", "admin", "help"]
+            },
+            {
+              school_id: "dps_dhanbad_002",
+              school_name: "Delhi Public School (Dhanbad)",
+              subdomain: "dpsdhanbad",
+              plan: "Basic",
+              status: "Active",
+              storage_used: "450 MB",
+              renewal_date: "2026-10-10",
+              allowed_features: ["dashboard", "students", "teachers", "attendance", "help"]
+            },
+            {
+              school_id: "dav_ranchi_003",
+              school_name: "DAV Public School (Ranchi)",
+              subdomain: "davranchi",
+              plan: "Pro",
+              status: "Paused",
+              storage_used: "890 MB",
+              renewal_date: "2026-08-20",
+              allowed_features: ["dashboard", "students", "teachers", "attendance", "teacher-attendance", "exams", "help"]
+            }
+          ];
+        }
+        if (!this.store.currentSchoolId) {
+          this.store.currentSchoolId = "svm_bokaro_001";
+        }
         if (!this.store.timetable.settings) {
           this.store.timetable.settings = {
             startTime: "08:00",
@@ -744,6 +783,54 @@ window.SchoolApp = {
     cancelBtn.addEventListener('click', function() {
       cleanup();
     }, { once: true });
+  },
+
+  checkFeatureAccess: function(page) {
+    if (!this.store.schools) return true;
+    var currentSchoolId = this.store.currentSchoolId || "svm_bokaro_001";
+    var school = this.store.schools.find(function(s) { return s.school_id === currentSchoolId; });
+    if (!school) return true;
+    if (school.allowed_features && school.allowed_features.indexOf(page) === -1) {
+      return false;
+    }
+    return true;
+  },
+
+  updateSidebarLockBadges: function() {
+    var self = this;
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      var page = item.getAttribute('data-page');
+      var existingBadge = item.querySelector('.sidebar-lock-badge');
+      if (existingBadge) existingBadge.remove();
+      
+      if (page && !self.checkFeatureAccess(page)) {
+        var badge = document.createElement('span');
+        badge.className = 'badge badge-warning sidebar-lock-badge';
+        badge.style.cssText = 'margin-left: auto; font-size: 10px; padding: 2px 6px; background-color: var(--warning) !important; color: #000; border-radius: 4px; font-weight: bold; display: inline-block;';
+        badge.innerHTML = '🔒 Pro';
+        item.appendChild(badge);
+      }
+    });
+  },
+
+  showUpsellModal: function(page) {
+    var titles = {
+      students: 'Advanced Student Admissions & Roster',
+      teachers: 'Teacher Grid & Qualification Matrix',
+      attendance: 'GPS Geofenced Attendance Tracker',
+      fees: 'Multi-Tenant Fee Setup & Ledgers',
+      timetable: '1-Click Automated AI Timetable Scheduler',
+      exams: 'Official Marksheets & Printable Report Cards'
+    };
+    var featureName = titles[page] || page;
+    
+    var modal = document.getElementById('upsell-modal');
+    if (!modal) return;
+    
+    var element = document.getElementById('upsell-feature-name');
+    if (element) element.innerText = featureName;
+    
+    modal.classList.add('active');
   },
 
   toggleNotificationDropdown: function() {
@@ -2022,9 +2109,23 @@ window.SchoolApp = {
       item.addEventListener('click', function(e) {
         e.preventDefault();
         var page = this.getAttribute('data-page');
-        if (page) self.navigate(page);
+        if (page) {
+          if (!self.checkFeatureAccess(page)) {
+            self.showUpsellModal(page);
+          } else {
+            self.navigate(page);
+          }
+        }
       });
     });
+
+    var upsellTrialBtn = document.getElementById('upsell-trial-btn');
+    if (upsellTrialBtn) {
+      upsellTrialBtn.addEventListener('click', function() {
+        document.getElementById('upsell-modal').classList.remove('active');
+        SchoolApp.showToast("Your trial request has been submitted! Our support team will contact you shortly.", "success");
+      });
+    }
 
     // Sidebar toggle
     document.getElementById('sidebar-toggle').addEventListener('click', function() {
@@ -2329,6 +2430,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Setup event listeners
   SchoolApp.setupEventListeners();
+
+  // Update sidebar lock badges on startup
+  SchoolApp.updateSidebarLockBadges();
 
   // Update notification badge on load
   SchoolApp.updateNotificationBadge();

@@ -246,6 +246,46 @@
     </div>
   </div>
 
+  <!-- ==================== UPSELL PAYWALL MODAL ==================== -->
+  <div id="upsell-modal" class="modal-overlay">
+    <div class="modal-container" style="max-width: 450px; text-align: center; padding: 30px; background-color: var(--bg-secondary) !important; border: 1px solid var(--border-color) !important;">
+      <div class="modal-header" style="border-bottom: none; justify-content: flex-end; padding: 0;">
+        <button class="modal-close" onclick="document.getElementById('upsell-modal').classList.remove('active')">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="modal-body" style="padding-top: 0;">
+        <div class="upsell-icon-container" style="margin-bottom: 20px;">
+          <span class="material-icons-round" style="font-size: 64px; color: var(--warning); filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.4)); animation: pulse 2s infinite;">lock</span>
+        </div>
+        <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 10px; color: #ffffff;">🔒 Upgrade Required</h2>
+        <p style="font-size: 15px; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;">
+          Unlock <strong id="upsell-feature-name" style="color: var(--accent-secondary);">Premium Features</strong> to save hours of manual administrative work and eliminate scheduling conflicts!
+        </p>
+        <div class="upsell-bullets" style="text-align: left; margin: 0 auto 25px auto; max-width: 300px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary);">
+            <span class="material-icons-round" style="color: var(--success); font-size: 18px;">check_circle</span>
+            <span>1-Click Automated Scheduling</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary);">
+            <span class="material-icons-round" style="color: var(--success); font-size: 18px;">check_circle</span>
+            <span>Full Fee Ledger Audit Trails & Receipts</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary);">
+            <span class="material-icons-round" style="color: var(--success); font-size: 18px;">check_circle</span>
+            <span>Real-time GPS Distance Attendance Logs</span>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="upsell-trial-btn" style="width: 100%; margin-bottom: 12px; font-weight: bold; background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary)); border: none; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);">
+          Request Free 7-Day Trial
+        </button>
+        <button class="btn btn-secondary" onclick="document.getElementById('upsell-modal').classList.remove('active')" style="width: 100%;">
+          Maybe Later
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== TOAST CONTAINER ==================== -->
   <div id="toast-container" class="toast-container"></div>
 

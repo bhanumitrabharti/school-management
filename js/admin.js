@@ -44,6 +44,8 @@
     { school_id: "svm_bokaro_001", transaction_id: "TXN10010", date_time: getRelativeDateString(22, 15, 15), student_name: "Divya Joshi", class_section: "6-A", payment_method: "Bank", amount: 3500 }
   ];
 
+  var mockSchools = SchoolApp.store.schools || [];
+
   function autoCarryoverSubjects(termId, classId) {
     if (!termId || !classId) return;
 
@@ -126,6 +128,7 @@
     html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
+    html += '    <button class="tab-btn' + (state.activeTab === 'schools' ? ' active' : '') + '" data-tab="schools"><span class="material-icons-round">corporate_fare</span> Manage Schools</button>';
     html += '    <button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
     html += '  </aside>';
 
@@ -140,6 +143,7 @@
     html += renderPromotionTab();
     html += renderDataTab();
     html += renderRecoveryTab();
+    html += renderSchoolsTab();
     html += renderSystemTab();
     html += '  </main>';
 
@@ -969,6 +973,208 @@
     document.getElementById('receipt-amount').innerText = '₹' + t.amount.toLocaleString('en-IN');
     
     window.print();
+  }
+
+  function renderSchoolsTab() {
+    mockSchools = SchoolApp.store.schools || [];
+    var displayStyle = (state.activeTab === 'schools' ? 'display:block;' : 'display:none;');
+    var html = '<div class="tab-content' + (state.activeTab === 'schools' ? ' active' : '') + '" id="tab-schools" style="' + displayStyle + '">';
+    
+    html += '<div class="card">';
+    html += '  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 12px;">';
+    html += '    <h3><span class="material-icons-round">corporate_fare</span> SaaS School Tenant Directory</h3>';
+    html += '    <button class="btn btn-primary btn-sm" id="btn-add-school" style="display: inline-flex; align-items: center; gap: 4px;">';
+    html += '      <span class="material-icons-round" style="font-size: 16px;">add</span> Add School';
+    html += '    </button>';
+    html += '  </div>';
+    html += '  <div class="card-body">';
+    html += '    <div class="table-container" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">';
+    html += '      <table class="data-table" id="schools-table">';
+    html += '        <thead>';
+    html += '          <tr>';
+    html += '            <th>School Info</th>';
+    html += '            <th>Plan & Storage</th>';
+    html += '            <th>Status</th>';
+    html += '            <th>Actions</th>';
+    html += '          </tr>';
+    html += '        </thead>';
+    html += '        <tbody>';
+    
+    var currentSchoolId = SchoolApp.store.currentSchoolId || "svm_bokaro_001";
+    
+    mockSchools.forEach(function(sch) {
+      var isCurrent = sch.school_id === currentSchoolId;
+      var statusBadge = sch.status === 'Active' ? 'badge-success' : 'badge-danger';
+      var planBadge = sch.plan === 'Premium' ? 'badge-purple' : (sch.plan === 'Pro' ? 'badge-info' : 'badge-secondary');
+      
+      html += '          <tr' + (isCurrent ? ' style="background: rgba(124, 58, 237, 0.08); border-left: 3px solid var(--accent-primary);"' : '') + '>';
+      html += '            <td>';
+      html += '              <div style="font-weight: 700; color: #ffffff;">' + sch.school_name + '</div>';
+      html += '              <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">' + sch.subdomain + '.shishuvikash.edu.in</div>';
+      if (isCurrent) {
+        html += '              <span class="badge badge-success" style="font-size: 9px; margin-top: 4px;">Active Tenant</span>';
+      }
+      html += '            </td>';
+      html += '            <td>';
+      html += '              <div>Plan: <span class="badge ' + planBadge + '">' + sch.plan + '</span></div>';
+      html += '              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Storage: ' + sch.storage_used + '</div>';
+      html += '              <div style="font-size: 11px; color: var(--text-muted);">Renewal: ' + sch.renewal_date + '</div>';
+      html += '            </td>';
+      html += '            <td>';
+      html += '              <span class="badge ' + statusBadge + '">' + sch.status + '</span>';
+      html += '            </td>';
+      html += '            <td>';
+      html += '              <div style="display: flex; gap: 8px; flex-wrap: wrap;">';
+      html += '                <button class="btn btn-secondary btn-xs school-edit-btn" data-id="' + sch.school_id + '">Edit</button>';
+      html += '                <button class="btn btn-secondary btn-xs school-toggle-status-btn" data-id="' + sch.school_id + '">' + (sch.status === 'Active' ? 'Pause' : 'Resume') + '</button>';
+      html += '                <button class="btn btn-primary btn-xs school-impersonate-btn" data-id="' + sch.school_id + '"' + (isCurrent ? ' disabled style="opacity: 0.5;"' : '') + '>';
+      html += '                  <span class="material-icons-round" style="font-size: 12px; vertical-align: middle; margin-right: 2px;">login</span> Login';
+      html += '                </button>';
+      html += '              </div>';
+      html += '            </td>';
+      html += '          </tr>';
+    });
+    
+    html += '        </tbody>';
+    html += '      </table>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+    
+    html += '</div>';
+    return html;
+  }
+
+  function showSchoolModal(schoolId) {
+    mockSchools = SchoolApp.store.schools || [];
+    var school = null;
+    var title = "Add New School";
+    if (schoolId) {
+      school = mockSchools.find(function(s) { return s.school_id === schoolId; });
+      title = "Edit School";
+    }
+    
+    var name = school ? school.school_name : "";
+    var subdomain = school ? school.subdomain : "";
+    var plan = school ? school.plan : "Basic";
+    var status = school ? school.status : "Active";
+    var allowedFeatures = school ? school.allowed_features : ["dashboard", "help"];
+    
+    var features = [
+      { key: "students", label: "Student Details & Admissions" },
+      { key: "teachers", label: "Teachers & Subjects" },
+      { key: "attendance", label: "Attendance Tracking" },
+      { key: "fees", label: "Fees & Payments" },
+      { key: "timetable", label: "Timetable & Classes" },
+      { key: "exams", label: "Exams & Results" },
+      { key: "transport", label: "Transport Tracker (Mock)" },
+      { key: "sms_alerts", label: "SMS Alerts Gateway (Mock)" }
+    ];
+    
+    var html = '<form id="school-modal-form" style="display:flex; flex-direction:column; gap:16px;">';
+    html += '  <div class="form-group">';
+    html += '    <label class="form-label">School Name *</label>';
+    html += '    <input type="text" id="sch-name" class="form-input" required value="' + name + '" placeholder="Enter school name">';
+    html += '  </div>';
+    html += '  <div class="form-group">';
+    html += '    <label class="form-label">Subdomain *</label>';
+    html += '    <input type="text" id="sch-subdomain" class="form-input" required value="' + subdomain + '" placeholder="e.g. dpsbokaro" style="font-family: monospace;"' + (schoolId ? ' disabled' : '') + '>';
+    html += '  </div>';
+    
+    html += '  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">';
+    html += '    <div class="form-group">';
+    html += '      <label class="form-label">Subscription Plan</label>';
+    html += '      <select id="sch-plan" class="form-select">';
+    html += '        <option value="Basic"' + (plan === 'Basic' ? ' selected' : '') + '>Basic</option>';
+    html += '        <option value="Pro"' + (plan === 'Pro' ? ' selected' : '') + '>Pro</option>';
+    html += '        <option value="Premium"' + (plan === 'Premium' ? ' selected' : '') + '>Premium</option>';
+    html += '      </select>';
+    html += '    </div>';
+    html += '    <div class="form-group">';
+    html += '      <label class="form-label">Status</label>';
+    html += '      <select id="sch-status" class="form-select">';
+    html += '        <option value="Active"' + (status === 'Active' ? ' selected' : '') + '>Active</option>';
+    html += '        <option value="Paused"' + (status === 'Paused' ? ' selected' : '') + '>Paused</option>';
+    html += '      </select>';
+    html += '    </div>';
+    html += '  </div>';
+    
+    html += '  <div class="form-group">';
+    html += '    <label class="form-label" style="font-weight: 700;">Allowed Features & Modules</label>';
+    html += '    <div class="features-checklist-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">';
+    
+    features.forEach(function(f) {
+      var checked = allowedFeatures.indexOf(f.key) !== -1 ? ' checked' : '';
+      html += '      <label class="chip-toggle" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-secondary); font-size: 12px; color: var(--text-secondary);">';
+      html += '        <input type="checkbox" class="sch-feature-cb" value="' + f.key + '"' + checked + ' style="cursor: pointer; width: 14px; height: 14px; margin: 0;">';
+      html += '        <span>' + f.label + '</span>';
+      html += '      </label>';
+    });
+    
+    html += '    </div>';
+    html += '  </div>';
+    html += '</form>';
+    
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="btn-save-school">' + (schoolId ? 'Save Changes' : 'Add School') + '</button>';
+    
+    SchoolApp.showModal(title, html, footerHTML);
+    
+    document.getElementById('btn-save-school').addEventListener('click', function() {
+      var nameVal = document.getElementById('sch-name').value.trim();
+      var subdomainVal = document.getElementById('sch-subdomain').value.trim().toLowerCase();
+      var planVal = document.getElementById('sch-plan').value;
+      var statusVal = document.getElementById('sch-status').value;
+      
+      if (!nameVal || !subdomainVal) {
+        SchoolApp.showToast("Please fill all required fields.", "error");
+        return;
+      }
+      
+      var checkedFeatures = ["dashboard", "help"];
+      document.querySelectorAll('.sch-feature-cb:checked').forEach(function(cb) {
+        checkedFeatures.push(cb.value);
+      });
+      
+      if (schoolId) {
+        var targetSch = mockSchools.find(function(s) { return s.school_id === schoolId; });
+        if (targetSch) {
+          targetSch.school_name = nameVal;
+          targetSch.plan = planVal;
+          targetSch.status = statusVal;
+          targetSch.allowed_features = checkedFeatures;
+        }
+      } else {
+        if (mockSchools.some(function(s) { return s.subdomain === subdomainVal; })) {
+          SchoolApp.showToast("Subdomain already exists.", "error");
+          return;
+        }
+        
+        var newSchool = {
+          school_id: "sch_" + Date.now().toString(36),
+          school_name: nameVal,
+          subdomain: subdomainVal,
+          plan: planVal,
+          status: statusVal,
+          storage_used: "0 MB",
+          renewal_date: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
+          allowed_features: checkedFeatures
+        };
+        mockSchools.push(newSchool);
+      }
+      
+      SchoolApp.store.schools = mockSchools;
+      SchoolApp.save();
+      
+      SchoolApp.closeModal();
+      SchoolApp.showToast(schoolId ? "School details updated successfully." : "New school tenant added successfully.", "success");
+      
+      if (schoolId && schoolId === SchoolApp.store.currentSchoolId) {
+        SchoolApp.updateSidebarLockBadges();
+      }
+      
+      render();
+    });
   }
 
   function renderPromotionTab() {
@@ -2381,6 +2587,64 @@
           if (printBtn) {
             var txnId = printBtn.getAttribute('data-id');
             printTransactionReceipt(txnId);
+          }
+        });
+      }
+    }
+
+    // Schools Tab Event Bindings
+    if (state.activeTab === 'schools') {
+      var addSchoolBtn = document.getElementById('btn-add-school');
+      if (addSchoolBtn) {
+        addSchoolBtn.addEventListener('click', function() {
+          showSchoolModal();
+        });
+      }
+
+      var schoolsTable = document.getElementById('schools-table');
+      if (schoolsTable) {
+        schoolsTable.addEventListener('click', function(e) {
+          var editBtn = e.target.closest('.school-edit-btn');
+          if (editBtn) {
+            var schoolId = editBtn.getAttribute('data-id');
+            showSchoolModal(schoolId);
+            return;
+          }
+
+          var statusBtn = e.target.closest('.school-toggle-status-btn');
+          if (statusBtn) {
+            var schoolId = statusBtn.getAttribute('data-id');
+            mockSchools = SchoolApp.store.schools || [];
+            var targetSch = mockSchools.find(function(s) { return s.school_id === schoolId; });
+            if (targetSch) {
+              targetSch.status = targetSch.status === 'Active' ? 'Paused' : 'Active';
+              SchoolApp.store.schools = mockSchools;
+              SchoolApp.save();
+              SchoolApp.showToast('Subscription status updated for ' + targetSch.school_name + '.', 'success');
+              
+              if (schoolId === SchoolApp.store.currentSchoolId) {
+                SchoolApp.updateSidebarLockBadges();
+              }
+              render();
+            }
+            return;
+          }
+
+          var impersonateBtn = e.target.closest('.school-impersonate-btn');
+          if (impersonateBtn) {
+            var schoolId = impersonateBtn.getAttribute('data-id');
+            mockSchools = SchoolApp.store.schools || [];
+            var targetSch = mockSchools.find(function(s) { return s.school_id === schoolId; });
+            if (targetSch) {
+              SchoolApp.store.currentSchoolId = schoolId;
+              SchoolApp.store.settings.schoolName = targetSch.school_name;
+              SchoolApp.save();
+              SchoolApp.showToast('Logged in as Administrator for ' + targetSch.school_name + '.', 'success');
+              
+              SchoolApp.updateSidebarLockBadges();
+              SchoolApp.navigate('dashboard');
+            }
+            return;
           }
         });
       }
