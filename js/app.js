@@ -1,8 +1,20 @@
-'use strict';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-/* ============================================================
-   Shishu Vikash Mandir - Core Application
-   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
+  authDomain: "ctrl-shift-solutions.firebaseapp.com",
+  projectId: "ctrl-shift-solutions",
+  storageBucket: "ctrl-shift-solutions.firebasestorage.app",
+  messagingSenderId: "958349968165",
+  appId: "1:958349968165:web:e11daa979fcff8f6f0d0cc"
+};
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+
+// Expose Firestore globally for any non-module components
+window.db = db;
+window.firestore = { doc, getDoc, setDoc, updateDoc, collection, getDocs };
 
 window.SchoolApp = {
   // ---------- Data Store ----------
@@ -59,176 +71,47 @@ window.SchoolApp = {
   modules: {},
   feesGeneratedMsg: null,
 
-  isFirebaseInitialized: false,
-  firebaseDbRef: null,
-
-  FIREBASE_CONFIG: {
-    apiKey: "AIzaSyBPLmez7K_3YzYnsbMJwtLeHTQHGBvCD5w",
-    authDomain: "shishuvikashmandirctps.firebaseapp.com",
-    databaseURL: "https://shishuvikashmandirctps-default-rtdb.firebaseio.com",
-    projectId: "shishuvikashmandirctps",
-    storageBucket: "shishuvikashmandirctps.firebasestorage.app",
-    messagingSenderId: "667287330852",
-    appId: "1:667287330852:web:e58b07cffedafc2c7fb8b1",
-    measurementId: "G-68HBC0KBYC"
-  },
-
-  initFirebase: function() {
-    var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
-    if (currentSchoolId !== 'svm_bokaro_001') {
-      console.log('Firebase Cloud Sync disabled for isolated tenant.');
-      return;
-    }
-    if (this.isFirebaseInitialized) return;
-
-    try {
-      var config = this.FIREBASE_CONFIG;
-      // Initialize Firebase App
-      if (firebase.apps.length === 0) {
-        firebase.initializeApp(config);
-      }
-      var db = firebase.database();
-      this.firebaseDbRef = db.ref('school_data');
-      this.isFirebaseInitialized = true;
-      console.log('Firebase Cloud Database initialized successfully.');
-
-      var self = this;
-      // Real-time synchronization subscription
-      this.firebaseDbRef.on('value', function(snapshot) {
-        var val = snapshot.val();
-        if (val) {
-          console.log('Cloud database updated. Syncing locally...');
-          if (val.seederVersion !== 2) {
-            console.log('Cloud database has old seederVersion. Reseeding cloud...');
-            self.store.seederVersion = 2;
-            self.store.students = [];
-            self.store.teachers = [];
-            self.store.attendance = [];
-            self.store.trash = [];
-            self.store.fees = [];
-            self.store.marks = [];
-            self.store.notices = [];
-            self.generateDemoData();
-            self.firebaseDbRef.set(self.store);
-            return;
-          }
-          self.store = val;
-          if (!self.store.students) self.store.students = [];
-          if (!self.store.teachers) self.store.teachers = [];
-          if (!self.store.attendance) self.store.attendance = [];
-          if (!self.store.trash) self.store.trash = [];
-          if (!self.store.feeHeads) self.store.feeHeads = [];
-          if (!self.store.feeStructures) self.store.feeStructures = {};
-          if (!self.store.fees) self.store.fees = [];
-          if (!self.store.exams) self.store.exams = [];
-          if (!self.store.subjectMapping) self.store.subjectMapping = {};
-          if (!self.store.marks) self.store.marks = [];
-          if (!self.store.notices) self.store.notices = [];
-          if (!self.store.timetable) self.store.timetable = {};
-          if (!self.store.timetable.settings) {
-            self.store.timetable.settings = {
-              startTime: "08:00",
-              endTime: "14:00",
-              totalPeriods: 8,
-              lunchAfterPeriod: 4,
-              lunchDuration: 30,
-              satStartTime: "08:00",
-              satEndTime: "12:30",
-              satTotalPeriods: 6,
-              satLunchAfterPeriod: 0
-            };
-          }
-          if (!self.store.notifications) self.store.notifications = [];
-          if (self.store.lastAutomatedFeeRun === undefined || self.store.lastAutomatedFeeRun === '') self.store.lastAutomatedFeeRun = '2026-04';
-          if (!self.store.settings) {
-            self.store.settings = {
-              schoolName: 'Shishu Vikash Mandir',
-              academicYear: '2025-2026',
-              address: '123 Education Lane, Knowledge City, Karnataka 560001',
-              phone: '+91 98765 43210',
-              email: 'admin@shishuvikash.edu.in',
-              classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
-              sections: ['A','B','C'],
-              attendanceTime: '09:00',
-              theme: 'dark',
-              adminUsername: 'admin',
-              adminPassword: 'admin123',
-              enableCloudSync: false,
-              firebaseConfig: ''
-            };
-          } else {
-            if (!self.store.settings.classes) self.store.settings.classes = ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-            if (!self.store.settings.sections) self.store.settings.sections = ['A','B','C'];
-          }
-
-          // Force overwrite if database is empty
-          if (!self.store.students || self.store.students.length === 0) {
-            console.log('Cloud database is empty or has no students. Seeding with exactly 120 students...');
-            self.store.students = [];
-            self.store.teachers = [];
-            self.store.attendance = [];
-            self.store.trash = [];
-            self.store.fees = [];
-            self.generateDemoData();
-            self.firebaseDbRef.set(self.store);
-            return;
-          }
-
-          // Save to local cache
-          try {
-            localStorage.setItem('shishuvikash_data', JSON.stringify(self.store));
-          } catch (e) {}
-          
-          // Instantly refresh current active view
-          self.navigate(self.currentPage);
-        } else {
-          // Empty cloud database - initialize it with current local state
-          console.log('Cloud database is empty. Seeding local state to cloud...');
-          self.firebaseDbRef.set(self.store);
-        }
-      }, function(error) {
-        console.error('Firebase real-time sync failed:', error);
-      });
-    } catch (e) {
-      console.error('Firebase failed to initialize:', e);
-      this.isFirebaseInitialized = false;
-    }
-  },
-
   // ---------- Data Persistence ----------
-  save: function() {
+  save: async function() {
     try {
       var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
-      var isSVM = currentSchoolId === 'svm_bokaro_001';
-      var key = isSVM ? 'shishuvikash_data' : ('shishuvikash_data_' + currentSchoolId);
-
-      localStorage.setItem(key, JSON.stringify(this.store));
-      
-      // If Firebase cloud sync is active, write to cloud database (SVM Bokaro only)
-      if (isSVM && this.isFirebaseInitialized && this.firebaseDbRef) {
-        this.firebaseDbRef.set(this.store).catch(function(e) {
-          console.error('Failed to sync changes to Firebase:', e);
-        });
-      }
+      const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+      const payload = JSON.parse(JSON.stringify(this.store));
+      await window.firestore.setDoc(docRef, payload);
+      console.log('Successfully saved tenant data to Cloud Firestore for: ' + currentSchoolId);
     } catch (e) {
-      console.error('Failed to save data:', e);
+      console.error('Failed to save data to Firestore:', e);
     }
   },
 
-  load: function() {
+  load: async function() {
     try {
-      var impSchoolId = localStorage.getItem('impersonate_school_id') || '';
-      var isSVM = !impSchoolId || impSchoolId === 'svm_bokaro_001';
-      var key = isSVM ? 'shishuvikash_data' : ('shishuvikash_data_' + impSchoolId);
-      
-      var data = localStorage.getItem(key);
-      if (data) {
-        var parsed = JSON.parse(data);
-        // Clean merge with default structure
+      var impSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+      var isSVM = impSchoolId === 'svm_bokaro_001';
+      this.store.currentSchoolId = impSchoolId;
+
+      const docRef = window.firestore.doc(window.db, 'tenant_data', impSchoolId);
+      const docSnap = await window.firestore.getDoc(docRef);
+
+      if (docSnap.exists()) {
+        var parsed = docSnap.data();
         this.store = Object.assign({}, this.store, parsed);
-        this.store.currentSchoolId = isSVM ? 'svm_bokaro_001' : impSchoolId;
+        this.store.currentSchoolId = impSchoolId;
       } else {
-        if (!isSVM) {
+        if (isSVM) {
+          // Default SVM seed
+          this.store.seederVersion = 2;
+          this.store.students = [];
+          this.store.teachers = [];
+          this.store.attendance = [];
+          this.store.trash = [];
+          this.store.fees = [];
+          this.store.marks = [];
+          this.store.notices = [];
+          this.store.currentSchoolId = 'svm_bokaro_001';
+          this.generateDemoData();
+          await this.save();
+        } else {
           // Initialize fresh, empty state for new school
           this.store = {
             seederVersion: 2,
@@ -269,29 +152,28 @@ window.SchoolApp = {
               theme: 'dark'
             }
           };
-          
-          // Seed schools list from main shishuvikash_data
+
+          // Seed schools list from schools collection in Firestore so we have context
           try {
-            var mainDataRaw = localStorage.getItem('shishuvikash_data');
-            if (mainDataRaw) {
-              var mainData = JSON.parse(mainDataRaw);
-              this.store.schools = mainData.schools || [];
+            const querySnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'schools'));
+            let schoolsList = [];
+            querySnapshot.forEach((doc) => {
+              schoolsList.push(doc.data());
+            });
+            this.store.schools = schoolsList;
+          } catch (e) {
+            console.error('Failed to fetch schools list for new school context:', e);
+          }
+
+          // Update school name if available
+          if (impSchoolId) {
+            var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === impSchoolId; });
+            if (schoolObj) {
+              this.store.settings.schoolName = schoolObj.school_name;
             }
-          } catch(e) {}
-          
-          this.save();
-        } else {
-          // Default SVM seed
-          this.store.seederVersion = 2;
-          this.store.students = [];
-          this.store.teachers = [];
-          this.store.attendance = [];
-          this.store.trash = [];
-          this.store.fees = [];
-          this.store.marks = [];
-          this.store.notices = [];
-          this.generateDemoData();
-          this.save();
+          }
+
+          await this.save();
         }
       }
 
@@ -309,20 +191,20 @@ window.SchoolApp = {
       if (!this.store.notices) this.store.notices = [];
       if (!this.store.timetable) this.store.timetable = {};
       if (!this.store.currentSchoolId) {
-        this.store.currentSchoolId = isSVM ? 'svm_bokaro_001' : impSchoolId;
+        this.store.currentSchoolId = impSchoolId;
       }
 
-      // Synchronize schools directory list
-      if (!isSVM) {
-        try {
-          var mainDataRaw = localStorage.getItem('shishuvikash_data');
-          if (mainDataRaw) {
-            var mainData = JSON.parse(mainDataRaw);
-            this.store.schools = mainData.schools || [];
-          }
-        } catch(e) {}
-      } else {
-        if (!this.store.schools || this.store.schools.length === 0) {
+      // Synchronize schools list from Firestore (if empty or non-SVM)
+      try {
+        const querySnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'schools'));
+        let schoolsList = [];
+        querySnapshot.forEach((doc) => {
+          schoolsList.push(doc.data());
+        });
+        this.store.schools = schoolsList;
+      } catch (e) {
+        console.error('Failed to synchronize schools list:', e);
+        if (isSVM && (!this.store.schools || this.store.schools.length === 0)) {
           this.store.schools = [
             {
               school_id: "svm_bokaro_001",
@@ -339,7 +221,7 @@ window.SchoolApp = {
       }
 
       // Update name based on schools config
-      if (impSchoolId && !isSVM) {
+      if (impSchoolId) {
         var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === impSchoolId; });
         if (schoolObj) {
           this.store.settings.schoolName = schoolObj.school_name;
@@ -368,12 +250,7 @@ window.SchoolApp = {
         sections: ['A','B','C']
       }, this.store.settings || {});
 
-      // Initialize Firebase cloud synchronization (SVM only)
-      if (isSVM) {
-        this.initFirebase();
-      }
-
-      return !!data;
+      return true;
     } catch (e) {
       console.error('Failed to load data:', e);
       return false;
@@ -437,9 +314,6 @@ window.SchoolApp = {
       if (!lastRun) {
         this.store.lastAutomatedFeeRun = currentPeriod;
         this.save();
-        if (this.isFirebaseInitialized && this.firebaseDbRef) {
-          this.firebaseDbRef.child('lastAutomatedFeeRun').set(currentPeriod);
-        }
         return;
       }
 
@@ -513,9 +387,6 @@ window.SchoolApp = {
       // Update lastAutomatedFeeRun to the current month to prevent duplicate runs
       this.store.lastAutomatedFeeRun = currentPeriod;
       this.save();
-      if (this.isFirebaseInitialized && this.firebaseDbRef) {
-        this.firebaseDbRef.set(this.store);
-      }
 
       // Admin Feedback: Defer success toast so it is only triggered when Admin Dashboard loads
       var missedMonthsText = missedMonths.map(function(m) {
@@ -2533,8 +2404,8 @@ window.SchoolApp = {
 };
 
 // ---------- Initialization ----------
-document.addEventListener('DOMContentLoaded', function() {
-  var hasData = SchoolApp.load();
+document.addEventListener('DOMContentLoaded', async function() {
+  var hasData = await SchoolApp.load();
 
   // Apply saved theme on page load
   var savedTheme = localStorage.getItem('appTheme') || (SchoolApp.store.settings && SchoolApp.store.settings.theme) || 'dark';

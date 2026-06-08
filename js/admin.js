@@ -1542,9 +1542,24 @@
       resetAllBtn.addEventListener('click', function() {
         SchoolApp.showConfirm('This will DELETE ALL DATA and reset the application. This CANNOT be undone. Are you absolutely sure?', function() {
           SchoolApp.createRestorePoint('Auto-Backup before Complete Database Reset');
-          localStorage.removeItem('shishuvikash_data');
-          SchoolApp.showToast('All data reset. Reloading...', 'warning');
-          setTimeout(function() { location.reload(); }, 1500);
+          SchoolApp.store.students = [];
+          SchoolApp.store.teachers = [];
+          SchoolApp.store.attendance = [];
+          SchoolApp.store.trash = [];
+          SchoolApp.store.fees = [];
+          SchoolApp.store.marks = [];
+          SchoolApp.store.notices = [];
+          SchoolApp.store.timetable = {};
+          if (SchoolApp.store.currentSchoolId === 'svm_bokaro_001') {
+            SchoolApp.generateDemoData();
+          }
+          SchoolApp.save().then(function() {
+            SchoolApp.showToast('All data reset. Reloading...', 'warning');
+            setTimeout(function() { location.reload(); }, 1500);
+          }).catch(function(err) {
+            console.error('Failed to save reset state:', err);
+            SchoolApp.showToast('Reset failed on cloud storage.', 'error');
+          });
         }, 'Reset All Data');
       });
     }

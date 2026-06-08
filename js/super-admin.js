@@ -5,6 +5,20 @@
  * ===================================================
  */
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
+  authDomain: "ctrl-shift-solutions.firebaseapp.com",
+  projectId: "ctrl-shift-solutions",
+  storageBucket: "ctrl-shift-solutions.firebasestorage.app",
+  messagingSenderId: "958349968165",
+  appId: "1:958349968165:web:e11daa979fcff8f6f0d0cc"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 (function () {
     'use strict';
 
@@ -12,6 +26,75 @@
     var STORAGE_KEY = 'shishuvikash_data';
     var SESSION_KEY = 'sa_session';
     var CREDENTIALS = { username: 'superadmin', password: 'superadmin123' };
+
+    // Expose cache and functions on window
+    window.saCache = {
+        schools: [],
+        recovery_trash: [],
+        support_tickets: [],
+        audit_logs: []
+    };
+
+    var isDataLoaded = false;
+    async function ensureDataLoaded() {
+        if (isDataLoaded) return;
+        try {
+            // Load schools
+            const schoolsCol = collection(db, 'schools');
+            const schoolsSnapshot = await getDocs(schoolsCol);
+            let schoolsList = [];
+            schoolsSnapshot.forEach((docSnap) => {
+                schoolsList.push(docSnap.data());
+            });
+
+            if (schoolsList.length === 0) {
+                // Seed schools
+                for (const s of defaultSchools) {
+                    await setDoc(doc(db, 'schools', s.school_id), s);
+                }
+                schoolsList = JSON.parse(JSON.stringify(defaultSchools));
+            }
+            window.saCache.schools = schoolsList;
+
+            // Load recovery trash
+            const trashDocRef = doc(db, 'sa_data', 'recovery_trash');
+            const trashDocSnap = await getDoc(trashDocRef);
+            if (trashDocSnap.exists()) {
+                window.saCache.recovery_trash = trashDocSnap.data().trash || [];
+            } else {
+                await setDoc(trashDocRef, { trash: defaultRecoveryTrash });
+                window.saCache.recovery_trash = JSON.parse(JSON.stringify(defaultRecoveryTrash));
+            }
+
+            // Load support tickets
+            const ticketsDocRef = doc(db, 'sa_data', 'support_tickets');
+            const ticketsDocSnap = await getDoc(ticketsDocRef);
+            if (ticketsDocSnap.exists()) {
+                window.saCache.support_tickets = ticketsDocSnap.data().tickets || [];
+            } else {
+                await setDoc(ticketsDocRef, { tickets: defaultSupportTickets });
+                window.saCache.support_tickets = JSON.parse(JSON.stringify(defaultSupportTickets));
+            }
+
+            // Load audit logs
+            const logsDocRef = doc(db, 'sa_data', 'audit_logs');
+            const logsDocSnap = await getDoc(logsDocRef);
+            if (logsDocSnap.exists()) {
+                window.saCache.audit_logs = logsDocSnap.data().logs || [];
+            } else {
+                await setDoc(logsDocRef, { logs: defaultAuditLogs });
+                window.saCache.audit_logs = JSON.parse(JSON.stringify(defaultAuditLogs));
+            }
+
+            isDataLoaded = true;
+        } catch (e) {
+            console.error('Error loading Firestore data:', e);
+            showToast('Failed to load data from Cloud Firestore', 'error');
+        }
+    }
+
+    // Expose globally so dashboard can call it
+    window.ensureDataLoaded = ensureDataLoaded;
 
     // ─── Filter State ───────────────────────────────────
     var state = {
@@ -213,39 +296,23 @@
     // ─── Data Layer ─────────────────────────────────────
 
     /**
-     * Load the entire app data from localStorage.
-     * Seeds schools array if it doesn't exist.
+     * Load the entire app data from memory cache.
      */
     function loadData() {
-        var raw = localStorage.getItem(STORAGE_KEY);
-        var data;
-        try {
-            data = raw ? JSON.parse(raw) : {};
-        } catch (e) {
-            data = {};
-        }
-        if (!data.schools || !Array.isArray(data.schools) || data.schools.length === 0) {
-            data.schools = JSON.parse(JSON.stringify(defaultSchools));
-            saveData(data);
-        }
-        if (!data.recovery_trash || !Array.isArray(data.recovery_trash)) {
-            data.recovery_trash = JSON.parse(JSON.stringify(defaultRecoveryTrash));
-            saveData(data);
-        }
-        if (!data.support_tickets || !Array.isArray(data.support_tickets)) {
-            data.support_tickets = JSON.parse(JSON.stringify(defaultSupportTickets));
-            saveData(data);
-        }
-        if (!data.audit_logs || !Array.isArray(data.audit_logs)) {
-            data.audit_logs = JSON.parse(JSON.stringify(defaultAuditLogs));
-            saveData(data);
-        }
-        return data;
+        return {
+            schools: window.saCache.schools,
+            recovery_trash: window.saCache.recovery_trash,
+            support_tickets: window.saCache.support_tickets,
+            audit_logs: window.saCache.audit_logs
+        };
     }
 
-    /** Persist the full data object back to localStorage. */
+    /** Persist the data synchronously to memory cache. */
     function saveData(data) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        window.saCache.schools = data.schools || [];
+        window.saCache.recovery_trash = data.recovery_trash || [];
+        window.saCache.support_tickets = data.support_tickets || [];
+        window.saCache.audit_logs = data.audit_logs || [];
     }
 
 
@@ -299,13 +366,17 @@
     // ─── Login Logic ────────────────────────────────────
 
     /** Validate credentials and switch to dashboard. */
-    function saLogin(username, password) {
+    async function saLogin(username, password) {
         if (username === CREDENTIALS.username && password === CREDENTIALS.password) {
             sessionStorage.setItem(SESSION_KEY, 'active');
             loginPage.classList.add('hidden');
             dashboard.classList.add('active');
             loginError.classList.remove('visible');
             loginForm.reset();
+            
+            showToast('Loading database from Cloud Firestore...', 'info');
+            await ensureDataLoaded();
+            
             renderDashboard();
             showToast('Welcome back, Super Admin!', 'success');
             return true;
@@ -568,7 +639,8 @@
     }
 
     /** Restore a soft-deleted item. */
-    function restoreTrashItem(itemId) {
+    async function restoreTrashItem(itemId) {
+        await ensureDataLoaded();
         var data = loadData();
         var trash = data.recovery_trash || [];
         var restoredItem = null;
@@ -595,6 +667,12 @@
             });
 
             saveData(data);
+            try {
+                await setDoc(doc(db, 'sa_data', 'recovery_trash'), { trash: data.recovery_trash });
+                await setDoc(doc(db, 'sa_data', 'audit_logs'), { logs: data.audit_logs });
+            } catch(e) {
+                console.error('Failed to save restoration to Firestore:', e);
+            }
             showToast('⚡ ' + restoredItem.data_type + ' restored successfully!', 'success');
             renderRecoveryCenter();
             renderDashboard(); // Re-render directory stats if any
@@ -645,7 +723,8 @@
     }
 
     /** Handle Support Ticket Quick Reply. */
-    function quickReplyTicket(ticketId) {
+    async function quickReplyTicket(ticketId) {
+        await ensureDataLoaded();
         var data = loadData();
         var tickets = data.support_tickets || [];
         var ticket = null;
@@ -684,6 +763,12 @@
         });
 
         saveData(data);
+        try {
+            await setDoc(doc(db, 'sa_data', 'support_tickets'), { tickets: data.support_tickets });
+            await setDoc(doc(db, 'sa_data', 'audit_logs'), { logs: data.audit_logs });
+        } catch(e) {
+            console.error('Failed to save ticket reply to Firestore:', e);
+        }
         showToast('Reply sent! Ticket ' + ticket.ticket_id + ' marked as Closed/Resolved.', 'success');
         renderSupportTickets();
     }
@@ -868,7 +953,7 @@
     }
 
     /** Save (create or update) school from modal form. */
-    function saveSchool() {
+    async function saveSchool() {
         var name      = document.getElementById('sf-name').value.trim();
         var email     = document.getElementById('sf-email').value.trim();
         var subdomain = document.getElementById('sf-subdomain').value.trim();
@@ -884,6 +969,7 @@
             return;
         }
 
+        await ensureDataLoaded();
         var data = loadData();
         var schoolId = document.getElementById('sf-school-id').value;
         var isEdit = !!schoolId;
@@ -920,6 +1006,11 @@
             data.schools[idx].allowed_features   = selectedFeatures;
 
             saveData(data);
+            try {
+                await setDoc(doc(db, 'schools', schoolId), data.schools[idx]);
+            } catch(e) {
+                console.error('Failed to update school in Firestore:', e);
+            }
             closeModal();
             renderDashboard();
             showToast('School "' + name + '" updated successfully!', 'success');
@@ -954,6 +1045,11 @@
 
             data.schools.push(newSchool);
             saveData(data);
+            try {
+                await setDoc(doc(db, 'schools', newSchool.school_id), newSchool);
+            } catch(e) {
+                console.error('Failed to save new school to Firestore:', e);
+            }
             closeModal();
             renderDashboard();
             showToast('School "' + name + '" onboarded successfully!', 'success');
@@ -964,7 +1060,8 @@
     // ─── Tenant Actions ─────────────────────────────────
 
     /** Toggle a school's status between Active and Paused. */
-    function toggleSchoolStatus(schoolId) {
+    async function toggleSchoolStatus(schoolId) {
+        await ensureDataLoaded();
         var data = loadData();
         var school = findSchoolById(data.schools, schoolId);
         if (!school) { showToast('School not found.', 'error'); return; }
@@ -973,6 +1070,11 @@
         school.status = (oldStatus === 'Active') ? 'Paused' : 'Active';
 
         saveData(data);
+        try {
+            await setDoc(doc(db, 'schools', schoolId), school);
+        } catch(e) {
+            console.error('Failed to toggle school status in Firestore:', e);
+        }
         renderDashboard();
 
         if (school.status === 'Active') {
@@ -1287,13 +1389,17 @@
         if (sessionStorage.getItem(SESSION_KEY) === 'active') {
             loginPage.classList.add('hidden');
             dashboard.classList.add('active');
-            renderDashboard();
+            (async function() {
+                showToast('Loading database from Cloud Firestore...', 'info');
+                await ensureDataLoaded();
+                renderDashboard();
+            })();
         }
 
         // Login form submit
-        loginForm.addEventListener('submit', function (e) {
+        loginForm.addEventListener('submit', async function (e) {
             e.preventDefault();
-            saLogin(usernameInput.value.trim(), passwordInput.value);
+            await saLogin(usernameInput.value.trim(), passwordInput.value);
         });
 
         // Password toggle
