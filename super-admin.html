@@ -480,10 +480,254 @@
       background: #f8fafc;
       border-color: rgba(0, 0, 0, 0.12);
     }
-    .sa-light-theme .sa-activity-time {
+
+    /* ---- SIDEBAR LAYOUT ---- */
+    .sa-wrapper {
+      display: flex;
+      min-height: calc(100vh - 73px);
+    }
+    .sa-sidebar {
+      width: 240px;
+      background: rgba(26, 26, 46, 0.8);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 24px 16px;
+      flex-shrink: 0;
+    }
+    .sa-sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sa-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .sa-nav-item:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.04);
+      transform: translateX(4px);
+    }
+    .sa-nav-item.active {
+      color: #fff;
+      background: rgba(37, 99, 235, 0.15);
+      border-color: rgba(37, 99, 235, 0.25);
+    }
+    .sa-nav-item .material-icons-round {
+      font-size: 20px;
+      color: rgba(255, 255, 255, 0.4);
+      transition: color 0.2s;
+    }
+    .sa-nav-item:hover .material-icons-round,
+    .sa-nav-item.active .material-icons-round {
+      color: #60a5fa;
+    }
+    .sa-main {
+      flex-grow: 1;
+      padding: 32px;
+      background: #0a0a14;
+      overflow-y: auto;
+    }
+    .sa-tab-page {
+      display: none;
+      animation: saTabFadeIn 0.3s ease-out;
+    }
+    .sa-tab-page.active {
+      display: block;
+    }
+    @keyframes saTabFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---- SCHOOL PROFILE MODAL ---- */
+    .sa-profile-tabs {
+      display: flex;
+      gap: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 24px;
+      padding-bottom: 1px;
+    }
+    .sa-profile-tab-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 4px;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    .sa-profile-tab-btn:hover {
+      color: #e2e8f0;
+    }
+    .sa-profile-tab-btn.active {
+      color: #60a5fa;
+    }
+    .sa-profile-tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #2563eb;
+      border-radius: 2px;
+    }
+    .sa-profile-tab-content {
+      display: none;
+      animation: saTabFadeIn 0.2s ease-out;
+    }
+    .sa-profile-tab-content.active {
+      display: block;
+    }
+
+    /* Audit Logs styling */
+    .sa-audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .sa-audit-table th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .sa-audit-table td {
+      padding: 12px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: rgba(255, 255, 255, 0.8);
+    }
+    .sa-audit-table tr:last-child td {
+      border-bottom: none;
+    }
+    .sa-audit-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sa-audit-badge-add {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .sa-audit-badge-update {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+    .sa-audit-badge-delete {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+
+    /* Ticket Priorities & Statuses */
+    .sa-badge-high {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+    }
+    .sa-badge-medium {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+    .sa-badge-low {
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(37, 99, 235, 0.25);
+    }
+    .sa-badge-open {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .sa-badge-closed {
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    /* ---- LIGHT THEME OVERRIDES FOR NEW ELEMENTS ---- */
+    .sa-light-theme .sa-sidebar {
+      background: rgba(255, 255, 255, 0.9);
+      border-right: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-nav-item {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .sa-light-theme .sa-nav-item:hover {
+      color: #1e293b;
+      background: rgba(0, 0, 0, 0.04);
+    }
+    .sa-light-theme .sa-nav-item.active {
+      color: #2563eb;
+      background: rgba(37, 99, 235, 0.08);
+      border-color: rgba(37, 99, 235, 0.15);
+    }
+    .sa-light-theme .sa-nav-item .material-icons-round {
+      color: rgba(0, 0, 0, 0.4);
+    }
+    .sa-light-theme .sa-nav-item:hover .material-icons-round,
+    .sa-light-theme .sa-nav-item.active .material-icons-round {
+      color: #2563eb;
+    }
+    .sa-light-theme .sa-main {
+      background: #f4f6fa;
+    }
+    .sa-light-theme .sa-profile-tabs {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-profile-tab-btn {
       color: rgba(0, 0, 0, 0.5);
     }
-  </style>
+    .sa-light-theme .sa-profile-tab-btn:hover {
+      color: #1e293b;
+    }
+    .sa-light-theme .sa-profile-tab-btn.active {
+      color: #2563eb;
+    }
+    .sa-light-theme .sa-profile-tab-btn.active::after {
+      background: #2563eb;
+    }
+    .sa-light-theme .sa-audit-table th {
+      color: rgba(0, 0, 0, 0.5);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme .sa-audit-table td {
+      color: #1e293b;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .sa-light-theme .sa-badge-closed {
+      background: rgba(0, 0, 0, 0.05);
+      color: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+</style>
 </head>
 <body class="sa-body">
 
@@ -552,46 +796,121 @@
           Logout
         </button>
       </div>
-    </header>
+    </header>    <div class="sa-wrapper">
+      <aside class="sa-sidebar">
+        <nav class="sa-sidebar-nav">
+          <a class="sa-nav-item active" data-tab="dashboard">
+            <span class="material-icons-round">dashboard</span>
+            <span>Dashboard</span>
+          </a>
+          <a class="sa-nav-item" data-tab="recovery">
+            <span class="material-icons-round">restore_from_trash</span>
+            <span>Recovery Center</span>
+          </a>
+          <a class="sa-nav-item" data-tab="tickets">
+            <span class="material-icons-round">support_agent</span>
+            <span>Support Tickets</span>
+          </a>
+        </nav>
+      </aside>
 
-    <div class="sa-content">
-      <div class="sa-section-title">
-        <span class="material-icons-round">dashboard</span>
-        Dashboard Overview
-      </div>
-      <div class="sa-metrics-grid" id="sa-metrics-grid"></div>
-
-      <div class="sa-action-bar">
-        <div class="sa-section-title" style="margin-bottom:0;">
-          <span class="material-icons-round">corporate_fare</span>
-          School Directory
-        </div>
-        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-          <div class="sa-search-wrapper">
-            <span class="material-icons-round">search</span>
-            <input type="text" id="sa-search" placeholder="Search schools...">
+      <main class="sa-main">
+        <!-- Dashboard Overview Tab -->
+        <div id="tab-dashboard" class="sa-tab-page active">
+          <div class="sa-section-title">
+            <span class="material-icons-round">dashboard</span>
+            Dashboard Overview
           </div>
-          <button class="sa-btn sa-btn-primary sa-btn-sm" id="sa-btn-add-school">
-            <span class="material-icons-round" style="font-size:16px;">add</span>
-            Onboard School
-          </button>
-        </div>
-      </div>
+          <div class="sa-metrics-grid" id="sa-metrics-grid"></div>
 
-      <div class="sa-table-card">
-        <table class="sa-table">
-          <thead>
-            <tr>
-              <th>School Info</th>
-              <th>Plan & Storage</th>
-              <th>Status</th>
-              <th>Modules</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="sa-schools-tbody"></tbody>
-        </table>
-      </div>
+          <div class="sa-action-bar">
+            <div class="sa-section-title" style="margin-bottom:0;">
+              <span class="material-icons-round">corporate_fare</span>
+              School Directory
+            </div>
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+              <div class="sa-search-wrapper">
+                <span class="material-icons-round">search</span>
+                <input type="text" id="sa-search" placeholder="Search schools...">
+              </div>
+              <button class="sa-btn sa-btn-primary sa-btn-sm" id="sa-btn-add-school">
+                <span class="material-icons-round" style="font-size:16px;">add</span>
+                Onboard School
+              </button>
+            </div>
+          </div>
+
+          <div class="sa-table-card">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>School Info</th>
+                  <th>Plan & Storage</th>
+                  <th>Status</th>
+                  <th>Modules</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-schools-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Recovery Center Tab -->
+        <div id="tab-recovery" class="sa-tab-page">
+          <div class="sa-section-title">
+            <span class="material-icons-round">restore_from_trash</span>
+            Recovery Center
+          </div>
+          <p style="color:rgba(255,255,255,0.5); font-size:13px; margin-bottom:20px; margin-top:-16px;" class="sa-tab-subtitle">
+            Data Backup & Recovery Center. Instantly restore soft-deleted items across all registered schools.
+          </p>
+          <div class="sa-table-card">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>School Name</th>
+                  <th>Data Type</th>
+                  <th>Deleted By</th>
+                  <th>Deleted Time</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-recovery-tbody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Support Tickets Tab -->
+        <div id="tab-tickets" class="sa-tab-page">
+          <div class="sa-section-title">
+            <span class="material-icons-round">support_agent</span>
+            Support Tickets
+          </div>
+          <p style="color:rgba(255,255,255,0.5); font-size:13px; margin-bottom:20px; margin-top:-16px;" class="sa-tab-subtitle">
+            After-sales support ticketing workspace. Respond to and resolve school tenant support tickets.
+          </p>
+          <div class="sa-table-card">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>Ticket ID</th>
+                  <th>School Name</th>
+                  <th>Priority</th>
+                  <th>Issue Description</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-tickets-tbody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 
@@ -679,6 +998,80 @@
           <span class="material-icons-round" style="font-size:16px;">save</span>
           Save School
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCHOOL PROFILE MODAL ==================== -->
+  <div id="sa-profile-modal-overlay" class="sa-modal-overlay">
+    <div class="sa-modal" style="max-width: 800px;">
+      <div class="sa-modal-header">
+        <h3 id="sa-profile-title">School Profile</h3>
+        <button class="sa-modal-close" id="sa-profile-modal-close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="sa-modal-body">
+        <div class="sa-profile-tabs">
+          <button class="sa-profile-tab-btn active" data-profile-tab="overview">Overview</button>
+          <button class="sa-profile-tab-btn" data-profile-tab="audit">Detailed Audit Logs</button>
+        </div>
+
+        <!-- Overview Sub-tab -->
+        <div id="profile-tab-overview" class="sa-profile-tab-content active">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+            <div>
+              <p style="font-size:12px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-bottom:4px;">Subscription Plan</p>
+              <span id="prof-plan-badge" class="sa-badge">Premium</span>
+            </div>
+            <div>
+              <p style="font-size:12px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-bottom:4px;">Storage Used</p>
+              <strong id="prof-storage" style="font-size: 15px;">0 MB</strong>
+            </div>
+            <div>
+              <p style="font-size:12px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-bottom:4px;">Status</p>
+              <span id="prof-status-badge" class="sa-badge">Active</span>
+            </div>
+            <div>
+              <p style="font-size:12px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-bottom:4px;">Renewal Date</p>
+              <strong id="prof-renewal" style="font-size: 15px;">2026-12-31</strong>
+            </div>
+          </div>
+          <div style="margin-bottom: 16px;">
+            <p style="font-size:12px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-bottom:8px;">Contact & Address</p>
+            <div class="sa-profile-contact-box" style="font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.02); padding: 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);">
+              <div>Email: <strong id="prof-email" style="color:#fff;">admin@school.edu</strong></div>
+              <div>Phone: <strong id="prof-phone" style="color:#fff;">+91 98765 43210</strong></div>
+              <div style="margin-top: 4px;">Address: <span id="prof-address">123 Street</span></div>
+            </div>
+          </div>
+          <div>
+            <p style="font-size:12px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-bottom:8px;">Allowed Feature Modules</p>
+            <div id="prof-features-list" class="sa-feature-pills"></div>
+          </div>
+        </div>
+
+        <!-- Audit Logs Sub-tab -->
+        <div id="profile-tab-audit" class="sa-profile-tab-content">
+          <div class="sa-table-card" style="max-height: 350px; overflow-y: auto;">
+            <table class="sa-audit-table">
+              <thead>
+                <tr>
+                  <th style="width: 25%;">Timestamp</th>
+                  <th style="width: 25%;">Actor</th>
+                  <th style="width: 35%;">Action</th>
+                  <th style="width: 15%;">Type</th>
+                </tr>
+              </thead>
+              <tbody id="sa-audit-tbody">
+                <!-- Scoped audit logs populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="sa-modal-footer">
+        <button class="sa-btn sa-btn-secondary" id="sa-profile-modal-close-btn">Close</button>
       </div>
     </div>
   </div>

@@ -93,6 +93,119 @@
         }
     ];
 
+    var defaultRecoveryTrash = [
+        {
+            id: 'rec_001',
+            school_id: 'svm_bokaro_001',
+            school_name: 'Shishu Vikash Mandir (Bokaro)',
+            data_type: 'Student Profile (Rahul Kumar)',
+            deleted_by: 'Teacher - Pooja',
+            deleted_time: '2026-06-08 15:30'
+        },
+        {
+            id: 'rec_002',
+            school_id: 'dav_ranchi_002',
+            school_name: 'DAV Public School (Ranchi)',
+            data_type: 'Fee Receipt #1042',
+            deleted_by: 'Admin - Sanjay',
+            deleted_time: '2026-06-07 11:20'
+        },
+        {
+            id: 'rec_003',
+            school_id: 'dps_dhanbad_003',
+            school_name: 'DPS Dhanbad',
+            data_type: 'Attendance Record (Class X - B)',
+            deleted_by: 'Teacher - Anita',
+            deleted_time: '2026-06-06 09:15'
+        }
+    ];
+
+    var defaultSupportTickets = [
+        {
+            ticket_id: 'TKT-101',
+            school_id: 'svm_bokaro_001',
+            school_name: 'Shishu Vikash Mandir (Bokaro)',
+            priority: 'High',
+            issue_description: 'UPI payment gateway failing during peak school fee collection hours.',
+            status: 'Open'
+        },
+        {
+            ticket_id: 'TKT-102',
+            school_id: 'dav_ranchi_002',
+            school_name: 'DAV Public School (Ranchi)',
+            priority: 'Medium',
+            issue_description: 'Teachers unable to export attendance reports to Excel/CSV format.',
+            status: 'Open'
+        },
+        {
+            ticket_id: 'TKT-103',
+            school_id: 'dps_dhanbad_003',
+            school_name: 'DPS Dhanbad',
+            priority: 'Low',
+            issue_description: 'Typographical error in student name field for grade promotion module.',
+            status: 'Closed'
+        }
+    ];
+
+    var defaultAuditLogs = [
+        {
+            school_id: 'svm_bokaro_001',
+            timestamp: '2026-06-08 16:45',
+            actor: 'Teacher - Pooja',
+            action: 'Deleted Student Profile (Rahul Kumar)',
+            type: 'delete'
+        },
+        {
+            school_id: 'svm_bokaro_001',
+            timestamp: '2026-06-08 14:15',
+            actor: 'Admin - Amit',
+            action: 'Added Student Profile (Priya Sharma)',
+            type: 'add'
+        },
+        {
+            school_id: 'svm_bokaro_001',
+            timestamp: '2026-06-08 11:00',
+            actor: 'Teacher - Pooja',
+            action: 'Updated Attendance Record for Class X',
+            type: 'update'
+        },
+        {
+            school_id: 'dav_ranchi_002',
+            timestamp: '2026-06-07 12:10',
+            actor: 'Admin - Sanjay',
+            action: 'Deleted Fee Receipt #1042',
+            type: 'delete'
+        },
+        {
+            school_id: 'dav_ranchi_002',
+            timestamp: '2026-06-06 09:30',
+            actor: 'Teacher - Ritu',
+            action: 'Added Exam Marks for Class XII',
+            type: 'add'
+        },
+        {
+            school_id: 'dav_ranchi_002',
+            timestamp: '2026-06-05 14:22',
+            actor: 'Admin - Sanjay',
+            action: 'Updated Plan details for Pro status',
+            type: 'update'
+        },
+        {
+            school_id: 'dps_dhanbad_003',
+            timestamp: '2026-06-06 10:15',
+            actor: 'Teacher - Anita',
+            action: 'Deleted Attendance Record (Class X - B)',
+            type: 'delete'
+        },
+        {
+            school_id: 'dps_dhanbad_003',
+            timestamp: '2026-06-05 10:00',
+            actor: 'Admin - Kiran',
+            action: 'Updated Notice Board announcements',
+            type: 'update'
+        }
+    ];
+
 
     // ─── Data Layer ─────────────────────────────────────
 
@@ -110,6 +223,18 @@
         }
         if (!data.schools || !Array.isArray(data.schools) || data.schools.length === 0) {
             data.schools = JSON.parse(JSON.stringify(defaultSchools));
+            saveData(data);
+        }
+        if (!data.recovery_trash || !Array.isArray(data.recovery_trash)) {
+            data.recovery_trash = JSON.parse(JSON.stringify(defaultRecoveryTrash));
+            saveData(data);
+        }
+        if (!data.support_tickets || !Array.isArray(data.support_tickets)) {
+            data.support_tickets = JSON.parse(JSON.stringify(defaultSupportTickets));
+            saveData(data);
+        }
+        if (!data.audit_logs || !Array.isArray(data.audit_logs)) {
+            data.audit_logs = JSON.parse(JSON.stringify(defaultAuditLogs));
             saveData(data);
         }
         return data;
@@ -142,6 +267,30 @@
     var modalSave      = document.getElementById('sa-modal-save');
     var schoolForm     = document.getElementById('sa-school-form');
     var toastContainer = document.getElementById('sa-toast-container');
+
+    // Sidebar & Tab Pages References
+    var sidebarNav     = document.querySelector('.sa-sidebar-nav');
+    var tabPages       = document.querySelectorAll('.sa-tab-page');
+    var navItems       = document.querySelectorAll('.sa-nav-item');
+    var recoveryTbody  = document.getElementById('sa-recovery-tbody');
+    var ticketsTbody   = document.getElementById('sa-tickets-tbody');
+
+    // School Profile Modal References
+    var profileModalOverlay  = document.getElementById('sa-profile-modal-overlay');
+    var profileTitle         = document.getElementById('sa-profile-title');
+    var profileModalClose    = document.getElementById('sa-profile-modal-close');
+    var profileModalCloseBtn = document.getElementById('sa-profile-modal-close-btn');
+    var profileTabBtns       = document.querySelectorAll('.sa-profile-tab-btn');
+    var profileTabContents   = document.querySelectorAll('.sa-profile-tab-content');
+    var profPlanBadge        = document.getElementById('prof-plan-badge');
+    var profStorage          = document.getElementById('prof-storage');
+    var profStatusBadge      = document.getElementById('prof-status-badge');
+    var profRenewal          = document.getElementById('prof-renewal');
+    var profEmail            = document.getElementById('prof-email');
+    var profPhone            = document.getElementById('prof-phone');
+    var profAddress          = document.getElementById('prof-address');
+    var profFeaturesList     = document.getElementById('prof-features-list');
+    var auditTbody           = document.getElementById('sa-audit-tbody');
 
 
     // ─── Login Logic ────────────────────────────────────
@@ -380,6 +529,283 @@
         });
 
         schoolsTbody.innerHTML = html;
+    }
+
+    /** Render the Recovery Center soft-deleted records. */
+    function renderRecoveryCenter() {
+        var data = loadData();
+        var trash = data.recovery_trash || [];
+        if (trash.length === 0) {
+            recoveryTbody.innerHTML = 
+                '<tr><td colspan="5">' +
+                    '<div class="sa-empty-state">' +
+                        '<span class="material-icons-round">delete_outline</span>' +
+                        '<h3>Recovery Center Empty</h3>' +
+                        '<p>No recently soft-deleted records found across schools.</p>' +
+                    '</div>' +
+                '</td></tr>';
+            return;
+        }
+
+        var html = '';
+        trash.forEach(function (item) {
+            html += '<tr>' +
+                '<td><strong style="color:inherit;">' + escapeHTML(item.school_name) + '</strong></td>' +
+                '<td>' + escapeHTML(item.data_type) + '</td>' +
+                '<td>' + escapeHTML(item.deleted_by) + '</td>' +
+                '<td>' + escapeHTML(item.deleted_time) + '</td>' +
+                '<td>' +
+                    '<button class="sa-btn sa-btn-primary sa-btn-xs btn-restore" data-item-id="' + escapeAttr(item.id) + '">' +
+                        '⚡ 1-Click Restore' +
+                    '</button>' +
+                '</td>' +
+            '</tr>';
+        });
+        recoveryTbody.innerHTML = html;
+    }
+
+    /** Restore a soft-deleted item. */
+    function restoreTrashItem(itemId) {
+        var data = loadData();
+        var trash = data.recovery_trash || [];
+        var restoredItem = null;
+
+        var filteredTrash = trash.filter(function (item) {
+            if (item.id === itemId) {
+                restoredItem = item;
+                return false; // remove it
+            }
+            return true;
+        });
+
+        if (restoredItem) {
+            data.recovery_trash = filteredTrash;
+            
+            // Add a log in detailed audit logs for that school about the restoration
+            if (!data.audit_logs) data.audit_logs = [];
+            data.audit_logs.unshift({
+                school_id: restoredItem.school_id,
+                timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                actor: 'Super Admin',
+                action: 'Restored ' + restoredItem.data_type,
+                type: 'add' // green badge
+            });
+
+            saveData(data);
+            showToast('⚡ ' + restoredItem.data_type + ' restored successfully!', 'success');
+            renderRecoveryCenter();
+            renderDashboard(); // Re-render directory stats if any
+        }
+    }
+
+    /** Render the Support Tickets workspace. */
+    function renderSupportTickets() {
+        var data = loadData();
+        var tickets = data.support_tickets || [];
+        if (tickets.length === 0) {
+            ticketsTbody.innerHTML = 
+                '<tr><td colspan="6">' +
+                    '<div class="sa-empty-state">' +
+                        '<span class="material-icons-round">confirmation_number</span>' +
+                        '<h3>No Tickets Found</h3>' +
+                        '<p>All clean! No after-sales support tickets available.</p>' +
+                    '</div>' +
+                '</td></tr>';
+            return;
+        }
+
+        var html = '';
+        tickets.forEach(function (t) {
+            var priorityClass = 'sa-badge-low';
+            if (t.priority === 'High') priorityClass = 'sa-badge-high';
+            else if (t.priority === 'Medium') priorityClass = 'sa-badge-medium';
+
+            var statusClass = t.status === 'Open' ? 'sa-badge-open' : 'sa-badge-closed';
+
+            html += '<tr>' +
+                '<td><code style="font-size:12px;font-weight:700;">' + escapeHTML(t.ticket_id) + '</code></td>' +
+                '<td><strong style="color:inherit;">' + escapeHTML(t.school_name) + '</strong></td>' +
+                '<td><span class="sa-badge ' + priorityClass + '">' + escapeHTML(t.priority) + '</span></td>' +
+                '<td>' + escapeHTML(t.issue_description) + '</td>' +
+                '<td><span class="sa-badge ' + statusClass + '">' + escapeHTML(t.status) + '</span></td>' +
+                '<td>' +
+                    (t.status === 'Open' 
+                        ? '<button class="sa-btn sa-btn-secondary sa-btn-xs btn-reply" data-ticket-id="' + escapeAttr(t.ticket_id) + '">' +
+                            '<span class="material-icons-round" style="font-size:12px;vertical-align:middle;margin-right:2px;">reply</span> Quick Reply' +
+                          '</button>'
+                        : '<span style="color:rgba(255,255,255,0.4);font-size:12px;">Resolved</span>'
+                    ) +
+                '</td>' +
+            '</tr>';
+        });
+        ticketsTbody.innerHTML = html;
+    }
+
+    /** Handle Support Ticket Quick Reply. */
+    function quickReplyTicket(ticketId) {
+        var data = loadData();
+        var tickets = data.support_tickets || [];
+        var ticket = null;
+        for (var i = 0; i < tickets.length; i++) {
+            if (tickets[i].ticket_id === ticketId) {
+                ticket = tickets[i];
+                break;
+            }
+        }
+
+        if (!ticket) {
+            showToast('Ticket not found.', 'error');
+            return;
+        }
+
+        var replyText = prompt('Enter your Quick Reply for ' + ticket.school_name + ' (Ticket ' + ticket.ticket_id + '):');
+        if (replyText === null) return; // user cancelled
+
+        replyText = replyText.trim();
+        if (!replyText) {
+            showToast('Reply message cannot be empty.', 'error');
+            return;
+        }
+
+        // Update ticket status to Closed
+        ticket.status = 'Closed';
+        
+        // Log the event in detailed school audit logs
+        if (!data.audit_logs) data.audit_logs = [];
+        data.audit_logs.unshift({
+            school_id: ticket.school_id,
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            actor: 'Super Admin',
+            action: 'Replied to Ticket ' + ticket.ticket_id + ': "' + replyText.substring(0, 30) + (replyText.length > 30 ? '...' : '') + '"',
+            type: 'update' // amber badge
+        });
+
+        saveData(data);
+        showToast('Reply sent! Ticket ' + ticket.ticket_id + ' marked as Closed/Resolved.', 'success');
+        renderSupportTickets();
+    }
+
+    var currentProfileSchoolId = null;
+
+    /** Open the School Profile Modal and render the active tab content. */
+    function openSchoolProfileModal(schoolId) {
+        var data = loadData();
+        var school = findSchoolById(data.schools, schoolId);
+        if (!school) {
+            showToast('School not found.', 'error');
+            return;
+        }
+
+        currentProfileSchoolId = schoolId;
+        profileTitle.textContent = school.school_name + ' Profile';
+
+        // 1. Populate Overview Tab details
+        var planClass = school.plan === 'Premium' ? 'sa-badge-premium' :
+                        school.plan === 'Pro'     ? 'sa-badge-pro' : 'sa-badge-basic';
+        profPlanBadge.className = 'sa-badge ' + planClass;
+        profPlanBadge.textContent = school.plan;
+
+        profStorage.textContent = school.storage_used || '0 MB';
+
+        var statusClass = school.status === 'Active' ? 'sa-badge-active' : 'sa-badge-paused';
+        profStatusBadge.className = 'sa-badge ' + statusClass;
+        profStatusBadge.textContent = school.status;
+
+        profRenewal.textContent = school.renewal_date || '—';
+        profEmail.textContent = school.email || '—';
+        profPhone.textContent = school.phone || '—';
+        profAddress.textContent = school.address || '—';
+
+        // Populate Features List
+        var featureHtml = '';
+        (school.allowed_features || []).forEach(function (f) {
+            var label = FEATURE_LABELS[f] || f;
+            featureHtml += '<span class="sa-feature-pill">' + escapeHTML(label) + '</span>';
+        });
+        profFeaturesList.innerHTML = featureHtml || '<span style="color:rgba(255,255,255,0.4);font-size:12px;">No features allowed.</span>';
+
+        // 2. Populate Detailed Audit Logs Tab
+        renderProfileAuditLogs(schoolId);
+
+        // Reset to first tab (Overview)
+        profileTabBtns.forEach(function (btn) {
+            if (btn.getAttribute('data-profile-tab') === 'overview') {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        profileTabContents.forEach(function (content) {
+            if (content.id === 'profile-tab-overview') {
+                content.classList.add('active');
+            } else {
+                content.classList.remove('active');
+            }
+        });
+
+        profileModalOverlay.classList.add('active');
+    }
+
+    /** Close the School Profile Modal. */
+    function closeSchoolProfileModal() {
+        profileModalOverlay.classList.remove('active');
+        currentProfileSchoolId = null;
+    }
+
+    /** Switch tabs inside the School Profile Modal. */
+    function switchProfileModalTab(tabName) {
+        profileTabBtns.forEach(function (btn) {
+            if (btn.getAttribute('data-profile-tab') === tabName) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        profileTabContents.forEach(function (content) {
+            if (content.id === 'profile-tab-' + tabName) {
+                content.classList.add('active');
+            } else {
+                content.classList.remove('active');
+            }
+        });
+    }
+
+    /** Render Audit Logs strictly for a specific school. */
+    function renderProfileAuditLogs(schoolId) {
+        var data = loadData();
+        var allLogs = data.audit_logs || [];
+        var schoolLogs = allLogs.filter(function (log) {
+            return log.school_id === schoolId;
+        });
+
+        if (schoolLogs.length === 0) {
+            auditTbody.innerHTML = 
+                '<tr><td colspan="4" style="text-align:center; padding:30px 10px; color:rgba(255,255,255,0.4); font-size:13px;">' +
+                    '<span class="material-icons-round" style="font-size:24px;vertical-align:middle;margin-right:6px;">history</span> No audit logs recorded for this school.' +
+                '</td></tr>';
+            return;
+        }
+
+        var html = '';
+        schoolLogs.forEach(function (log) {
+            var badgeClass = 'sa-audit-badge-update'; // default amber
+            var badgeLabel = 'Update';
+            if (log.type === 'add') {
+                badgeClass = 'sa-audit-badge-add';
+                badgeLabel = 'Addition';
+            } else if (log.type === 'delete') {
+                badgeClass = 'sa-audit-badge-delete';
+                badgeLabel = 'Deletion';
+            }
+
+            html += '<tr>' +
+                '<td style="font-size:12px;color:rgba(255,255,255,0.6);">' + escapeHTML(log.timestamp) + '</td>' +
+                '<td><strong style="color:inherit;">' + escapeHTML(log.actor) + '</strong></td>' +
+                '<td>' + escapeHTML(log.action) + '</td>' +
+                '<td><span class="sa-audit-badge ' + badgeClass + '">' + badgeLabel + '</span></td>' +
+            '</tr>';
+        });
+        auditTbody.innerHTML = html;
     }
 
 
@@ -681,23 +1107,20 @@
         if (!logsContainer) return;
 
         var templates = [
-            { text: "{name} generated 45 Fee Receipts today", tag: "Activity", type: "activity", time: "Just now" },
-            { text: "{name} has not logged in for 5 days (High Churn Risk)", tag: "Churn Risk", type: "churn", time: "10 mins ago" },
-            { text: "{name} scheduled 12 exams", tag: "Activity", type: "activity", time: "1 hour ago" },
-            { text: "{name} updated their fee structures", tag: "Activity", type: "activity", time: "3 hours ago" },
-            { text: "{name} system storage usage crossed 80%", tag: "Warning", type: "warning", time: "5 hours ago" },
-            { text: "{name} added 15 new teacher accounts", tag: "Activity", type: "activity", time: "Yesterday" },
-            { text: "{name} subscription renewal is due in 3 days", tag: "Warning", type: "warning", time: "2 days ago" },
-            { text: "{name} class promotion batch processed", tag: "Activity", type: "activity", time: "3 days ago" }
+            { text: "{name} upgraded to Premium subscription plan", tag: "Billing Alert", type: "activity", time: "Just now" },
+            { text: "High Churn Risk: {name} inactive for 7 days", tag: "Churn Risk", type: "churn", time: "15 mins ago" },
+            { text: "High Storage Alert: {name} system storage usage crossed 90%", tag: "Warning", type: "warning", time: "2 hours ago" },
+            { text: "Subscription renewal due in 3 days for {name}", tag: "Warning", type: "warning", time: "4 hours ago" },
+            { text: "Security Alert: Multiple failed admin login attempts on {name}", tag: "Warning", type: "warning", time: "1 day ago" },
+            { text: "{name} successfully onboarded to Pro plan", tag: "Billing Alert", type: "activity", time: "2 days ago" }
         ];
 
         var html = '';
-        var entryIndex = 0;
         
         schools.forEach(function (school, sIdx) {
-            var numLogs = school.status === 'Paused' ? 2 : 3;
+            var numLogs = school.status === 'Paused' ? 1 : 2;
             for (var j = 0; j < numLogs; j++) {
-                var template = templates[(sIdx * 3 + j) % templates.length];
+                var template = templates[(sIdx * 2 + j) % templates.length];
                 var tagClass = 'sa-tag-' + template.type;
                 var text = template.text.replace('{name}', school.school_name);
                 
@@ -708,7 +1131,7 @@
                 if (school.status === 'Paused' && j === 0) {
                     currentTag = 'Churn Risk';
                     currentTypeClass = 'sa-tag-churn';
-                    currentText = school.school_name + ' is paused and has not logged in for 15 days (High Churn Risk)';
+                    currentText = 'High Churn Risk: ' + school.school_name + ' is paused and inactive for 15 days';
                 }
 
                 html += '<div class="sa-activity-item">' +
@@ -720,7 +1143,7 @@
         });
 
         if (schools.length === 0) {
-            html = '<div style="text-align:center; padding: 24px; color:rgba(255,255,255,0.4)">No active logs. Onboard a school to see logs.</div>';
+            html = '<div style="text-align:center; padding: 24px; color:rgba(255,255,255,0.4)">No active alerts. Onboard a school to see logs.</div>';
         }
 
         logsContainer.innerHTML = html;
@@ -748,6 +1171,84 @@
                 }
                 localStorage.setItem('sa_theme', isLight ? 'light' : 'dark');
                 showToast('Theme switched to ' + (isLight ? 'Light' : 'Dark') + ' mode.', 'info');
+            });
+        }
+
+        // Global Sidebar Nav Tab switching
+        if (sidebarNav) {
+            sidebarNav.addEventListener('click', function (e) {
+                var item = e.target.closest('.sa-nav-item');
+                if (!item) return;
+
+                e.preventDefault();
+
+                // Toggle active sidebar link styling
+                document.querySelectorAll('.sa-nav-item').forEach(function (link) {
+                    link.classList.remove('active');
+                });
+                item.classList.add('active');
+
+                // Toggle active page panel
+                var targetTab = item.getAttribute('data-tab');
+                tabPages.forEach(function (page) {
+                    if (page.id === 'tab-' + targetTab) {
+                        page.classList.add('active');
+                    } else {
+                        page.classList.remove('active');
+                    }
+                });
+
+                // Load active tab data
+                if (targetTab === 'recovery') {
+                    renderRecoveryCenter();
+                } else if (targetTab === 'tickets') {
+                    renderSupportTickets();
+                } else if (targetTab === 'dashboard') {
+                    renderDashboard();
+                }
+            });
+        }
+
+        // Recovery Center Table events (⚡ 1-Click Restore)
+        if (recoveryTbody) {
+            recoveryTbody.addEventListener('click', function (e) {
+                var btn = e.target.closest('.btn-restore');
+                if (btn) {
+                    var itemId = btn.getAttribute('data-item-id');
+                    if (itemId) restoreTrashItem(itemId);
+                }
+            });
+        }
+
+        // Support Tickets Table events (Quick Reply)
+        if (ticketsTbody) {
+            ticketsTbody.addEventListener('click', function (e) {
+                var btn = e.target.closest('.btn-reply');
+                if (btn) {
+                    var ticketId = btn.getAttribute('data-ticket-id');
+                    if (ticketId) quickReplyTicket(ticketId);
+                }
+            });
+        }
+
+        // School Profile Modal events
+        if (profileModalClose) profileModalClose.addEventListener('click', closeSchoolProfileModal);
+        if (profileModalCloseBtn) profileModalCloseBtn.addEventListener('click', closeSchoolProfileModal);
+        if (profileModalOverlay) {
+            profileModalOverlay.addEventListener('click', function (e) {
+                if (e.target === profileModalOverlay) closeSchoolProfileModal();
+            });
+        }
+
+        // Inner profile tabs switcher
+        var profileTabsContainer = document.querySelector('.sa-profile-tabs');
+        if (profileTabsContainer) {
+            profileTabsContainer.addEventListener('click', function (e) {
+                var btn = e.target.closest('.sa-profile-tab-btn');
+                if (btn) {
+                    var tabName = btn.getAttribute('data-profile-tab');
+                    switchProfileModalTab(tabName);
+                }
             });
         }
 
@@ -830,6 +1331,7 @@
             if (e.key === 'Escape') {
                 if (modalOverlay.classList.contains('active')) closeModal();
                 if (activityModal && activityModal.classList.contains('active')) closeActivityModal();
+                if (profileModalOverlay && profileModalOverlay.classList.contains('active')) closeSchoolProfileModal();
             }
         });
 
@@ -864,11 +1366,11 @@
                 return;
             }
 
-            // Otherwise, check for row click to toggle expand
+            // Row click: Open Detailed School Profile Modal
             var schoolRow = target.closest('.sa-school-row');
             if (schoolRow) {
                 var sid = schoolRow.getAttribute('data-school-id');
-                toggleExpandRow(sid);
+                openSchoolProfileModal(sid);
             }
         });
 
