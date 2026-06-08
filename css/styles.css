@@ -14,6 +14,7 @@
   --border-light: rgba(255, 255, 255, 0.12);
 
   --text-primary: #f0f0ff;
+  --text-main: #f0f0ff;
   --text-secondary: #a0a0c0;
   --text-muted: #6060a0;
 
@@ -3845,6 +3846,8 @@ body, .app-layout, #app-layout, .main-content, .content-area {
    ============================================================ */
 :root.light-theme,
 body.light-theme,
+body.sa-light-theme,
+[data-theme="light"],
 .light-theme {
   --bg-primary: #f4f7f6;
   --bg-secondary: #ffffff;
@@ -3856,6 +3859,7 @@ body.light-theme,
   --border-light: rgba(0, 0, 0, 0.18);
 
   --text-primary: #333333;
+  --text-main: #333333;
   --text-secondary: #555555;
   --text-muted: #777777;
 
@@ -4386,37 +4390,37 @@ body.light-theme .data-table th {
 }
 
 #sa-profile-modal-overlay .sa-modal {
-  background: #111111 !important;
-  color: #e0e0e0 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: var(--bg-secondary) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-color) !important;
   border-radius: 20px;
   width: 100%;
   max-width: 800px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--shadow-lg);
   animation: saModalSlideIn 0.25s ease-out;
 }
 
 #sa-profile-modal-overlay .sa-modal-header {
   padding: 24px 28px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: 1px solid var(--border-color) !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #e2e8f0 !important;
+  color: var(--text-primary) !important;
 }
 
 #sa-profile-modal-overlay .sa-modal-header h3 {
   font-size: 18px;
   font-weight: 700;
-  color: #e2e8f0 !important;
+  color: var(--text-primary) !important;
 }
 
 #sa-profile-modal-overlay .sa-modal-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.4) !important;
+  color: var(--text-secondary) !important;
   cursor: pointer;
   font-size: 24px;
   padding: 4px;
@@ -4429,7 +4433,7 @@ body.light-theme .data-table th {
 
 #sa-profile-modal-overlay .sa-modal-body {
   padding: 24px 28px;
-  color: #e0e0e0 !important;
+  color: var(--text-main) !important;
 }
 
 #sa-profile-modal-overlay .sa-modal-footer {
@@ -4437,14 +4441,14 @@ body.light-theme .data-table th {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-top: 1px solid var(--border-color) !important;
   background: transparent !important;
 }
 
 #sa-profile-modal-overlay .sa-profile-tabs {
   display: flex;
   gap: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: 1px solid var(--border-color) !important;
   margin-bottom: 24px;
   padding-bottom: 1px;
 }
@@ -4452,7 +4456,7 @@ body.light-theme .data-table th {
 #sa-profile-modal-overlay .sa-profile-tab-btn {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.5) !important;
+  color: var(--text-secondary) !important;
   font-size: 14px;
   font-weight: 600;
   padding: 10px 4px;
@@ -4463,7 +4467,7 @@ body.light-theme .data-table th {
 }
 
 #sa-profile-modal-overlay .sa-profile-tab-btn:hover {
-  color: #e2e8f0 !important;
+  color: var(--text-primary) !important;
 }
 
 #sa-profile-modal-overlay .sa-profile-tab-btn.active {
@@ -4484,15 +4488,15 @@ body.light-theme .data-table th {
 #sa-profile-modal-overlay .sa-profile-contact-box {
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.8) !important;
-  background: rgba(255, 255, 255, 0.02) !important;
+  color: var(--text-secondary) !important;
+  background: var(--bg-card) !important;
   padding: 14px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid var(--border-color) !important;
 }
 
 #sa-profile-modal-overlay .sa-profile-contact-box strong {
-  color: #ffffff !important;
+  color: var(--text-primary) !important;
 }
 
 #sa-profile-modal-overlay .sa-audit-table {
@@ -4506,85 +4510,94 @@ body.light-theme .data-table th {
   text-align: left;
   font-size: 11px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.4) !important;
+  color: var(--text-secondary) !important;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-bottom: 1px solid var(--border-color) !important;
 }
 
 #sa-profile-modal-overlay .sa-audit-table td {
   padding: 12px 14px;
   font-size: 13px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
-  color: rgba(255, 255, 255, 0.8) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
 }
 
 #sa-profile-modal-overlay .sa-audit-table tr:last-child td {
   border-bottom: none;
 }
 
-/* Light theme overrides strictly nested for the School Profile modal when body has .sa-light-theme */
-body.sa-light-theme #sa-profile-modal-overlay .sa-modal {
-  background: #ffffff !important;
-  color: #1e293b !important;
-  border: 1px solid rgba(0, 0, 0, 0.1) !important;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.1) !important;
+/* Light theme overrides strictly nested for the School Profile modal when body has .sa-light-theme or .light-theme */
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-body p,
+body.light-theme #sa-profile-modal-overlay .sa-modal-body p,
+[data-theme="light"] #sa-profile-modal-overlay .sa-modal-body p {
+  color: var(--text-secondary) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-modal-header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
-  color: #0f172a !important;
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-body strong,
+body.light-theme #sa-profile-modal-overlay .sa-modal-body strong,
+[data-theme="light"] #sa-profile-modal-overlay .sa-modal-body strong {
+  color: var(--text-primary) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-modal-header h3 {
-  color: #0f172a !important;
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-contact-box,
+body.light-theme #sa-profile-modal-overlay .sa-profile-contact-box,
+[data-theme="light"] #sa-profile-modal-overlay .sa-profile-contact-box {
+  color: var(--text-secondary) !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-color) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-modal-close {
-  color: rgba(0, 0, 0, 0.4) !important;
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-contact-box strong,
+body.light-theme #sa-profile-modal-overlay .sa-profile-contact-box strong,
+[data-theme="light"] #sa-profile-modal-overlay .sa-profile-contact-box strong {
+  color: var(--text-primary) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-modal-close:hover {
-  color: #f87171 !important;
-}
-
-body.sa-light-theme #sa-profile-modal-overlay .sa-modal-body {
-  color: #1e293b !important;
-}
-
-body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tabs {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
-}
-
-body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn {
-  color: rgba(0, 0, 0, 0.5) !important;
-}
-
-body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn:hover {
-  color: #1e293b !important;
-}
-
-body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn.active {
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn.active,
+body.light-theme #sa-profile-modal-overlay .sa-profile-tab-btn.active,
+[data-theme="light"] #sa-profile-modal-overlay .sa-profile-tab-btn.active {
   color: #2563eb !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-profile-contact-box {
-  color: #1e293b !important;
-  background: #f8fafc !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+/* Badge Contrast Overrides in Light Theme */
+body.sa-light-theme .sa-feature-pill,
+body.light-theme .sa-feature-pill,
+[data-theme="light"] .sa-feature-pill {
+  background: rgba(37, 99, 235, 0.12) !important;
+  color: #0a4275 !important;
+  border-color: rgba(37, 99, 235, 0.25) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-profile-contact-box strong {
-  color: #0f172a !important;
+body.sa-light-theme .sa-badge-premium,
+body.light-theme .sa-badge-premium,
+[data-theme="light"] .sa-badge-premium {
+  background: rgba(37, 99, 235, 0.15) !important;
+  color: #0a4275 !important;
+  border-color: rgba(37, 99, 235, 0.25) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-audit-table th {
-  color: rgba(0, 0, 0, 0.5) !important;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+body.sa-light-theme .sa-badge-pro,
+body.light-theme .sa-badge-pro,
+[data-theme="light"] .sa-badge-pro {
+  background: rgba(6, 182, 212, 0.15) !important;
+  color: #0e7490 !important;
+  border-color: rgba(6, 182, 212, 0.25) !important;
 }
 
-body.sa-light-theme #sa-profile-modal-overlay .sa-audit-table td {
-  color: #1e293b !important;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+body.sa-light-theme .sa-badge-active,
+body.light-theme .sa-badge-active,
+[data-theme="light"] .sa-badge-active {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #065f46 !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+body.sa-light-theme .sa-badge-paused,
+body.light-theme .sa-badge-paused,
+[data-theme="light"] .sa-badge-paused {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #991b1b !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
 }
 
