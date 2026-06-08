@@ -86,17 +86,51 @@ window.SchoolApp = {
 
   load: async function() {
     try {
-      var impSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
-      var isSVM = impSchoolId === 'svm_bokaro_001';
-      this.store.currentSchoolId = impSchoolId;
+      var hostname = window.location.hostname.toLowerCase();
+      var sub = null;
+      if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
+        sub = hostname.substring(0, hostname.indexOf('.ctrlshifts.in'));
+      } else if (hostname.endsWith('.shishu-vikash-mandir.vercel.app')) {
+        sub = hostname.substring(0, hostname.indexOf('.shishu-vikash-mandir.vercel.app'));
+      } else if (hostname.endsWith('.localhost')) {
+        sub = hostname.substring(0, hostname.indexOf('.localhost'));
+      }
 
-      const docRef = window.firestore.doc(window.db, 'tenant_data', impSchoolId);
+      var schoolsList = [];
+      try {
+        const querySnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'schools'));
+        querySnapshot.forEach((doc) => {
+          schoolsList.push(doc.data());
+        });
+      } catch (e) {
+        console.error('Failed to pre-fetch schools list for subdomain resolution:', e);
+      }
+
+      var activeSchoolId = null;
+      if (sub) {
+        var matchedSchool = schoolsList.find(function(s) {
+          return s.subdomain === sub;
+        });
+        if (matchedSchool) {
+          activeSchoolId = matchedSchool.school_id;
+          console.log('Detected school context from subdomain: ' + sub + ' -> ' + activeSchoolId);
+        }
+      }
+
+      if (!activeSchoolId) {
+        activeSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+      }
+
+      var isSVM = activeSchoolId === 'svm_bokaro_001';
+      this.store.currentSchoolId = activeSchoolId;
+
+      const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
       const docSnap = await window.firestore.getDoc(docRef);
 
       if (docSnap.exists()) {
         var parsed = docSnap.data();
         this.store = Object.assign({}, this.store, parsed);
-        this.store.currentSchoolId = impSchoolId;
+        this.store.currentSchoolId = activeSchoolId;
       } else {
         if (isSVM) {
           // Default SVM seed
@@ -142,7 +176,7 @@ window.SchoolApp = {
             lastAutomatedFeeRun: '2026-04',
             notifications: [],
             schools: [],
-            currentSchoolId: impSchoolId,
+            currentSchoolId: activeSchoolId,
             settings: {
               schoolName: '',
               academicYear: '2025-2026',
@@ -153,21 +187,9 @@ window.SchoolApp = {
             }
           };
 
-          // Seed schools list from schools collection in Firestore so we have context
-          try {
-            const querySnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'schools'));
-            let schoolsList = [];
-            querySnapshot.forEach((doc) => {
-              schoolsList.push(doc.data());
-            });
-            this.store.schools = schoolsList;
-          } catch (e) {
-            console.error('Failed to fetch schools list for new school context:', e);
-          }
-
           // Update school name if available
-          if (impSchoolId) {
-            var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === impSchoolId; });
+          if (activeSchoolId) {
+            var schoolObj = schoolsList.find(function(s) { return s.school_id === activeSchoolId; });
             if (schoolObj) {
               this.store.settings.schoolName = schoolObj.school_name;
             }
@@ -191,19 +213,13 @@ window.SchoolApp = {
       if (!this.store.notices) this.store.notices = [];
       if (!this.store.timetable) this.store.timetable = {};
       if (!this.store.currentSchoolId) {
-        this.store.currentSchoolId = impSchoolId;
+        this.store.currentSchoolId = activeSchoolId;
       }
 
-      // Synchronize schools list from Firestore (if empty or non-SVM)
-      try {
-        const querySnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'schools'));
-        let schoolsList = [];
-        querySnapshot.forEach((doc) => {
-          schoolsList.push(doc.data());
-        });
+      // Assign synchronized schools list
+      if (schoolsList.length > 0) {
         this.store.schools = schoolsList;
-      } catch (e) {
-        console.error('Failed to synchronize schools list:', e);
+      } else {
         if (isSVM && (!this.store.schools || this.store.schools.length === 0)) {
           this.store.schools = [
             {
@@ -221,8 +237,8 @@ window.SchoolApp = {
       }
 
       // Update name based on schools config
-      if (impSchoolId) {
-        var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === impSchoolId; });
+      if (activeSchoolId) {
+        var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === activeSchoolId; });
         if (schoolObj) {
           this.store.settings.schoolName = schoolObj.school_name;
         }

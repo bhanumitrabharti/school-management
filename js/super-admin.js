@@ -516,7 +516,7 @@ const db = getFirestore(app);
                 '<td>' +
                     '<div class="sa-school-info">' +
                         '<span class="sa-school-name">' + escapeHTML(school.school_name) + '</span>' +
-                        '<a href="#" class="sa-subdomain-link" data-school-id="' + escapeAttr(school.school_id) + '">' + escapeHTML(school.subdomain) + '.ctrlshift.app</a>' +
+                        '<a href="' + (window.location.hostname === 'localhost' ? 'http://' + school.subdomain + '.localhost:3000' : 'https://' + school.subdomain + '.ctrlshifts.in') + '" target="_blank" class="sa-subdomain-link" data-school-id="' + escapeAttr(school.school_id) + '">' + escapeHTML(school.subdomain) + '.ctrlshifts.in</a>' +
                     '</div>' +
                 '</td>' +
                 '<td>' +
@@ -1462,8 +1462,24 @@ const db = getFirestore(app);
                 e.preventDefault();
                 e.stopPropagation();
                 var schoolId = subdomainLink.getAttribute('data-school-id');
-                showToast('DNS not real yet. Using Impersonation mode to access tenant.', 'warning');
-                impersonateSchool(schoolId, 'admin');
+                var data = loadData();
+                var school = findSchoolById(data.schools, schoolId);
+                if (school) {
+                    var host = window.location.host;
+                    var redirectUrl;
+                    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+                        var port = window.location.port ? (':' + window.location.port) : '';
+                        redirectUrl = 'http://' + school.subdomain + '.localhost' + port;
+                    } else {
+                        redirectUrl = 'https://' + school.subdomain + '.ctrlshifts.in';
+                    }
+                    showToast('Opening tenant workspace: ' + redirectUrl, 'info');
+                    setTimeout(function() {
+                        window.location.href = redirectUrl;
+                    }, 800);
+                } else {
+                    showToast('School configuration not found.', 'error');
+                }
                 return;
             }
 
