@@ -4367,3 +4367,224 @@ body.light-theme .data-table th {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- SCHOOL PROFILE MODAL THEME FIXES ---- */
+#sa-profile-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+#sa-profile-modal-overlay.active {
+  display: flex;
+}
+
+#sa-profile-modal-overlay .sa-modal {
+  background: #111111 !important;
+  color: #e0e0e0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 800px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  animation: saModalSlideIn 0.25s ease-out;
+}
+
+#sa-profile-modal-overlay .sa-modal-header {
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e2e8f0 !important;
+}
+
+#sa-profile-modal-overlay .sa-modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0 !important;
+}
+
+#sa-profile-modal-overlay .sa-modal-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4) !important;
+  cursor: pointer;
+  font-size: 24px;
+  padding: 4px;
+  transition: color 0.2s;
+}
+
+#sa-profile-modal-overlay .sa-modal-close:hover {
+  color: #f87171 !important;
+}
+
+#sa-profile-modal-overlay .sa-modal-body {
+  padding: 24px 28px;
+  color: #e0e0e0 !important;
+}
+
+#sa-profile-modal-overlay .sa-modal-footer {
+  padding: 16px 28px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+}
+
+#sa-profile-modal-overlay .sa-profile-tabs {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  margin-bottom: 24px;
+  padding-bottom: 1px;
+}
+
+#sa-profile-modal-overlay .sa-profile-tab-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 4px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+  font-family: 'Inter', sans-serif;
+}
+
+#sa-profile-modal-overlay .sa-profile-tab-btn:hover {
+  color: #e2e8f0 !important;
+}
+
+#sa-profile-modal-overlay .sa-profile-tab-btn.active {
+  color: #60a5fa !important;
+}
+
+#sa-profile-modal-overlay .sa-profile-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #2563eb;
+  border-radius: 2px;
+}
+
+#sa-profile-modal-overlay .sa-profile-contact-box {
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.8) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+#sa-profile-modal-overlay .sa-profile-contact-box strong {
+  color: #ffffff !important;
+}
+
+#sa-profile-modal-overlay .sa-audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+#sa-profile-modal-overlay .sa-audit-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+#sa-profile-modal-overlay .sa-audit-table td {
+  padding: 12px 14px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+#sa-profile-modal-overlay .sa-audit-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Light theme overrides strictly nested for the School Profile modal when body has .sa-light-theme */
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal {
+  background: #ffffff !important;
+  color: #1e293b !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.1) !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #0f172a !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-header h3 {
+  color: #0f172a !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-close {
+  color: rgba(0, 0, 0, 0.4) !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-close:hover {
+  color: #f87171 !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-modal-body {
+  color: #1e293b !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tabs {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn {
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn:hover {
+  color: #1e293b !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-tab-btn.active {
+  color: #2563eb !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-contact-box {
+  color: #1e293b !important;
+  background: #f8fafc !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-profile-contact-box strong {
+  color: #0f172a !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-audit-table th {
+  color: rgba(0, 0, 0, 0.5) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+body.sa-light-theme #sa-profile-modal-overlay .sa-audit-table td {
+  color: #1e293b !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
