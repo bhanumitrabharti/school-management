@@ -40,10 +40,6 @@
     if (SchoolApp.isTeacher()) {
       return SchoolApp.currentUser.classTeacherOf || [];
     }
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    if (currentSchoolId !== 'svm_bokaro_001') {
-      return [];
-    }
     var combos = [];
     (SchoolApp.store.settings.classes || []).forEach(function(c) {
       (SchoolApp.store.settings.sections || []).forEach(function(s) {
@@ -61,10 +57,6 @@
   }
 
   function getStudentsForClass(cls, section) {
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    if (currentSchoolId !== 'svm_bokaro_001') {
-      return [];
-    }
     return SchoolApp.store.students.filter(function(s) {
       var studentClass = String(s.class).replace(/^class\s+/i, '').trim().toLowerCase();
       var studentSection = String(s.section).trim().toLowerCase();
@@ -77,18 +69,6 @@
   }
 
   function getAttendanceStats() {
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    if (currentSchoolId !== 'svm_bokaro_001') {
-      return {
-        todayPercent: 0,
-        todayPresent: 0,
-        todayAbsent: 0,
-        todayLate: 0,
-        todayTotal: 0,
-        weekPercent: 0,
-        monthPercent: 0
-      };
-    }
     var todayStr = new Date().toISOString().split('T')[0];
     var todayRecords = SchoolApp.store.attendance.filter(function(a) { return a.date === todayStr; });
     var totalPresent = 0, totalAbsent = 0, totalLate = 0, totalStudents = 0;

@@ -74,6 +74,11 @@ window.SchoolApp = {
   },
 
   initFirebase: function() {
+    var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    if (currentSchoolId !== 'svm_bokaro_001') {
+      console.log('Firebase Cloud Sync disabled for isolated tenant.');
+      return;
+    }
     if (this.isFirebaseInitialized) return;
 
     try {
@@ -193,10 +198,14 @@ window.SchoolApp = {
   // ---------- Data Persistence ----------
   save: function() {
     try {
-      localStorage.setItem('shishuvikash_data', JSON.stringify(this.store));
+      var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+      var isSVM = currentSchoolId === 'svm_bokaro_001';
+      var key = isSVM ? 'shishuvikash_data' : ('shishuvikash_data_' + currentSchoolId);
+
+      localStorage.setItem(key, JSON.stringify(this.store));
       
-      // If Firebase cloud sync is active, write to cloud database
-      if (this.isFirebaseInitialized && this.firebaseDbRef) {
+      // If Firebase cloud sync is active, write to cloud database (SVM Bokaro only)
+      if (isSVM && this.isFirebaseInitialized && this.firebaseDbRef) {
         this.firebaseDbRef.set(this.store).catch(function(e) {
           console.error('Failed to sync changes to Firebase:', e);
         });
@@ -208,11 +217,71 @@ window.SchoolApp = {
 
   load: function() {
     try {
-      var data = localStorage.getItem('shishuvikash_data');
+      var impSchoolId = localStorage.getItem('impersonate_school_id') || '';
+      var isSVM = !impSchoolId || impSchoolId === 'svm_bokaro_001';
+      var key = isSVM ? 'shishuvikash_data' : ('shishuvikash_data_' + impSchoolId);
+      
+      var data = localStorage.getItem(key);
       if (data) {
         var parsed = JSON.parse(data);
-        if (parsed.seederVersion !== 2) {
-          console.log('Local store seederVersion is not 2. Wiping and reseeding...');
+        // Clean merge with default structure
+        this.store = Object.assign({}, this.store, parsed);
+        this.store.currentSchoolId = isSVM ? 'svm_bokaro_001' : impSchoolId;
+      } else {
+        if (!isSVM) {
+          // Initialize fresh, empty state for new school
+          this.store = {
+            seederVersion: 2,
+            students: [],
+            teachers: [],
+            attendance: [],
+            trash: [],
+            feeHeads: [],
+            feeStructures: {},
+            fees: [],
+            exams: [],
+            subjectMapping: {},
+            timetable: {
+              settings: {
+                startTime: "08:00",
+                endTime: "14:00",
+                totalPeriods: 8,
+                lunchAfterPeriod: 4,
+                lunchDuration: 30,
+                satStartTime: "08:00",
+                satEndTime: "12:30",
+                satTotalPeriods: 6,
+                satLunchAfterPeriod: 0
+              }
+            },
+            marks: [],
+            notices: [],
+            lastAutomatedFeeRun: '2026-04',
+            notifications: [],
+            schools: [],
+            currentSchoolId: impSchoolId,
+            settings: {
+              schoolName: '',
+              academicYear: '2025-2026',
+              classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+              sections: ['A','B','C'],
+              attendanceTime: '09:00',
+              theme: 'dark'
+            }
+          };
+          
+          // Seed schools list from main shishuvikash_data
+          try {
+            var mainDataRaw = localStorage.getItem('shishuvikash_data');
+            if (mainDataRaw) {
+              var mainData = JSON.parse(mainDataRaw);
+              this.store.schools = mainData.schools || [];
+            }
+          } catch(e) {}
+          
+          this.save();
+        } else {
+          // Default SVM seed
           this.store.seederVersion = 2;
           this.store.students = [];
           this.store.teachers = [];
@@ -223,89 +292,90 @@ window.SchoolApp = {
           this.store.notices = [];
           this.generateDemoData();
           this.save();
-        } else {
-          // Merge with defaults to ensure new fields exist
-          this.store = Object.assign({}, this.store, parsed);
         }
-        if (!this.store.students) this.store.students = [];
-        if (!this.store.teachers) this.store.teachers = [];
-        if (!this.store.attendance) this.store.attendance = [];
-        if (!this.store.trash) this.store.trash = [];
-        if (!this.store.feeHeads) this.store.feeHeads = [];
-        if (!this.store.feeStructures) this.store.feeStructures = {};
-        if (!this.store.fees) this.store.fees = [];
-        if (!this.store.exams) this.store.exams = [];
-        if (!this.store.subjectMapping) this.store.subjectMapping = {};
-        if (!this.store.marks) this.store.marks = [];
-        if (!this.store.notices) this.store.notices = [];
-        if (!this.store.timetable) this.store.timetable = {};
+      }
+
+      // Populate default arrays/objects if missing
+      if (!this.store.students) this.store.students = [];
+      if (!this.store.teachers) this.store.teachers = [];
+      if (!this.store.attendance) this.store.attendance = [];
+      if (!this.store.trash) this.store.trash = [];
+      if (!this.store.feeHeads) this.store.feeHeads = [];
+      if (!this.store.feeStructures) this.store.feeStructures = {};
+      if (!this.store.fees) this.store.fees = [];
+      if (!this.store.exams) this.store.exams = [];
+      if (!this.store.subjectMapping) this.store.subjectMapping = {};
+      if (!this.store.marks) this.store.marks = [];
+      if (!this.store.notices) this.store.notices = [];
+      if (!this.store.timetable) this.store.timetable = {};
+      if (!this.store.currentSchoolId) {
+        this.store.currentSchoolId = isSVM ? 'svm_bokaro_001' : impSchoolId;
+      }
+
+      // Synchronize schools directory list
+      if (!isSVM) {
+        try {
+          var mainDataRaw = localStorage.getItem('shishuvikash_data');
+          if (mainDataRaw) {
+            var mainData = JSON.parse(mainDataRaw);
+            this.store.schools = mainData.schools || [];
+          }
+        } catch(e) {}
+      } else {
         if (!this.store.schools || this.store.schools.length === 0) {
           this.store.schools = [
             {
               school_id: "svm_bokaro_001",
               school_name: "Shishu Vikash Mandir (Bokaro)",
-              subdomain: "shishu-vikash-mandir",
+              subdomain: "svm-bokaro",
               plan: "Premium",
               status: "Active",
               storage_used: "1.2 GB",
-              renewal_date: "2027-04-15",
-              allowed_features: ["dashboard", "students", "teachers", "attendance", "teacher-attendance", "fees", "timetable", "exams", "admin", "help"]
-            },
-            {
-              school_id: "dps_dhanbad_002",
-              school_name: "Delhi Public School (Dhanbad)",
-              subdomain: "dpsdhanbad",
-              plan: "Basic",
-              status: "Active",
-              storage_used: "450 MB",
-              renewal_date: "2026-10-10",
-              allowed_features: ["dashboard", "students", "teachers", "attendance", "help"]
-            },
-            {
-              school_id: "dav_ranchi_003",
-              school_name: "DAV Public School (Ranchi)",
-              subdomain: "davranchi",
-              plan: "Pro",
-              status: "Paused",
-              storage_used: "890 MB",
-              renewal_date: "2026-08-20",
-              allowed_features: ["dashboard", "students", "teachers", "attendance", "teacher-attendance", "exams", "help"]
+              renewal_date: "2026-12-31",
+              allowed_features: ['dashboard','students','teachers','attendance','fees','fee_ledger','print_receipt','timetable','exams','notices','promotion','users','recovery','help']
             }
           ];
         }
-        if (!this.store.currentSchoolId) {
-          this.store.currentSchoolId = "svm_bokaro_001";
-        }
-        if (!this.store.timetable.settings) {
-          this.store.timetable.settings = {
-            startTime: "08:00",
-            endTime: "14:00",
-            totalPeriods: 8,
-            lunchAfterPeriod: 4,
-            lunchDuration: 30,
-            satStartTime: "08:00",
-            satEndTime: "12:30",
-            satTotalPeriods: 6,
-            satLunchAfterPeriod: 0
-          };
-        }
-        if (!this.store.notifications) this.store.notifications = [];
-        if (this.store.lastAutomatedFeeRun === undefined || this.store.lastAutomatedFeeRun === '') this.store.lastAutomatedFeeRun = '2026-04';
-        this.store.settings = Object.assign({
-          adminUsername: 'admin',
-          adminPassword: 'admin123',
-          classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
-          sections: ['A','B','C']
-        }, parsed.settings || {});
       }
-      
-      // Initialize Firebase cloud synchronization globally by default
-      this.initFirebase();
-      
+
+      // Update name based on schools config
+      if (impSchoolId && !isSVM) {
+        var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === impSchoolId; });
+        if (schoolObj) {
+          this.store.settings.schoolName = schoolObj.school_name;
+        }
+      }
+
+      if (!this.store.timetable.settings) {
+        this.store.timetable.settings = {
+          startTime: "08:00",
+          endTime: "14:00",
+          totalPeriods: 8,
+          lunchAfterPeriod: 4,
+          lunchDuration: 30,
+          satStartTime: "08:00",
+          satEndTime: "12:30",
+          satTotalPeriods: 6,
+          satLunchAfterPeriod: 0
+        };
+      }
+      if (!this.store.notifications) this.store.notifications = [];
+      if (this.store.lastAutomatedFeeRun === undefined || this.store.lastAutomatedFeeRun === '') this.store.lastAutomatedFeeRun = '2026-04';
+      this.store.settings = Object.assign({
+        adminUsername: 'admin',
+        adminPassword: 'admin123',
+        classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+        sections: ['A','B','C']
+      }, this.store.settings || {});
+
+      // Initialize Firebase cloud synchronization (SVM only)
+      if (isSVM) {
+        this.initFirebase();
+      }
+
       return !!data;
     } catch (e) {
       console.error('Failed to load data:', e);
-      this.initFirebase();
       return false;
     }
   },
@@ -514,6 +584,10 @@ window.SchoolApp = {
     document.getElementById('login-page').classList.remove('hidden');
     // Reset login form
     document.getElementById('login-form').reset();
+    // Restore default school logo
+    document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
+      img.src = './school-logo-updated.jpg';
+    });
   },
 
   showMyProfileModal: function() {
@@ -1649,19 +1723,16 @@ window.SchoolApp = {
       }
     }
 
-    var currentSchoolId = this.store.currentSchoolId || 'svm_bokaro_001';
-    var isSVM = currentSchoolId === 'svm_bokaro_001';
-
-    var totalStudents = isSVM ? this.store.students.length : 0;
-    var totalTeachers = isSVM ? this.store.teachers.length : 0;
-    var totalClasses = isSVM ? this.store.settings.classes.length : 0;
+    var totalStudents = (this.store.students || []).length;
+    var totalTeachers = (this.store.teachers || []).length;
+    var totalClasses = (this.store.settings.classes || []).length;
 
     // Calculate today's attendance
     var todayStr = new Date().toISOString().split('T')[0];
-    var todayRecords = isSVM ? this.store.attendance.filter(function(a) { return a.date === todayStr; }) : [];
+    var todayRecords = (this.store.attendance || []).filter(function(a) { return a.date === todayStr; });
     var todayPresent = 0, todayTotal = 0;
     todayRecords.forEach(function(r) {
-      r.records.forEach(function(rec) {
+      (r.records || []).forEach(function(rec) {
         todayTotal++;
         if (rec.status === 'present' || rec.status === 'late') todayPresent++;
       });
@@ -1669,27 +1740,25 @@ window.SchoolApp = {
     var attendancePerc = todayTotal > 0 ? Math.round((todayPresent / todayTotal) * 100) : 0;
 
     // Attendance chart data (last 7 entries)
-    var attData = isSVM ? this.store.attendance.slice(-7).map(function(a) {
-      var present = a.records.filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
-      var total = a.records.length;
+    var attData = (this.store.attendance || []).slice(-7).map(function(a) {
+      var present = (a.records || []).filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
+      var total = (a.records || []).length;
       return {
         label: a.date.substr(5),
         value: total > 0 ? Math.round((present / total) * 100) : 0
       };
-    }) : [];
+    });
 
     // Class distribution
     var classDist = {};
-    if (isSVM) {
-      this.store.students.forEach(function(s) {
-        var key = 'Class ' + s.class;
-        classDist[key] = (classDist[key] || 0) + 1;
-      });
-    }
+    (this.store.students || []).forEach(function(s) {
+      var key = 'Class ' + s.class;
+      classDist[key] = (classDist[key] || 0) + 1;
+    });
 
     // Recent activity
-    var recentAtt = isSVM ? this.store.attendance.slice(-5).reverse() : [];
-    var teachers = isSVM ? this.store.teachers : [];
+    var recentAtt = (this.store.attendance || []).slice(-5).reverse();
+    var teachers = this.store.teachers || [];
     var self = this;
 
     var html = '';
@@ -1706,7 +1775,7 @@ window.SchoolApp = {
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Digital Notice Board</h3></div>';
     html += '<div class="card-body" style="max-height: 250px; overflow-y: auto; padding: 16px;">';
     
-    var noticesList = isSVM ? (this.store.notices || []).filter(function(n) { return n.status === 'published'; }) : [];
+    var noticesList = (this.store.notices || []).filter(function(n) { return n.status === 'published'; });
     // Sort by date newest first
     noticesList = noticesList.slice().sort(function(a, b) {
       return new Date(b.date) - new Date(a.date);
@@ -2495,6 +2564,12 @@ document.addEventListener('DOMContentLoaded', function() {
       if (targetSchool.phone) SchoolApp.store.settings.phone = targetSchool.phone;
       if (targetSchool.email) SchoolApp.store.settings.email = targetSchool.email;
       
+      // Update custom logo if available (fallback to a premium inline SVG school shield)
+      var logoSrc = targetSchool.logo_url || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='%232563eb'><path d='M12 3L1 9l11 6 9-4.91V17h2V9L12 3z'/><path d='M22 9L12 3 2 9l10 6 10-6z' fill='%231d4ed8'/><path d='M17 14v3c0 1.1-.9 2-2 2H9c-1.1 0-2-.9-2-2v-3l5 2.72L17 14z'/></svg>";
+      document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
+        img.src = logoSrc;
+      });
+
       // Set user session based on role
       if (impRole === 'teacher') {
         var teachers = SchoolApp.store.teachers || [];
@@ -2530,6 +2605,11 @@ document.addEventListener('DOMContentLoaded', function() {
       SchoolApp.showImpersonationBanner(targetSchool.school_name, impRole);
       return; // Skip normal login flow
     }
+  } else {
+    // Normal flow logo reset
+    document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
+      img.src = './school-logo-updated.jpg';
+    });
   }
 
   if (!hasData || !SchoolApp.store.students || SchoolApp.store.students.length === 0) {

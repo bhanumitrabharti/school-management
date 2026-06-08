@@ -481,6 +481,24 @@
       border-color: rgba(0, 0, 0, 0.12);
     }
 
+    .sa-subdomain-link {
+      font-size: 11px;
+      color: #60a5fa;
+      font-family: monospace;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .sa-subdomain-link:hover {
+      color: #2563eb;
+      text-decoration: underline;
+    }
+    .sa-light-theme .sa-subdomain-link {
+      color: #2563eb;
+    }
+    .sa-light-theme .sa-subdomain-link:hover {
+      color: #1d4ed8;
+    }
+
     /* ---- SIDEBAR LAYOUT ---- */
     .sa-wrapper {
       display: flex;
@@ -934,6 +952,10 @@
             <div class="sa-modal-form-group full-width">
               <label for="sf-tagline">Tagline</label>
               <input type="text" id="sf-tagline" placeholder="e.g. Nurturing Young Minds">
+            </div>
+            <div class="sa-modal-form-group full-width">
+              <label for="sf-logo-url">School Logo URL</label>
+              <input type="url" id="sf-logo-url" placeholder="e.g. https://example.com/logo.png or Base64 data">
             </div>
             <div class="sa-modal-form-group">
               <label for="sf-phone">Phone</label>

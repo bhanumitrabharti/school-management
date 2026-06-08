@@ -18,10 +18,6 @@
   };
 
   function getFilteredStudents() {
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    if (currentSchoolId !== 'svm_bokaro_001') {
-      return [];
-    }
     var students = SchoolApp.store.students || [];
 
     // Teacher: only show assigned classes (combining classTeacherOf and subjectTeacherOf)
@@ -113,8 +109,7 @@
 
       // Page Header
       shellHtml += '<div class="page-header">';
-      var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-      var totalCount = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.students || []).length : 0;
+      var totalCount = (SchoolApp.store.students || []).length;
       shellHtml += '<h2><span class="material-icons-round">school</span> Student Management <span class="badge badge-purple" id="students-total-badge">' + totalCount + '</span></h2>';
       shellHtml += '<div class="header-actions">';
       if (isAdmin) {
@@ -174,8 +169,7 @@
     // Update total badge count
     var totalBadge = document.getElementById('students-total-badge');
     if (totalBadge) {
-      var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-      totalBadge.textContent = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.students || []).length : 0;
+      totalBadge.textContent = (SchoolApp.store.students || []).length;
     }
 
     var students = getFilteredStudents();

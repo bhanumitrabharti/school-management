@@ -268,8 +268,7 @@
     html += '<button class="btn btn-secondary btn-sm" id="bulk-reset-passwords"><span class="material-icons-round">lock_reset</span> Reset All Passwords</button>';
     html += '</div><div class="card-body">';
 
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    var teachers = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.teachers || []) : [];
+    var teachers = SchoolApp.store.teachers || [];
     if (teachers.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
       teachers.forEach(function(t) {
@@ -525,12 +524,10 @@
   }
 
   function renderDataTab() {
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    var isSVM = currentSchoolId === 'svm_bokaro_001';
-    var studentCount = isSVM ? SchoolApp.store.students.length : 0;
-    var teacherCount = isSVM ? SchoolApp.store.teachers.length : 0;
-    var attendanceCount = isSVM ? SchoolApp.store.attendance.length : 0;
-    var dataSize = isSVM ? (new Blob([JSON.stringify(SchoolApp.store)])).size : 0;
+    var studentCount = (SchoolApp.store.students || []).length;
+    var teacherCount = (SchoolApp.store.teachers || []).length;
+    var attendanceCount = (SchoolApp.store.attendance || []).length;
+    var dataSize = (new Blob([JSON.stringify(SchoolApp.store)])).size;
     var dataSizeKB = (dataSize / 1024).toFixed(1);
 
     var html = '<div class="tab-content' + (state.activeTab === 'data' ? ' active' : '') + '" id="tab-data">';
@@ -1054,10 +1051,9 @@
       return;
     }
 
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    var students = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.students || []).filter(function(s) {
+    var students = (SchoolApp.store.students || []).filter(function(s) {
       return s.class === srcCls && s.status === 'Active';
-    }) : [];
+    });
 
     if (students.length === 0) {
       container.innerHTML = '<div class="empty-state" style="padding: 20px;"><span class="material-icons-round" style="font-size:32px;color:var(--text-muted)">groups</span><h3>No Active Students</h3><p style="color:var(--text-muted)">There are no active students currently in this class.</p></div>';

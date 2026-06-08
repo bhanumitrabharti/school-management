@@ -13,10 +13,6 @@
   };
 
   function getFilteredTeachers() {
-    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    if (currentSchoolId !== 'svm_bokaro_001') {
-      return [];
-    }
     var teachers = SchoolApp.store.teachers || [];
 
     if (state.subjectFilter !== 'all') {
@@ -62,8 +58,7 @@
 
       // Page Header
       shellHtml += '<div class="page-header">';
-      var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-      var totalCount = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.teachers || []).length : 0;
+      var totalCount = (SchoolApp.store.teachers || []).length;
       shellHtml += '<h2><span class="material-icons-round">person</span> Teacher Management <span class="badge badge-purple" id="teachers-total-badge">' + totalCount + '</span></h2>';
       shellHtml += '<div class="header-actions">';
       shellHtml += '<button class="btn btn-secondary btn-sm" id="teacher-export-btn"><span class="material-icons-round">download</span> Export</button>';
@@ -107,8 +102,7 @@
     // Update total badge count
     var totalBadge = document.getElementById('teachers-total-badge');
     if (totalBadge) {
-      var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-      totalBadge.textContent = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.teachers || []).length : 0;
+      totalBadge.textContent = (SchoolApp.store.teachers || []).length;
     }
 
     var teachers = getFilteredTeachers();

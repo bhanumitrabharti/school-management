@@ -59,6 +59,7 @@
             storage_used: '1.2 GB',
             renewal_date: '2026-12-31',
             last_login: '2 hours ago',
+            logo_url: './school-logo-updated.jpg',
             allowed_features: ['dashboard','students','teachers','attendance','fees','fee_ledger','print_receipt','timetable','exams','notices','promotion','users','recovery','help']
         },
         {
@@ -74,6 +75,7 @@
             storage_used: '850 MB',
             renewal_date: '2026-09-15',
             last_login: '5 days ago',
+            logo_url: '',
             allowed_features: ['dashboard','students','teachers','attendance','fees','help']
         },
         {
@@ -89,6 +91,7 @@
             storage_used: '200 MB',
             renewal_date: '2026-06-30',
             last_login: 'Inactive for 15 days',
+            logo_url: '',
             allowed_features: ['dashboard','students','attendance','help']
         }
     ];
@@ -442,7 +445,7 @@
                 '<td>' +
                     '<div class="sa-school-info">' +
                         '<span class="sa-school-name">' + escapeHTML(school.school_name) + '</span>' +
-                        '<span class="sa-school-subdomain">' + escapeHTML(school.subdomain) + '.ctrlshift.app</span>' +
+                        '<a href="#" class="sa-subdomain-link" data-school-id="' + escapeAttr(school.school_id) + '">' + escapeHTML(school.subdomain) + '.ctrlshift.app</a>' +
                     '</div>' +
                 '</td>' +
                 '<td>' +
@@ -842,6 +845,7 @@
             document.getElementById('sf-plan').value      = school.plan || 'Basic';
             document.getElementById('sf-status').value    = school.status || 'Active';
             document.getElementById('sf-renewal').value   = school.renewal_date || '';
+            document.getElementById('sf-logo-url').value  = school.logo_url || '';
 
             // Check matching feature toggles
             var features = school.allowed_features || [];
@@ -912,6 +916,7 @@
             data.schools[idx].plan               = document.getElementById('sf-plan').value;
             data.schools[idx].status             = document.getElementById('sf-status').value;
             data.schools[idx].renewal_date       = document.getElementById('sf-renewal').value || '';
+            data.schools[idx].logo_url           = document.getElementById('sf-logo-url').value.trim();
             data.schools[idx].allowed_features   = selectedFeatures;
 
             saveData(data);
@@ -943,6 +948,7 @@
                 storage_used:     '0 MB',
                 renewal_date:     document.getElementById('sf-renewal').value || '',
                 last_login:       'Never',
+                logo_url:         document.getElementById('sf-logo-url').value.trim(),
                 allowed_features: selectedFeatures
             };
 
@@ -1343,6 +1349,17 @@
         // Delegated events on the schools table
         schoolsTbody.addEventListener('click', function (e) {
             var target = e.target;
+
+            // Find the closest subdomain link
+            var subdomainLink = target.closest('.sa-subdomain-link');
+            if (subdomainLink) {
+                e.preventDefault();
+                e.stopPropagation();
+                var schoolId = subdomainLink.getAttribute('data-school-id');
+                showToast('DNS not real yet. Using Impersonation mode to access tenant.', 'warning');
+                impersonateSchool(schoolId, 'admin');
+                return;
+            }
 
             // Find the closest action button
             var actionBtn = target.closest('.sa-action-btn');

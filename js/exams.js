@@ -154,12 +154,11 @@
           });
         }
 
-        var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-        var students = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.students || []).filter(function(s) {
+        var students = (SchoolApp.store.students || []).filter(function(s) {
           return String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
                  String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim() &&
                  s.status === 'Active';
-        }) : [];
+        });
 
         var mappingKey = state.examTerm + '_' + state.classVal;
         var subjects = (SchoolApp.store.subjectMapping || {})[mappingKey] || (SchoolApp.store.subjectMapping || {})[state.classVal] || [];
@@ -290,10 +289,9 @@
           isClassTeacher = ct.some(function(c) { return c.class === state.classVal && c.section === state.sectionVal; });
         }
 
-        var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-        var students = (currentSchoolId === 'svm_bokaro_001') ? (SchoolApp.store.students || []).filter(function(s) {
+        var students = (SchoolApp.store.students || []).filter(function(s) {
           return s.class === state.classVal && s.section === state.sectionVal && s.status === 'Active';
-        }) : [];
+        });
 
         var mappingKey1 = state.combinedTerm1 + '_' + state.classVal;
         var mappingKey2 = state.combinedTerm2 + '_' + state.classVal;
