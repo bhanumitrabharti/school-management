@@ -16,7 +16,38 @@
   <!-- Firebase SDKs -->
   <script type="module" src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js"></script>
+  <!-- PWA Support -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="apple-touch-icon" href="/images/logo.png">
   <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Structured Data JSON-LD Schemas -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "CTRL Shift Solutions",
+    "url": "https://shishu-vikash-mandir.vercel.app",
+    "logo": "https://shishu-vikash-mandir.vercel.app/images/logo.png",
+    "description": "B2B SaaS provider specializing in School Management ERP systems."
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "CTRL Shift School ERP",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "All",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "INR"
+    },
+    "description": "A complete multi-tenant School Management System and ERP for tracking students, teachers, fees, and attendance."
+  }
+  </script>
 </head>
 <body>
 
@@ -365,5 +396,15 @@
   <script type="module" src="js/timetable.js"></script>
   <script type="module" src="js/help.js"></script>
   <script type="module" src="js/chatbot.js"></script>
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((reg) => console.log('Service Worker registered successfully with scope:', reg.scope))
+          .catch((err) => console.error('Service Worker registration failed:', err));
+      });
+    }
+  </script>
 </body>
 </html>

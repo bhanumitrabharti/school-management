@@ -1,0 +1,22 @@
+{
+  "name": "CTRL Shift ERP",
+  "short_name": "School ERP",
+  "description": "CTRL Shift Solutions - Modern Multi-Tenant School Management ERP",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/images/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/ctrl-shift-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
