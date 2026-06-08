@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="The Vision of CTRL Shift Solutions - Bringing modern, offline-capable B2B School ERP to Tier-2 and Tier-3 cities in India.">
+  <title>The Vision | CTRL Shift Solutions</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gradient-to-br from-[#0a0a1a] via-[#1a103a] to-[#0a1a2a] min-h-screen text-slate-100 font-sans flex flex-col justify-between">
+
+  <!-- Header Navigation -->
+  <header class="border-b border-white/10 bg-[#0a0a1a]/60 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <img src="/images/logo.png" alt="CTRL Shift ERP" class="h-8 w-8 object-contain rounded-md" onerror="this.src='/ctrl-shift-logo.png'">
+        <span class="font-extrabold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-white">CTRL SHIFT</span>
+      </div>
+      <a href="/" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 flex items-center gap-2">
+        <i class="fa-solid fa-arrow-left"></i> Back to Login
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="max-w-4xl mx-auto px-6 pt-16 pb-12 text-center">
+    <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-white">
+      Empowering Education in Bharat
+    </h1>
+    <p class="text-blue-400 text-lg md:text-xl font-medium tracking-wide uppercase">
+      Built by CTRL Shift Solutions
+    </p>
+    <div class="w-24 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 mx-auto mt-6 rounded-full"></div>
+  </section>
+
+  <!-- Content Section -->
+  <main class="max-w-4xl mx-auto px-6 flex-grow pb-16">
+    <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 md:p-12 shadow-2xl space-y-8">
+      
+      <!-- Narrative -->
+      <article class="space-y-6 text-slate-300 leading-relaxed text-base md:text-lg">
+        <p>
+          At <strong>CTRL Shift Solutions</strong>, we believe that high-quality, enterprise-grade software should not be a privilege reserved only for elite institutions in metropolitan hubs. Our mission is to bridge the digital divide by delivering robust, multi-tenant ERP software specifically designed for schools in <strong>Tier-2 and Tier-3 cities</strong>, focusing heavily on regions like <strong>Jharkhand and Bihar</strong>.
+        </p>
+        <p>
+          Educational institutions in these growing hubs often face unique challenges, from inconsistent internet connectivity and power outages to the overhead of manually managing student databases and fee ledger logs on paper registers. Our platforms are customized from the ground up to solve these exact hurdles.
+        </p>
+      </article>
+
+      <!-- Core Values Grid -->
+      <section class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+        
+        <!-- Speed & Reliability -->
+        <div class="bg-white/5 p-6 rounded-xl border border-white/5 hover:border-blue-500/30 transition-all duration-300 group">
+          <div class="w-12 h-12 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center mb-4 text-xl group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-bolt"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">High-Speed ERP</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Engineered using lightweight ES modules and asynchronous loading for lightning-fast speeds on any device.
+          </p>
+        </div>
+
+        <!-- Offline Capability -->
+        <div class="bg-white/5 p-6 rounded-xl border border-white/5 hover:border-blue-500/30 transition-all duration-300 group">
+          <div class="w-12 h-12 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center mb-4 text-xl group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Offline PWA</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            Installable on mobile/desktop with offline-first service worker caching. Keeps records safe even when offline.
+          </p>
+        </div>
+
+        <!-- Strict Data Isolation -->
+        <div class="bg-white/5 p-6 rounded-xl border border-white/5 hover:border-blue-500/30 transition-all duration-300 group">
+          <div class="w-12 h-12 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center mb-4 text-xl group-hover:scale-110 transition-transform">
+            <i class="fa-solid fa-shield-halved"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Data Isolation</h3>
+          <p class="text-slate-400 text-sm leading-relaxed">
+            True multi-tenant structure. Separate Cloud Firestore database sandboxing guarantees zero data bleeding.
+          </p>
+        </div>
+
+      </section>
+
+      <!-- Vision Statement Callout -->
+      <div class="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border-l-4 border-blue-500 p-6 rounded-r-xl">
+        <h4 class="text-white font-bold mb-1">Our Long-term Vision</h4>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          We aim to empower school administrators, teachers, and parents with automated systems so they can focus on what truly matters: providing children with a high-quality education.
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer Navigation -->
+  <footer class="border-t border-white/10 bg-[#06060f] py-8 text-center text-slate-500 text-xs">
+    <div class="max-w-4xl mx-auto px-6 space-y-4">
+      <div class="flex justify-center space-x-6">
+        <a href="/" class="hover:text-white transition-colors">Login</a>
+        <a href="/about.html" class="text-blue-400 font-medium hover:text-blue-300 transition-colors">Our Vision</a>
+        <a href="/case-study.html" class="hover:text-white transition-colors">Case Study</a>
+      </div>
+      <p>&copy; 2026 CTRL Shift Solutions. All rights reserved.</p>
+    </div>
+  </footer>
+
+</body>
+</html>

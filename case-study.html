@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Case Study: How CTRL Shift Solutions digitalized Shishu Vikash Mandir school operations with our multi-tenant ERP.">
+  <title>Case Study: Shishu Vikash Mandir | CTRL Shift Solutions</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gradient-to-br from-[#0a0a1a] via-[#1a103a] to-[#0a1a2a] min-h-screen text-slate-100 font-sans flex flex-col justify-between">
+
+  <!-- Header Navigation -->
+  <header class="border-b border-white/10 bg-[#0a0a1a]/60 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <img src="/images/logo.png" alt="CTRL Shift ERP" class="h-8 w-8 object-contain rounded-md" onerror="this.src='/ctrl-shift-logo.png'">
+        <span class="font-extrabold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-white">CTRL SHIFT</span>
+      </div>
+      <a href="/" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 flex items-center gap-2">
+        <i class="fa-solid fa-arrow-left"></i> Back to Login
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="max-w-4xl mx-auto px-6 pt-16 pb-12 text-center">
+    <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-white">
+      Success Story: Shishu Vikash Mandir
+    </h1>
+    <p class="text-blue-400 text-lg md:text-xl font-medium tracking-wide uppercase">
+      The Proof: Digital Transformation in Action
+    </p>
+    <div class="w-24 h-1 bg-gradient-to-r from-blue-500 to-indigo-500 mx-auto mt-6 rounded-full"></div>
+  </section>
+
+  <!-- Content Section -->
+  <main class="max-w-4xl mx-auto px-6 flex-grow pb-16">
+    <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 md:p-12 shadow-2xl space-y-8">
+      
+      <!-- Challenge, Solution, Result Grid -->
+      <section class="space-y-8">
+        
+        <!-- Challenge -->
+        <div class="border-b border-white/5 pb-6">
+          <div class="flex items-center space-x-3 mb-3">
+            <div class="w-10 h-10 rounded-lg bg-red-600/20 text-red-400 flex items-center justify-center text-lg">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h2 class="text-xl font-extrabold text-white">The Challenge</h2>
+          </div>
+          <p class="text-slate-300 leading-relaxed text-sm md:text-base">
+            Shishu Vikash Mandir (Bokaro, Jharkhand) was managing over <strong>250+ students</strong>, daily attendance tracking, academic timetables, and monthly fee cash collections completely by hand on paper ledger registers. This legacy approach created significant operational bottlenecks: high tracking error rates, parent fee disputes, delay in processing report cards, and vulnerability to physical data damage.
+          </p>
+        </div>
+
+        <!-- Solution -->
+        <div class="border-b border-white/5 pb-6">
+          <div class="flex items-center space-x-3 mb-3">
+            <div class="w-10 h-10 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center text-lg">
+              <i class="fa-solid fa-lightbulb"></i>
+            </div>
+            <h2 class="text-xl font-extrabold text-white">The Solution</h2>
+          </div>
+          <p class="text-slate-300 leading-relaxed text-sm md:text-base">
+            We implemented the <strong>CTRL Shift School ERP</strong>. The platform was configured in a multi-tenant Cloud Firestore database schema, ensuring complete data sandbox isolation. A Progressive Web App (PWA) config was deployed with custom service worker caching, enabling teachers to mark attendance and generate fee notifications offline, automatically syncing in the background when connectivity resolved.
+          </p>
+        </div>
+
+        <!-- Result -->
+        <div>
+          <div class="flex items-center space-x-3 mb-3">
+            <div class="w-10 h-10 rounded-lg bg-green-600/20 text-green-400 flex items-center justify-center text-lg">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <h2 class="text-xl font-extrabold text-white">The Result</h2>
+          </div>
+          <p class="text-slate-300 leading-relaxed text-sm md:text-base">
+            The school experienced immediate efficiency gains:
+          </p>
+          <ul class="list-none space-y-2 mt-4 text-slate-300 text-sm md:text-base pl-2">
+            <li class="flex items-start gap-2">
+              <i class="fa-solid fa-check text-green-400 mt-1"></i>
+              <span><strong>100% Digital Fee Tracking</strong>: Manual receipt errors resolved; automatic catch-up fee generated.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i class="fa-solid fa-check text-green-400 mt-1"></i>
+              <span><strong>Instant Attendance Reports</strong>: Administrators review attendance trends instantly, reducing teacher time-spent by 80%.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <i class="fa-solid fa-check text-green-400 mt-1"></i>
+              <span><strong>Zero Data Loss</strong>: PWA offline caching structures protected student records against network dropouts.</span>
+            </li>
+          </ul>
+        </div>
+
+      </section>
+
+      <!-- Testimonial Section -->
+      <section class="border-t border-white/10 pt-8">
+        <h3 class="text-lg font-bold text-white mb-4">Client Feedback</h3>
+        <div class="bg-gradient-to-r from-blue-950/30 to-indigo-950/30 border border-white/5 p-6 rounded-xl relative overflow-hidden group">
+          <div class="text-blue-500/20 text-7xl font-serif absolute -top-4 -left-1 select-none">“</div>
+          <blockquote class="text-slate-300 italic text-sm md:text-base leading-relaxed relative z-10">
+            "We migrated our entire system to CTRL Shift Solutions ERP in less than a day. The offline-first feature is a lifesaver during our network outages, and parents love receiving automated digital receipts on their WhatsApp instantly."
+          </blockquote>
+          <div class="mt-4 flex items-center space-x-3 relative z-10">
+            <div class="w-10 h-10 rounded-full bg-blue-600/30 flex items-center justify-center text-blue-300 font-bold text-sm">
+              SVM
+            </div>
+            <div>
+              <p class="text-white text-sm font-semibold">Principal & Management Team</p>
+              <p class="text-slate-500 text-xs">Shishu Vikash Mandir (Bokaro)</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer Navigation -->
+  <footer class="border-t border-white/10 bg-[#06060f] py-8 text-center text-slate-500 text-xs">
+    <div class="max-w-4xl mx-auto px-6 space-y-4">
+      <div class="flex justify-center space-x-6">
+        <a href="/" class="hover:text-white transition-colors">Login</a>
+        <a href="/about.html" class="hover:text-white transition-colors">Our Vision</a>
+        <a href="/case-study.html" class="text-blue-400 font-medium hover:text-blue-300 transition-colors">Case Study</a>
+      </div>
+      <p>&copy; 2026 CTRL Shift Solutions. All rights reserved.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
