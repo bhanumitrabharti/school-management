@@ -8,6 +8,7 @@
 
   var state = {
     activeTab: 'settings',
+    activeSetupTab: 'profile',
     promotionSourceClass: '',
     promotionDestClass: '',
     examsSelectedClass: '',
@@ -32,17 +33,56 @@
   };
 
   var mockTransactions = [
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10001", date_time: getRelativeDateString(0, 9, 15), student_name: "Aarav Sharma", class_section: "10-A", payment_method: "Cash", amount: 1500 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10002", date_time: getRelativeDateString(0, 10, 30), student_name: "Priya Patel", class_section: "10-A", payment_method: "UPI", amount: 2500 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10003", date_time: getRelativeDateString(0, 11, 45), student_name: "Rahul Kumar", class_section: "7-B", payment_method: "Cash", amount: 1200 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10004", date_time: getRelativeDateString(0, 14, 0), student_name: "Ananya Singh", class_section: "7-B", payment_method: "Bank", amount: 3000 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10005", date_time: getRelativeDateString(1, 8, 30), student_name: "Vikram Reddy", class_section: "8-A", payment_method: "UPI", amount: 1500 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10006", date_time: getRelativeDateString(2, 12, 0), student_name: "Sneha Gupta", class_section: "8-A", payment_method: "Cash", amount: 1800 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10007", date_time: getRelativeDateString(4, 10, 0), student_name: "Arjun Nair", class_section: "9-C", payment_method: "Bank", amount: 4500 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10008", date_time: getRelativeDateString(15, 11, 0), student_name: "Meera Iyer", class_section: "9-C", payment_method: "UPI", amount: 2000 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10009", date_time: getRelativeDateString(18, 14, 30), student_name: "Karan Verma", class_section: "6-A", payment_method: "Cash", amount: 1200 },
-    { school_id: "svm_bokaro_001", transaction_id: "TXN10010", date_time: getRelativeDateString(22, 15, 15), student_name: "Divya Joshi", class_section: "6-A", payment_method: "Bank", amount: 3500 }
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10001", date_time: getRelativeDateString(0, 9, 15), student_name: "Aarav Sharma", class_section: "10-A", payment_method: "Cash", amount: 1500 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10002", date_time: getRelativeDateString(0, 10, 30), student_name: "Priya Patel", class_section: "10-A", payment_method: "UPI", amount: 2500 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10003", date_time: getRelativeDateString(0, 11, 45), student_name: "Rahul Kumar", class_section: "7-B", payment_method: "Cash", amount: 1200 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10004", date_time: getRelativeDateString(0, 14, 0), student_name: "Ananya Singh", class_section: "7-B", payment_method: "Bank", amount: 3000 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10005", date_time: getRelativeDateString(1, 8, 30), student_name: "Vikram Reddy", class_section: "8-A", payment_method: "UPI", amount: 1500 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10006", date_time: getRelativeDateString(2, 12, 0), student_name: "Sneha Gupta", class_section: "8-A", payment_method: "Cash", amount: 1800 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10007", date_time: getRelativeDateString(4, 10, 0), student_name: "Arjun Nair", class_section: "9-C", payment_method: "Bank", amount: 4500 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10008", date_time: getRelativeDateString(15, 11, 0), student_name: "Meera Iyer", class_section: "9-C", payment_method: "UPI", amount: 2000 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10009", date_time: getRelativeDateString(18, 14, 30), student_name: "Karan Verma", class_section: "6-A", payment_method: "Cash", amount: 1200 },
+    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10010", date_time: getRelativeDateString(22, 15, 15), student_name: "Divya Joshi", class_section: "6-A", payment_method: "Bank", amount: 3500 }
   ];
+
+  function getMergedTransactions() {
+    var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
+    var isSVM = currentSchoolId === 'svm_bokaro_001';
+    
+    // 1. Get filtered mock transactions (only for SVM)
+    var txns = [];
+    if (isSVM) {
+      txns = mockTransactions.filter(function(t) {
+        var tSchoolId = t.schoolId || t.school_id;
+        return tSchoolId === currentSchoolId;
+      }).map(function(t) {
+        return Object.assign({}, t, { schoolId: currentSchoolId, school_id: currentSchoolId });
+      });
+    }
+    
+    // 2. Get real transactions from SchoolApp.store.fees (filtered by current schoolId)
+    var realPayments = (SchoolApp.store.fees || []).filter(function(f) {
+      return f.type === 'payment' && (!f.schoolId || f.schoolId === currentSchoolId);
+    });
+    
+    var mappedReal = realPayments.map(function(p) {
+      var student = (SchoolApp.store.students || []).find(function(s) { return s.id === p.studentId; });
+      var studentName = student ? (student.firstName + ' ' + (student.lastName || '')) : 'Unknown Student';
+      var classSection = student ? (student.class + '-' + (student.section || 'A')) : 'Unknown';
+      return {
+        school_id: currentSchoolId,
+        schoolId: currentSchoolId,
+        transaction_id: p.id,
+        date_time: p.date.indexOf('T') !== -1 ? p.date : (p.date + 'T12:00:00'),
+        student_name: studentName,
+        class_section: classSection,
+        payment_method: p.mode || 'Cash',
+        amount: parseFloat(p.amount)
+      };
+    });
+    
+    return txns.concat(mappedReal);
+  }
 
 
 
@@ -100,6 +140,339 @@
     }
   }
 
+  function escapeHTML(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+  function escapeAttr(str) {
+    return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderSettingsClasses() {
+    var container = document.getElementById('settings-classes-container');
+    if (!container) return;
+
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || [];
+    var sections = settings.sections || {};
+
+    var html = '';
+    classes.forEach(function(c) {
+      var sectList = [];
+      if (Array.isArray(sections)) {
+        sectList = sections;
+      } else if (typeof sections === 'object') {
+        sectList = sections[c] || [];
+      }
+
+      html += '<div class="class-structure-row">';
+      html += '  <div style="width:120px; font-weight:700;">' + escapeHTML(c) + '</div>';
+      html += '  <div class="section-tags-container">';
+      sectList.forEach(function(sec) {
+        html += '    <span class="section-tag">' + escapeHTML(sec);
+        html += '      <span class="settings-remove-section" data-class="' + escapeAttr(c) + '" data-section="' + escapeAttr(sec) + '" style="cursor:pointer; font-size:12px; color:var(--text-secondary); margin-left:4px; font-weight:bold;">&times;</span>';
+        html += '    </span>';
+      });
+      html += '  </div>';
+      html += '  <div style="display:flex; gap:6px; align-items:center;">';
+      html += '    <button type="button" class="btn btn-secondary btn-sm settings-add-section" data-class="' + escapeAttr(c) + '">+ Section</button>';
+      html += '    <button type="button" class="btn btn-danger btn-sm settings-delete-class" data-class="' + escapeAttr(c) + '"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
+      html += '  </div>';
+      html += '</div>';
+    });
+
+    if (classes.length === 0) {
+      html = '<div style="text-align:center; padding:12px; color:var(--text-secondary);">No classes configured.</div>';
+    }
+
+    container.innerHTML = html;
+    attachSettingsClassesEvents();
+  }
+
+  function renderSettingsSubjects() {
+    var container = document.getElementById('settings-subjects-container');
+    if (!container) return;
+
+    var settings = SchoolApp.store.settings || {};
+    var subjects = settings.subjects || [];
+
+    var html = '';
+    subjects.forEach(function(sub) {
+      html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px;">';
+      html += '  <div style="font-weight:600; color:var(--text-primary);">' + escapeHTML(sub) + '</div>';
+      html += '  <div style="display:flex; align-items:center; gap:8px;">';
+      html += '    <button type="button" class="btn btn-secondary btn-sm settings-edit-subject" data-subject="' + escapeAttr(sub) + '"><span class="material-icons-round" style="font-size:14px;">edit</span></button>';
+      html += '    <button type="button" class="btn btn-danger btn-sm settings-delete-subject" data-subject="' + escapeAttr(sub) + '"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
+      html += '  </div>';
+      html += '</div>';
+    });
+
+    if (subjects.length === 0) {
+      html = '<div style="text-align:center; padding:12px; color:var(--text-secondary);">No subjects configured.</div>';
+    }
+
+    container.innerHTML = html;
+    attachSettingsSubjectsEvents();
+  }
+
+  function renderFeesMatrix() {
+    var theadRow = document.getElementById('setup-feehead-row');
+    var tbody = document.getElementById('setup-fee-matrix-body');
+    if (!theadRow || !tbody) return;
+
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || [];
+    var feeStructure = settings.feeStructure || {};
+
+    var headsSet = new Set(["tuition", "transport", "exam"]);
+    Object.values(feeStructure).forEach(function(clsFees) {
+      Object.keys(clsFees).forEach(function(k) {
+        headsSet.add(k);
+      });
+    });
+    var heads = Array.from(headsSet);
+
+    var headHtml = '<th>Class</th>';
+    heads.forEach(function(h) {
+      headHtml += '<th style="text-transform:capitalize;">' + escapeHTML(h) + '</th>';
+    });
+    theadRow.innerHTML = headHtml;
+
+    var bodyHtml = '';
+    classes.forEach(function(c) {
+      bodyHtml += '<tr>';
+      bodyHtml += '  <td style="font-weight:600;">' + escapeHTML(c) + '</td>';
+      heads.forEach(function(h) {
+        var amt = (feeStructure[c] && feeStructure[c][h]) || 0;
+        bodyHtml += '  <td><input type="number" class="fees-class-fee-input form-input" data-class="' + escapeAttr(c) + '" data-head="' + escapeAttr(h) + '" value="' + amt + '" style="padding:6px; width:90px; font-size:12px;" min="0"></td>';
+      });
+      bodyHtml += '</tr>';
+    });
+
+    if (classes.length === 0) {
+      bodyHtml = '<tr><td colspan="' + (heads.length + 1) + '" style="text-align:center; color:var(--text-secondary);">Configure classes first.</td></tr>';
+    }
+
+    tbody.innerHTML = bodyHtml;
+  }
+
+  function renderFeesCharges() {
+    var container = document.getElementById('setup-charges-list-container');
+    if (!container) return;
+
+    var settings = SchoolApp.store.settings || {};
+    var charges = settings.extraCharges || [];
+
+    var html = '';
+    charges.forEach(function(item) {
+      html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px;">';
+      html += '  <div><strong style="color:var(--text-primary);">' + escapeHTML(item.name) + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + escapeHTML(item.type) + ')</span></div>';
+      html += '  <div style="display:flex; align-items:center; gap:12px;">';
+      html += '    <strong style="color:#60a5fa;">₹' + item.amount + '</strong>';
+      html += '    <span class="fees-remove-charge" data-id="' + escapeAttr(item.id) + '" style="cursor:pointer; font-size:18px; color:#f87171; font-weight:bold;">&times;</span>';
+      html += '  </div>';
+      html += '</div>';
+    });
+
+    if (charges.length === 0) {
+      html = '<span style="color:var(--text-secondary); font-size:12px;">No extra charges added.</span>';
+    }
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('.fees-remove-charge').forEach(function(el) {
+      el.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var id = this.getAttribute('data-id');
+        settings.extraCharges = (settings.extraCharges || []).filter(function(x) { return x.id !== id; });
+        renderFeesCharges();
+      });
+    });
+  }
+
+  function attachSettingsClassesEvents() {
+    var container = document.getElementById('settings-classes-container');
+    if (!container) return;
+
+    var settings = SchoolApp.store.settings;
+
+    container.querySelectorAll('.settings-remove-section').forEach(function(el) {
+      el.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var c = this.getAttribute('data-class');
+        var sec = this.getAttribute('data-section');
+        
+        SchoolApp.createRestorePoint('Backup before removing section ' + sec + ' from class ' + c);
+        if (typeof settings.sections === 'object') {
+          settings.sections[c] = (settings.sections[c] || []).filter(function(s) { return s !== sec; });
+        }
+        
+        SchoolApp.showLoader('Removing section...');
+        var success = await SchoolApp.save(true);
+        SchoolApp.hideLoader();
+        
+        if (success) {
+          renderSettingsClasses();
+          SchoolApp.showToast('Section removed.', 'info');
+        }
+      });
+    });
+
+    container.querySelectorAll('.settings-add-section').forEach(function(el) {
+      el.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var c = this.getAttribute('data-class');
+        var sec = prompt("Enter section name (e.g. A, B, C):");
+        if (sec) {
+          sec = sec.trim().toUpperCase();
+          if (typeof settings.sections !== 'object' || Array.isArray(settings.sections)) {
+            settings.sections = {};
+          }
+          if (!settings.sections[c]) settings.sections[c] = [];
+          if (settings.sections[c].indexOf(sec) !== -1) {
+            SchoolApp.showToast('Section already exists.', 'error');
+            return;
+          }
+          SchoolApp.createRestorePoint('Backup before adding section ' + sec + ' to class ' + c);
+          settings.sections[c].push(sec);
+          
+          SchoolApp.showLoader('Adding section...');
+          var success = await SchoolApp.save(true);
+          SchoolApp.hideLoader();
+          
+          if (success) {
+            renderSettingsClasses();
+            SchoolApp.showToast('Section added.', 'success');
+          }
+        }
+      });
+    });
+
+    container.querySelectorAll('.settings-delete-class').forEach(function(el) {
+      el.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var c = this.getAttribute('data-class');
+        
+        var students = SchoolApp.store.students || [];
+        var studentsInClass = students.filter(function(s) { return s.class === c; });
+        if (studentsInClass.length > 0) {
+          alert("Cannot delete — students exist in this class. Move them first.");
+          SchoolApp.showToast("Cannot delete: students exist in class " + c, "error");
+          return;
+        }
+
+        SchoolApp.createRestorePoint('Backup before deleting class ' + c);
+        settings.classes = (settings.classes || []).filter(function(cls) { return cls !== c; });
+        if (typeof settings.sections === 'object') {
+          delete settings.sections[c];
+        }
+        if (settings.feeStructure) {
+          delete settings.feeStructure[c];
+        }
+        
+        SchoolApp.showLoader('Deleting class...');
+        var success = await SchoolApp.save(true);
+        SchoolApp.hideLoader();
+        
+        if (success) {
+          renderSettingsClasses();
+          SchoolApp.showToast('Class deleted.', 'info');
+        }
+      });
+    });
+  }
+
+  function attachSettingsSubjectsEvents() {
+    var container = document.getElementById('settings-subjects-container');
+    if (!container) return;
+
+    var settings = SchoolApp.store.settings;
+
+    container.querySelectorAll('.settings-edit-subject').forEach(function(el) {
+      el.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var oldSub = this.getAttribute('data-subject');
+        var newSub = prompt("Edit subject name:", oldSub);
+        if (newSub && newSub.trim() && newSub.trim() !== oldSub) {
+          newSub = newSub.trim();
+          var idx = (settings.subjects || []).indexOf(oldSub);
+          if (idx !== -1) {
+            settings.subjects[idx] = newSub;
+            SchoolApp.createRestorePoint('Backup before editing subject ' + oldSub);
+            
+            SchoolApp.showLoader('Updating subject...');
+            var success = await SchoolApp.save(true);
+            SchoolApp.hideLoader();
+            
+            if (success) {
+              renderSettingsSubjects();
+              SchoolApp.showToast('Subject updated successfully.', 'success');
+            }
+          }
+        }
+      });
+    });
+
+    container.querySelectorAll('.settings-delete-subject').forEach(function(el) {
+      el.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var sub = this.getAttribute('data-subject');
+        
+        var isMapped = false;
+        var mapping = SchoolApp.store.subjectMapping || {};
+        Object.values(mapping).forEach(function(list) {
+          if (Array.isArray(list)) {
+            list.forEach(function(item) {
+              if (item && (item.id === sub || item.name === sub)) {
+                isMapped = true;
+              }
+            });
+          }
+        });
+
+        var doDelete = async function() {
+          SchoolApp.createRestorePoint('Backup before deleting subject ' + sub);
+          settings.subjects = (settings.subjects || []).filter(function(s) { return s !== sub; });
+          
+          SchoolApp.showLoader('Deleting subject...');
+          var success = await SchoolApp.save(true);
+          SchoolApp.hideLoader();
+          
+          if (success) {
+            renderSettingsSubjects();
+            SchoolApp.showToast('Subject deleted.', 'info');
+          }
+        };
+
+        if (isMapped) {
+          SchoolApp.showConfirm('Warning: This subject is currently mapped to examinations. Deleting it may cause inconsistency in existing exam marks. Are you sure you want to delete this subject?', doDelete);
+        } else {
+          doDelete();
+        }
+      });
+    });
+  }
+
   function render() {
     var container = document.getElementById('page-admin');
     if (!container) return;
@@ -109,68 +482,101 @@
       return;
     }
 
-    var html = '';
+    try {
+      var html = '';
 
-    // Page Header
-    html += '<div class="page-header"><h2><span class="material-icons-round">admin_panel_settings</span> Admin Panel</h2></div>';
-
-    // Two-Column Layout Container
-    html += '<div class="admin-panel-container">';
-
-    // Left Column: Vertical Inner Sidebar Navigation
-    html += '  <aside class="admin-sidebar">';
-    html += '    <button class="tab-btn' + (state.activeTab === 'settings' ? ' active' : '') + '" data-tab="settings"><span class="material-icons-round">settings</span> School Settings</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'transactions' ? ' active' : '') + '" data-tab="transactions"><span class="material-icons-round">receipt_long</span> Fee Ledger</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'exams' ? ' active' : '') + '" data-tab="exams"><span class="material-icons-round">assignment</span> Examinations</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
-    html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
-
-    html += '    <button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
-    html += '  </aside>';
-
-    // Right Column: Content Area
-    html += '  <main class="admin-content-area">';
-    html += renderSettingsTab();
-    html += renderUsersTab();
-    html += renderFeesTab();
-    html += renderTransactionsTab();
-    html += renderExamsTab();
-    html += renderNoticesTab();
-    html += renderPromotionTab();
-    html += renderDataTab();
-    html += renderRecoveryTab();
-
-    html += renderSystemTab();
-    html += '  </main>';
-
-    html += '</div>'; // End Two-Column Layout Container
-
-    container.innerHTML = html;
-    if (state.activeTab === 'transactions') {
-      renderTransactionsTable();
+      // Page Header
+      html += '<div class="page-header"><h2><span class="material-icons-round">admin_panel_settings</span> Admin Panel</h2></div>';
+      html += '<div class="admin-panel-container">';
+ 
+      // Left Column: Vertical Inner Sidebar Navigation
+      html += '  <aside class="admin-sidebar">';
+      html += '    <button class="tab-btn' + (state.activeTab === 'settings' ? ' active' : '') + '" data-tab="settings"><span class="material-icons-round">settings</span> School Settings</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'transactions' ? ' active' : '') + '" data-tab="transactions"><span class="material-icons-round">receipt_long</span> Fee Ledger</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'exams' ? ' active' : '') + '" data-tab="exams"><span class="material-icons-round">assignment</span> Examinations</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
+      html += '  </aside>';
+ 
+      // Right Column: Content Area
+      html += '  <main class="admin-content-area">';
+      html += renderSettingsTab();
+      html += renderUsersTab();
+      html += renderFeesTab();
+      html += renderTransactionsTab();
+      html += renderExamsTab();
+      html += renderNoticesTab();
+      html += renderPromotionTab();
+      html += renderDataTab();
+      html += renderRecoveryTab();
+      html += renderSystemTab();
+      html += '  </main>';
+ 
+      html += '</div>'; // End Two-Column Layout Container
+ 
+      container.innerHTML = html;
+      if (state.activeTab === 'transactions') {
+        renderTransactionsTable();
+      }
+      if (state.activeTab === 'settings') {
+        renderSettingsClasses();
+        renderSettingsSubjects();
+      }
+      if (state.activeTab === 'fees') {
+        renderFeesMatrix();
+        renderFeesCharges();
+      }
+      attachEvents();
+    } catch (error) {
+      console.error("Crash in renderAdminPanel:", error);
+      container.innerHTML = '<div class="empty-state" style="padding: 40px; border: 1px dashed rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.05); border-radius: 12px; margin: 20px;">' +
+        '<span class="material-icons-round" style="color: #f87171; font-size: 48px;">warning</span>' +
+        '<h3 style="color: #f87171; margin-top: 12px;">Admin Panel Render Error</h3>' +
+        '<p style="color: var(--text-secondary); max-width: 500px; margin: 8px auto 16px auto; font-size: 14px;">An unexpected error occurred while loading the admin panel settings. Please refresh or contact support.</p>' +
+        '<div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; text-align: left; max-width: 600px; margin: 0 auto; color: #f87171; overflow-x: auto;">' +
+        'Error: ' + error.message + '\n' + error.stack +
+        '</div></div>';
     }
-    attachEvents();
   }
 
   function renderSettingsTab() {
-    var s = SchoolApp.store.settings;
+    var s = SchoolApp.store.settings || {};
     var displayStyle = (state.activeTab === 'settings' ? 'display:flex;' : 'display:none;');
     var html = '<div class="tab-content' + (state.activeTab === 'settings' ? ' active' : '') + '" id="tab-settings" style="' + displayStyle + ' flex-direction:column; gap:20px;">';
     
     html += '<form id="settings-form" style="display:flex; flex-direction:column; gap:20px;">';
+
+    var tagline = s.tagline || (s.schoolInfo && s.schoolInfo.tagline) || '';
+    var affiliation = s.affiliation || (s.schoolInfo && s.schoolInfo.affiliation) || '';
+    var udiseCode = s.udiseCode || (s.schoolInfo && s.schoolInfo.udiseCode) || '';
 
     // Card 1: Basic Information
     html += '  <div class="card">';
     html += '    <div class="card-header"><h3><span class="material-icons-round">info</span> Basic Information</h3></div>';
     html += '    <div class="card-body">';
     html += '      <div class="admin-form-grid">';
-    html += '        <div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + (s.schoolName || '') + '"></div>';
-    html += '        <div class="form-group"><label class="form-label">Academic Year</label><input type="text" class="form-input" name="academicYear" value="' + (s.academicYear || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + escapeAttr(s.schoolName || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Tagline</label><input type="text" class="form-input" name="tagline" value="' + escapeAttr(tagline) + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Affiliation / Board</label><input type="text" class="form-input" name="affiliation" value="' + escapeAttr(affiliation) + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">UDISE Code (11 digits)</label><input type="text" class="form-input" name="udiseCode" value="' + escapeAttr(udiseCode) + '" maxlength="11" pattern="\\d{11}"></div>';
+    html += '        <div class="form-group"><label class="form-label">Academic Year</label><input type="text" class="form-input" name="academicYear" value="' + escapeAttr(s.academicYear || '') + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
+    
+    var logoDisplay = s.logoUrl ? 'block' : 'none';
+    var logoSrc = s.logoUrl || '';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label">School Logo</label>';
+    html += '          <input type="file" id="logo-file-input" accept="image/*"';
+    html += '            onchange="StorageUtils.previewImage(this.files[0], \'logo-preview\')" />';
+    html += '          <img id="logo-preview" src="' + logoSrc + '" style="max-width:100px;display:' + logoDisplay + ';margin-top:8px;border-radius:8px;" />';
+    html += '          <div id="logo-progress" style="font-size: 12px; color: var(--accent-secondary); margin-top: 4px; display: none;"></div>';
+    html += '        </div>';
+
     html += '      </div>';
     html += '    </div>';
     html += '  </div>';
@@ -180,9 +586,9 @@
     html += '    <div class="card-header"><h3><span class="material-icons-round">contact_mail</span> Contact Details</h3></div>';
     html += '    <div class="card-body">';
     html += '      <div class="admin-form-grid">';
-    html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + (s.phone || '') + '"></div>';
-    html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + (s.email || '') + '"></div>';
-    html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + (s.address || '') + '</textarea></div>';
+    html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + escapeAttr(s.phone || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + escapeAttr(s.email || '') + '"></div>';
+    html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + escapeHTML(s.address || '') + '</textarea></div>';
     html += '      </div>';
     html += '    </div>';
     html += '  </div>';
@@ -197,45 +603,48 @@
     html += '    </div>';
     html += '  </div>';
 
-    // Card 4: Class & Section Config
+    // Card 4: Class & Section Config Structure
     html += '  <div class="card">';
-    html += '    <div class="card-header"><h3><span class="material-icons-round">class</span> Classes & Sections Configuration</h3></div>';
-    html += '    <div class="card-body" style="display:flex; flex-direction:column; gap:20px;">';
-    
-    // Available Classes (Chips)
-    html += '      <div class="form-group"><label class="form-label" style="margin-bottom: 12px; display:block;">Available Classes</label>';
-    html += '        <div class="chip-toggle-container">';
-    var prePrimary = ['Nursery', 'LKG', 'UKG'];
-    prePrimary.forEach(function(c) {
-      var checked = (s.classes || []).indexOf(c) !== -1;
-      html += '        <label class="chip-toggle">';
-      html += '          <input type="checkbox" class="class-cb chip-checkbox" value="' + c + '"' + (checked ? ' checked' : '') + '>';
-      html += '          <span class="chip-label">' + c + '</span>';
-      html += '        </label>';
-    });
-    for (var i = 1; i <= 12; i++) {
-      var checked = (s.classes || []).indexOf(String(i)) !== -1;
-      html += '        <label class="chip-toggle">';
-      html += '          <input type="checkbox" class="class-cb chip-checkbox" value="' + i + '"' + (checked ? ' checked' : '') + '>';
-      html += '          <span class="chip-label">Class ' + i + '</span>';
-      html += '        </label>';
-    }
-    html += '        </div>';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '      <h3><span class="material-icons-round">class</span> Classes & Sections Configuration</h3>';
+    html += '      <div style="display:flex; gap:8px; align-items:center;">';
+    html += '        <input type="text" id="settings-new-class-input" placeholder="e.g. Class 1" style="width:140px; padding:8px; font-size:13px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; color:var(--text-primary);">';
+    html += '        <button type="button" class="btn btn-primary btn-sm" id="settings-add-class-btn">Add Class</button>';
     html += '      </div>';
+    html += '    </div>';
+    html += '    <div class="card-body" id="settings-classes-container" style="display:flex; flex-direction:column; gap:12px;">';
+    html += '    </div>';
+    html += '  </div>';
 
-    // Available Sections (Chips)
-    html += '      <div class="form-group"><label class="form-label" style="margin-bottom: 12px; display:block;">Available Sections</label>';
-    html += '        <div class="chip-toggle-container">';
-    ['A','B','C','D','E','F'].forEach(function(sec) {
-      var checked = (s.sections || []).indexOf(sec) !== -1;
-      html += '        <label class="chip-toggle">';
-      html += '          <input type="checkbox" class="section-cb chip-checkbox" value="' + sec + '"' + (checked ? ' checked' : '') + '>';
-      html += '          <span class="chip-label cyan">' + sec + '</span>';
-      html += '        </label>';
-    });
-    html += '        </div>';
+    // Card 5: Subjects Configuration
+    html += '  <div class="card">';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '      <h3><span class="material-icons-round">subject</span> Subjects Configuration</h3>';
+    html += '      <div style="display:flex; gap:8px; align-items:center;">';
+    html += '        <input type="text" id="settings-new-subject-input" placeholder="e.g. Science" style="width:140px; padding:8px; font-size:13px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; color:var(--text-primary);">';
+    html += '        <button type="button" class="btn btn-primary btn-sm" id="settings-add-subject-btn">Add Subject</button>';
     html += '      </div>';
+    html += '    </div>';
+    html += '    <div class="card-body" id="settings-subjects-container" style="display:flex; flex-direction:column; gap:12px;">';
+    html += '    </div>';
+    html += '  </div>';
 
+    // Card 6: Staff Attendance Location
+    var geo = s.geofence || {};
+    var geofenceLat = (geo.lat !== undefined) ? geo.lat : '';
+    var geofenceLng = (geo.lng !== undefined) ? geo.lng : '';
+    var geofenceRadius = (geo.radius !== undefined) ? geo.radius : 200;
+
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">pin_drop</span> Staff Attendance Location</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Define the school\'s geographical coordinates and allowed attendance radius. Staff must be physically located within this radius to punch in/out.</p>';
+    html += '      <div class="admin-form-grid">';
+    html += '        <div class="form-group"><label class="form-label">Latitude *</label><input type="number" step="any" class="form-input" name="geofenceLat" id="geofence-lat" value="' + geofenceLat + '" required></div>';
+    html += '        <div class="form-group"><label class="form-label">Longitude *</label><input type="number" step="any" class="form-input" name="geofenceLng" id="geofence-lng" value="' + geofenceLng + '" required></div>';
+    html += '        <div class="form-group"><label class="form-label">Allowed Radius (meters) *</label><input type="number" class="form-input" name="geofenceRadius" id="geofence-radius" value="' + geofenceRadius + '" min="10" required></div>';
+    html += '        <div class="form-group" style="display:flex; align-items:flex-end;"><button type="button" class="btn btn-secondary" id="settings-capture-gps-btn" style="width:100%; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px;"><span class="material-icons-round">my_location</span> Use Current Location</button></div>';
+    html += '      </div>';
     html += '    </div>';
     html += '  </div>';
 
@@ -251,7 +660,7 @@
   }
 
   function renderUsersTab() {
-    var s = SchoolApp.store.settings;
+    var s = SchoolApp.store.settings || {};
     var html = '<div class="tab-content' + (state.activeTab === 'users' ? ' active' : '') + '" id="tab-users">';
 
     // Admin Account
@@ -292,10 +701,12 @@
   }
 
   function renderFeesTab() {
-    var html = '<div class="tab-content' + (state.activeTab === 'fees' ? ' active' : '') + '" id="tab-fees">';
+    var settings = SchoolApp.store.settings || {};
+    var displayStyle = (state.activeTab === 'fees' ? 'display:flex;' : 'display:none;');
+    var html = '<div class="tab-content' + (state.activeTab === 'fees' ? ' active' : '') + '" id="tab-fees" style="' + displayStyle + ' flex-direction:column; gap:20px;">';
 
     // Card 1: Customizable Fee Heads
-    html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">category</span> Customizable Fee Heads</h3>';
+    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">category</span> Customizable Fee Heads</h3>';
     html += '<button class="btn btn-primary btn-sm" id="admin-add-feehead-btn"><span class="material-icons-round">add</span> Add Fee Head</button>';
     html += '</div><div class="card-body">';
 
@@ -316,42 +727,52 @@
     }
     html += '</div></div>';
 
-    // Card 2: Class-Wise Fee Structure Matrix
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schema</span> Class-Wise Default Fee Structures</h3></div><div class="card-body">';
-    
-    var classes = SchoolApp.store.settings.classes || [];
-    if (classes.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Class</th>';
-      // Render columns for each fee head
-      feeHeads.forEach(function(fh) {
-        html += '<th>' + fh.name + '</th>';
-      });
-      html += '<th>Actions</th></tr></thead><tbody>';
+    // Card 2: Fee Structure Matrix
+    html += '  <div class="card">';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '      <h3><span class="material-icons-round">grid_on</span> Fee Structure Matrix</h3>';
+    html += '      <div style="display:flex; gap:8px; align-items:center;">';
+    html += '        <input type="text" id="setup-new-feehead-input" placeholder="e.g. Lab Fee" style="width:140px; padding:8px; font-size:13px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; color:var(--text-primary);">';
+    html += '        <button type="button" class="btn btn-secondary btn-sm" id="setup-add-feehead-btn">Add Fee Head</button>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '    <div class="card-body" style="overflow-x:auto;">';
+    html += '      <table class="data-table" style="min-width:600px;">';
+    html += '        <thead>';
+    html += '          <tr id="setup-feehead-row"><th>Class</th><th>Tuition</th><th>Transport</th><th>Exam</th></tr>';
+    html += '        </thead>';
+    html += '        <tbody id="setup-fee-matrix-body">';
+    html += '        </tbody>';
+    html += '      </table>';
+    html += '    </div>';
+    html += '    <div class="card-footer" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '      <button type="button" class="btn btn-primary" id="setup-save-fees-btn"><span class="material-icons-round">save</span> Save Changes</button>';
+    html += '    </div>';
+    html += '  </div>';
 
-      classes.forEach(function(cls) {
-        html += '<tr>';
-        html += '<td><strong>' + (['Nursery','LKG','UKG'].indexOf(cls) !== -1 ? cls : 'Class ' + cls) + '</strong></td>';
-        
-        var classFees = (SchoolApp.store.feeStructures || {})[cls] || {};
-        feeHeads.forEach(function(fh) {
-          var amt = classFees[fh.id] || '0';
-          html += '<td>₹' + parseFloat(amt).toLocaleString('en-IN') + '</td>';
-        });
+    // Card 3: Extra Charges
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">receipt</span> Extra Charges</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <div class="admin-form-grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; align-items:flex-end;">';
+    html += '        <div class="form-group"><label class="form-label">Charge Name</label><input type="text" class="form-input" id="setup-charge-name" placeholder="e.g. Admission Fee"></div>';
+    html += '        <div class="form-group"><label class="form-label">Amount (₹)</label><input type="number" class="form-input" id="setup-charge-amount" placeholder="e.g. 5000" min="0"></div>';
+    html += '        <div class="form-group"><label class="form-label">Billing Type</label><select class="form-select" id="setup-charge-type"><option value="one-time">One-time</option><option value="annual">Annual</option><option value="monthly">Monthly</option></select></div>';
+    html += '        <div class="form-group" style="grid-column: span 3; display:flex; justify-content:flex-end;"><button type="button" class="btn btn-primary" id="setup-add-charge-btn" style="height:38px; padding:0 24px;">Add Charge</button></div>';
+    html += '      </div>';
+    html += '      <div id="setup-charges-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>';
+    html += '    </div>';
+    html += '    <div class="card-footer" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '      <button type="button" class="btn btn-primary" id="setup-save-charges-btn"><span class="material-icons-round">save</span> Save Charges</button>';
+    html += '    </div>';
+    html += '  </div>';
 
-        html += '<td>';
-        html += '<button class="btn btn-secondary btn-sm admin-edit-feestruct-btn" data-class="' + cls + '"><span class="material-icons-round" style="font-size:16px">edit</span> Configure</button>';
-        html += '</td></tr>';
-      });
-      html += '</tbody></table></div>';
-    } else {
-      html += '<div class="empty-state"><span class="material-icons-round">school</span><h3>No Classes Available</h3><p>Please configure available classes in School Settings first.</p></div>';
-    }
-
-    html += '</div></div></div>';
+    html += '</div>';
     return html;
   }
 
   function renderExamsTab() {
+    var settings = SchoolApp.store.settings || {};
     var html = '<div class="tab-content' + (state.activeTab === 'exams' ? ' active' : '') + '" id="tab-exams">';
 
     // Card 1: Exam Terms
@@ -374,14 +795,14 @@
       });
       html += '</tbody></table></div>';
     } else {
-      html += '<div class="empty-state"><span class="material-icons-round">assignment</span><h3>No Exam Terms</h3><p>Create exam terms like "Half-Yearly" or "Annual Exam" to record marks.</p></div>';
+      html += '<div class="empty-state"><span class="material-icons-round">assignment</span><h3>No Exam Terms</h3><p>Create exam term like "Half-Yearly" or "Annual Exam" to record marks.</p></div>';
     }
     html += '</div></div>';
 
     // Card 2: Subject Class Mapping
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">schema</span> Class-Wise Subject Mappings</h3></div><div class="card-body">';
     
-    var classes = SchoolApp.store.settings.classes || [];
+    var classes = settings.classes || [];
     if (classes.length > 0) {
       if (!state.examsSelectedClass) {
         state.examsSelectedClass = classes[0];
@@ -712,6 +1133,11 @@
     });
     html += '</div>';
 
+    // Password migration button
+    html += '<div style="margin-top:20px;">';
+    html += '  <button class="btn btn-primary" onclick="migrateAllPasswords()">🔐 Migrate Passwords to Secure Hash</button>';
+    html += '</div>';
+
     html += '</div></div></div>';
     return html;
   }
@@ -724,7 +1150,16 @@
     var mtd = 0;
     var cashInHand = 0;
     
-    mockTransactions.forEach(function(t) {
+    var txns = getMergedTransactions();
+    
+    // Isolation check
+    if (!window.assertSchoolIsolation(txns, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach in stats!");
+      SchoolApp.logout();
+      return { ftd: 0, mtd: 0, cashInHand: 0 };
+    }
+    
+    txns.forEach(function(t) {
       var tDate = t.date_time.split('T')[0];
       var tMonth = t.date_time.substring(0, 7);
       
@@ -748,14 +1183,22 @@
   }
 
   function getFilteredTransactions() {
-    var filtered = mockTransactions;
+    var filtered = getMergedTransactions();
+    
+    // Isolation check
+    if (!window.assertSchoolIsolation(filtered, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach in transactions list!");
+      SchoolApp.logout();
+      return [];
+    }
     
     if (state.txnSearchQuery) {
       var q = state.txnSearchQuery.toLowerCase();
       filtered = filtered.filter(function(t) {
         return t.student_name.toLowerCase().indexOf(q) !== -1 ||
                t.transaction_id.toLowerCase().indexOf(q) !== -1 ||
-               t.school_id.toLowerCase().indexOf(q) !== -1;
+               (t.school_id && t.school_id.toLowerCase().indexOf(q) !== -1) ||
+               (t.schoolId && t.schoolId.toLowerCase().indexOf(q) !== -1);
       });
     }
     
@@ -781,6 +1224,13 @@
   }
 
   function renderTransactionsTab() {
+    var currentSchoolId = SchoolApp.store.currentSchoolId;
+    if (!window.assertSchoolIsolation(SchoolApp.store.fees, currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Transactions Tab!");
+      SchoolApp.logout();
+      return '';
+    }
+
     var displayStyle = (state.activeTab === 'transactions' ? 'display:block;' : 'display:none;');
     var html = '<div class="tab-content' + (state.activeTab === 'transactions' ? ' active' : '') + '" id="tab-transactions" style="' + displayStyle + '">';
     
@@ -846,7 +1296,14 @@
     var tblContainer = document.getElementById('txn-table-container');
     if (!tblContainer) return;
     
+    var currentSchoolId = SchoolApp.store.currentSchoolId;
     var filtered = getFilteredTransactions();
+    
+    if (!window.assertSchoolIsolation(filtered, currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Transactions Table!");
+      SchoolApp.logout();
+      return;
+    }
     
     var html = '';
     if (filtered.length > 0) {
@@ -948,15 +1405,19 @@
   }
 
   function printTransactionReceipt(txnId) {
-    var t = mockTransactions.find(function(item) { return item.transaction_id === txnId; });
+    var txns = getMergedTransactions();
+    var t = txns.find(function(item) { 
+      return item.transaction_id === txnId && (item.schoolId || item.school_id) === SchoolApp.store.currentSchoolId; 
+    });
     if (!t) {
       SchoolApp.showToast('Transaction not found.', 'error');
       return;
     }
     
-    var schoolName = SchoolApp.store.settings.schoolName || "Shishu Vikash Mandir";
-    var schoolPhone = SchoolApp.store.settings.phone || "";
-    var schoolEmail = SchoolApp.store.settings.email || "";
+    var settings = SchoolApp.store.settings || {};
+    var schoolName = settings.schoolName || "Shishu Vikash Mandir";
+    var schoolPhone = settings.phone || "";
+    var schoolEmail = settings.email || "";
     
     document.getElementById('receipt-school-name').innerText = schoolName;
     document.getElementById('receipt-school-address').innerText = "Bokaro Steel City, Jharkhand" + (schoolPhone ? " | Ph: " + schoolPhone : "") + (schoolEmail ? " | Email: " + schoolEmail : "");
@@ -978,7 +1439,8 @@
 
 
   function renderPromotionTab() {
-    var classes = SchoolApp.store.settings.classes || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || [];
     var html = '<div class="tab-content' + (state.activeTab === 'promotion' ? ' active' : '') + '" id="tab-promotion">';
 
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">trending_up</span> Academic Class Promotion</h3></div><div class="card-body">';
@@ -1027,7 +1489,8 @@
     var destSelect = document.getElementById('promotion-dest-class');
     if (!destSelect) return;
 
-    var classes = SchoolApp.store.settings.classes || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || [];
     var idx = classes.indexOf(srcCls);
     if (idx !== -1 && idx < classes.length - 1) {
       destSelect.value = classes[idx + 1];
@@ -1160,6 +1623,279 @@
       });
     });
 
+    // Add Class inside Settings
+    var settingsAddClassBtn = document.getElementById('settings-add-class-btn');
+    if (settingsAddClassBtn) {
+      settingsAddClassBtn.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var input = document.getElementById('settings-new-class-input');
+        var c = input ? input.value.trim() : '';
+        if (!c) {
+          SchoolApp.showToast("Class name cannot be empty.", "error");
+          return;
+        }
+        
+        var settings = SchoolApp.store.settings;
+        if (!settings.classes) settings.classes = [];
+        if (settings.classes.indexOf(c) !== -1) {
+          SchoolApp.showToast("Class already exists.", "error");
+          return;
+        }
+        
+        SchoolApp.createRestorePoint('Backup before adding class ' + c);
+        settings.classes.push(c);
+        if (typeof settings.sections !== 'object' || Array.isArray(settings.sections)) {
+          settings.sections = {};
+        }
+        settings.sections[c] = ["A"]; // default A
+        
+        if (!settings.feeStructure) settings.feeStructure = {};
+        if (!settings.feeStructure[c]) {
+          settings.feeStructure[c] = { tuition: 0, transport: 0, exam: 0 };
+        }
+        
+        if (input) input.value = '';
+        SchoolApp.save();
+        renderSettingsClasses();
+        SchoolApp.showToast("Class added successfully!", "success");
+      });
+    }
+
+    // Add Subject inside Settings
+    var settingsAddSubjectBtn = document.getElementById('settings-add-subject-btn');
+    if (settingsAddSubjectBtn) {
+      settingsAddSubjectBtn.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var input = document.getElementById('settings-new-subject-input');
+        var sub = input ? input.value.trim() : '';
+        if (!sub) {
+          SchoolApp.showToast("Subject name cannot be empty.", "error");
+          return;
+        }
+        
+        var settings = SchoolApp.store.settings;
+        if (!settings.subjects) settings.subjects = [];
+        if (settings.subjects.indexOf(sub) !== -1) {
+          SchoolApp.showToast("Subject already exists.", "error");
+          return;
+        }
+        
+        SchoolApp.createRestorePoint('Backup before adding subject ' + sub);
+        settings.subjects.push(sub);
+        
+        if (input) input.value = '';
+        SchoolApp.save();
+        renderSettingsSubjects();
+        SchoolApp.showToast("Subject added successfully!", "success");
+      });
+    }
+
+    // Capture GPS inside Settings
+    var settingsCaptureGpsBtn = document.getElementById('settings-capture-gps-btn');
+    if (settingsCaptureGpsBtn) {
+      settingsCaptureGpsBtn.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        if (!navigator.geolocation) {
+          SchoolApp.showToast("Geolocation is not supported by your browser.", "error");
+          return;
+        }
+        SchoolApp.showLoader("Getting location...");
+        navigator.geolocation.getCurrentPosition(function(position) {
+          SchoolApp.hideLoader();
+          var latInput = document.getElementById('geofence-lat');
+          var lngInput = document.getElementById('geofence-lng');
+          if (latInput && lngInput) {
+            latInput.value = position.coords.latitude.toFixed(6);
+            lngInput.value = position.coords.longitude.toFixed(6);
+            SchoolApp.showToast("Coordinates captured successfully!", "success");
+          }
+        }, function(error) {
+          SchoolApp.hideLoader();
+          console.error("GPS capture failure:", error);
+          SchoolApp.showToast("Failed to capture location coordinates.", "error");
+        });
+      });
+    }
+
+    // Add Fee Head
+    var setupAddFeeheadBtn = document.getElementById('setup-add-feehead-btn');
+    if (setupAddFeeheadBtn) {
+      setupAddFeeheadBtn.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        var input = document.getElementById('setup-new-feehead-input');
+        var fh = input ? input.value.trim() : '';
+        if (!fh) {
+          SchoolApp.showToast("Fee head name cannot be empty.", "error");
+          return;
+        }
+        
+        var key = fh.toLowerCase();
+        var settings = SchoolApp.store.settings;
+        if (!settings.feeStructure) settings.feeStructure = {};
+        
+        var exists = false;
+        Object.values(settings.feeStructure).forEach(function(clsFees) {
+          if (clsFees[key] !== undefined) exists = true;
+        });
+        if (exists) {
+          SchoolApp.showToast("Fee head already exists.", "error");
+          return;
+        }
+        
+        SchoolApp.createRestorePoint('Backup before adding fee head ' + key);
+        settings.classes.forEach(function(c) {
+          if (!settings.feeStructure[c]) settings.feeStructure[c] = {};
+          settings.feeStructure[c][key] = 0;
+        });
+        
+        if (input) input.value = '';
+        SchoolApp.save();
+        renderFeesMatrix();
+        SchoolApp.showToast("Fee head added.", "success");
+      });
+    }
+
+    // Save Fees Matrix
+    var setupSaveFeesBtn = document.getElementById('setup-save-fees-btn');
+    if (setupSaveFeesBtn) {
+      setupSaveFeesBtn.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        
+        var settings = SchoolApp.store.settings;
+        if (!settings.feeStructure) settings.feeStructure = {};
+        if (!SchoolApp.store.feeStructures) SchoolApp.store.feeStructures = {};
+        
+        var isValid = true;
+        var inputs = document.querySelectorAll('.fees-class-fee-input');
+        inputs.forEach(function(input) {
+          var c = input.getAttribute('data-class');
+          var h = input.getAttribute('data-head');
+          var val = parseFloat(input.value) || 0;
+          if (val < 0) {
+            isValid = false;
+          } else {
+            if (!settings.feeStructure[c]) settings.feeStructure[c] = {};
+            settings.feeStructure[c][h] = val;
+ 
+            // Also sync to legacy feeStructures
+            var legacyKey = h;
+            if (h === 'tuition') legacyKey = 'fh_tuition';
+            else if (h === 'transport') legacyKey = 'fh_transport';
+            else if (h === 'exam') legacyKey = 'fh_exam';
+            else if (h === 'fine') legacyKey = 'fh_fine';
+            else if (h === 'annual') legacyKey = 'fh_annual';
+            else if (!h.startsWith('fh_')) legacyKey = 'fh_' + h;
+ 
+            if (!SchoolApp.store.feeStructures[c]) SchoolApp.store.feeStructures[c] = {};
+            SchoolApp.store.feeStructures[c][legacyKey] = val;
+          }
+        });
+        
+        if (!isValid) {
+          SchoolApp.showToast("Fee amounts must be positive numbers.", "error");
+          return;
+        }
+        
+        setupSaveFeesBtn.disabled = true;
+        var originalHTML = setupSaveFeesBtn.innerHTML;
+        setupSaveFeesBtn.innerHTML = '<span class="material-icons-round">sync</span> Saving...';
+        
+        SchoolApp.createRestorePoint('Backup before saving fee structure');
+        var success = await SchoolApp.save();
+        
+        setupSaveFeesBtn.disabled = false;
+        setupSaveFeesBtn.innerHTML = originalHTML;
+        
+        if (success) {
+          alert("Fee changes apply to NEW bills only. Existing dues are unchanged.");
+          SchoolApp.showToast("Fee Structure saved successfully!", "success");
+        }
+      });
+    }
+ 
+    // Add Charge
+    var setupAddChargeBtn = document.getElementById('setup-add-charge-btn');
+    if (setupAddChargeBtn) {
+      setupAddChargeBtn.addEventListener('click', function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        
+        var nameInput = document.getElementById('setup-charge-name');
+        var amtInput = document.getElementById('setup-charge-amount');
+        var typeSelect = document.getElementById('setup-charge-type');
+        
+        var name = nameInput ? nameInput.value.trim() : '';
+        var amount = amtInput ? parseFloat(amtInput.value) : 0;
+        var type = typeSelect ? typeSelect.value : 'one-time';
+        
+        if (!name) {
+          SchoolApp.showToast("Charge Name is required.", "error");
+          return;
+        }
+        if (isNaN(amount) || amount <= 0) {
+          SchoolApp.showToast("Amount must be a positive number.", "error");
+          return;
+        }
+        
+        var settings = SchoolApp.store.settings;
+        if (!settings.extraCharges) settings.extraCharges = [];
+        
+        settings.extraCharges.push({
+          id: 'charge_' + Date.now(),
+          name: name,
+          amount: amount,
+          type: type
+        });
+        
+        if (nameInput) nameInput.value = '';
+        if (amtInput) amtInput.value = '';
+        
+        renderFeesCharges();
+        SchoolApp.showToast("Extra charge added.", "success");
+      });
+    }
+ 
+    // Save Charges List
+    var setupSaveChargesBtn = document.getElementById('setup-save-charges-btn');
+    if (setupSaveChargesBtn) {
+      setupSaveChargesBtn.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        
+        setupSaveChargesBtn.disabled = true;
+        var originalHTML = setupSaveChargesBtn.innerHTML;
+        setupSaveChargesBtn.innerHTML = '<span class="material-icons-round">sync</span> Saving...';
+        
+        var success = await SchoolApp.save();
+        
+        setupSaveChargesBtn.disabled = false;
+        setupSaveChargesBtn.innerHTML = originalHTML;
+        
+        if (success) {
+          SchoolApp.showToast("Extra Charges saved successfully!", "success");
+        }
+      });
+    }
+
     // Source class change event listener
     var sourceSelect = document.getElementById('promotion-source-class');
     if (sourceSelect) {
@@ -1257,10 +1993,22 @@
         var theme = this.value;
         if (theme === 'light') {
           document.body.classList.add('light-theme');
-          localStorage.setItem('appTheme', 'light');
+          document.documentElement.classList.add('light-theme');
+          localStorage.setItem('erp_theme_preference', 'light');
+          if (SchoolApp.currentUser && SchoolApp.currentUser.id) {
+            localStorage.setItem('erp_theme_preference_' + SchoolApp.currentUser.id, 'light');
+          }
         } else {
           document.body.classList.remove('light-theme');
-          localStorage.setItem('appTheme', 'dark');
+          document.documentElement.classList.remove('light-theme');
+          localStorage.setItem('erp_theme_preference', 'dark');
+          if (SchoolApp.currentUser && SchoolApp.currentUser.id) {
+            localStorage.setItem('erp_theme_preference_' + SchoolApp.currentUser.id, 'dark');
+          }
+        }
+        var themeIcon = document.getElementById('app-theme-icon');
+        if (themeIcon) {
+          themeIcon.textContent = (theme === 'light') ? 'dark_mode' : 'light_mode';
         }
       });
     }
@@ -1268,26 +2016,104 @@
     // Save settings
     var saveBtn = document.getElementById('save-settings-btn');
     if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
+      saveBtn.addEventListener('click', async function() {
         var form = document.getElementById('settings-form');
         if (!form) return;
+
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+
+        // Disable button and show saving text
+        saveBtn.disabled = true;
+        var originalBtnHTML = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<span class="material-icons-round">sync</span> Saving...';
+
+        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+
+        // Upload logo if selected
+        const logoFile = document.getElementById("logo-file-input")?.files[0];
+        if (logoFile) {
+          SchoolApp.showLoader('Uploading logo...');
+          try {
+            const uploadedLogo = await StorageUtils.uploadSchoolLogo(logoFile, SchoolApp.store.currentSchoolId, "logo-progress");
+            if (uploadedLogo) {
+              SchoolApp.store.settings.logoUrl = uploadedLogo;
+            } else {
+              // Fallback to base64 preview data URL
+              const logoPreview = document.getElementById("logo-preview");
+              if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
+                SchoolApp.store.settings.logoUrl = logoPreview.src;
+              }
+            }
+          } catch (err) {
+            console.warn("Logo upload failed:", err.message);
+            // Fallback to base64 preview data URL
+            const logoPreview = document.getElementById("logo-preview");
+            if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
+              SchoolApp.store.settings.logoUrl = logoPreview.src;
+            }
+          }
+        }
+
+        // Validate logo size to prevent Firestore 1MB document limit write failure
+        if (SchoolApp.store.settings.logoUrl && SchoolApp.store.settings.logoUrl.startsWith("data:") && SchoolApp.store.settings.logoUrl.length > 500000) {
+          SchoolApp.hideLoader();
+          SchoolApp.showToast("Logo file too large even after compression. Please use a smaller/simpler image.", "error");
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalBtnHTML;
+          return;
+        }
+
+        SchoolApp.showLoader('Saving settings...');
+
         var inputs = form.querySelectorAll('input[name], select[name], textarea[name]');
         inputs.forEach(function(input) {
           SchoolApp.store.settings[input.name] = input.value.trim();
         });
 
-        // Classes
-        var classes = [];
-        form.querySelectorAll('.class-cb:checked').forEach(function(cb) { classes.push(cb.value); });
-        SchoolApp.store.settings.classes = classes;
+        // Sync settings to settings.schoolInfo
+        var s = SchoolApp.store.settings;
+        if (!s.schoolInfo) s.schoolInfo = {};
+        s.schoolInfo.name = s.schoolName || '';
+        s.schoolInfo.tagline = s.tagline || '';
+        s.schoolInfo.phone = s.phone || '';
+        s.schoolInfo.email = s.email || '';
+        s.schoolInfo.logoUrl = s.logoUrl || '';
+        s.schoolInfo.affiliation = s.affiliation || '';
+        s.schoolInfo.address = s.address || '';
+        s.schoolInfo.udiseCode = s.udiseCode || '';
 
-        // Sections
-        var sections = [];
-        form.querySelectorAll('.section-cb:checked').forEach(function(cb) { sections.push(cb.value); });
-        SchoolApp.store.settings.sections = sections;
+        s.phone = s.schoolInfo.phone;
+        s.email = s.schoolInfo.email;
+        s.address = s.schoolInfo.address;
 
-        SchoolApp.save();
-        SchoolApp.showToast('Settings saved successfully!', 'success');
+        // Parse geofence settings
+        var latVal = parseFloat(document.getElementById('geofence-lat').value);
+        var lngVal = parseFloat(document.getElementById('geofence-lng').value);
+        var radiusVal = parseFloat(document.getElementById('geofence-radius').value) || 200;
+
+        if (!isNaN(latVal) && !isNaN(lngVal)) {
+          s.geofence = {
+            lat: latVal,
+            lng: lngVal,
+            radius: radiusVal
+          };
+        } else {
+          s.geofence = null;
+        }
+
+        // Save to Firestore and verify success
+        var success = await SchoolApp.save(true);
+        SchoolApp.hideLoader();
+        
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalBtnHTML;
+
+        if (success) {
+          SchoolApp.showToast('Settings saved successfully!', 'success');
+        }
       });
     }
 
@@ -1312,7 +2138,13 @@
             firebaseConfig: ''
           };
           document.body.classList.remove('light-theme');
-          localStorage.setItem('appTheme', 'dark');
+          document.documentElement.classList.remove('light-theme');
+          localStorage.setItem('erp_theme_preference', 'dark');
+          if (SchoolApp.currentUser && SchoolApp.currentUser.id) {
+            localStorage.setItem('erp_theme_preference_' + SchoolApp.currentUser.id, 'dark');
+          }
+          var themeIcon = document.getElementById('app-theme-icon');
+          if (themeIcon) themeIcon.textContent = 'light_mode';
           SchoolApp.save();
           SchoolApp.showToast('Settings reset to defaults.', 'info');
           render();
@@ -1323,14 +2155,18 @@
     // Save admin credentials
     var saveAdminCreds = document.getElementById('save-admin-creds');
     if (saveAdminCreds) {
-      saveAdminCreds.addEventListener('click', function() {
+      saveAdminCreds.addEventListener('click', async function() {
         var form = document.getElementById('admin-creds-form');
         var username = form.querySelector('[name="adminUsername"]').value.trim();
         var password = form.querySelector('[name="adminPassword"]').value.trim();
         if (username && password.length >= 4) {
           SchoolApp.store.settings.adminUsername = username;
-          SchoolApp.store.settings.adminPassword = password;
-          SchoolApp.save();
+          if (password && !AuthUtils.isHashed(password)) {
+            SchoolApp.store.settings.adminPassword = await AuthUtils.hashPassword(password);
+          } else {
+            SchoolApp.store.settings.adminPassword = password;
+          }
+          await SchoolApp.save();
           SchoolApp.showToast('Admin credentials updated.', 'success');
         } else {
           SchoolApp.showToast('Username required, password min 4 characters.', 'error');
@@ -1407,12 +2243,16 @@
         var file = this.files[0];
         SchoolApp.showConfirm('Restoring from backup will OVERWRITE all current data. Continue?', function() {
           SchoolApp.createRestorePoint('Auto-Backup before JSON Import');
-          SchoolApp.utils.importJSON(file, function(data) {
+          SchoolApp.utils.importJSON(file, async function(data) {
             if (data && data.students && data.teachers) {
               SchoolApp.store = data;
-              SchoolApp.save();
-              SchoolApp.showToast('Data restored successfully! Reloading...', 'success');
-              setTimeout(function() { location.reload(); }, 1500);
+              SchoolApp.showLoader('Restoring data...');
+              var success = await SchoolApp.save(true);
+              SchoolApp.hideLoader();
+              if (success) {
+                SchoolApp.showToast('Data restored successfully! Reloading...', 'success');
+                setTimeout(function() { location.reload(); }, 1000);
+              }
             } else {
               SchoolApp.showToast('Invalid backup file format.', 'error');
             }
@@ -1665,14 +2505,18 @@
         var rp = restorePoints.find(function(r) { return r.id === id; });
         if (!rp) return;
 
-        SchoolApp.showConfirm('Rollback database to snapshot "' + rp.description + '"? Current changes will be overwritten.', function() {
+        SchoolApp.showConfirm('Rollback database to snapshot "' + rp.description + '"? Current changes will be overwritten.', async function() {
           // Backup current state first, just in case!
           SchoolApp.createRestorePoint('Auto-Backup before Rollback to ' + rp.description);
           
           SchoolApp.store = rp.store;
-          SchoolApp.save();
-          SchoolApp.showToast('Database rolled back successfully! Reloading...', 'success');
-          setTimeout(function() { location.reload(); }, 1500);
+          SchoolApp.showLoader('Rolling back database...');
+          var success = await SchoolApp.save(true);
+          SchoolApp.hideLoader();
+          if (success) {
+            SchoolApp.showToast('Database rolled back successfully! Reloading...', 'success');
+            setTimeout(function() { location.reload(); }, 1000);
+          }
         });
       });
     });
@@ -1713,7 +2557,7 @@
 
         var saveBtn = document.getElementById('admin-save-feehead-btn');
         if (saveBtn) {
-          saveBtn.addEventListener('click', function() {
+          saveBtn.addEventListener('click', async function() {
             var name = document.getElementById('admin-feehead-name').value.trim();
             if (!name) {
               SchoolApp.showToast('Please enter a fee head name.', 'error');
@@ -1722,10 +2566,18 @@
             if (!SchoolApp.store.feeHeads) SchoolApp.store.feeHeads = [];
             var id = 'fh_' + Date.now().toString(36);
             SchoolApp.store.feeHeads.push({ id: id, name: name });
-            SchoolApp.save();
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Fee Head added successfully!', 'success');
-            render();
+            
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Adding...';
+            var success = await SchoolApp.save();
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Add Fee Head';
+            
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Fee Head added successfully!', 'success');
+              render();
+            }
           });
         }
       });
@@ -1749,17 +2601,25 @@
 
         var updateBtn = document.getElementById('admin-update-feehead-btn');
         if (updateBtn) {
-          updateBtn.addEventListener('click', function() {
+          updateBtn.addEventListener('click', async function() {
             var name = document.getElementById('admin-edit-feehead-name').value.trim();
             if (!name) {
               SchoolApp.showToast('Please enter a name.', 'error');
               return;
             }
             fh.name = name;
-            SchoolApp.save();
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Fee Head updated successfully!', 'success');
-            render();
+            
+            updateBtn.disabled = true;
+            updateBtn.textContent = 'Saving...';
+            var success = await SchoolApp.save();
+            updateBtn.disabled = false;
+            updateBtn.textContent = 'Save Changes';
+            
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Fee Head updated successfully!', 'success');
+              render();
+            }
           });
         }
       });
@@ -1775,7 +2635,8 @@
 
         SchoolApp.showConfirm('Delete Customizable Fee Head "' + fh.name + '"? This will remove it from all class structures.', function() {
           // Remove from fee structures
-          var classes = SchoolApp.store.settings.classes || [];
+          var settings = SchoolApp.store.settings || {};
+          var classes = settings.classes || [];
           classes.forEach(function(cls) {
             if (SchoolApp.store.feeStructures[cls]) {
               delete SchoolApp.store.feeStructures[cls][id];
@@ -1814,7 +2675,7 @@
 
         var saveBtn = document.getElementById('admin-save-feestruct-btn');
         if (saveBtn) {
-          saveBtn.addEventListener('click', function() {
+          saveBtn.addEventListener('click', async function() {
             var form = document.getElementById('class-fee-form');
             if (!form) return;
             
@@ -1865,6 +2726,7 @@
                   SchoolApp.store.fees.push({
                     id: SchoolApp.generateId(),
                     studentId: s.id,
+                    schoolId: SchoolApp.currentSchoolId,
                     type: 'due',
                     feeHeadId: fh.id,
                     amount: newAmt,
@@ -1875,10 +2737,17 @@
               });
             });
 
-            SchoolApp.save();
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Fee structure updated and propagated successfully!', 'success');
-            render();
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            var success = await SchoolApp.save();
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Structure';
+
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Fee structure updated and propagated successfully!', 'success');
+              render();
+            }
           });
         }
       });
@@ -2081,7 +2950,7 @@
 
         var saveBtn = document.getElementById('admin-save-examterm-btn');
         if (saveBtn) {
-          saveBtn.addEventListener('click', function() {
+          saveBtn.addEventListener('click', async function() {
             var name = document.getElementById('admin-examterm-name').value.trim();
             if (!name) {
               SchoolApp.showToast('Please enter an exam term name.', 'error');
@@ -2103,10 +2972,17 @@
               status: 'draft'
             });
 
-            SchoolApp.save();
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Exam Term added successfully and notice announcement drafted!', 'success');
-            render();
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Adding...';
+            var success = await SchoolApp.save();
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Add Exam Term';
+
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Exam Term added successfully and notice announcement drafted!', 'success');
+              render();
+            }
           });
         }
       });
@@ -2162,9 +3038,14 @@
     if (addSubBtn) {
       addSubBtn.addEventListener('click', function() {
         var cls = this.getAttribute('data-class');
+        var subjectsList = SchoolApp.store.settings.subjects || [];
         var bodyHTML = '<form id="add-subject-form" class="form-grid">';
         bodyHTML += '<div class="form-group full-width"><label class="form-label">Subject Name *</label>';
-        bodyHTML += '<input type="text" id="admin-sub-name" class="form-input" placeholder="e.g. Mathematics, Sanskrit" list="subject-suggestions" required></div>';
+        bodyHTML += '<select id="admin-sub-name" class="form-select" required>';
+        subjectsList.forEach(function(sub) {
+          bodyHTML += '<option value="' + escapeAttr(sub) + '">' + escapeHTML(sub) + '</option>';
+        });
+        bodyHTML += '</select></div>';
         bodyHTML += '<div class="form-group"><label class="form-label">Max Marks *</label>';
         bodyHTML += '<input type="number" id="admin-sub-max" class="form-input" value="100" min="1" required></div>';
         bodyHTML += '<div class="form-group"><label class="form-label">Passing Marks *</label>';
@@ -2186,7 +3067,7 @@
 
         var saveBtn = document.getElementById('admin-save-subject-btn');
         if (saveBtn) {
-          saveBtn.addEventListener('click', function() {
+          saveBtn.addEventListener('click', async function() {
             var name = document.getElementById('admin-sub-name').value.trim();
             var maxMarks = parseFloat(document.getElementById('admin-sub-max').value);
             var passMarks = parseFloat(document.getElementById('admin-sub-pass').value);
@@ -2212,10 +3093,17 @@
               passMarks: passMarks
             });
 
-            SchoolApp.save();
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Subject added successfully!', 'success');
-            render();
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Adding...';
+            var success = await SchoolApp.save();
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Add Subject';
+
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Subject added successfully!', 'success');
+              render();
+            }
           });
         }
       });
@@ -2415,5 +3303,10 @@
     init: function() {},
     render: render
   });
+
+  window.migrateAllPasswords = async function() {
+    const count = await AuthUtils.bulkMigrateTeacherPasswords();
+    SchoolApp.showToast(count > 0 ? count + " passwords secured." : "All passwords already secure.", "success");
+  };
 
 })();
