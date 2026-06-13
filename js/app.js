@@ -61,8 +61,90 @@ window.SchoolApp = {
       adminUsername: 'admin',
       adminPassword: 'admin123',
       enableCloudSync: false,
-      firebaseConfig: ''
+      firebaseConfig: '',
+      feeHeads: [
+        { id: 'fh_tuition', name: 'Tuition Fee' },
+        { id: 'fh_transport', name: 'Transport Fee' },
+        { id: 'fh_exam', name: 'Examination Fee' },
+        { id: 'fh_fine', name: 'Late Fee / Fine' },
+        { id: 'fh_annual', name: 'Annual Development Fee' }
+      ],
+      feeStructure: {}
     }
+  },
+
+  getInitialStore: function() {
+    return {
+      seederVersion: 2,
+      students: [],
+      teachers: [],
+      attendance: [],
+      trash: [],
+      feeHeads: [],
+      feeStructures: {},
+      fees: [],
+      exams: [],
+      subjectMapping: {},
+      timetable: {
+        settings: {
+          startTime: "08:00",
+          endTime: "14:00",
+          totalPeriods: 8,
+          lunchAfterPeriod: 4,
+          lunchDuration: 30,
+          satStartTime: "08:00",
+          satEndTime: "12:30",
+          satTotalPeriods: 6,
+          satLunchAfterPeriod: 0
+        }
+      },
+      marks: [],
+      notices: [],
+      lastAutomatedFeeRun: '2026-04',
+      notifications: [],
+      schools: [],
+      currentSchoolId: '',
+      settings: {
+        schoolName: 'Shishu Vikash Mandir',
+        academicYear: '2025-2026',
+        address: '123 Education Lane, Knowledge City, Karnataka 560001',
+        phone: '+91 98765 43210',
+        email: 'admin@shishuvikash.edu.in',
+        classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+        sections: ['A','B','C'],
+        attendanceTime: '09:00',
+        theme: 'dark',
+        adminUsername: 'admin',
+        adminPassword: 'admin123',
+        enableCloudSync: false,
+        firebaseConfig: '',
+        feeHeads: [
+          { id: 'fh_tuition', name: 'Tuition Fee' },
+          { id: 'fh_transport', name: 'Transport Fee' },
+          { id: 'fh_exam', name: 'Examination Fee' },
+          { id: 'fh_fine', name: 'Late Fee / Fine' },
+          { id: 'fh_annual', name: 'Annual Development Fee' }
+        ],
+        feeStructure: {}
+      }
+    };
+  },
+
+  get currentSchoolId() {
+    return this.store.currentSchoolId || 'svm_bokaro_001';
+  },
+
+  assertSchoolIsolation: function(data, schoolId) {
+    if (!data) return true;
+    if (Array.isArray(data)) {
+      return data.every(function(item) {
+        if (!item) return true;
+        var sId = item.schoolId || item.school_id;
+        return !sId || sId === schoolId;
+      });
+    }
+    var sId = data.schoolId || data.school_id;
+    return !sId || sId === schoolId;
   },
 
   currentUser: null,
@@ -72,19 +154,73 @@ window.SchoolApp = {
   feesGeneratedMsg: null,
 
   // ---------- Data Persistence ----------
-  save: async function() {
+  // ---------- Data Persistence ----------
+  showLoader: function(message) {
+    message = message || 'Loading...';
+    var loader = document.getElementById('app-loading-overlay');
+    if (!loader) {
+      loader = document.createElement('div');
+      loader.id = 'app-loading-overlay';
+      loader.innerHTML = `
+        <div class="app-loader-content">
+          <div class="app-loader-spinner"></div>
+          <div class="app-loader-text"></div>
+        </div>
+      `;
+      document.body.appendChild(loader);
+    }
+    loader.querySelector('.app-loader-text').textContent = message;
+    loader.classList.add('active');
+  },
+
+  hideLoader: function() {
+    var loader = document.getElementById('app-loading-overlay');
+    if (loader) {
+      loader.classList.remove('active');
+    }
+  },
+
+  save: async function(bypassLoader) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    if (!bypassLoader) {
+      this.showLoader('Saving...');
+    }
     try {
       var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
       const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
       const payload = JSON.parse(JSON.stringify(this.store));
       await window.firestore.setDoc(docRef, payload);
       console.log('Successfully saved tenant data to Cloud Firestore for: ' + currentSchoolId);
+      
+      // Update localStorage cache to match
+      try {
+        localStorage.setItem('cached_tenant_data_' + currentSchoolId, JSON.stringify(payload));
+      } catch (err) {
+        console.warn('Failed to write secondary cache to localStorage:', err);
+      }
+      
+      if (!bypassLoader) {
+        this.hideLoader();
+      }
+      return true;
     } catch (e) {
       console.error('Failed to save data to Firestore:', e);
+      if (!bypassLoader) {
+        this.hideLoader();
+      }
+      this.showToast('Failed to save changes to Firestore. Please check your connection.', 'error');
+      return false;
     }
   },
 
-  load: async function() {
+  load: async function(bypassLoader) {
+    if (!bypassLoader) {
+      this.showLoader('Loading...');
+    }
     try {
       var hostname = window.location.hostname.toLowerCase();
       var sub = null;
@@ -107,28 +243,61 @@ window.SchoolApp = {
       }
 
       var activeSchoolId = null;
+      var matchedSchool = null;
       if (sub) {
-        var matchedSchool = schoolsList.find(function(s) {
+        matchedSchool = schoolsList.find(function(s) {
           return s.subdomain === sub;
         });
         if (matchedSchool) {
           activeSchoolId = matchedSchool.school_id;
           console.log('Detected school context from subdomain: ' + sub + ' -> ' + activeSchoolId);
+        } else {
+          console.warn('Subdomain context detected but no matching school found in Firestore: ' + sub);
         }
       }
 
-      if (!activeSchoolId) {
+      if (!sub && !activeSchoolId) {
         activeSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
       }
 
       var isSVM = activeSchoolId === 'svm_bokaro_001';
-      this.store.currentSchoolId = activeSchoolId;
+      this.store.currentSchoolId = activeSchoolId || '';
 
-      const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
-      const docSnap = await window.firestore.getDoc(docRef);
+      var docSnap = null;
+      var loadedFromFirestore = false;
+      if (activeSchoolId) {
+        try {
+          const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
+          docSnap = await window.firestore.getDoc(docRef);
+          loadedFromFirestore = true;
+        } catch (e) {
+          console.warn('Failed to load from Firestore (offline or error):', e);
+        }
+      }
 
-      if (docSnap.exists()) {
-        var parsed = docSnap.data();
+      var parsed = null;
+      if (loadedFromFirestore && docSnap && docSnap.exists()) {
+        parsed = docSnap.data();
+        // Update localStorage cache to match fresh Firestore data
+        try {
+          localStorage.setItem('cached_tenant_data_' + activeSchoolId, JSON.stringify(parsed));
+        } catch (e) {
+          console.warn('Failed to write secondary cache to localStorage:', e);
+        }
+      } else {
+        // Fallback to secondary localStorage cache if Firestore fetch failed or document doesn't exist
+        try {
+          var cachedData = localStorage.getItem('cached_tenant_data_' + activeSchoolId);
+          if (cachedData) {
+            parsed = JSON.parse(cachedData);
+            console.log('Successfully loaded secondary cache from localStorage for: ' + activeSchoolId);
+          }
+        } catch (e) {
+          console.error('Failed to parse secondary cache from localStorage:', e);
+        }
+      }
+
+      if (parsed) {
         this.store = Object.assign({}, this.store, parsed);
         this.store.currentSchoolId = activeSchoolId;
       } else {
@@ -144,16 +313,25 @@ window.SchoolApp = {
           this.store.notices = [];
           this.store.currentSchoolId = 'svm_bokaro_001';
           this.generateDemoData();
-          await this.save();
-        } else {
-          // Initialize fresh, empty state for new school
+          await this.save(true);
+        } else if (activeSchoolId) {
+          // Initialize fresh, empty template for new school (not SVM data)
+          var schoolSettings = (matchedSchool && matchedSchool.settings) || {};
+          var schoolInfo = schoolSettings.schoolInfo || {};
+
           this.store = {
             seederVersion: 2,
             students: [],
             teachers: [],
             attendance: [],
             trash: [],
-            feeHeads: [],
+            feeHeads: [
+              { id: 'fh_tuition', name: 'Tuition Fee' },
+              { id: 'fh_transport', name: 'Transport Fee' },
+              { id: 'fh_exam', name: 'Examination Fee' },
+              { id: 'fh_fine', name: 'Late Fee / Fine' },
+              { id: 'fh_annual', name: 'Annual Development Fee' }
+            ],
             feeStructures: {},
             fees: [],
             exams: [],
@@ -173,29 +351,63 @@ window.SchoolApp = {
             },
             marks: [],
             notices: [],
-            lastAutomatedFeeRun: '2026-04',
+            lastAutomatedFeeRun: '',
             notifications: [],
             schools: [],
             currentSchoolId: activeSchoolId,
             settings: {
-              schoolName: '',
-              academicYear: '2025-2026',
-              classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
-              sections: ['A','B','C'],
-              attendanceTime: '09:00',
-              theme: 'dark'
+              schoolInfo: {
+                name: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
+                tagline: schoolInfo.tagline || (matchedSchool ? matchedSchool.tagline : '') || '',
+                logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
+                phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
+                email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
+                address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
+                affiliation: schoolInfo.affiliation || ''
+              },
+              schoolName: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
+              phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
+              email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
+              address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
+              logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
+              adminUsername: schoolSettings.adminUsername || (matchedSchool ? matchedSchool.adminUsername : 'admin') || 'admin',
+              adminPassword: schoolSettings.adminPassword || (matchedSchool ? matchedSchool.adminPassword : '') || '',
+              adminEmail: schoolSettings.adminEmail || (matchedSchool ? matchedSchool.adminEmail : '') || '',
+              classes: schoolSettings.classes || ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+              sections: schoolSettings.sections || {
+                'Nursery': ['A'], 'LKG': ['A'], 'UKG': ['A'], '1': ['A'], '2': ['A'], '3': ['A'], '4': ['A'], '5': ['A'], '6': ['A'], '7': ['A'], '8': ['A'], '9': ['A'], '10': ['A']
+              },
+              feeStructure: schoolSettings.feeStructure || {},
+              extraCharges: schoolSettings.extraCharges || [],
+              setupCompletedBySuperAdmin: true,
+              clientCanEdit: true,
+              theme: schoolSettings.theme || 'dark',
+              attendanceTime: schoolSettings.attendanceTime || '09:00',
+              academicYear: schoolSettings.academicYear || '2025-2026'
             }
           };
 
-          // Update school name if available
-          if (activeSchoolId) {
-            var schoolObj = schoolsList.find(function(s) { return s.school_id === activeSchoolId; });
-            if (schoolObj) {
-              this.store.settings.schoolName = schoolObj.school_name;
-            }
-          }
+          // Populate legacy feeStructures for compatibility
+          var formFeeStructure = this.store.settings.feeStructure || {};
+          var legacyFeeStructures = {};
+          Object.keys(formFeeStructure).forEach(function(c) {
+            var clsFees = formFeeStructure[c] || {};
+            var legacyFees = {};
+            Object.keys(clsFees).forEach(function(k) {
+              var legacyKey = k;
+              if (k === 'tuition') legacyKey = 'fh_tuition';
+              else if (k === 'transport') legacyKey = 'fh_transport';
+              else if (k === 'exam') legacyKey = 'fh_exam';
+              else if (k === 'fine') legacyKey = 'fh_fine';
+              else if (k === 'annual') legacyKey = 'fh_annual';
+              else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
+              legacyFees[legacyKey] = clsFees[k];
+            });
+            legacyFeeStructures[c] = legacyFees;
+          });
+          this.store.feeStructures = legacyFeeStructures;
 
-          await this.save();
+          await this.save(true);
         }
       }
 
@@ -212,8 +424,60 @@ window.SchoolApp = {
       if (!this.store.marks) this.store.marks = [];
       if (!this.store.notices) this.store.notices = [];
       if (!this.store.timetable) this.store.timetable = {};
+
+      if (!this.store.settings) this.store.settings = {};
+      var self = this;
+      
+      // Migrate or initialize settings.feeHeads from store.feeHeads
+      if (!this.store.settings.feeHeads) {
+        if (this.store.feeHeads && this.store.feeHeads.length > 0) {
+          this.store.settings.feeHeads = JSON.parse(JSON.stringify(this.store.feeHeads));
+        } else {
+          this.store.settings.feeHeads = [
+            { id: 'fh_tuition', name: 'Tuition Fee' },
+            { id: 'fh_transport', name: 'Transport Fee' },
+            { id: 'fh_exam', name: 'Examination Fee' },
+            { id: 'fh_fine', name: 'Late Fee / Fine' },
+            { id: 'fh_annual', name: 'Annual Development Fee' }
+          ];
+        }
+      }
+      this.store.feeHeads = this.store.settings.feeHeads; // sync back
+
+      // Migrate or initialize settings.feeStructure from store.feeStructures
+      if (!this.store.settings.feeStructure) {
+        if (this.store.feeStructures && Object.keys(this.store.feeStructures).length > 0) {
+          this.store.settings.feeStructure = {};
+          var fs = this.store.feeStructures;
+          Object.keys(fs).forEach(function(cls) {
+            self.store.settings.feeStructure[cls] = {};
+            Object.keys(fs[cls]).forEach(function(key) {
+              var newKey = key;
+              if (key.startsWith('fh_')) {
+                // If it starts with fh_, keep it as id
+              } else {
+                newKey = 'fh_' + key;
+              }
+              self.store.settings.feeStructure[cls][newKey] = fs[cls][key];
+            });
+          });
+        } else {
+          this.store.settings.feeStructure = {};
+        }
+      }
+      // Sync legacy feeStructures from settings.feeStructure
+      if (this.store.settings.feeStructure) {
+        var legacyFS = {};
+        Object.keys(this.store.settings.feeStructure).forEach(function(cls) {
+          legacyFS[cls] = {};
+          Object.keys(self.store.settings.feeStructure[cls]).forEach(function(key) {
+            legacyFS[cls][key] = self.store.settings.feeStructure[cls][key];
+          });
+        });
+        this.store.feeStructures = legacyFS;
+      }
       if (!this.store.currentSchoolId) {
-        this.store.currentSchoolId = activeSchoolId;
+        this.store.currentSchoolId = activeSchoolId || '';
       }
 
       // Assign synchronized schools list
@@ -259,19 +523,154 @@ window.SchoolApp = {
       }
       if (!this.store.notifications) this.store.notifications = [];
       if (this.store.lastAutomatedFeeRun === undefined || this.store.lastAutomatedFeeRun === '') this.store.lastAutomatedFeeRun = '2026-04';
+      
+      var defaultUsername = isSVM ? 'admin' : '';
+      var defaultPassword = isSVM ? 'admin123' : '';
       this.store.settings = Object.assign({
-        adminUsername: 'admin',
-        adminPassword: 'admin123',
+        adminUsername: defaultUsername,
+        adminPassword: defaultPassword,
         classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
         sections: ['A','B','C']
       }, this.store.settings || {});
 
+      // Migration patch for missing settings fields in legacy/onboarded schools
+      if (!this.store.settings.classes) {
+        this.store.settings.classes = 
+          ["Nursery","LKG","UKG","Class 1","Class 2",
+           "Class 3","Class 4","Class 5","Class 6",
+           "Class 7","Class 8","Class 9","Class 10"];
+      }
+      if (!this.store.settings.sections) {
+        this.store.settings.sections = {};
+      }
+      if (!this.store.settings.feeStructure) {
+        this.store.settings.feeStructure = {};
+      }
+      if (!this.store.settings.extraCharges) {
+        this.store.settings.extraCharges = [];
+      }
+      if (!this.store.settings.subjects || !Array.isArray(this.store.settings.subjects) || this.store.settings.subjects.length === 0) {
+        this.store.settings.subjects = ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Computer Science', 'Sanskrit', 'Art'];
+      }
+      if (!this.store.settings.schoolInfo) {
+        this.store.settings.schoolInfo = {
+          name: this.store.settings.schoolName || '',
+          tagline: '',
+          logoUrl: this.store.settings.logoUrl || '',
+          phone: this.store.settings.phone || '',
+          email: this.store.settings.email || '',
+          address: this.store.settings.address || '',
+          affiliation: '',
+          udiseCode: ''
+        };
+      } else if (this.store.settings.schoolInfo.udiseCode === undefined) {
+        this.store.settings.schoolInfo.udiseCode = '';
+      }
+
+      if (!bypassLoader) {
+        this.hideLoader();
+      }
       return true;
     } catch (e) {
       console.error('Failed to load data:', e);
+      if (!bypassLoader) {
+        this.hideLoader();
+      }
       return false;
     }
   },
+
+  updateBrandUI: function() {
+    var settings = this.store.settings || {};
+    var info = settings.schoolInfo || {};
+    var schoolName = info.name || settings.schoolName || 'Shishu Vikash Mandir';
+
+    // Update title
+    document.title = schoolName + " - School Management System";
+
+    // Update text names
+    document.querySelectorAll('.login-title').forEach(function(el) {
+      el.textContent = schoolName;
+    });
+    document.querySelectorAll('.logo-text').forEach(function(el) {
+      el.textContent = schoolName;
+    });
+
+    // On login page & sidebar → if logoUrl exists show it, else show nothing (no placeholder, no SVM logo)
+    var logoUrl = (settings.logoUrl && settings.logoUrl.trim() !== "") ? settings.logoUrl : ((info.logoUrl && info.logoUrl.trim() !== "") ? info.logoUrl : "");
+    if (logoUrl && logoUrl.trim() !== "") {
+      document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
+        img.src = logoUrl.trim();
+        img.style.display = 'block';
+      });
+    } else {
+      document.querySelectorAll('.logo-img, .login-logo-img').forEach(function(img) {
+        img.src = '';
+        img.style.display = 'none';
+      });
+    }
+  },
+
+  applyUserTheme: function() {
+    var theme = 'dark';
+    var firestoreTheme = (this.store && this.store.settings) ? this.store.settings.theme : null;
+    
+    if (this.currentUser && this.currentUser.id) {
+      theme = localStorage.getItem('erp_theme_preference_' + this.currentUser.id) || 
+              localStorage.getItem('erp_theme_preference') || 
+              firestoreTheme || 
+              'dark';
+    } else {
+      theme = localStorage.getItem('erp_theme_preference') || 
+              firestoreTheme || 
+              'dark';
+    }
+    
+    if (theme === 'light') {
+      document.body.classList.add('light-theme');
+      document.documentElement.classList.add('light-theme');
+    } else {
+      document.body.classList.remove('light-theme');
+      document.documentElement.classList.remove('light-theme');
+    }
+    
+    var themeIcon = document.getElementById('app-theme-icon');
+    if (themeIcon) {
+      themeIcon.textContent = (theme === 'light') ? 'dark_mode' : 'light_mode';
+    }
+
+    var themeSelect = document.querySelector('select[name="theme"]');
+    if (themeSelect) {
+      themeSelect.value = theme;
+    }
+  },
+
+  toggleTheme: function() {
+    var isLight = document.body.classList.toggle('light-theme');
+    document.documentElement.classList.toggle('light-theme', isLight);
+    var theme = isLight ? 'light' : 'dark';
+    
+    // Save to global preference
+    localStorage.setItem('erp_theme_preference', theme);
+    
+    // Save to user preference if logged in
+    if (this.currentUser && this.currentUser.id) {
+      localStorage.setItem('erp_theme_preference_' + this.currentUser.id, theme);
+    }
+    
+    // Update theme toggle icon in header
+    var themeIcon = document.getElementById('app-theme-icon');
+    if (themeIcon) {
+      themeIcon.textContent = isLight ? 'dark_mode' : 'light_mode';
+    }
+    
+    // Also update any theme select dropdown in settings if visible
+    var themeSelect = document.querySelector('select[name="theme"]');
+    if (themeSelect) {
+      themeSelect.value = theme;
+    }
+  },
+
 
   generateId: function() {
     return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6);
@@ -287,7 +686,7 @@ window.SchoolApp = {
       deletedAt: new Date().toISOString(),
       data: data
     });
-    this.save();
+    this.save(true);
   },
 
   createRestorePoint: function(description) {
@@ -329,7 +728,7 @@ window.SchoolApp = {
       // If lastAutomatedFeeRun is empty, set it to the current month and do not generate historical catchup
       if (!lastRun) {
         this.store.lastAutomatedFeeRun = currentPeriod;
-        this.save();
+        this.save(true);
         return;
       }
 
@@ -384,12 +783,18 @@ window.SchoolApp = {
         self.store.students.forEach(function(s) {
           if (s.status !== 'Active') return;
 
-          var classStruct = (self.store.feeStructures || {})[s.class] || {};
-          var tuitionAmt = parseFloat(classStruct.fh_tuition || 1000);
+          var tuitionAmt = 1000;
+          if (self.store.settings && self.store.settings.feeStructure && self.store.settings.feeStructure[s.class]) {
+            tuitionAmt = parseFloat(self.store.settings.feeStructure[s.class].tuition || 0);
+          } else {
+            var classStruct = (self.store.feeStructures || {})[s.class] || {};
+            tuitionAmt = parseFloat(classStruct.fh_tuition || 1000);
+          }
 
           self.store.fees.push({
             id: self.generateId(),
             studentId: s.id,
+            schoolId: self.currentSchoolId,
             type: 'due',
             feeHeadId: 'fh_tuition',
             amount: tuitionAmt,
@@ -402,7 +807,7 @@ window.SchoolApp = {
 
       // Update lastAutomatedFeeRun to the current month to prevent duplicate runs
       this.store.lastAutomatedFeeRun = currentPeriod;
-      this.save();
+      this.save(true);
 
       // Admin Feedback: Defer success toast so it is only triggered when Admin Dashboard loads
       var missedMonthsText = missedMonths.map(function(m) {
@@ -417,24 +822,32 @@ window.SchoolApp = {
   },
 
   // ---------- Authentication ----------
-  login: function(role, credentials) {
+  login: async function(role, credentials) {
+    this.showLoader('Loading...');
+    // ALWAYS load fresh from Firestore first as source of truth
+    await this.load(true);
+    const schoolData = this.store;
     if (role === 'admin') {
-      var u = this.store.settings.adminUsername || 'admin';
-      var p = this.store.settings.adminPassword || 'admin123';
-      if (credentials.username === u && credentials.password === p) {
+      const result = await AuthUtils.login("admin", credentials.username, credentials.password, schoolData);
+      this.hideLoader();
+      if (result.success) {
         this.currentUser = {
           id: 'admin',
-          firstName: 'Admin',
-          lastName: 'User',
+          firstName: result.user.firstName || 'Admin',
+          lastName: result.user.lastName || 'User',
           role: 'admin'
         };
+        this.applyUserTheme();
         return true;
+      } else {
+        this.showToast(result.message || "Invalid credentials.", "error");
+        return false;
       }
     } else if (role === 'teacher') {
-      var teacher = this.store.teachers.find(function(t) {
-        return t.email === credentials.email && t.password === credentials.password && t.status === 'Active';
-      });
-      if (teacher) {
+      const result = await AuthUtils.login("teacher", credentials.email, credentials.password, schoolData);
+      this.hideLoader();
+      if (result.success) {
+        const teacher = result.user;
         var classTeacherOf = Array.isArray(teacher.classTeacherOf) ? teacher.classTeacherOf : (teacher.assignedClasses && teacher.assignedClasses.length > 0 ? [teacher.assignedClasses[0]] : []);
         var subjectTeacherOf = Array.isArray(teacher.subjectTeacherOf) ? teacher.subjectTeacherOf : (teacher.assignedClasses || []).map(function(ac) {
           return { class: ac.class, section: ac.section, subject: teacher.subject };
@@ -451,30 +864,51 @@ window.SchoolApp = {
           classTeacherOf: classTeacherOf,
           subjectTeacherOf: subjectTeacherOf
         };
+        this.applyUserTheme();
         return true;
+      } else {
+        this.showToast(result.message || "Invalid credentials.", "error");
+        return false;
       }
     }
+    this.hideLoader();
     return false;
   },
 
   logout: function() {
     this.currentUser = null;
     this.currentPage = 'dashboard';
-    // Clear any impersonation state
-    localStorage.removeItem('impersonate_school_id');
-    localStorage.removeItem('impersonate_role');
+    
+    // Clear any cached school/tenant data from localStorage (keep only theme preference)
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var key = localStorage.key(i);
+      if (key && !key.startsWith('erp_theme_preference') && key !== 'sa_theme') {
+        localStorage.removeItem(key);
+      }
+    }
+    
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('isImpersonating');
+    }
     var banner = document.getElementById('impersonation-banner');
-    if (banner) banner.remove();
+    if (banner && typeof banner.remove === 'function') banner.remove();
     var appLayout = document.getElementById('app-layout');
     if (appLayout) appLayout.style.marginTop = '';
     document.getElementById('app-layout').classList.add('hidden');
     document.getElementById('login-page').classList.remove('hidden');
     // Reset login form
-    document.getElementById('login-form').reset();
-    // Restore default school logo
-    document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
-      img.src = './school-logo-updated.jpg';
-    });
+    var loginForm = document.getElementById('login-form');
+    if (loginForm && typeof loginForm.reset === 'function') {
+      loginForm.reset();
+    }
+    
+    this.applyUserTheme();
+    
+    // Security reset: Clear the store fully to prevent any residual data leak
+    this.store = this.getInitialStore();
+    
+    // Restore school branding
+    this.updateBrandUI();
   },
 
   showMyProfileModal: function() {
@@ -511,7 +945,7 @@ window.SchoolApp = {
 
     this.showModal('My Profile', bodyHTML, footerHTML);
 
-    document.getElementById('my-profile-save-btn').addEventListener('click', function() {
+    document.getElementById('my-profile-save-btn').addEventListener('click', async function() {
       var form = document.getElementById('my-profile-form');
       if (!form) return;
 
@@ -538,13 +972,20 @@ window.SchoolApp = {
         self.store.settings.adminUsername = fields.adminUsername;
         self.store.settings.email = fields.email;
         self.store.settings.phone = fields.phone;
-        self.store.settings.adminPassword = fields.adminPassword;
+        if (fields.adminPassword && !AuthUtils.isHashed(fields.adminPassword)) {
+          self.store.settings.adminPassword = await AuthUtils.hashPassword(fields.adminPassword);
+        } else {
+          self.store.settings.adminPassword = fields.adminPassword;
+        }
         self.currentUser.firstName = fields.adminUsername;
         self.currentUser.email = fields.email;
       } else {
         // Teacher
         var teacherIdx = self.store.teachers.findIndex(function(t) { return t.id === user.id; });
         if (teacherIdx !== -1) {
+          if (fields.password && !AuthUtils.isHashed(fields.password)) {
+            fields.password = await AuthUtils.hashPassword(fields.password);
+          }
           Object.assign(self.store.teachers[teacherIdx], fields);
           // Sync currentUser
           self.currentUser.firstName = fields.firstName;
@@ -649,11 +1090,20 @@ window.SchoolApp = {
       contactBtn.style.display = (pageName === 'help') ? 'flex' : 'none';
     }
 
-    // Render module
+    // Render module with transition loader
+    var self = this;
     if (pageName === 'dashboard') {
-      this.renderDashboard();
+      this.showLoader('Loading...');
+      setTimeout(function() {
+        self.renderDashboard();
+        self.hideLoader();
+      }, 200);
     } else if (this.modules[pageName] && this.modules[pageName].render) {
-      this.modules[pageName].render();
+      this.showLoader('Loading...');
+      setTimeout(function() {
+        self.modules[pageName].render();
+        self.hideLoader();
+      }, 200);
     }
 
     // Close mobile sidebar
@@ -687,7 +1137,7 @@ window.SchoolApp = {
         this.store.notifications = this.store.notifications.slice(0, 50);
       }
 
-      this.save();
+      this.save(true);
       this.updateNotificationBadge();
       
       // If dropdown is open, re-render it in real time
@@ -760,6 +1210,10 @@ window.SchoolApp = {
   },
 
   checkFeatureAccess: function(page) {
+    if (page === 'admin') return true;
+    if (page === 'teacher-attendance') {
+      return true;
+    }
     if (!this.store.schools) return true;
     var currentSchoolId = this.store.currentSchoolId || "svm_bokaro_001";
     var school = this.store.schools.find(function(s) { return s.school_id === currentSchoolId; });
@@ -829,7 +1283,7 @@ window.SchoolApp = {
       // Mark all logs as read
       if (this.store && this.store.notifications) {
         this.store.notifications.forEach(function(n) { n.read = true; });
-        this.save();
+        this.save(true);
         this.updateNotificationBadge();
       }
       
@@ -841,6 +1295,12 @@ window.SchoolApp = {
   },
   
   renderNotificationDropdown: function() {
+    if (!this.assertSchoolIsolation(this.store.notifications, this.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected!");
+      this.showToast("Security error. Please logout and login again.", "error");
+      this.logout();
+      return;
+    }
     var dropdown = document.getElementById('notification-dropdown');
     if (!dropdown) return;
     
@@ -919,7 +1379,7 @@ window.SchoolApp = {
   clearNotifications: function() {
     if (this.store) {
       this.store.notifications = [];
-      this.save();
+      this.save(true);
       this.updateNotificationBadge();
       this.renderNotificationDropdown();
     }
@@ -1069,6 +1529,9 @@ window.SchoolApp = {
   // ---------- Demo Data Generation ---------
   generateDemoData: function() {
     var self = this;
+    if (self.currentSchoolId !== 'svm_bokaro_001') {
+      return; // Never seed demo data for other schools
+    }
 
     var firstNamesBoys = ['Aarav', 'Rahul', 'Vikram', 'Arjun', 'Karan', 'Aditya', 'Rohan', 'Ishan', 'Dev', 'Amit', 'Kabir', 'Vihaan', 'Krishna', 'Yash', 'Kunal', 'Pranav', 'Samar', 'Dhruv', 'Aaryan', 'Rudra'];
     var firstNamesGirls = ['Priya', 'Ananya', 'Sneha', 'Meera', 'Divya', 'Riya', 'Kavya', 'Diya', 'Ishita', 'Tanvi', 'Shreya', 'Neha', 'Aisha', 'Pooja', 'Simran', 'Myra', 'Zara', 'Kiara', 'Anika', 'Aanya'];
@@ -1400,6 +1863,7 @@ window.SchoolApp = {
       self.store.fees.push({
         id: self.generateId(),
         studentId: s.id,
+        schoolId: 'svm_bokaro_001',
         type: 'due',
         feeHeadId: 'fh_annual',
         amount: annualAmt,
@@ -1411,6 +1875,7 @@ window.SchoolApp = {
       self.store.fees.push({
         id: self.generateId(),
         studentId: s.id,
+        schoolId: 'svm_bokaro_001',
         type: 'due',
         feeHeadId: 'fh_tuition',
         amount: tuitionAmt,
@@ -1422,6 +1887,7 @@ window.SchoolApp = {
       self.store.fees.push({
         id: self.generateId(),
         studentId: s.id,
+        schoolId: 'svm_bokaro_001',
         type: 'due',
         feeHeadId: 'fh_exam',
         amount: examAmt,
@@ -1433,6 +1899,7 @@ window.SchoolApp = {
       self.store.fees.push({
         id: self.generateId(),
         studentId: s.id,
+        schoolId: 'svm_bokaro_001',
         type: 'due',
         feeHeadId: 'fh_tuition',
         amount: tuitionAmt,
@@ -1448,6 +1915,7 @@ window.SchoolApp = {
         self.store.fees.push({
           id: self.generateId(),
           studentId: s.id,
+          schoolId: 'svm_bokaro_001',
           type: 'payment',
           amount: annualAmt,
           date: '2025-04-02',
@@ -1457,6 +1925,7 @@ window.SchoolApp = {
         self.store.fees.push({
           id: self.generateId(),
           studentId: s.id,
+          schoolId: 'svm_bokaro_001',
           type: 'payment',
           amount: tuitionAmt * 2 + examAmt,
           date: '2025-05-12',
@@ -1468,6 +1937,7 @@ window.SchoolApp = {
         self.store.fees.push({
           id: self.generateId(),
           studentId: s.id,
+          schoolId: 'svm_bokaro_001',
           type: 'payment',
           amount: annualAmt,
           date: '2025-04-02',
@@ -1477,6 +1947,7 @@ window.SchoolApp = {
         self.store.fees.push({
           id: self.generateId(),
           studentId: s.id,
+          schoolId: 'svm_bokaro_001',
           type: 'payment',
           amount: tuitionAmt,
           date: '2025-04-10',
@@ -1592,6 +2063,17 @@ window.SchoolApp = {
     var container = document.getElementById('page-dashboard');
     if (!container) return;
 
+    const isClean = this.assertSchoolIsolation(this.store.students, this.currentSchoolId) &&
+                    this.assertSchoolIsolation(this.store.teachers, this.currentSchoolId) &&
+                    this.assertSchoolIsolation(this.store.attendance, this.currentSchoolId) &&
+                    this.assertSchoolIsolation(this.store.fees, this.currentSchoolId);
+    if (!isClean) {
+      console.error("[SECURITY] Data isolation breach detected!");
+      this.showToast("Security error. Please logout and login again.", "error");
+      this.logout();
+      return;
+    }
+
     if (this.isTeacher()) {
       this.renderTeacherDashboard(container);
       return;
@@ -1612,7 +2094,8 @@ window.SchoolApp = {
 
     var totalStudents = (this.store.students || []).length;
     var totalTeachers = (this.store.teachers || []).length;
-    var totalClasses = (this.store.settings.classes || []).length;
+    var settings = this.store.settings || {};
+    var totalClasses = (settings.classes || []).length;
 
     // Calculate today's attendance
     var todayStr = new Date().toISOString().split('T')[0];
@@ -1783,6 +2266,15 @@ window.SchoolApp = {
 
   renderTeacherDashboard: function(container) {
     var self = this;
+    
+    const isClean = this.assertSchoolIsolation(this.store.students, this.currentSchoolId) &&
+                    this.assertSchoolIsolation(this.store.attendance, this.currentSchoolId);
+    if (!isClean) {
+      console.error("[SECURITY] Data isolation breach detected!");
+      this.showToast("Security error. Please logout and login again.", "error");
+      this.logout();
+      return;
+    }
     
     var ctClasses = this.currentUser.classTeacherOf || [];
     var stClasses = this.currentUser.subjectTeacherOf || [];
@@ -2045,6 +2537,18 @@ window.SchoolApp = {
       }
     });
 
+    // Show/hide My Attendance based on Teachers & Staff module
+    var myAttendanceNav = document.querySelector('[data-page="teacher-attendance"]');
+    if (myAttendanceNav) {
+      if (self.checkFeatureAccess('teachers')) {
+        myAttendanceNav.style.display = '';
+        myAttendanceNav.classList.remove('hidden');
+      } else {
+        myAttendanceNav.style.display = 'none';
+        myAttendanceNav.classList.add('hidden');
+      }
+    }
+
     // Navigate to dashboard
     this.navigate('dashboard');
   },
@@ -2054,7 +2558,7 @@ window.SchoolApp = {
     var self = this;
 
     // Login form
-    document.getElementById('login-form').addEventListener('submit', function(e) {
+    document.getElementById('login-form').addEventListener('submit', async function(e) {
       e.preventDefault();
       var activeTab = document.querySelector('.login-tab.active');
       var role = activeTab ? activeTab.getAttribute('data-role') : 'admin';
@@ -2068,11 +2572,11 @@ window.SchoolApp = {
         credentials.password = document.getElementById('teacher-password').value;
       }
 
-      if (self.login(role, credentials)) {
+      const success = await self.login(role, credentials);
+      if (success) {
         self.showToast('Welcome back, ' + self.currentUser.firstName + '!', 'success');
         self.showApp();
       } else {
-        self.showToast('Invalid credentials. Please try again.', 'error');
         var card = document.querySelector('.login-card');
         card.classList.add('shake');
         setTimeout(function() { card.classList.remove('shake'); }, 500);
@@ -2089,6 +2593,14 @@ window.SchoolApp = {
         document.getElementById('teacher-fields').classList.toggle('hidden', role !== 'teacher');
       });
     });
+
+    // Theme toggle button click
+    var themeToggleBtn = document.getElementById('app-theme-toggle');
+    if (themeToggleBtn) {
+      themeToggleBtn.addEventListener('click', function() {
+        self.toggleTheme();
+      });
+    }
 
     // Sidebar navigation
     document.querySelectorAll('.nav-item').forEach(function(item) {
@@ -2414,22 +2926,21 @@ window.SchoolApp = {
     document.getElementById('exit-impersonation-btn').addEventListener('click', function() {
       localStorage.removeItem('impersonate_school_id');
       localStorage.removeItem('impersonate_role');
+      sessionStorage.removeItem('isImpersonating');
       window.location.href = 'super-admin.html';
     });
   }
 };
 
+window.assertSchoolIsolation = window.SchoolApp.assertSchoolIsolation;
+
 // ---------- Initialization ----------
 document.addEventListener('DOMContentLoaded', async function() {
   var hasData = await SchoolApp.load();
+  SchoolApp.updateBrandUI();
 
   // Apply saved theme on page load
-  var savedTheme = localStorage.getItem('appTheme') || (SchoolApp.store.settings && SchoolApp.store.settings.theme) || 'dark';
-  if (savedTheme === 'light') {
-    document.body.classList.add('light-theme');
-  } else {
-    document.body.classList.remove('light-theme');
-  }
+  SchoolApp.applyUserTheme();
 
   // ---- Impersonation Auto-Login Check ----
   var impSchoolId = localStorage.getItem('impersonate_school_id');
@@ -2446,16 +2957,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (targetSchool) {
       // Override school settings for impersonation
       SchoolApp.store.currentSchoolId = impSchoolId;
+      if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
       SchoolApp.store.settings.schoolName = targetSchool.school_name;
+      if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+      SchoolApp.store.settings.schoolInfo.name = targetSchool.school_name;
+      SchoolApp.store.settings.schoolInfo.logoUrl = targetSchool.logo_url;
+      SchoolApp.store.settings.logoUrl = targetSchool.logo_url;
       if (targetSchool.address) SchoolApp.store.settings.address = targetSchool.address;
       if (targetSchool.phone) SchoolApp.store.settings.phone = targetSchool.phone;
       if (targetSchool.email) SchoolApp.store.settings.email = targetSchool.email;
       
-      // Update custom logo if available (fallback to a premium inline SVG school shield)
-      var logoSrc = targetSchool.logo_url || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='%232563eb'><path d='M12 3L1 9l11 6 9-4.91V17h2V9L12 3z'/><path d='M22 9L12 3 2 9l10 6 10-6z' fill='%231d4ed8'/><path d='M17 14v3c0 1.1-.9 2-2 2H9c-1.1 0-2-.9-2-2v-3l5 2.72L17 14z'/></svg>";
-      document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
-        img.src = logoSrc;
-      });
+      SchoolApp.updateBrandUI();
 
       // Set user session based on role
       if (impRole === 'teacher') {
@@ -2475,6 +2987,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
       
       // Skip login, go directly to app
+      SchoolApp.applyUserTheme();
       SchoolApp.setupEventListeners();
       SchoolApp.updateSidebarLockBadges();
       SchoolApp.updateNotificationBadge();
@@ -2492,14 +3005,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       SchoolApp.showImpersonationBanner(targetSchool.school_name, impRole);
       return; // Skip normal login flow
     }
-  } else {
-    // Normal flow logo reset
-    document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
-      img.src = './school-logo-updated.jpg';
-    });
   }
 
-  if (!hasData || !SchoolApp.store.students || SchoolApp.store.students.length === 0) {
+  var isSVM = SchoolApp.store.currentSchoolId === 'svm_bokaro_001';
+  if (isSVM && (!hasData || !SchoolApp.store.students || SchoolApp.store.students.length === 0)) {
     console.log('Database is empty. Seeding for new 120 students mobile-first setup...');
     SchoolApp.store.students = [];
     SchoolApp.store.teachers = [];

@@ -168,23 +168,26 @@
       }
 
       html += '<div class="class-structure-row">';
-      html += '  <div style="width:120px; font-weight:700;">' + escapeHTML(c) + '</div>';
+      html += '  <div class="class-name-badge">' + escapeHTML(c) + '</div>';
       html += '  <div class="section-tags-container">';
       sectList.forEach(function(sec) {
         html += '    <span class="section-tag">' + escapeHTML(sec);
-        html += '      <span class="settings-remove-section" data-class="' + escapeAttr(c) + '" data-section="' + escapeAttr(sec) + '" style="cursor:pointer; font-size:12px; color:var(--text-secondary); margin-left:4px; font-weight:bold;">&times;</span>';
+        html += '      <span class="settings-remove-section" data-class="' + escapeAttr(c) + '" data-section="' + escapeAttr(sec) + '" title="Remove Section">&times;</span>';
         html += '    </span>';
       });
+      if (sectList.length === 0) {
+        html += '    <span style="font-size:12px; color:var(--text-muted); font-style:italic;">No sections</span>';
+      }
       html += '  </div>';
-      html += '  <div style="display:flex; gap:6px; align-items:center;">';
-      html += '    <button type="button" class="btn btn-secondary btn-sm settings-add-section" data-class="' + escapeAttr(c) + '">+ Section</button>';
-      html += '    <button type="button" class="btn btn-danger btn-sm settings-delete-class" data-class="' + escapeAttr(c) + '"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
+      html += '  <div style="display:flex; gap:8px; align-items:center;">';
+      html += '    <button type="button" class="btn btn-secondary btn-sm settings-add-section" data-class="' + escapeAttr(c) + '" style="height:32px; display:inline-flex; align-items:center; justify-content:center; gap:4px; font-size:12px;"><span class="material-icons-round" style="font-size:14px;">add</span> Section</button>';
+      html += '    <button type="button" class="btn btn-danger btn-sm settings-delete-class" data-class="' + escapeAttr(c) + '" style="height:32px; width:32px; min-width:32px; display:inline-flex; align-items:center; justify-content:center; padding:0; border-radius:6px;"><span class="material-icons-round" style="font-size:16px;">delete</span></button>';
       html += '  </div>';
       html += '</div>';
     });
 
     if (classes.length === 0) {
-      html = '<div style="text-align:center; padding:12px; color:var(--text-secondary);">No classes configured.</div>';
+      html = '<div style="text-align:center; padding:24px; color:var(--text-secondary); border: 1px dashed var(--border-color); border-radius: 12px;">No classes configured. Use "Add Class" above.</div>';
     }
 
     container.innerHTML = html;
@@ -198,19 +201,20 @@
     var settings = SchoolApp.store.settings || {};
     var subjects = settings.subjects || [];
 
-    var html = '';
+    var html = '<div class="subjects-config-grid">';
     subjects.forEach(function(sub) {
-      html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px;">';
-      html += '  <div style="font-weight:600; color:var(--text-primary);">' + escapeHTML(sub) + '</div>';
-      html += '  <div style="display:flex; align-items:center; gap:8px;">';
-      html += '    <button type="button" class="btn btn-secondary btn-sm settings-edit-subject" data-subject="' + escapeAttr(sub) + '"><span class="material-icons-round" style="font-size:14px;">edit</span></button>';
-      html += '    <button type="button" class="btn btn-danger btn-sm settings-delete-subject" data-subject="' + escapeAttr(sub) + '"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
+      html += '<div class="subject-config-chip">';
+      html += '  <div class="subject-config-name" title="' + escapeAttr(sub) + '">' + escapeHTML(sub) + '</div>';
+      html += '  <div class="subject-config-actions">';
+      html += '    <button type="button" class="btn-icon settings-edit-subject" data-subject="' + escapeAttr(sub) + '" title="Edit Subject" style="color:var(--text-secondary);"><span class="material-icons-round" style="font-size:16px;">edit</span></button>';
+      html += '    <button type="button" class="btn-icon settings-delete-subject" data-subject="' + escapeAttr(sub) + '" title="Delete Subject" style="color:var(--danger);"><span class="material-icons-round" style="font-size:16px;">close</span></button>';
       html += '  </div>';
       html += '</div>';
     });
+    html += '</div>';
 
     if (subjects.length === 0) {
-      html = '<div style="text-align:center; padding:12px; color:var(--text-secondary);">No subjects configured.</div>';
+      html = '<div style="text-align:center; padding:24px; color:var(--text-secondary); border: 1px dashed var(--border-color); border-radius: 12px;">No subjects configured. Use "Add Subject" above.</div>';
     }
 
     container.innerHTML = html;
@@ -226,17 +230,11 @@
     var classes = settings.classes || [];
     var feeStructure = settings.feeStructure || {};
 
-    var headsSet = new Set(["tuition", "transport", "exam"]);
-    Object.values(feeStructure).forEach(function(clsFees) {
-      Object.keys(clsFees).forEach(function(k) {
-        headsSet.add(k);
-      });
-    });
-    var heads = Array.from(headsSet);
+    var heads = settings.feeHeads || [];
 
     var headHtml = '<th>Class</th>';
     heads.forEach(function(h) {
-      headHtml += '<th style="text-transform:capitalize;">' + escapeHTML(h) + '</th>';
+      headHtml += '<th>' + escapeHTML(h.name) + '</th>';
     });
     theadRow.innerHTML = headHtml;
 
@@ -245,8 +243,8 @@
       bodyHtml += '<tr>';
       bodyHtml += '  <td style="font-weight:600;">' + escapeHTML(c) + '</td>';
       heads.forEach(function(h) {
-        var amt = (feeStructure[c] && feeStructure[c][h]) || 0;
-        bodyHtml += '  <td><input type="number" class="fees-class-fee-input form-input" data-class="' + escapeAttr(c) + '" data-head="' + escapeAttr(h) + '" value="' + amt + '" style="padding:6px; width:90px; font-size:12px;" min="0"></td>';
+        var amt = (feeStructure[c] && feeStructure[c][h.id]) || 0;
+        bodyHtml += '  <td><input type="number" class="fees-class-fee-input form-input" data-class="' + escapeAttr(c) + '" data-head="' + escapeAttr(h.id) + '" value="' + amt + '" style="padding:6px; width:90px; font-size:12px;" min="0"></td>';
       });
       bodyHtml += '</tr>';
     });
@@ -554,6 +552,9 @@
     var tagline = s.tagline || (s.schoolInfo && s.schoolInfo.tagline) || '';
     var affiliation = s.affiliation || (s.schoolInfo && s.schoolInfo.affiliation) || '';
     var udiseCode = s.udiseCode || (s.schoolInfo && s.schoolInfo.udiseCode) || '';
+    var phone = s.phone || (s.schoolInfo && s.schoolInfo.phone) || '';
+    var email = s.email || (s.schoolInfo && s.schoolInfo.email) || '';
+    var address = s.address || (s.schoolInfo && s.schoolInfo.address) || '';
 
     // Card 1: Basic Information
     html += '  <div class="card">';
@@ -586,9 +587,9 @@
     html += '    <div class="card-header"><h3><span class="material-icons-round">contact_mail</span> Contact Details</h3></div>';
     html += '    <div class="card-body">';
     html += '      <div class="admin-form-grid">';
-    html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + escapeAttr(s.phone || '') + '"></div>';
-    html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + escapeAttr(s.email || '') + '"></div>';
-    html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + escapeHTML(s.address || '') + '</textarea></div>';
+    html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + escapeAttr(phone) + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + escapeAttr(email) + '"></div>';
+    html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + escapeHTML(address) + '</textarea></div>';
     html += '      </div>';
     html += '    </div>';
     html += '  </div>';
@@ -729,12 +730,8 @@
 
     // Card 2: Fee Structure Matrix
     html += '  <div class="card">';
-    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '    <div class="card-header">';
     html += '      <h3><span class="material-icons-round">grid_on</span> Fee Structure Matrix</h3>';
-    html += '      <div style="display:flex; gap:8px; align-items:center;">';
-    html += '        <input type="text" id="setup-new-feehead-input" placeholder="e.g. Lab Fee" style="width:140px; padding:8px; font-size:13px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; color:var(--text-primary);">';
-    html += '        <button type="button" class="btn btn-secondary btn-sm" id="setup-add-feehead-btn">Add Fee Head</button>';
-    html += '      </div>';
     html += '    </div>';
     html += '    <div class="card-body" style="overflow-x:auto;">';
     html += '      <table class="data-table" style="min-width:600px;">';
@@ -1726,47 +1723,6 @@
       });
     }
 
-    // Add Fee Head
-    var setupAddFeeheadBtn = document.getElementById('setup-add-feehead-btn');
-    if (setupAddFeeheadBtn) {
-      setupAddFeeheadBtn.addEventListener('click', function() {
-        if (sessionStorage.getItem("isImpersonating") === "true") {
-          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
-          return;
-        }
-        var input = document.getElementById('setup-new-feehead-input');
-        var fh = input ? input.value.trim() : '';
-        if (!fh) {
-          SchoolApp.showToast("Fee head name cannot be empty.", "error");
-          return;
-        }
-        
-        var key = fh.toLowerCase();
-        var settings = SchoolApp.store.settings;
-        if (!settings.feeStructure) settings.feeStructure = {};
-        
-        var exists = false;
-        Object.values(settings.feeStructure).forEach(function(clsFees) {
-          if (clsFees[key] !== undefined) exists = true;
-        });
-        if (exists) {
-          SchoolApp.showToast("Fee head already exists.", "error");
-          return;
-        }
-        
-        SchoolApp.createRestorePoint('Backup before adding fee head ' + key);
-        settings.classes.forEach(function(c) {
-          if (!settings.feeStructure[c]) settings.feeStructure[c] = {};
-          settings.feeStructure[c][key] = 0;
-        });
-        
-        if (input) input.value = '';
-        SchoolApp.save();
-        renderFeesMatrix();
-        SchoolApp.showToast("Fee head added.", "success");
-      });
-    }
-
     // Save Fees Matrix
     var setupSaveFeesBtn = document.getElementById('setup-save-fees-btn');
     if (setupSaveFeesBtn) {
@@ -1793,16 +1749,8 @@
             settings.feeStructure[c][h] = val;
  
             // Also sync to legacy feeStructures
-            var legacyKey = h;
-            if (h === 'tuition') legacyKey = 'fh_tuition';
-            else if (h === 'transport') legacyKey = 'fh_transport';
-            else if (h === 'exam') legacyKey = 'fh_exam';
-            else if (h === 'fine') legacyKey = 'fh_fine';
-            else if (h === 'annual') legacyKey = 'fh_annual';
-            else if (!h.startsWith('fh_')) legacyKey = 'fh_' + h;
- 
             if (!SchoolApp.store.feeStructures[c]) SchoolApp.store.feeStructures[c] = {};
-            SchoolApp.store.feeStructures[c][legacyKey] = val;
+            SchoolApp.store.feeStructures[c][h] = val;
           }
         });
         
@@ -2563,9 +2511,29 @@
               SchoolApp.showToast('Please enter a fee head name.', 'error');
               return;
             }
-            if (!SchoolApp.store.feeHeads) SchoolApp.store.feeHeads = [];
+            var settings = SchoolApp.store.settings || {};
+            if (!settings.feeHeads) settings.feeHeads = [];
+
+            // Case-insensitive duplicate check
+            var exists = settings.feeHeads.some(function(fh) {
+              return fh.name.toLowerCase() === name.toLowerCase();
+            });
+            if (exists) {
+              SchoolApp.showToast('Fee Head already exists.', 'error');
+              return;
+            }
+
             var id = 'fh_' + Date.now().toString(36);
-            SchoolApp.store.feeHeads.push({ id: id, name: name });
+            settings.feeHeads.push({ id: id, name: name });
+            SchoolApp.store.feeHeads = settings.feeHeads; // sync back
+
+            // Initialize matrix column to 0 for all classes
+            if (!settings.feeStructure) settings.feeStructure = {};
+            var classes = settings.classes || [];
+            classes.forEach(function(c) {
+              if (!settings.feeStructure[c]) settings.feeStructure[c] = {};
+              settings.feeStructure[c][id] = 0;
+            });
             
             saveBtn.disabled = true;
             saveBtn.textContent = 'Adding...';
@@ -2587,7 +2555,9 @@
     document.querySelectorAll('.admin-edit-feehead-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var id = this.getAttribute('data-id');
-        var fh = SchoolApp.store.feeHeads.find(function(x) { return x.id === id; });
+        var settings = SchoolApp.store.settings || {};
+        var feeHeads = settings.feeHeads || [];
+        var fh = feeHeads.find(function(x) { return x.id === id; });
         if (!fh) return;
 
         var bodyHTML = '<div class="form-group"><label class="form-label">Fee Head Name *</label>';
@@ -2608,6 +2578,7 @@
               return;
             }
             fh.name = name;
+            SchoolApp.store.feeHeads = feeHeads; // sync back
             
             updateBtn.disabled = true;
             updateBtn.textContent = 'Saving...';
@@ -2629,24 +2600,51 @@
     document.querySelectorAll('.admin-delete-feehead-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var id = this.getAttribute('data-id');
-        var idx = SchoolApp.store.feeHeads.findIndex(function(x) { return x.id === id; });
+        var settings = SchoolApp.store.settings || {};
+        var feeHeads = settings.feeHeads || [];
+        var idx = feeHeads.findIndex(function(x) { return x.id === id; });
         if (idx === -1) return;
-        var fh = SchoolApp.store.feeHeads[idx];
+        var fh = feeHeads[idx];
 
-        SchoolApp.showConfirm('Delete Customizable Fee Head "' + fh.name + '"? This will remove it from all class structures.', function() {
+        // Check if amounts exist in the matrix
+        var hasAmount = false;
+        var feeStructure = settings.feeStructure || {};
+        Object.keys(feeStructure).forEach(function(cls) {
+          var amt = parseFloat(feeStructure[cls][id]);
+          if (amt && amt > 0) {
+            hasAmount = true;
+          }
+        });
+
+        var confirmMsg = 'Delete Customizable Fee Head "' + fh.name + '"? This will remove it from all class structures.';
+        if (hasAmount) {
+          confirmMsg = 'WARNING: Fee amounts already exist in the matrix for "' + fh.name + '". Deleting it will permanently remove these amounts. Are you sure you want to proceed?';
+        }
+
+        SchoolApp.showConfirm(confirmMsg, async function() {
           // Remove from fee structures
-          var settings = SchoolApp.store.settings || {};
           var classes = settings.classes || [];
           classes.forEach(function(cls) {
-            if (SchoolApp.store.feeStructures[cls]) {
+            if (settings.feeStructure && settings.feeStructure[cls]) {
+              delete settings.feeStructure[cls][id];
+            }
+            if (SchoolApp.store.feeStructures && SchoolApp.store.feeStructures[cls]) {
               delete SchoolApp.store.feeStructures[cls][id];
             }
           });
           
-          SchoolApp.store.feeHeads.splice(idx, 1);
-          SchoolApp.save();
-          SchoolApp.showToast('Fee Head deleted.', 'warning');
-          render();
+          feeHeads.splice(idx, 1);
+          settings.feeHeads = feeHeads;
+          SchoolApp.store.feeHeads = feeHeads; // sync back
+          
+          SchoolApp.showLoader('Deleting fee head...');
+          var success = await SchoolApp.save(true);
+          SchoolApp.hideLoader();
+          
+          if (success) {
+            SchoolApp.showToast('Fee Head deleted.', 'warning');
+            render();
+          }
         });
       });
     });
@@ -2655,8 +2653,9 @@
     document.querySelectorAll('.admin-edit-feestruct-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var cls = this.getAttribute('data-class');
-        var classFees = (SchoolApp.store.feeStructures || {})[cls] || {};
-        var feeHeads = SchoolApp.store.feeHeads || [];
+        var settings = SchoolApp.store.settings || {};
+        var classFees = (settings.feeStructure && settings.feeStructure[cls]) || (SchoolApp.store.feeStructures || {})[cls] || {};
+        var feeHeads = settings.feeHeads || [];
 
         var bodyHTML = '<form id="class-fee-form" class="form-grid">';
         feeHeads.forEach(function(fh) {
@@ -2700,10 +2699,16 @@
             if (!SchoolApp.store.feeStructures) SchoolApp.store.feeStructures = {};
             SchoolApp.store.feeStructures[cls] = newFees;
 
+            // Sync to settings.feeStructure
+            if (!settings.feeStructure) settings.feeStructure = {};
+            settings.feeStructure[cls] = {};
+            Object.keys(newFees).forEach(function(key) {
+              settings.feeStructure[cls][key] = parseFloat(newFees[key]) || 0;
+            });
+
             // Propagate updated fees to all students in this class
             var students = SchoolApp.store.students || [];
             var classStudents = students.filter(function(s) { return s.class === cls; });
-            var feeHeads = SchoolApp.store.feeHeads || [];
             
             if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
             

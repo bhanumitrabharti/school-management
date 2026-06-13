@@ -15,6 +15,71 @@
     perPage: 10
   };
 
+  function getFeeAmount(className, feeHeadId) {
+    var key = feeHeadId;
+    if (feeHeadId === 'fh_tuition') key = 'tuition';
+    else if (feeHeadId === 'fh_transport') key = 'transport';
+    else if (feeHeadId === 'fh_exam') key = 'exam';
+    else if (feeHeadId === 'fh_fine') key = 'fine';
+    else if (feeHeadId === 'fh_annual') key = 'annual';
+    
+    if (key.startsWith('fh_')) {
+      key = key.replace('fh_', '');
+    }
+
+    var settings = SchoolApp.store.settings;
+    if (settings && settings.feeStructure && settings.feeStructure[className]) {
+      var val = settings.feeStructure[className][key];
+      if (val !== undefined && val !== null) {
+        return parseFloat(val);
+      }
+    }
+
+    var oldStructures = SchoolApp.store.feeStructures;
+    if (oldStructures && oldStructures[className]) {
+      var oldVal = oldStructures[className][feeHeadId] || oldStructures[className][key];
+      if (oldVal !== undefined && oldVal !== null) {
+        return parseFloat(oldVal);
+      }
+    }
+
+    return 0;
+  }
+
+  function getActiveFeeHeads() {
+    var settings = SchoolApp.store.settings || {};
+    var heads = JSON.parse(JSON.stringify(settings.feeHeads || SchoolApp.store.feeHeads || []));
+    if (settings && settings.feeStructure) {
+      var keys = new Set();
+      Object.values(settings.feeStructure).forEach(function(clsFees) {
+        Object.keys(clsFees).forEach(function(k) {
+          keys.add(k);
+        });
+      });
+      
+      keys.forEach(function(k) {
+        var headId = k;
+        if (k === 'tuition') headId = 'fh_tuition';
+        else if (k === 'transport') headId = 'fh_transport';
+        else if (k === 'exam') headId = 'fh_exam';
+        else if (k === 'fine') headId = 'fh_fine';
+        else if (k === 'annual') headId = 'fh_annual';
+        else {
+          headId = 'fh_' + k;
+        }
+
+        var exists = heads.some(function(h) { return h.id === headId || h.name.toLowerCase() === k.toLowerCase(); });
+        if (!exists) {
+          heads.push({
+            id: headId,
+            name: k.charAt(0).toUpperCase() + k.slice(1)
+          });
+        }
+      });
+    }
+    return heads;
+  }
+
   function getStudentFeeStats(studentId) {
     var studentFees = (SchoolApp.store.fees || []).filter(function(f) {
       return f.studentId === studentId;
@@ -88,6 +153,13 @@
     var container = document.getElementById('page-fees');
     if (!container) return;
 
+    if (!window.assertSchoolIsolation(SchoolApp.store.fees, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Fees Tab!");
+      SchoolApp.showToast("Security error. Please logout and login again.", "error");
+      SchoolApp.logout();
+      return;
+    }
+
     var filteredStudents = getFilteredStudents();
     var isAdmin = SchoolApp.isAdmin();
 
@@ -147,14 +219,27 @@
       
       // Class Select
       shellHtml += '<select class="form-select" id="fees-class-filter"><option value="all">All Classes</option>';
-      (SchoolApp.store.settings.classes || []).forEach(function(c) {
+      var settings = SchoolApp.store.settings || {};
+      var classesList = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+      classesList.forEach(function(c) {
         shellHtml += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
       });
       shellHtml += '</select>';
 
       // Section Select
       shellHtml += '<select class="form-select" id="fees-section-filter"><option value="all">All Sections</option>';
-      (SchoolApp.store.settings.sections || []).forEach(function(s) {
+      var rawSections = settings.sections || {};
+      var sections = [];
+      if (Array.isArray(rawSections)) {
+        sections = rawSections;
+      } else if (typeof rawSections === 'object') {
+        var allSecs = new Set();
+        Object.values(rawSections).forEach(function(arr) {
+          if (Array.isArray(arr)) arr.forEach(function(s) { allSecs.add(s); });
+        });
+        sections = Array.from(allSecs);
+      }
+      sections.forEach(function(s) {
         shellHtml += '<option value="' + s + '"' + (state.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>';
       });
       shellHtml += '</select>';
@@ -290,7 +375,7 @@
 
       var headName = '';
       if (t.type === 'due') {
-        var fh = (SchoolApp.store.feeHeads || []).find(function(x) { return x.id === t.feeHeadId; });
+        var fh = getActiveFeeHeads().find(function(x) { return x.id === t.feeHeadId; });
         headName = fh ? fh.name : 'Custom Charge';
       }
 
@@ -316,47 +401,43 @@
     };
   }
 
-  function sendWhatsAppReceipt(studentId, amount, mode) {
-    var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
-    if (!s) return;
-
-    var parentPhone = s.parentPhone ? s.parentPhone.trim() : '';
-    
-    // Clean phone number (keep only digits)
-    var cleanedPhone = parentPhone.replace(/\D/g, '');
-    
-    if (cleanedPhone.length < 10) {
-      // Fallback Logic: Prompt admin to enter a 10-digit number
-      var newPhone = prompt('Parent phone number is missing or invalid. Please enter a 10-digit mobile number:', parentPhone || '');
-      if (newPhone === null) return; // Admin cancelled
-      
-      newPhone = newPhone.replace(/\D/g, '');
-      if (newPhone.length !== 10) {
-        SchoolApp.showToast('Please enter a valid 10-digit mobile number.', 'error');
-        return;
+  async function sendWhatsAppReceipt(studentId, amount, mode) {
+    const student = SchoolApp.store.students.find(s => s.id === studentId);
+    const school = SchoolApp.store.settings || {};
+    const phone = student ? (student.phone || student.parentPhone) : null;
+    if (!student || !phone) {
+      SchoolApp.showToast("No phone number found for this student.", "error");
+      return;
+    }
+    try {
+      SchoolApp.showToast("Sending WhatsApp receipt...", "info");
+      const res = await fetch("/api/send-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "fee_receipt",
+          phone: phone,
+          studentName: student.firstName + " " + student.lastName,
+          schoolName: school.schoolName || "School",
+          amount: amount,
+          receiptNo: SchoolApp.lastReceiptNo || "—",
+          paymentMode: mode,
+          language: "both"
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        SchoolApp.showToast("WhatsApp receipt sent successfully!", "success");
+      } else {
+        if (data.code === 190) {
+          SchoolApp.showToast("WhatsApp token expired. Contact admin to renew.", "error");
+        } else {
+          SchoolApp.showToast("WhatsApp failed: " + data.error, "error");
+        }
       }
-      cleanedPhone = newPhone;
+    } catch (err) {
+      SchoolApp.showToast("Could not send WhatsApp. Check internet.", "error");
     }
-    
-    // Ensure 10 digit numbers are prepended with country code (91 for India)
-    if (cleanedPhone.length === 10) {
-      cleanedPhone = '91' + cleanedPhone;
-    }
-    
-    var studentName = s.firstName + ' ' + s.lastName;
-    var displayClass = ['Nursery','LKG','UKG'].indexOf(s.class) !== -1 ? s.class : 'Class ' + s.class;
-    
-    var pMode = mode || 'Cash';
-    var message = 
-      'Namaste! 🙏\n' +
-      'Aapke bacche ' + studentName + ' (Class: ' + displayClass + ') ki school fee jama ho gayi hai.\n\n' +
-      'Jama ki gayi rashi (Amount): ₹' + amount + ' via ' + pMode + ' ✅\n\n' +
-      'English: Dear Parent, we have received ₹' + amount + ' via ' + pMode + ' for ' + studentName + '\'s fee.\n\n' +
-      'Dhanyawad!\n\n' +
-      'Shishu Vikash Mandir 🏫';
-    
-    var url = 'https://wa.me/' + cleanedPhone + '?text=' + encodeURIComponent(message);
-    window.open(url, '_blank');
   }
 
   function showLedgerModal(studentId) {
@@ -486,8 +567,9 @@
     SchoolApp.showModal('Record Payment - ' + s.firstName + ' ' + s.lastName, bodyHTML, footerHTML);
 
     var saveBtn = document.getElementById('collect-payment-save-btn');
+    var saveBtn = document.getElementById('collect-payment-save-btn');
     if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
+      saveBtn.addEventListener('click', async function() {
         var amt = parseFloat(document.getElementById('pay-amount').value);
         var mode = document.getElementById('pay-mode').value;
         var date = document.getElementById('pay-date').value;
@@ -507,6 +589,7 @@
         SchoolApp.store.fees.push({
           id: SchoolApp.generateId(),
           studentId: studentId,
+          schoolId: SchoolApp.currentSchoolId,
           type: 'payment',
           amount: amt,
           date: date,
@@ -515,17 +598,28 @@
           timestamp: new Date().toISOString()
         });
 
-        SchoolApp.save();
-        SchoolApp.closeModal();
-        SchoolApp.showToast('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully!', 'success');
-        render();
+        SchoolApp.showLoader('Processing...');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Processing...';
+        
+        var success = await SchoolApp.save(true);
+        
+        SchoolApp.hideLoader();
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Collect Payment';
 
-        // Gracefully prompt parent confirmation for WhatsApp receipt
-        setTimeout(function() {
-          SchoolApp.showConfirm('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully! Would you like to send a WhatsApp Fee Receipt notification to the parent?', function() {
-            sendWhatsAppReceipt(studentId, amt, mode);
-          });
-        }, 300);
+        if (success) {
+          SchoolApp.closeModal();
+          SchoolApp.showToast('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully!', 'success');
+          render();
+
+          // Gracefully prompt parent confirmation for WhatsApp receipt
+          setTimeout(function() {
+            SchoolApp.showConfirm('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully! Would you like to send a WhatsApp Fee Receipt notification to the parent?', function() {
+              sendWhatsAppReceipt(studentId, amt, mode);
+            });
+          }, 300);
+        }
       });
     }
   }
@@ -534,7 +628,7 @@
     var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
     if (!s) return;
 
-    var feeHeads = SchoolApp.store.feeHeads || [];
+    var feeHeads = getActiveFeeHeads();
 
     var bodyHTML = '<form id="charge-fee-form" class="form-grid">';
     
@@ -577,8 +671,7 @@
     function updateDefaultAmount() {
       var headId = fhSelect.value;
       if (headId === 'custom') return;
-      var classFees = (SchoolApp.store.feeStructures || {})[s.class] || {};
-      var defaultAmt = classFees[headId] || '0';
+      var defaultAmt = getFeeAmount(s.class, headId);
       amtInput.value = defaultAmt;
     }
     
@@ -589,7 +682,7 @@
 
     var saveBtn = document.getElementById('charge-fee-save-btn');
     if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
+      saveBtn.addEventListener('click', async function() {
         var headId = document.getElementById('charge-feehead').value;
         var amt = parseFloat(document.getElementById('charge-amount').value);
         var date = document.getElementById('charge-date').value;
@@ -613,6 +706,7 @@
         SchoolApp.store.fees.push({
           id: SchoolApp.generateId(),
           studentId: studentId,
+          schoolId: SchoolApp.currentSchoolId,
           type: 'due',
           feeHeadId: headId === 'custom' ? null : headId,
           amount: amt,
@@ -620,17 +714,25 @@
           description: desc
         });
 
-        SchoolApp.save();
-        SchoolApp.closeModal();
-        SchoolApp.showToast('Fee charged to ledger successfully!', 'success');
-        render();
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        var success = await SchoolApp.save();
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Add Charge';
+
+        if (success) {
+          SchoolApp.closeModal();
+          SchoolApp.showToast('Fee charged to ledger successfully!', 'success');
+          render();
+        }
       });
     }
   }
 
   function showBulkChargeModal() {
-    var feeHeads = SchoolApp.store.feeHeads || [];
-    var classes = SchoolApp.store.settings.classes || [];
+    var feeHeads = getActiveFeeHeads();
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
 
     var bodyHTML = '<form id="bulk-charge-form" class="form-grid">';
     
@@ -671,7 +773,7 @@
 
     var saveBtn = document.getElementById('bulk-charge-save-btn');
     if (saveBtn) {
-      saveBtn.addEventListener('click', function() {
+      saveBtn.addEventListener('click', async function() {
         var cls = document.getElementById('bulk-class').value;
         var headId = document.getElementById('bulk-feehead').value;
         var date = document.getElementById('bulk-date').value;
@@ -703,13 +805,13 @@
         SchoolApp.createRestorePoint('Auto-Backup before Bulk Fee Generation for Class ' + cls);
 
         students.forEach(function(s) {
-          var classFees = (SchoolApp.store.feeStructures || {})[s.class] || {};
-          var defaultAmt = parseFloat(classFees[headId] || 0);
+          var defaultAmt = getFeeAmount(s.class, headId);
           
           if (defaultAmt > 0) {
             SchoolApp.store.fees.push({
               id: SchoolApp.generateId(),
               studentId: s.id,
+              schoolId: SchoolApp.currentSchoolId,
               type: 'due',
               feeHeadId: headId,
               amount: defaultAmt,
@@ -721,10 +823,17 @@
         });
 
         if (chargedCount > 0) {
-          SchoolApp.save();
-          SchoolApp.closeModal();
-          SchoolApp.showToast('Charged default fee dues to ' + chargedCount + ' students successfully!', 'success');
-          render();
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving...';
+          var success = await SchoolApp.save();
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
+
+          if (success) {
+            SchoolApp.closeModal();
+            SchoolApp.showToast('Charged default fee dues to ' + chargedCount + ' students successfully!', 'success');
+            render();
+          }
         } else {
           SchoolApp.showToast('No student charged. Make sure default fees are configured in Fee Setup settings.', 'error');
         }
