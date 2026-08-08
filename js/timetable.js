@@ -94,11 +94,27 @@
     var container = document.getElementById('page-timetable');
     if (!container) return;
 
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    if (!window.assertSchoolIsolation(SchoolApp.store.timetable, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Timetable Tab!");
+      SchoolApp.showToast("Security error. Please logout and login again.", "error");
+      SchoolApp.logout();
+      return;
+    }
+
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
     var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     if (!state.classVal && classes.length > 0) state.classVal = classes[0];
+    
+    var sections = [];
+    if (Array.isArray(rawSections)) {
+      sections = rawSections;
+    } else if (typeof rawSections === 'object') {
+      sections = rawSections[state.classVal] || [];
+    }
+    
     if (!state.sectionVal && sections.length > 0) state.sectionVal = sections[0];
 
     var currentClassSection = state.classVal + '-' + state.sectionVal;
@@ -157,12 +173,14 @@
     }
 
     // Action buttons group (permanently visible)
-    html += '  <div class="action-buttons-group" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">';
-    html += '    <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
-    html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
-    html += '    <button class="btn btn-primary btn-sm" id="save-timetable-btn" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">save</span> Save Timetable</button>';
-    html += '    <button class="btn btn-danger btn-sm" id="btn-reset-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">delete_sweep</span> Reset Timetable</button>';
-    html += '  </div>';
+    if (!SchoolApp.isTeacher()) {
+      html += '  <div class="action-buttons-group" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">';
+      html += '    <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
+      html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
+      html += '    <button class="btn btn-primary btn-sm" id="save-timetable-btn" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">save</span> Save Timetable</button>';
+      html += '    <button class="btn btn-danger btn-sm" id="btn-reset-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">delete_sweep</span> Reset Timetable</button>';
+      html += '  </div>';
+    }
     html += '</div>';
 
     if (state.viewMode === 'class') {
@@ -200,7 +218,11 @@
         }
 
         var cardStyle = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
-        if (isDraft) {
+        if (draftSlot.isWarning) {
+          cardStyle = 'background: rgba(239, 68, 68, 0.03); border: 1.5px dashed #ef4444; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+        } else if (draftSlot.isFallback) {
+          cardStyle = 'background: rgba(245, 158, 11, 0.05); border: 1.5px dashed #f59e0b; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+        } else if (isDraft) {
           cardStyle = 'background: rgba(251, 191, 36, 0.05); border: 1px dashed #fbbf24; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
         }
 
@@ -210,10 +232,21 @@
         html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p, state.dayVal) + '</span>';
         html += '        </div>';
 
+        if (draftSlot.isWarning) {
+          html += '      <div style="margin-top: 4px; display: flex; justify-content: center;">';
+          html += '        <span class="badge badge-danger" style="font-size: 10px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); width: 100%; text-align: center;">No teacher available — assign manually</span>';
+          html += '      </div>';
+        } else if (draftSlot.isFallback) {
+          html += '      <div style="margin-top: 4px; display: flex; justify-content: center;">';
+          html += '        <span class="badge" style="font-size: 10px; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); width: 100%; text-align: center;">Fallback Assignment</span>';
+          html += '      </div>';
+        }
+
         // Subject Dropdown
+        var isDisabledStr = SchoolApp.isTeacher() ? ' disabled' : '';
         html += '        <div>';
         html += '          <label class="form-label" style="font-size: 11px;">Subject</label>';
-        html += '          <select class="form-select period-subject" data-period="' + p + '" style="width: 100%;"><option value="">Free Period</option>';
+        html += '          <select class="form-select period-subject" data-period="' + p + '"' + isDisabledStr + ' style="width: 100%;"><option value="">Free Period</option>';
         classSubjects.forEach(function(sub) {
           html += '<option value="' + sub + '"' + (savedSubject === sub ? ' selected' : '') + '>' + sub + '</option>';
         });
@@ -223,7 +256,7 @@
         // Teacher Dropdown
         html += '        <div>';
         html += '          <label class="form-label" style="font-size: 11px;">Teacher</label>';
-        html += '          <select class="form-select period-teacher" data-period="' + p + '"' + (savedSubject ? '' : ' disabled') + ' style="width: 100%;"><option value="">Select Teacher</option>';
+        html += '          <select class="form-select period-teacher" data-period="' + p + '"' + (savedSubject && !SchoolApp.isTeacher() ? '' : ' disabled') + ' style="width: 100%;"><option value="">Select Teacher</option>';
         
         if (savedSubject) {
           var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, savedSubject);
@@ -288,7 +321,8 @@
               if (daySchedule[p].teacherId === t.id) {
                 draftAssignment = {
                   classSection: classSection,
-                  subject: daySchedule[p].subject
+                  subject: daySchedule[p].subject,
+                  isFallback: daySchedule[p].isFallback
                 };
                 break;
               }
@@ -321,16 +355,25 @@
 
           if (draftAssignment) {
             var borderStyle = isCellDraft ? 'border: 2px dashed #fbbf24; background: rgba(251, 191, 36, 0.05);' : 'border: 1px solid var(--border-light); background: rgba(124, 58, 237, 0.03);';
+            if (draftAssignment.isFallback) {
+              borderStyle = 'border: 2px dashed #f59e0b; background: rgba(245, 158, 11, 0.05);';
+            }
             html += '            <td style="padding: 12px 16px; ' + borderStyle + ' text-align: center; vertical-align: middle; position: relative;">';
             html += '              <strong style="color: var(--accent-primary-light); font-size: 13px;">Class ' + draftAssignment.classSection + '</strong><br>';
             html += '              <span class="badge badge-purple" style="font-size: 10px; margin-top: 4px;">' + draftAssignment.subject + '</span>';
-            html += '              <button class="clear-cell-btn btn-xs" data-class="' + draftAssignment.classSection + '" data-period="' + p + '" data-day="' + state.dayVal + '" style="position: absolute; top: 2px; right: 2px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; border-radius: 4px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: all 0.2s;" title="Unassign"><span class="material-icons-round" style="font-size: 12px;">close</span></button>';
+            if (!SchoolApp.isTeacher()) {
+              html += '              <button class="clear-cell-btn btn-xs" data-class="' + draftAssignment.classSection + '" data-period="' + p + '" data-day="' + state.dayVal + '" style="position: absolute; top: 2px; right: 2px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; border-radius: 4px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: all 0.2s;" title="Unassign"><span class="material-icons-round" style="font-size: 12px;">close</span></button>';
+            }
             html += '            </td>';
           } else {
             html += '            <td style="padding: 12px 16px; border: 1px solid var(--border-light); text-align: center; vertical-align: middle;">';
-            html += '              <button class="btn btn-xs assign-cell-btn" data-teacher="' + t.id + '" data-period="' + p + '" data-day="' + state.dayVal + '" style="background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px dashed rgba(16, 185, 129, 0.4); padding: 6px 12px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all var(--transition-fast); width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 4px;">';
-            html += '                <span class="material-icons-round" style="font-size: 14px;">add</span> Assign';
-            html += '              </button>';
+            if (!SchoolApp.isTeacher()) {
+              html += '              <button class="btn btn-xs assign-cell-btn" data-teacher="' + t.id + '" data-period="' + p + '" data-day="' + state.dayVal + '" style="background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px dashed rgba(16, 185, 129, 0.4); padding: 6px 12px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all var(--transition-fast); width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 4px;">';
+              html += '                <span class="material-icons-round" style="font-size: 14px;">add</span> Assign';
+              html += '              </button>';
+            } else {
+              html += '              <span style="color: var(--text-muted); font-size: 11px; font-style: italic;">Free</span>';
+            }
             html += '            </td>';
           }
         });
@@ -432,7 +475,7 @@
         if (!subVal) {
           delete state.draftTimetable[currentClassSection][state.dayVal][period];
         } else {
-          state.draftTimetable[currentClassSection][state.dayVal][period] = { subject: subVal, teacherId: '' };
+          state.draftTimetable[currentClassSection][state.dayVal][period] = { subject: subVal, teacherId: '', isFallback: false, isWarning: false };
         }
         render();
       });
@@ -455,6 +498,8 @@
           state.draftTimetable[currentClassSection][state.dayVal][period] = { subject: '', teacherId: '' };
         }
         state.draftTimetable[currentClassSection][state.dayVal][period].teacherId = teachVal;
+        state.draftTimetable[currentClassSection][state.dayVal][period].isFallback = false;
+        state.draftTimetable[currentClassSection][state.dayVal][period].isWarning = false;
         render();
       });
     });
@@ -592,12 +637,19 @@
     var teacherName = teacher.firstName + ' ' + teacher.lastName;
     
     // Get all available classes (not occupied in this period on this day)
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
     var availableClasses = [];
 
     classes.forEach(function(c) {
-      sections.forEach(function(s) {
+      var sectList = [];
+      if (Array.isArray(rawSections)) {
+        sectList = rawSections;
+      } else if (typeof rawSections === 'object') {
+        sectList = rawSections[c] || [];
+      }
+      sectList.forEach(function(s) {
         var classSection = c + '-' + s;
         var draftTimetable = state.draftTimetable || {};
         var daySchedule = draftTimetable[classSection] ? draftTimetable[classSection][day] : null;
@@ -715,7 +767,9 @@
       }
       state.draftTimetable[selectedClass][day][period] = {
         subject: selectedSubject,
-        teacherId: teacherId
+        teacherId: teacherId,
+        isFallback: false,
+        isWarning: false
       };
 
       SchoolApp.showToast('Assignment added to draft.', 'success');
@@ -725,8 +779,9 @@
   }
 
   function generateAutoTimetable() {
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
 
     if (classes.length === 0) {
       SchoolApp.showToast('No classes configured. Setup classes in Admin Panel first.', 'error');
@@ -743,7 +798,13 @@
         var periodsCount = (day === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
 
         classes.forEach(function(c) {
-          sections.forEach(function(s) {
+          var sectList = [];
+          if (Array.isArray(rawSections)) {
+            sectList = rawSections;
+          } else if (typeof rawSections === 'object') {
+            sectList = rawSections[c] || [];
+          }
+          sectList.forEach(function(s) {
             var classSection = c + '-' + s;
 
             if (!state.draftTimetable[classSection]) {
@@ -767,6 +828,55 @@
               }
             }
 
+            var allTeachers = SchoolApp.store.teachers || [];
+
+            // Helper to check subject count for a teacher today across school draft
+            var getSubjectCount = function(tId, sub) {
+              var count = 0;
+              var timetable = state.draftTimetable;
+              for (var cs in timetable) {
+                if (cs === 'settings') continue;
+                var daySchedule = timetable[cs][day];
+                if (daySchedule) {
+                  for (var pr in daySchedule) {
+                    var sl = daySchedule[pr];
+                    if (sl && sl.teacherId === tId && sl.subject && sl.subject.toLowerCase().trim() === sub.toLowerCase().trim()) {
+                      count++;
+                    }
+                  }
+                }
+              }
+              return count;
+            };
+
+            // Helper to check if a teacher teaches a subject globally (either in t.subject or t.subjects)
+            var teachesSub = function(t, sub) {
+              var subs = [];
+              if (t.subjects) {
+                if (Array.isArray(t.subjects)) {
+                  subs = t.subjects;
+                } else if (typeof t.subjects === 'string') {
+                  subs = t.subjects.split(',');
+                }
+              } else if (t.subject) {
+                if (Array.isArray(t.subject)) {
+                  subs = t.subject;
+                } else if (typeof t.subject === 'string') {
+                  subs = t.subject.split(',');
+                }
+              }
+              return subs.map(function(item) { return item.trim().toLowerCase(); }).indexOf(sub.toLowerCase().trim()) !== -1;
+            };
+
+            // Helper to check if a teacher has the class assigned in t.assignedClasses
+            var hasClass = function(t, cls, sect) {
+              if (!t.assignedClasses) return false;
+              return t.assignedClasses.some(function(ac) {
+                return String(ac.class).toLowerCase().trim() === String(cls).toLowerCase().trim() &&
+                       String(ac.section).toLowerCase().trim() === String(sect).toLowerCase().trim();
+              });
+            };
+
             for (var p = 1; p <= periodsCount; p++) {
               var existingSlot = state.draftTimetable[classSection][day][p];
               // Skip slot if it already has a subject and teacher assigned
@@ -775,73 +885,131 @@
                 continue;
               }
 
-              var classSubjects = getSubjectsForClass(c);
-              if (classSubjects.length === 0) {
-                lastPeriodSubject = null;
-                continue;
+              // Determine candidate subjects for this period
+              var candidateSubjects = [];
+              if (existingSlot && existingSlot.subject) {
+                // If a subject was pre-selected (but no teacher), use only that subject
+                candidateSubjects = [existingSlot.subject];
+              } else {
+                var classSubjects = getSubjectsForClass(c);
+                if (classSubjects.length === 0) {
+                  lastPeriodSubject = null;
+                  continue;
+                }
+
+                // Partition class subjects into unused and used today
+                var unusedSubs = [];
+                var usedSubs = [];
+                classSubjects.forEach(function(sub) {
+                  var subNorm = sub.toLowerCase().trim();
+                  if (usedSubjectsToday.indexOf(subNorm) === -1) {
+                    unusedSubs.push(sub);
+                  } else {
+                    usedSubs.push(sub);
+                  }
+                });
+
+                // Shuffle both lists for randomness
+                unusedSubs.sort(function() { return 0.5 - Math.random(); });
+                usedSubs.sort(function() { return 0.5 - Math.random(); });
+
+                // Construct ordered candidate subjects list: unused first, then non-consecutive used, then consecutive used if necessary
+                unusedSubs.forEach(function(sub) { candidateSubjects.push(sub); });
+                usedSubs.forEach(function(sub) {
+                  if (!lastPeriodSubject || sub.toLowerCase().trim() !== lastPeriodSubject.toLowerCase().trim()) {
+                    candidateSubjects.push(sub);
+                  }
+                });
+                if (lastPeriodSubject) {
+                  var orig = usedSubs.find(function(sub) {
+                    return sub.toLowerCase().trim() === lastPeriodSubject.toLowerCase().trim();
+                  });
+                  if (orig) {
+                    candidateSubjects.push(orig);
+                  }
+                }
               }
 
-              // Shuffle subjects for randomness
-              var shuffledSubjects = classSubjects.slice().sort(function() { return 0.5 - Math.random(); });
               var assigned = false;
 
-              // Pass 1: Strict Uniqueness
-              for (var i = 0; i < shuffledSubjects.length; i++) {
-                var subject = shuffledSubjects[i];
-                var subNormalized = subject.toLowerCase().trim();
+              // STEP 1 — Primary Assignment:
+              // Find a teacher where ALL conditions are true:
+              // - teacher.subjects includes the period's subject
+              // - teacher.assignedClasses includes the period's class
+              // - teacher has no other assignment in this period
+              // - same subject for same teacher: max 2 times per day
+              for (var i = 0; i < candidateSubjects.length; i++) {
+                var subject = candidateSubjects[i];
+                var primaryTeachers = allTeachers.filter(function(t) {
+                  return t.status === 'Active' &&
+                         teachesSub(t, subject) &&
+                         hasClass(t, c, s) &&
+                         !getTeacherConflict(t.id, day, p, classSection) &&
+                         getSubjectCount(t.id, subject) < 2;
+                });
 
-                if (usedSubjectsToday.indexOf(subNormalized) === -1) {
-                  var eligibleTeachers = getTeachersForSubject(c, s, subject);
-                  var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
-
-                  for (var j = 0; j < shuffledTeachers.length; j++) {
-                    var teacher = shuffledTeachers[j];
-                    // Check conflict globally in draft
-                    var conflict = getTeacherConflict(teacher.id, day, p, classSection);
-                    if (!conflict) {
-                      state.draftTimetable[classSection][day][p] = { subject: subject, teacherId: teacher.id };
-                      usedSubjectsToday.push(subNormalized);
-                      lastPeriodSubject = subject;
-                      assigned = true;
-                      break;
-                    }
+                if (primaryTeachers.length > 0) {
+                  var picked = primaryTeachers[Math.floor(Math.random() * primaryTeachers.length)];
+                  state.draftTimetable[classSection][day][p] = {
+                    subject: subject,
+                    teacherId: picked.id,
+                    isFallback: false,
+                    isWarning: false
+                  };
+                  var subNorm = subject.toLowerCase().trim();
+                  if (usedSubjectsToday.indexOf(subNorm) === -1) {
+                    usedSubjectsToday.push(subNorm);
                   }
-                }
-                if (assigned) break;
-              }
-
-              // Pass 2: Smart Fallback (No Consecutive Repeats)
-              if (!assigned) {
-                for (var i = 0; i < shuffledSubjects.length; i++) {
-                  var subject = shuffledSubjects[i];
-                  var subNormalized = subject.toLowerCase().trim();
-
-                  if (!lastPeriodSubject || subject.toLowerCase().trim() !== lastPeriodSubject.toLowerCase().trim()) {
-                    var eligibleTeachers = getTeachersForSubject(c, s, subject);
-                    var shuffledTeachers = eligibleTeachers.slice().sort(function() { return 0.5 - Math.random(); });
-
-                    for (var j = 0; j < shuffledTeachers.length; j++) {
-                      var teacher = shuffledTeachers[j];
-                      // Check conflict globally in draft
-                      var conflict = getTeacherConflict(teacher.id, day, p, classSection);
-                      if (!conflict) {
-                        state.draftTimetable[classSection][day][p] = { subject: subject, teacherId: teacher.id };
-                        if (usedSubjectsToday.indexOf(subNormalized) === -1) {
-                          usedSubjectsToday.push(subNormalized);
-                        }
-                        lastPeriodSubject = subject;
-                        assigned = true;
-                        break;
-                      }
-                    }
-                  }
-                  if (assigned) break;
+                  lastPeriodSubject = subject;
+                  assigned = true;
+                  break;
                 }
               }
 
-              // Final Fallback: Graceful Blanking
+              // STEP 2 — Fallback Assignment (only if Step 1 fails):
+              // Find any teacher where:
+              // - teacher has no other assignment in this period
+              // - count of times this teacher is assigned this subject today is less than 2
+              // (same subject max 2 times per day per teacher)
               if (!assigned) {
-                delete state.draftTimetable[classSection][day][p];
+                for (var i = 0; i < candidateSubjects.length; i++) {
+                  var subject = candidateSubjects[i];
+                  var fallbackTeachers = allTeachers.filter(function(t) {
+                    return t.status === 'Active' &&
+                           !getTeacherConflict(t.id, day, p, classSection) &&
+                           getSubjectCount(t.id, subject) < 2;
+                  });
+
+                  if (fallbackTeachers.length > 0) {
+                    var picked = fallbackTeachers[Math.floor(Math.random() * fallbackTeachers.length)];
+                    state.draftTimetable[classSection][day][p] = {
+                      subject: subject,
+                      teacherId: picked.id,
+                      isFallback: true,
+                      isWarning: false
+                    };
+                    var subNorm = subject.toLowerCase().trim();
+                    if (usedSubjectsToday.indexOf(subNorm) === -1) {
+                      usedSubjectsToday.push(subNorm);
+                    }
+                    lastPeriodSubject = subject;
+                    assigned = true;
+                    break;
+                  }
+                }
+              }
+
+              // STEP 3 — Leave Blank (only if Step 2 also fails):
+              // - Do not force assign anyone
+              // - Leave period empty
+              // - Show warning badge: "No teacher available — assign manually"
+              if (!assigned) {
+                state.draftTimetable[classSection][day][p] = {
+                  subject: '',
+                  teacherId: '',
+                  isWarning: true,
+                  isFallback: false
+                };
                 lastPeriodSubject = null;
               }
             }
@@ -855,8 +1023,9 @@
   }
 
   function saveTimetable() {
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || [];
+    var sections = settings.sections || [];
     
     // 1. If in Class View, sync current page selections from the DOM into draftTimetable before checking
     if (state.viewMode === 'class') {

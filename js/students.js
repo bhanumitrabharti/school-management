@@ -17,6 +17,20 @@
     editingStudent: null
   };
 
+  function getStudentAvatar(student, size) {
+    size = size || 40;
+    if (student && student.photoUrl) {
+      return '<img src="' + student.photoUrl + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;" />';
+    }
+    var first = (student && student.firstName) || '';
+    var last = (student && student.lastName) || '';
+    var name = (first + " " + last).trim() || 'Student';
+    var initials = name.split(" ").filter(Boolean).map(function(w) { return w[0]; }).slice(0, 2).join("").toUpperCase();
+    var colors = ["#e74c3c","#3498db","#2ecc71","#9b59b6","#f39c12","#1abc9c"];
+    var color = colors[name.charCodeAt(0) % colors.length];
+    return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:' + Math.round(size*0.35) + 'px;">' + initials + '</div>';
+  }
+
   function getFilteredStudents() {
     var students = SchoolApp.store.students || [];
 
@@ -77,8 +91,36 @@
     var container = document.getElementById('page-students');
     if (!container) return;
 
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    if (SchoolApp.preselectedStudent) {
+      var ps = SchoolApp.preselectedStudent;
+      state.searchQuery = ps.rollNumber || (ps.firstName + ' ' + ps.lastName);
+      state.classFilter = 'all';
+      state.sectionFilter = 'all';
+      state.statusFilter = 'all';
+      state.currentPage = 1;
+      SchoolApp.preselectedStudent = null; // clear after using
+    }
+
+    if (!window.assertSchoolIsolation(SchoolApp.store.students, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Students Tab!");
+      SchoolApp.showToast("Security error. Please logout and login again.", "error");
+      SchoolApp.logout();
+      return;
+    }
+
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
+    var sections = [];
+    if (Array.isArray(rawSections)) {
+      sections = rawSections;
+    } else if (typeof rawSections === 'object') {
+      var allSecs = new Set();
+      Object.values(rawSections).forEach(function(arr) {
+        if (Array.isArray(arr)) arr.forEach(function(s) { allSecs.add(s); });
+      });
+      sections = Array.from(allSecs);
+    }
 
     // Filter classes and sections for teacher to prevent bypassing filters
     if (SchoolApp.isTeacher()) {
@@ -112,11 +154,12 @@
       var totalCount = (SchoolApp.store.students || []).length;
       shellHtml += '<h2><span class="material-icons-round">school</span> Student Management <span class="badge badge-purple" id="students-total-badge">' + totalCount + '</span></h2>';
       shellHtml += '<div class="header-actions">';
-      if (isAdmin) {
+      var canAdd = isAdmin && SchoolApp.checkFeatureAccess('students');
+      if (canAdd) {
         shellHtml += '<button class="btn btn-secondary btn-sm" id="student-import-btn"><span class="material-icons-round">upload_file</span> Import</button>';
       }
       shellHtml += '<button class="btn btn-secondary btn-sm" id="student-export-btn"><span class="material-icons-round">download</span> Export</button>';
-      if (isAdmin) {
+      if (canAdd) {
         shellHtml += '<button class="btn btn-primary" id="student-add-btn"><span class="material-icons-round">add</span> Add Student</button>';
       }
       shellHtml += '</div></div>';
@@ -206,7 +249,7 @@
 
         html += '<tr>';
         if (isAdmin) html += '<td><input type="checkbox" class="student-checkbox" data-id="' + s.id + '"' + (isSelected ? ' checked' : '') + ' style="cursor:pointer"></td>';
-        html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong>' + s.firstName + ' ' + s.lastName + '</strong></div></div></td>';
+        html += '<td><div class="table-student-name">' + getStudentAvatar(s, 32) + '<div><strong>' + s.firstName + ' ' + s.lastName + '</strong></div></div></td>';
         html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
         html += '<td>' + s.rollNumber + '</td>';
         html += '<td>' + s.parentName + '</td>';
@@ -214,7 +257,8 @@
         html += '<td><span class="badge ' + (s.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + s.status + '</span></td>';
         html += '<td><div class="table-actions">';
         html += '<button class="btn-icon student-view-btn" data-id="' + s.id + '" title="View"><span class="material-icons-round">visibility</span></button>';
-        if (isAdmin) {
+        var canEdit = isAdmin && SchoolApp.checkFeatureAccess('students');
+        if (canEdit) {
           html += '<button class="btn-icon student-edit-btn" data-id="' + s.id + '" title="Edit"><span class="material-icons-round">edit</span></button>';
           html += '<button class="btn-icon student-delete-btn" data-id="' + s.id + '" title="Delete"><span class="material-icons-round">delete</span></button>';
         }
@@ -375,8 +419,8 @@
 
   function showStudentForm(student) {
     var isEdit = !!student;
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || [];
 
     var bodyHTML = '<form id="student-form" class="form-grid">';
 
@@ -384,11 +428,11 @@
     bodyHTML += '<div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" name="lastName" value="' + (student ? student.lastName : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Class *</label><select class="form-select" name="class" required><option value="">Select Class</option>';
-    classes.forEach(function(c) { bodyHTML += '<option value="' + c + '"' + (student && student.class === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
+    classes.forEach(function(c) { bodyHTML += '<option value="' + c + '"' + (student && student.class === c ? ' selected' : '') + '>' + c + '</option>'; });
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Section *</label><select class="form-select" name="section" required><option value="">Select Section</option>';
-    sections.forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (student && student.section === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
+    // Populated dynamically below
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Roll Number *</label><input type="text" class="form-input" name="rollNumber" value="' + (student ? student.rollNumber : '') + '" required><span class="form-error">Required</span></div>';
@@ -415,6 +459,15 @@
     ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (student && student.status === s ? ' selected' : '') + '>' + s + '</option>'; });
     bodyHTML += '</select></div>';
 
+    var photoDisplay = (student && student.photoUrl) ? 'block' : 'none';
+    var photoSrc = (student && student.photoUrl) || '';
+    bodyHTML += '<div class="form-group">';
+    bodyHTML += '  <label class="form-label">Student Photo (Optional)</label>';
+    bodyHTML += '  <input type="file" id="student-photo-input" accept="image/*"';
+    bodyHTML += '    onchange="StorageUtils.previewImage(this.files[0], \'student-photo-preview\')" />';
+    bodyHTML += '  <img id="student-photo-preview" src="' + photoSrc + '" style="max-width:80px;max-height:80px;display:' + photoDisplay + ';border-radius:50%;margin-top:8px;object-fit:cover;" />';
+    bodyHTML += '</div>';
+
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -422,13 +475,49 @@
 
     SchoolApp.showModal((isEdit ? 'Edit' : 'Add New') + ' Student', bodyHTML, footerHTML);
 
+    var form = document.getElementById('student-form');
+    var classSelect = form.querySelector('select[name="class"]');
+    var sectionSelect = form.querySelector('select[name="section"]');
+
+    function updateSectionsDropdown(selectedClass, selectedSection) {
+      if (!sectionSelect) return;
+      sectionSelect.innerHTML = '<option value="">Select Section</option>';
+
+      var sectList = [];
+      var settings = SchoolApp.store.settings || {};
+      if (settings.sections) {
+        if (Array.isArray(settings.sections)) {
+          sectList = settings.sections;
+        } else if (typeof settings.sections === 'object') {
+          sectList = settings.sections[selectedClass] || [];
+        }
+      }
+
+      sectList.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = 'Section ' + s;
+        if (selectedSection && s === selectedSection) {
+          opt.selected = true;
+        }
+        sectionSelect.appendChild(opt);
+      });
+    }
+
+    if (classSelect) {
+      classSelect.addEventListener('change', function() {
+        updateSectionsDropdown(this.value);
+      });
+      updateSectionsDropdown(classSelect.value, student ? student.section : null);
+    }
+
     // Save handler
     document.getElementById('student-save-btn').addEventListener('click', function() {
       saveStudent(student);
     });
   }
 
-  function saveStudent(existing) {
+  async function saveStudent(existing) {
     var form = document.getElementById('student-form');
     if (!form) return;
 
@@ -438,6 +527,7 @@
 
     inputs.forEach(function(input) {
       var name = input.name;
+      if (input.type === 'file' || !name) return;
       var value = input.value.trim();
       fields[name] = value;
 
@@ -463,21 +553,37 @@
       return;
     }
 
+    var studentId = existing ? existing.id : SchoolApp.generateId();
+    fields.id = studentId;
+
+    const photoFile = document.getElementById("student-photo-input")?.files[0];
+    if (photoFile) {
+      try {
+        const compressed = await StorageUtils.compressImage(photoFile, 300, 0.75);
+        const uploadedUrl = await StorageUtils.uploadStudentPhoto(compressed, SchoolApp.store.currentSchoolId, studentId);
+        if (uploadedUrl) {
+          fields.photoUrl = uploadedUrl;
+        }
+      } catch (err) {
+        console.warn("Photo upload failed:", err.message);
+      }
+    }
+
     if (existing) {
       // Update
       var idx = SchoolApp.store.students.findIndex(function(s) { return s.id === existing.id; });
       if (idx !== -1) {
+        if (!fields.photoUrl) fields.photoUrl = existing.photoUrl;
         Object.assign(SchoolApp.store.students[idx], fields);
         SchoolApp.showToast('Student updated successfully.', 'success');
       }
     } else {
       // Create
-      fields.id = SchoolApp.generateId();
       SchoolApp.store.students.push(fields);
       SchoolApp.showToast('Student added successfully.', 'success');
     }
 
-    SchoolApp.save();
+    await SchoolApp.save();
     SchoolApp.closeModal();
     render();
   }
@@ -507,7 +613,7 @@
     var color = SchoolApp.getAvatarColor(student.firstName + student.lastName);
 
     var html = '<div class="detail-header">';
-    html += '<div class="avatar avatar-xl" data-color="' + color + '">' + initials + '</div>';
+    html += getStudentAvatar(student, 80);
     html += '<div><div class="detail-name">' + student.firstName + ' ' + student.lastName + '</div>';
     html += '<div class="detail-subtitle">Class ' + student.class + '-' + student.section + ' · Roll No. ' + student.rollNumber + '</div>';
     html += '<span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + student.status + '</span>';

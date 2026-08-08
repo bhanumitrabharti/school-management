@@ -6,10 +6,27 @@
 
 (function() {
 
-  // Default Coordinates: Shishu Vikash Mandir in Chandrapura
-  var SCHOOL_LAT = 23.7588;
-  var SCHOOL_LON = 86.1179;
-  var GEOFENCE_RADIUS = 200; // Radius in meters (roughly 200m)
+  // Dynamic Coordinates Loader
+  function getGeofenceSettings() {
+    var s = SchoolApp.store.settings || {};
+    var g = s.geofence;
+    
+    // If SVM and geofence is not set, initialize it with Chandrapura coordinates
+    var isSVM = SchoolApp.store.currentSchoolId === 'svm_bokaro_001';
+    if (!g && isSVM) {
+      return {
+        lat: 23.7588,
+        lng: 86.1179,
+        radius: 200
+      };
+    }
+    
+    return {
+      lat: g && g.lat !== undefined ? parseFloat(g.lat) : null,
+      lng: g && g.lng !== undefined ? parseFloat(g.lng) : null,
+      radius: g && g.radius !== undefined ? parseInt(g.radius, 10) : 200
+    };
+  }
 
   var state = {
     activeTab: 'approvals', // 'approvals' | 'logs'
@@ -59,14 +76,20 @@
       return;
     }
 
+    var geo = getGeofenceSettings();
+    if (geo.lat === null || geo.lng === null) {
+      SchoolApp.showToast('School location has not been configured by the administrator yet. Please configure it in School Settings.', 'error');
+      return;
+    }
+
     SchoolApp.showToast('Capturing GPS coordinates...', 'info');
 
     navigator.geolocation.getCurrentPosition(function(position) {
       var lat = position.coords.latitude;
       var lon = position.coords.longitude;
       
-      var distance = calculateDistance(lat, lon, SCHOOL_LAT, SCHOOL_LON);
-      var isInside = distance <= GEOFENCE_RADIUS;
+      var distance = calculateDistance(lat, lon, geo.lat, geo.lng);
+      var isInside = distance <= geo.radius;
       var geofenceStatus = isInside ? 'Inside Geofence' : 'Outside Geofence';
 
       var todayStr = new Date().toISOString().split('T')[0];
@@ -171,6 +194,63 @@
     });
   }
 
+  function showGpsFallbackModal() {
+    var todayStr = new Date().toISOString().split('T')[0];
+    var timeStr = new Date().toTimeString().split(' ')[0].substring(0, 5); // HH:MM
+
+    var bodyHTML = '<form id="gps-fallback-form" class="form-grid">';
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Date</label>';
+    bodyHTML += '<input type="date" id="fallback-date" class="form-input" value="' + todayStr + '" readonly></div>';
+    
+    bodyHTML += '<div class="form-group"><label class="form-label">Punch Type *</label>';
+    bodyHTML += '<select id="fallback-punch-type" class="form-select"><option value="in">Punch In</option><option value="out">Punch Out</option></select></div>';
+
+    bodyHTML += '<div class="form-group"><label class="form-label">Time *</label>';
+    bodyHTML += '<input type="time" id="fallback-time" class="form-input" value="' + timeStr + '" required></div>';
+    
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Reason / Justification *</label>';
+    bodyHTML += '<textarea id="fallback-reason" class="form-textarea" rows="2" required>GPS not working / Location capture failed</textarea></div>';
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="submit-fallback-btn"><span class="material-icons-round">send</span> Send Request</button>';
+
+    SchoolApp.showModal('Request Manual Attendance Approval', bodyHTML, footerHTML);
+
+    document.getElementById('submit-fallback-btn').addEventListener('click', function() {
+      var dateVal = document.getElementById('fallback-date').value;
+      var typeVal = document.getElementById('fallback-punch-type').value;
+      var timeVal = document.getElementById('fallback-time').value;
+      var reasonVal = document.getElementById('fallback-reason').value.trim();
+
+      if (!timeVal || !reasonVal) {
+        SchoolApp.showToast('Please fill in all requested fields.', 'error');
+        return;
+      }
+
+      var request = {
+        id: SchoolApp.generateId(),
+        teacherId: SchoolApp.currentUser.id,
+        teacherName: SchoolApp.currentUser.firstName + ' ' + SchoolApp.currentUser.lastName,
+        date: dateVal,
+        timeIn: typeVal === 'in' ? timeVal : '',
+        timeOut: typeVal === 'out' ? timeVal : '',
+        reason: reasonVal,
+        status: 'Pending',
+        submittedAt: new Date().toISOString()
+      };
+
+      if (!SchoolApp.store.teacherCorrectionRequests) {
+        SchoolApp.store.teacherCorrectionRequests = [];
+      }
+      SchoolApp.store.teacherCorrectionRequests.push(request);
+      SchoolApp.save();
+      SchoolApp.closeModal();
+      SchoolApp.showToast('Manual attendance request submitted to admin.', 'success');
+      render();
+    });
+  }
+
   function processCorrection(requestId, approve) {
     if (!SchoolApp.store.teacherCorrectionRequests) return;
 
@@ -181,42 +261,45 @@
     
     if (approve) {
       request.status = 'Approved';
+      if (!SchoolApp.store.teacherAttendance) SchoolApp.store.teacherAttendance = [];
 
       // Insert Punch In log entry
-      var inRecord = {
-        id: SchoolApp.generateId(),
-        teacherId: request.teacherId,
-        teacherName: request.teacherName,
-        date: request.date,
-        type: 'in',
-        time: request.timeIn + ':00',
-        timestamp: request.date + 'T' + request.timeIn + ':00.000Z',
-        latitude: null,
-        longitude: null,
-        distance: 0,
-        geofenceStatus: 'Inside Geofence (Manual Correction)',
-        method: 'Manual'
-      };
+      if (request.timeIn) {
+        var inRecord = {
+          id: SchoolApp.generateId(),
+          teacherId: request.teacherId,
+          teacherName: request.teacherName,
+          date: request.date,
+          type: 'in',
+          time: request.timeIn + (request.timeIn.length === 5 ? ':00' : ''),
+          timestamp: request.date + 'T' + request.timeIn + (request.timeIn.length === 5 ? ':00' : '') + '.000Z',
+          latitude: null,
+          longitude: null,
+          distance: 0,
+          geofenceStatus: 'Inside Geofence (Manual Correction)',
+          method: 'Manual'
+        };
+        SchoolApp.store.teacherAttendance.push(inRecord);
+      }
 
       // Insert Punch Out log entry
-      var outRecord = {
-        id: SchoolApp.generateId(),
-        teacherId: request.teacherId,
-        teacherName: request.teacherName,
-        date: request.date,
-        type: 'out',
-        time: request.timeOut + ':00',
-        timestamp: request.date + 'T' + request.timeOut + ':00.000Z',
-        latitude: null,
-        longitude: null,
-        distance: 0,
-        geofenceStatus: 'Inside Geofence (Manual Correction)',
-        method: 'Manual'
-      };
-
-      if (!SchoolApp.store.teacherAttendance) SchoolApp.store.teacherAttendance = [];
-      SchoolApp.store.teacherAttendance.push(inRecord);
-      SchoolApp.store.teacherAttendance.push(outRecord);
+      if (request.timeOut) {
+        var outRecord = {
+          id: SchoolApp.generateId(),
+          teacherId: request.teacherId,
+          teacherName: request.teacherName,
+          date: request.date,
+          type: 'out',
+          time: request.timeOut + (request.timeOut.length === 5 ? ':00' : ''),
+          timestamp: request.date + 'T' + request.timeOut + (request.timeOut.length === 5 ? ':00' : '') + '.000Z',
+          latitude: null,
+          longitude: null,
+          distance: 0,
+          geofenceStatus: 'Inside Geofence (Manual Correction)',
+          method: 'Manual'
+        };
+        SchoolApp.store.teacherAttendance.push(outRecord);
+      }
 
       SchoolApp.showToast('Correction approved and punches injected successfully.', 'success');
     } else {
@@ -269,11 +352,14 @@
       html += '<div class="geofence-badge ' + badgeClass + '"><span class="material-icons-round">' + badgeIcon + '</span>' + loc.status + '</div>';
       html += '<div class="gps-info-text">Last Punch GPS: ' + loc.latitude + ', ' + loc.longitude + ' (' + loc.distance + 'm from school)</div>';
     } else {
-      // Default info indicator
-      html += '<div class="gps-info-text"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">location_on</span> SVM Geofence Radius: 200m</div>';
+      var geo = getGeofenceSettings();
+      var radiusMsg = (geo.lat === null || geo.lng === null) ? 'Not Configured' : (geo.radius + 'm');
+      var schoolName = (SchoolApp.store.settings && SchoolApp.store.settings.schoolName) || 'School';
+      html += '<div class="gps-info-text"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">location_on</span> ' + schoolName + ' Geofence Radius: ' + radiusMsg + '</div>';
     }
 
     html += '<button class="btn btn-secondary btn-sm" id="corr-request-btn" style="margin-top: 16px;"><span class="material-icons-round">history_toggle_off</span> Request Correction</button>';
+    html += '<div style="margin-top: 12px; text-align: center;"><a href="#" id="gps-fallback-btn" style="font-size: 13px; color: var(--accent-secondary); text-decoration: underline;">GPS not working? Request manual approval</a></div>';
     html += '</div>'; // End punch-card-wrapper
 
     // Personal Logs List
@@ -324,7 +410,15 @@
         
         html += '<tr>';
         html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
-        html += '<td><strong>' + r.timeIn + ' - ' + r.timeOut + '</strong></td>';
+        var timeText = '';
+        if (r.timeIn && r.timeOut) {
+          timeText = r.timeIn + ' - ' + r.timeOut;
+        } else if (r.timeIn) {
+          timeText = 'Punch In: ' + r.timeIn;
+        } else if (r.timeOut) {
+          timeText = 'Punch Out: ' + r.timeOut;
+        }
+        html += '<td><strong>' + timeText + '</strong></td>';
         html += '<td>' + r.reason + '</td>';
         html += '<td><span class="badge ' + statusColor + '">' + r.status + '</span></td>';
         html += '</tr>';
@@ -364,6 +458,14 @@
 
     var corrBtn = document.getElementById('corr-request-btn');
     if (corrBtn) corrBtn.addEventListener('click', showCorrectionModal);
+
+    var fallbackBtn = document.getElementById('gps-fallback-btn');
+    if (fallbackBtn) {
+      fallbackBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        showGpsFallbackModal();
+      });
+    }
   }
 
   function renderAdminUI(container) {
@@ -395,7 +497,15 @@
           html += '<tr>';
           html += '<td><strong>' + r.teacherName + '</strong></td>';
           html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
-          html += '<td><strong>' + r.timeIn + ' - ' + r.timeOut + '</strong></td>';
+          var timeText = '';
+          if (r.timeIn && r.timeOut) {
+            timeText = r.timeIn + ' - ' + r.timeOut;
+          } else if (r.timeIn) {
+            timeText = 'Punch In: ' + r.timeIn;
+          } else if (r.timeOut) {
+            timeText = 'Punch Out: ' + r.timeOut;
+          }
+          html += '<td><strong>' + timeText + '</strong></td>';
           html += '<td>' + r.reason + '</td>';
           html += '<td>' + new Date(r.submittedAt).toLocaleString('en-IN') + '</td>';
           html += '<td><div class="table-actions">';

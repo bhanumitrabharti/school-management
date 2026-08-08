@@ -1,6 +1,50 @@
 {
   "version": 2,
-  "name": "shishu-vikash-mandir",
-  "cleanUrls": true,
-  "trailingSlash": false
+  "cleanUrls": false,
+  "trailingSlash": false,
+  "routes": [
+    {
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1",
+      "continue": false
+    },
+    {
+      "src": "/super-admin\\.html",
+      "dest": "/super-admin.html",
+      "continue": false
+    },
+    {
+      "src": "/super-admin",
+      "dest": "/super-admin.html",
+      "continue": false
+    },
+    {
+      "src": "/landing\\.html",
+      "dest": "/landing.html",
+      "continue": false
+    },
+    {
+      "src": "/landing",
+      "dest": "/landing.html",
+      "continue": false
+    },
+    {
+      "src": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?:www\\.)?ctrlshifts\\.in$"
+        }
+      ],
+      "dest": "/landing.html",
+      "continue": false
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }

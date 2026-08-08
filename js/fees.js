@@ -12,8 +12,25 @@
     sectionFilter: 'all',
     statusFilter: 'all', // 'all' | 'unpaid' | 'paid'
     currentPage: 1,
-    perPage: 10
+    perPage: 10,
+    activeTab: 'students', // 'students' | 'history'
+    historyClassFilter: 'all',
+    historyTypeFilter: 'all',
+    historySearchQuery: '',
+    historyStartDate: '',
+    historyEndDate: '',
+    historyCurrentPage: 1
   };
+
+  function escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
   function getFeeAmount(className, feeHeadId) {
     var key = feeHeadId;
@@ -149,6 +166,369 @@
     return students;
   }
 
+  function exportHistoryToExcel() {
+    var students = SchoolApp.store.students || [];
+    var studentMap = {};
+    students.forEach(function(s) {
+      studentMap[s.id] = s;
+    });
+
+    var logs = (SchoolApp.store.feeActivityLog || []).filter(function(log) {
+      return !!studentMap[log.studentId];
+    });
+
+    if (state.historyClassFilter !== 'all') {
+      logs = logs.filter(function(log) {
+        var student = studentMap[log.studentId];
+        var sClass = student ? student.class : (log.className ? log.className.split('-')[0] : '');
+        return sClass === state.historyClassFilter;
+      });
+    }
+
+    if (state.historyTypeFilter !== 'all') {
+      logs = logs.filter(function(log) {
+        return log.feeHeadName === state.historyTypeFilter;
+      });
+    }
+
+    if (state.historySearchQuery) {
+      var q = state.historySearchQuery.toLowerCase();
+      logs = logs.filter(function(log) {
+        var student = studentMap[log.studentId];
+        var studentName = log.studentName || (student ? (student.firstName + ' ' + student.lastName) : '');
+        var roll = student ? student.rollNumber : '';
+        return studentName.toLowerCase().indexOf(q) !== -1 || roll.toLowerCase().indexOf(q) !== -1;
+      });
+    }
+
+    if (state.historyStartDate) {
+      var startLimit = new Date(state.historyStartDate + 'T00:00:00');
+      logs = logs.filter(function(log) {
+        return new Date(log.timestamp) >= startLimit;
+      });
+    }
+    if (state.historyEndDate) {
+      var endLimit = new Date(state.historyEndDate + 'T23:59:59');
+      logs = logs.filter(function(log) {
+        return new Date(log.timestamp) <= endLimit;
+      });
+    }
+
+    logs.sort(function(a, b) {
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+
+    var columns = [
+      {
+        header: 'Timestamp',
+        key: 'timestamp',
+        transform: function(val) {
+          return SchoolApp.formatDate(val.split('T')[0]) + ' ' + new Date(val).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+      },
+      {
+        header: 'Student Name',
+        key: 'studentName'
+      },
+      {
+        header: 'Class-Section',
+        key: 'className'
+      },
+      {
+        header: 'Fee Type / Head',
+        key: 'feeHeadName'
+      },
+      {
+        header: 'Amount (₹)',
+        key: 'amount'
+      },
+      {
+        header: 'Added By',
+        key: 'addedBy'
+      },
+      {
+        header: 'Note / Reason',
+        key: 'note'
+      }
+    ];
+
+    SchoolApp.utils.exportToExcel(
+      logs,
+      columns,
+      'fee_activity_history_' + new Date().toISOString().split('T')[0] + '.xlsx'
+    );
+  }
+
+  function exportHistoryToPDF() {
+    var students = SchoolApp.store.students || [];
+    var studentMap = {};
+    students.forEach(function(s) {
+      studentMap[s.id] = s;
+    });
+
+    var logs = (SchoolApp.store.feeActivityLog || []).filter(function(log) {
+      return !!studentMap[log.studentId];
+    });
+
+    if (state.historyClassFilter !== 'all') {
+      logs = logs.filter(function(log) {
+        var student = studentMap[log.studentId];
+        var sClass = student ? student.class : (log.className ? log.className.split('-')[0] : '');
+        return sClass === state.historyClassFilter;
+      });
+    }
+
+    if (state.historyTypeFilter !== 'all') {
+      logs = logs.filter(function(log) {
+        return log.feeHeadName === state.historyTypeFilter;
+      });
+    }
+
+    if (state.historySearchQuery) {
+      var q = state.historySearchQuery.toLowerCase();
+      logs = logs.filter(function(log) {
+        var student = studentMap[log.studentId];
+        var studentName = log.studentName || (student ? (student.firstName + ' ' + student.lastName) : '');
+        var roll = student ? student.rollNumber : '';
+        return studentName.toLowerCase().indexOf(q) !== -1 || roll.toLowerCase().indexOf(q) !== -1;
+      });
+    }
+
+    if (state.historyStartDate) {
+      var startLimit = new Date(state.historyStartDate + 'T00:00:00');
+      logs = logs.filter(function(log) {
+        return new Date(log.timestamp) >= startLimit;
+      });
+    }
+    if (state.historyEndDate) {
+      var endLimit = new Date(state.historyEndDate + 'T23:59:59');
+      logs = logs.filter(function(log) {
+        return new Date(log.timestamp) <= endLimit;
+      });
+    }
+
+    logs.sort(function(a, b) {
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+
+    if (logs.length === 0) {
+      SchoolApp.showToast('No data to export.', 'warning');
+      return;
+    }
+
+    var printWindow = window.open('', '_blank', 'width=1000,height=800');
+    if (!printWindow) {
+      SchoolApp.showToast('Popup blocker prevented opening PDF/Print view. Please allow popups for this site.', 'warning');
+      return;
+    }
+
+    var settings = SchoolApp.store.settings || {};
+    var info = settings.schoolInfo || {};
+    var logoUrl = settings.logoUrl || info.logoUrl || '';
+    if (!logoUrl) {
+      logoUrl = new URL('school-logo-updated.jpg', window.location.href).href + '?t=' + new Date().getTime();
+    }
+
+    var html = '<html><head><title>Fee Activity Report</title>';
+    html += '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">';
+    html += '<style>';
+    html += 'body { font-family: "Inter", sans-serif; padding: 30px; color: #333; }';
+    html += '.header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 20px; }';
+    html += '.header-left { display: flex; align-items: center; gap: 15px; }';
+    html += '.logo { height: 60px; width: auto; object-fit: contain; }';
+    html += '.school-title { font-size: 20px; font-weight: 700; margin: 0; }';
+    html += '.report-title { font-size: 24px; font-weight: 700; margin: 0; text-align: right; }';
+    html += '.info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px; font-size: 13px; background: #f9f9f9; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }';
+    html += '.info-item span { font-weight: 600; }';
+    html += '.summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 25px; }';
+    html += '.summary-card { border: 1px solid #ccc; padding: 15px; border-radius: 6px; text-align: center; background: #fff; }';
+    html += '.summary-val { font-size: 22px; font-weight: 700; color: #7c3aed; }';
+    html += '.summary-lbl { font-size: 12px; color: #666; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.5px; }';
+    html += '.report-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }';
+    html += '.report-table th, .report-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }';
+    html += '.report-table th { background: #f2f2f2; font-weight: 600; }';
+    html += '.report-table tr:nth-child(even) { background: #fafafa; }';
+    html += '@media print {';
+    html += '  body { padding: 10mm; }';
+    html += '  .summary-card { border: 1px solid #000; }';
+    html += '  .summary-val { color: #000; }';
+    html += '}';
+    html += '</style></head><body>';
+
+    // Header
+    html += '<div class="header">';
+    html += '<div class="header-left">';
+    html += '<img src="' + logoUrl + '" class="logo">';
+    html += '<div>';
+    html += '<h1 class="school-title">' + (settings.schoolName || 'Shishu Vikash Mandir') + '</h1>';
+    if (info.tagline) html += '<p style="margin: 3px 0 0 0; font-size: 11px; color: #666;">' + info.tagline + '</p>';
+    html += '</div></div>';
+    html += '<h2 class="report-title">Fee Activity Report</h2>';
+    html += '</div>';
+
+    // Info block
+    html += '<div class="info-grid">';
+    html += '<div class="info-item"><span>Generated On:</span> ' + new Date().toLocaleString() + '</div>';
+    html += '<div class="info-item"><span>Class Filter:</span> ' + (state.historyClassFilter === 'all' ? 'All Classes' : 'Class ' + state.historyClassFilter) + '</div>';
+    html += '<div class="info-item"><span>Fee Type Filter:</span> ' + (state.historyTypeFilter === 'all' ? 'All Types' : state.historyTypeFilter) + '</div>';
+    var dateRangeStr = 'All Time';
+    if (state.historyStartDate || state.historyEndDate) {
+      dateRangeStr = (state.historyStartDate || 'Beginning') + ' to ' + (state.historyEndDate || 'Today');
+    }
+    html += '<div class="info-item"><span>Date Range:</span> ' + dateRangeStr + '</div>';
+    html += '</div>';
+
+    // Summary
+    var totalAmount = logs.reduce(function(sum, item) { return sum + parseFloat(item.amount || 0); }, 0);
+    html += '<div class="summary-grid">';
+    html += '<div class="summary-card"><div class="summary-val">₹' + totalAmount.toLocaleString('en-IN') + '</div><div class="summary-lbl">Total Filtered Charges</div></div>';
+    html += '<div class="summary-card"><div class="summary-val">' + logs.length + '</div><div class="summary-lbl">Total Logged Entries</div></div>';
+    html += '</div>';
+
+    // Table
+    html += '<table class="report-table"><thead><tr>';
+    html += '<th>Date & Time</th><th>Student Name</th><th>Class</th><th>Fee Head</th><th>Amount</th><th>Added By</th><th>Note / Reason</th>';
+    html += '</tr></thead><tbody>';
+
+    logs.forEach(function(log) {
+      var logDateStr = SchoolApp.formatDate(log.timestamp.split('T')[0]) + ' ' + new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      html += '<tr>';
+      html += '<td>' + logDateStr + '</td>';
+      html += '<td>' + log.studentName + '</td>';
+      html += '<td>' + log.className + '</td>';
+      html += '<td>' + log.feeHeadName + '</td>';
+      html += '<td>₹' + parseFloat(log.amount || 0).toLocaleString('en-IN') + '</td>';
+      html += '<td>' + log.addedBy + '</td>';
+      html += '<td>' + (log.note || '—') + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></body></html>';
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setTimeout(function() {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
+  }
+
+  function renderHistoryTab(dataContainer) {
+    var students = SchoolApp.store.students || [];
+    var studentMap = {};
+    students.forEach(function(s) {
+      studentMap[s.id] = s;
+    });
+
+    var logs = (SchoolApp.store.feeActivityLog || []).filter(function(log) {
+      return !!studentMap[log.studentId];
+    });
+
+    if (state.historyClassFilter !== 'all') {
+      logs = logs.filter(function(log) {
+        var student = studentMap[log.studentId];
+        var sClass = student ? student.class : (log.className ? log.className.split('-')[0] : '');
+        return sClass === state.historyClassFilter;
+      });
+    }
+
+    if (state.historyTypeFilter !== 'all') {
+      logs = logs.filter(function(log) {
+        return log.feeHeadName === state.historyTypeFilter;
+      });
+    }
+
+    if (state.historySearchQuery) {
+      var q = state.historySearchQuery.toLowerCase();
+      logs = logs.filter(function(log) {
+        var student = studentMap[log.studentId];
+        var studentName = log.studentName || (student ? (student.firstName + ' ' + student.lastName) : '');
+        var roll = student ? student.rollNumber : '';
+        return studentName.toLowerCase().indexOf(q) !== -1 || roll.toLowerCase().indexOf(q) !== -1;
+      });
+    }
+
+    if (state.historyStartDate) {
+      var startLimit = new Date(state.historyStartDate + 'T00:00:00');
+      logs = logs.filter(function(log) {
+        return new Date(log.timestamp) >= startLimit;
+      });
+    }
+    if (state.historyEndDate) {
+      var endLimit = new Date(state.historyEndDate + 'T23:59:59');
+      logs = logs.filter(function(log) {
+        return new Date(log.timestamp) <= endLimit;
+      });
+    }
+
+    logs.sort(function(a, b) {
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+
+    var totalAmount = logs.reduce(function(sum, log) { return sum + parseFloat(log.amount || 0); }, 0);
+    var totalCount = logs.length;
+
+    var amtEl = document.getElementById('history-amount-value');
+    if (amtEl) amtEl.textContent = '₹' + totalAmount.toLocaleString('en-IN');
+    var countEl = document.getElementById('history-count-value');
+    if (countEl) countEl.textContent = totalCount.toString();
+
+    var totalPages = Math.ceil(logs.length / state.perPage);
+    if (state.historyCurrentPage > totalPages && totalPages > 0) state.historyCurrentPage = totalPages;
+    var start = (state.historyCurrentPage - 1) * state.perPage;
+    var pageLogs = logs.slice(start, start + state.perPage);
+
+    var html = '';
+    if (pageLogs.length > 0) {
+      html += '<div class="table-container"><table class="data-table"><thead><tr>';
+      html += '<th>Date & Time</th><th>Student</th><th>Class</th><th>Fee Head</th><th>Amount</th><th>Added By</th><th>Note / Reason</th>';
+      html += '</tr></thead><tbody>';
+
+      pageLogs.forEach(function(log) {
+        var logDateStr = SchoolApp.formatDate(log.timestamp.split('T')[0]) + ' ' + new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        html += '<tr>';
+        html += '<td>' + logDateStr + '</td>';
+        html += '<td><strong style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + log.studentId + '\')">' + escapeHTML(log.studentName) + '</strong></td>';
+        html += '<td><span class="badge badge-info">' + log.className + '</span></td>';
+        html += '<td>' + log.feeHeadName + '</td>';
+        html += '<td>₹' + parseFloat(log.amount || 0).toLocaleString('en-IN') + '</td>';
+        html += '<td><span class="badge badge-secondary">' + log.addedBy + '</span></td>';
+        html += '<td><span style="font-size: 12px; color: var(--text-secondary);">' + (log.note || '—') + '</span></td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+
+      html += '<div class="pagination">';
+      html += '<span class="pagination-info">Showing ' + (start + 1) + ' to ' + Math.min(start + state.perPage, logs.length) + ' of ' + logs.length + ' entries</span>';
+      html += '<button class="pagination-btn" ' + (state.historyCurrentPage <= 1 ? 'disabled' : '') + ' data-page="prev"><span class="material-icons-round">chevron_left</span></button>';
+      for (var i = 1; i <= totalPages; i++) {
+        html += '<button class="pagination-btn' + (i === state.historyCurrentPage ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+      }
+      html += '<button class="pagination-btn" ' + (state.historyCurrentPage >= totalPages ? 'disabled' : '') + ' data-page="next"><span class="material-icons-round">chevron_right</span></button>';
+      html += '</div>';
+
+    } else {
+      html += '<div class="empty-state"><span class="material-icons-round">history</span><h3>No History Found</h3><p>No activity match your current filters.</p></div>';
+    }
+
+    dataContainer.innerHTML = html;
+
+    dataContainer.querySelectorAll('.pagination-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var page = this.getAttribute('data-page');
+        if (page === 'prev') {
+          state.historyCurrentPage--;
+        } else if (page === 'next') {
+          state.historyCurrentPage++;
+        } else {
+          state.historyCurrentPage = parseInt(page);
+        }
+        renderHistoryTab(dataContainer);
+      });
+    });
+  }
+
   function render() {
     var container = document.getElementById('page-fees');
     if (!container) return;
@@ -163,7 +543,6 @@
     var filteredStudents = getFilteredStudents();
     var isAdmin = SchoolApp.isAdmin();
 
-    // Calculate Dashboard Stats
     var schoolDues = 0;
     var schoolPaid = 0;
     (SchoolApp.store.fees || []).forEach(function(f) {
@@ -172,7 +551,6 @@
     });
     var outstandingAmt = schoolDues - schoolPaid;
 
-    // Check if the shell layout is already rendered for the current user role
     var dataContainer = document.getElementById('fees-data-container');
     var currentRenderedRole = container.getAttribute('data-rendered-role');
     var userRole = isAdmin ? 'admin' : 'teacher';
@@ -181,33 +559,42 @@
       container.setAttribute('data-rendered-role', userRole);
       var shellHtml = '';
 
-      // Page Header
       shellHtml += '<div class="page-header">';
       shellHtml += '<h2>Fee Management</h2>';
       shellHtml += '<div class="header-actions">';
       if (isAdmin) {
         shellHtml += '<button class="btn btn-primary" id="bulk-charge-fee-btn"><span class="material-icons-round">campaign</span> Bulk Charge Class</button>';
+        shellHtml += '<button class="btn btn-secondary" id="fees-export-pdf-btn" style="display: none;"><span class="material-icons-round">picture_as_pdf</span> Export PDF</button>';
+        shellHtml += '<button class="btn btn-secondary" id="fees-export-excel-btn" style="display: none;"><span class="material-icons-round">grid_on</span> Export Excel</button>';
       }
       shellHtml += '</div></div>';
 
-      // Summary Cards Grid
-      shellHtml += '<div class="stats-grid">';
+      shellHtml += '<div class="tab-nav">';
+      shellHtml += '  <button class="tab-btn active" id="btn-tab-students" data-tab="students"><span class="material-icons-round">payments</span> Student Dues</button>';
+      shellHtml += '  <button class="tab-btn" id="btn-tab-history" data-tab="history"><span class="material-icons-round">history</span> Fee History</button>';
+      shellHtml += '</div>';
+
+      shellHtml += '<div class="stats-grid" id="dues-stats-grid">';
       shellHtml += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">assignment</span></div>';
       shellHtml += '<div class="stat-info"><div class="stat-number" id="fees-dues-value">₹' + schoolDues.toLocaleString('en-IN') + '</div><div class="stat-label">Total Dues Charged</div></div></div>';
       shellHtml += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div>';
       shellHtml += '<div class="stat-info"><div class="stat-number" id="fees-collected-value">₹' + schoolPaid.toLocaleString('en-IN') + '</div><div class="stat-label">Total Fees Collected</div></div></div>';
-      
       shellHtml += '<div class="stat-card ' + (outstandingAmt > 0 ? 'amber' : 'cyan') + '" id="fees-outstanding-card"><div class="stat-icon"><span class="material-icons-round">error</span></div>';
       shellHtml += '<div class="stat-info"><div class="stat-number" id="fees-outstanding-value">₹' + outstandingAmt.toLocaleString('en-IN') + '</div><div class="stat-label">Outstanding Balance</div></div></div>';
       shellHtml += '</div>';
 
-      // Toolbar
-      shellHtml += '<div class="toolbar">';
+      shellHtml += '<div class="stats-grid" id="history-stats-grid" style="display: none;">';
+      shellHtml += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">payments</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="history-amount-value">₹0</div><div class="stat-label">Total Filtered Charges</div></div></div>';
+      shellHtml += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">history</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="history-count-value">0</div><div class="stat-label">Total Logged Entries</div></div></div>';
+      shellHtml += '</div>';
+
+      shellHtml += '<div class="toolbar" id="fees-students-toolbar">';
       shellHtml += '<div class="search-wrapper"><span class="material-icons-round">search</span>';
       shellHtml += '<input type="text" id="fees-search" placeholder="Search student by name/roll..." value="' + (state.searchQuery || '') + '">';
       shellHtml += '</div>';
 
-      // Show Defaulters Checkbox Toggle
       shellHtml += '<div class="defaulter-toggle-wrapper" style="display:flex; align-items:center; gap:6px; margin-left: 12px; margin-right: auto;">';
       shellHtml += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-secondary);">';
       shellHtml += '<input type="checkbox" id="defaulters-only-toggle"' + (state.statusFilter === 'unpaid' ? ' checked' : '') + ' style="width:16px; height:16px; cursor:pointer; accent-color:var(--danger);">';
@@ -217,7 +604,6 @@
 
       shellHtml += '<div class="filter-group">';
       
-      // Class Select
       shellHtml += '<select class="form-select" id="fees-class-filter"><option value="all">All Classes</option>';
       var settings = SchoolApp.store.settings || {};
       var classesList = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
@@ -226,7 +612,6 @@
       });
       shellHtml += '</select>';
 
-      // Section Select
       shellHtml += '<select class="form-select" id="fees-section-filter"><option value="all">All Sections</option>';
       var rawSections = settings.sections || {};
       var sections = [];
@@ -244,16 +629,44 @@
       });
       shellHtml += '</select>';
 
-      // Fee Status Select
       shellHtml += '<select class="form-select" id="fees-status-filter">';
       shellHtml += '<option value="all"' + (state.statusFilter === 'all' ? ' selected' : '') + '>All Statuses</option>';
       shellHtml += '<option value="unpaid"' + (state.statusFilter === 'unpaid' ? ' selected' : '') + '>Outstanding Balance</option>';
       shellHtml += '<option value="paid"' + (state.statusFilter === 'paid' ? ' selected' : '') + '>Fully Paid</option>';
       shellHtml += '</select>';
+      shellHtml += '</div></div>';
+
+      shellHtml += '<div class="toolbar" id="fees-history-toolbar" style="display: none; flex-wrap: wrap; gap: 12px; align-items: center;">';
+      shellHtml += '<div class="search-wrapper" style="flex: 1; min-width: 200px;"><span class="material-icons-round">search</span>';
+      shellHtml += '<input type="text" id="fees-history-search" placeholder="Search student by name/roll..." value="' + (state.historySearchQuery || '') + '">';
+      shellHtml += '</div>';
+
+      shellHtml += '<div class="filter-group" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; width: auto; margin-left: auto;">';
+      
+      shellHtml += '<select class="form-select" id="fees-history-class-filter" style="width: auto; min-width: 130px;"><option value="all">All Classes</option>';
+      classesList.forEach(function(c) {
+        shellHtml += '<option value="' + c + '"' + (state.historyClassFilter === c ? ' selected' : '') + '>' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
+      });
+      shellHtml += '</select>';
+
+      shellHtml += '<select class="form-select" id="fees-history-type-filter" style="width: auto; min-width: 150px;"><option value="all">All Fee Types</option>';
+      var uniqueTypes = new Set();
+      getActiveFeeHeads().forEach(function(h) { uniqueTypes.add(h.name); });
+      (SchoolApp.store.feeActivityLog || []).forEach(function(log) {
+        if (log.feeHeadName) uniqueTypes.add(log.feeHeadName);
+      });
+      uniqueTypes.forEach(function(t) {
+        shellHtml += '<option value="' + t + '"' + (state.historyTypeFilter === t ? ' selected' : '') + '>' + t + '</option>';
+      });
+      shellHtml += '</select>';
+
+      shellHtml += '<div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); font-weight: 500;">';
+      shellHtml += '<span>From:</span><input type="date" id="fees-history-start-date" class="form-input" style="padding: 6px 10px; font-size: 13px; line-height: 1; width: auto;" value="' + (state.historyStartDate || '') + '">';
+      shellHtml += '<span>To:</span><input type="date" id="fees-history-end-date" class="form-input" style="padding: 6px 10px; font-size: 13px; line-height: 1; width: auto;" value="' + (state.historyEndDate || '') + '">';
+      shellHtml += '</div>';
 
       shellHtml += '</div></div>';
 
-      // Dynamic Data Container Placeholder
       shellHtml += '<div id="fees-data-container"></div>';
 
       container.innerHTML = shellHtml;
@@ -261,22 +674,41 @@
       dataContainer = document.getElementById('fees-data-container');
     }
 
-    // Programmatically sync stats card text contents and styles
-    var duesVal = document.getElementById('fees-dues-value');
-    if (duesVal) duesVal.textContent = '₹' + schoolDues.toLocaleString('en-IN');
+    var duesStatsGrid = document.getElementById('dues-stats-grid');
+    var historyStatsGrid = document.getElementById('history-stats-grid');
+    var studentsToolbar = document.getElementById('fees-students-toolbar');
+    var historyToolbar = document.getElementById('fees-history-toolbar');
+    var bulkChargeBtn = document.getElementById('bulk-charge-fee-btn');
+    var exportPdfBtn = document.getElementById('fees-export-pdf-btn');
+    var exportExcelBtn = document.getElementById('fees-export-excel-btn');
     
-    var colVal = document.getElementById('fees-collected-value');
-    if (colVal) colVal.textContent = '₹' + schoolPaid.toLocaleString('en-IN');
-    
-    var outVal = document.getElementById('fees-outstanding-value');
-    if (outVal) outVal.textContent = '₹' + outstandingAmt.toLocaleString('en-IN');
-    
-    var outCard = document.getElementById('fees-outstanding-card');
-    if (outCard) {
-      outCard.className = 'stat-card ' + (outstandingAmt > 0 ? 'amber' : 'cyan');
+    var tabBtnStudents = document.getElementById('btn-tab-students');
+    var tabBtnHistory = document.getElementById('btn-tab-history');
+
+    if (state.activeTab === 'students') {
+      if (duesStatsGrid) duesStatsGrid.style.display = 'grid';
+      if (historyStatsGrid) historyStatsGrid.style.display = 'none';
+      if (studentsToolbar) studentsToolbar.style.display = 'flex';
+      if (historyToolbar) historyToolbar.style.display = 'none';
+      if (bulkChargeBtn) bulkChargeBtn.style.display = 'inline-flex';
+      if (exportPdfBtn) exportPdfBtn.style.display = 'none';
+      if (exportExcelBtn) exportExcelBtn.style.display = 'none';
+      
+      if (tabBtnStudents) tabBtnStudents.classList.add('active');
+      if (tabBtnHistory) tabBtnHistory.classList.remove('active');
+    } else {
+      if (duesStatsGrid) duesStatsGrid.style.display = 'none';
+      if (historyStatsGrid) historyStatsGrid.style.display = 'grid';
+      if (studentsToolbar) studentsToolbar.style.display = 'none';
+      if (historyToolbar) historyToolbar.style.display = 'flex';
+      if (bulkChargeBtn) bulkChargeBtn.style.display = 'none';
+      if (exportPdfBtn) exportPdfBtn.style.display = 'inline-flex';
+      if (exportExcelBtn) exportExcelBtn.style.display = 'inline-flex';
+      
+      if (tabBtnStudents) tabBtnStudents.classList.remove('active');
+      if (tabBtnHistory) tabBtnHistory.classList.add('active');
     }
 
-    // Keep inputs/dropdowns updated in sync with state without full re-render
     var searchInput = document.getElementById('fees-search');
     if (searchInput && searchInput.value !== state.searchQuery) {
       searchInput.value = state.searchQuery;
@@ -298,61 +730,97 @@
       statusFilter.value = state.statusFilter;
     }
 
-    // Pagination calculations
-    var totalPages = Math.ceil(filteredStudents.length / state.perPage);
-    if (state.currentPage > totalPages && totalPages > 0) state.currentPage = totalPages;
-    var start = (state.currentPage - 1) * state.perPage;
-    var pageStudents = filteredStudents.slice(start, start + state.perPage);
-
-    // Table list dynamic render
-    var html = '';
-    if (pageStudents.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Student</th><th>Class</th><th>Roll No.</th><th>Total Dues</th><th>Total Paid</th><th>Outstanding</th><th>Actions</th>';
-      html += '</tr></thead><tbody>';
-
-      pageStudents.forEach(function(s) {
-        var initials = SchoolApp.getInitials(s.firstName, s.lastName);
-        var color = SchoolApp.getAvatarColor(s.firstName + s.lastName);
-        var stats = getStudentFeeStats(s.id);
-
-        html += '<tr>';
-        html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong>' + s.firstName + ' ' + s.lastName + '</strong></div></div></td>';
-        html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
-        html += '<td>' + s.rollNumber + '</td>';
-        html += '<td>₹' + stats.totalDues.toLocaleString('en-IN') + '</td>';
-        html += '<td>₹' + stats.totalPaid.toLocaleString('en-IN') + '</td>';
-        
-        var badgeColor = stats.outstanding > 0 ? 'badge-danger' : 'badge-success';
-        html += '<td><span class="badge ' + badgeColor + '">₹' + stats.outstanding.toLocaleString('en-IN') + '</span></td>';
-
-        html += '<td><div class="table-actions">';
-        html += '<button class="btn-icon fees-collect-btn" data-id="' + s.id + '" title="Record Fee Payment" style="color:var(--success)"><span class="material-icons-round">payments</span></button>';
-        html += '<button class="btn-icon fees-ledger-btn" data-id="' + s.id + '" title="View Fee Ledger" style="color:var(--accent-secondary)"><span class="material-icons-round">receipt_long</span></button>';
-        if (isAdmin) {
-          html += '<button class="btn-icon fees-charge-btn" data-id="' + s.id + '" title="Add Custom Charge/Fine" style="color:var(--accent-primary-light)"><span class="material-icons-round">add_card</span></button>';
-        }
-        html += '</div></td></tr>';
-      });
-
-      html += '</tbody></table></div>';
-
-      // Pagination
-      html += '<div class="pagination">';
-      html += '<span class="pagination-info">Showing ' + (start + 1) + ' to ' + Math.min(start + state.perPage, filteredStudents.length) + ' of ' + filteredStudents.length + ' students</span>';
-      html += '<button class="pagination-btn" ' + (state.currentPage <= 1 ? 'disabled' : '') + ' data-page="prev"><span class="material-icons-round">chevron_left</span></button>';
-      for (var i = 1; i <= totalPages; i++) {
-        html += '<button class="pagination-btn' + (i === state.currentPage ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
-      }
-      html += '<button class="pagination-btn" ' + (state.currentPage >= totalPages ? 'disabled' : '') + ' data-page="next"><span class="material-icons-round">chevron_right</span></button>';
-      html += '</div>';
-
-    } else {
-      html += '<div class="empty-state"><span class="material-icons-round">payments</span><h3>No Students Found</h3><p>No student match your current filters.</p></div>';
+    var historySearchInput = document.getElementById('fees-history-search');
+    if (historySearchInput && historySearchInput.value !== state.historySearchQuery) {
+      historySearchInput.value = state.historySearchQuery;
+    }
+    var historyClassFilter = document.getElementById('fees-history-class-filter');
+    if (historyClassFilter && historyClassFilter.value !== state.historyClassFilter) {
+      historyClassFilter.value = state.historyClassFilter;
+    }
+    var historyTypeFilter = document.getElementById('fees-history-type-filter');
+    if (historyTypeFilter && historyTypeFilter.value !== state.historyTypeFilter) {
+      historyTypeFilter.value = state.historyTypeFilter;
+    }
+    var historyStartDate = document.getElementById('fees-history-start-date');
+    if (historyStartDate && historyStartDate.value !== state.historyStartDate) {
+      historyStartDate.value = state.historyStartDate;
+    }
+    var historyEndDate = document.getElementById('fees-history-end-date');
+    if (historyEndDate && historyEndDate.value !== state.historyEndDate) {
+      historyEndDate.value = state.historyEndDate;
     }
 
-    dataContainer.innerHTML = html;
-    attachDynamicEvents();
+    if (state.activeTab === 'students') {
+      var duesVal = document.getElementById('fees-dues-value');
+      if (duesVal) duesVal.textContent = '₹' + schoolDues.toLocaleString('en-IN');
+      
+      var colVal = document.getElementById('fees-collected-value');
+      if (colVal) colVal.textContent = '₹' + schoolPaid.toLocaleString('en-IN');
+      
+      var outVal = document.getElementById('fees-outstanding-value');
+      if (outVal) outVal.textContent = '₹' + outstandingAmt.toLocaleString('en-IN');
+      
+      var outCard = document.getElementById('fees-outstanding-card');
+      if (outCard) {
+        outCard.className = 'stat-card ' + (outstandingAmt > 0 ? 'amber' : 'cyan');
+      }
+
+      var totalPages = Math.ceil(filteredStudents.length / state.perPage);
+      if (state.currentPage > totalPages && totalPages > 0) state.currentPage = totalPages;
+      var start = (state.currentPage - 1) * state.perPage;
+      var pageStudents = filteredStudents.slice(start, start + state.perPage);
+
+      var html = '';
+      if (pageStudents.length > 0) {
+        html += '<div class="table-container"><table class="data-table"><thead><tr>';
+        html += '<th>Student</th><th>Class</th><th>Roll No.</th><th>Total Dues</th><th>Total Paid</th><th>Outstanding</th><th>Actions</th>';
+        html += '</tr></thead><tbody>';
+
+        pageStudents.forEach(function(s) {
+          var initials = SchoolApp.getInitials(s.firstName, s.lastName);
+          var color = SchoolApp.getAvatarColor(s.firstName + s.lastName);
+          var stats = getStudentFeeStats(s.id);
+
+          html += '<tr>';
+          html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(s.firstName + ' ' + s.lastName) + '</strong></div></div></td>';
+          html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
+          html += '<td>' + s.rollNumber + '</td>';
+          html += '<td>₹' + stats.totalDues.toLocaleString('en-IN') + '</td>';
+          html += '<td>₹' + stats.totalPaid.toLocaleString('en-IN') + '</td>';
+          
+          var badgeColor = stats.outstanding > 0 ? 'badge-danger' : 'badge-success';
+          html += '<td><span class="badge ' + badgeColor + '">₹' + stats.outstanding.toLocaleString('en-IN') + '</span></td>';
+
+          html += '<td><div class="table-actions">';
+          html += '<button class="btn-icon fees-collect-btn" data-id="' + s.id + '" title="Record Fee Payment" style="color:var(--success)"><span class="material-icons-round">payments</span></button>';
+          html += '<button class="btn-icon fees-ledger-btn" data-id="' + s.id + '" title="View Fee Ledger" style="color:var(--accent-secondary)"><span class="material-icons-round">receipt_long</span></button>';
+          if (isAdmin) {
+            html += '<button class="btn-icon fees-charge-btn" data-id="' + s.id + '" title="Add Custom Charge/Fine" style="color:var(--accent-primary-light)"><span class="material-icons-round">add_card</span></button>';
+          }
+          html += '</div></td></tr>';
+        });
+
+        html += '</tbody></table></div>';
+
+        html += '<div class="pagination">';
+        html += '<span class="pagination-info">Showing ' + (start + 1) + ' to ' + Math.min(start + state.perPage, filteredStudents.length) + ' of ' + filteredStudents.length + ' students</span>';
+        html += '<button class="pagination-btn" ' + (state.currentPage <= 1 ? 'disabled' : '') + ' data-page="prev"><span class="material-icons-round">chevron_left</span></button>';
+        for (var i = 1; i <= totalPages; i++) {
+          html += '<button class="pagination-btn' + (i === state.currentPage ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+        }
+        html += '<button class="pagination-btn" ' + (state.currentPage >= totalPages ? 'disabled' : '') + ' data-page="next"><span class="material-icons-round">chevron_right</span></button>';
+        html += '</div>';
+
+      } else {
+        html += '<div class="empty-state"><span class="material-icons-round">payments</span><h3>No Students Found</h3><p>No student match your current filters.</p></div>';
+      }
+
+      dataContainer.innerHTML = html;
+      attachDynamicEvents();
+    } else {
+      renderHistoryTab(dataContainer);
+    }
   }
 
   function getStudentLedger(studentId) {
@@ -657,6 +1125,11 @@
     bodyHTML += '<input type="text" id="charge-desc" class="form-input" placeholder="e.g. Monthly Tuition - June 2026 or Science Lab Fee" list="fee-head-suggestions" required>';
     bodyHTML += '</div>';
 
+    // Note / Reason
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Note / Reason (Optional)</label>';
+    bodyHTML += '<input type="text" id="charge-note" class="form-input" placeholder="e.g. Special permission or library fine details">';
+    bodyHTML += '</div>';
+
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -687,6 +1160,7 @@
         var amt = parseFloat(document.getElementById('charge-amount').value);
         var date = document.getElementById('charge-date').value;
         var desc = document.getElementById('charge-desc').value.trim();
+        var note = document.getElementById('charge-note') ? document.getElementById('charge-note').value.trim() : '';
 
         if (isNaN(amt) || amt <= 0) {
           SchoolApp.showToast('Please enter a valid charge amount.', 'error');
@@ -702,6 +1176,12 @@
         }
 
         if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
+        if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+
+        var studentName = s ? (s.firstName + ' ' + s.lastName) : 'Unknown';
+        var className = s ? (s.class + '-' + s.section) : '';
+        var fh = getActiveFeeHeads().find(function(x) { return x.id === headId; });
+        var feeHeadName = fh ? fh.name : (headId === 'custom' || !headId ? 'Custom Non-Categorized' : headId);
 
         SchoolApp.store.fees.push({
           id: SchoolApp.generateId(),
@@ -712,6 +1192,18 @@
           amount: amt,
           date: date,
           description: desc
+        });
+
+        SchoolApp.store.feeActivityLog.push({
+          id: SchoolApp.generateId(),
+          timestamp: new Date().toISOString(),
+          studentId: studentId,
+          studentName: studentName,
+          className: className,
+          feeHeadName: feeHeadName,
+          amount: amt,
+          addedBy: SchoolApp.currentUser ? (SchoolApp.currentUser.username || SchoolApp.currentUser.firstName || 'admin') : 'admin',
+          note: note
         });
 
         saveBtn.disabled = true;
@@ -764,6 +1256,11 @@
     bodyHTML += '<input type="text" id="bulk-desc" class="form-input" placeholder="e.g. Monthly Tuition - June 2026" list="fee-head-suggestions" required>';
     bodyHTML += '</div>';
 
+    // Note / Reason
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Note / Reason (Optional)</label>';
+    bodyHTML += '<input type="text" id="bulk-note" class="form-input" placeholder="e.g. Term charge or annual fine reason">';
+    bodyHTML += '</div>';
+
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -778,6 +1275,7 @@
         var headId = document.getElementById('bulk-feehead').value;
         var date = document.getElementById('bulk-date').value;
         var desc = document.getElementById('bulk-desc').value.trim();
+        var note = document.getElementById('bulk-note') ? document.getElementById('bulk-note').value.trim() : '';
 
         if (!date) {
           SchoolApp.showToast('Please select a billing date.', 'error');
@@ -800,8 +1298,13 @@
         }
 
         if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
+        if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
 
         var chargedCount = 0;
+        var fh = getActiveFeeHeads().find(function(x) { return x.id === headId; });
+        var feeHeadName = fh ? fh.name : headId;
+        var adminName = SchoolApp.currentUser ? (SchoolApp.currentUser.username || SchoolApp.currentUser.firstName || 'admin') : 'admin';
+
         SchoolApp.createRestorePoint('Auto-Backup before Bulk Fee Generation for Class ' + cls);
 
         students.forEach(function(s) {
@@ -818,6 +1321,19 @@
               date: date,
               description: desc
             });
+
+            SchoolApp.store.feeActivityLog.push({
+              id: SchoolApp.generateId(),
+              timestamp: new Date().toISOString(),
+              studentId: s.id,
+              studentName: s.firstName + ' ' + s.lastName,
+              className: s.class + '-' + s.section,
+              feeHeadName: feeHeadName,
+              amount: defaultAmt,
+              addedBy: adminName,
+              note: note
+            });
+
             chargedCount++;
           }
         });
@@ -842,6 +1358,23 @@
   }
 
   function attachStaticEvents() {
+    // Tab toggles
+    var tabBtnStudents = document.getElementById('btn-tab-students');
+    if (tabBtnStudents) {
+      tabBtnStudents.addEventListener('click', function() {
+        state.activeTab = 'students';
+        render();
+      });
+    }
+
+    var tabBtnHistory = document.getElementById('btn-tab-history');
+    if (tabBtnHistory) {
+      tabBtnHistory.addEventListener('click', function() {
+        state.activeTab = 'history';
+        render();
+      });
+    }
+
     // Search
     var searchInput = document.getElementById('fees-search');
     if (searchInput) {
@@ -897,6 +1430,74 @@
     if (bulkChargeBtn) {
       bulkChargeBtn.addEventListener('click', showBulkChargeModal);
     }
+
+    // --- History Tab Events ---
+
+    // History Search
+    var historySearch = document.getElementById('fees-history-search');
+    if (historySearch) {
+      historySearch.addEventListener('input', function() {
+        state.historySearchQuery = this.value;
+        state.historyCurrentPage = 1;
+        render();
+      });
+    }
+
+    // History Class Filter
+    var historyClass = document.getElementById('fees-history-class-filter');
+    if (historyClass) {
+      historyClass.addEventListener('change', function() {
+        state.historyClassFilter = this.value;
+        state.historyCurrentPage = 1;
+        render();
+      });
+    }
+
+    // History Type Filter
+    var historyType = document.getElementById('fees-history-type-filter');
+    if (historyType) {
+      historyType.addEventListener('change', function() {
+        state.historyTypeFilter = this.value;
+        state.historyCurrentPage = 1;
+        render();
+      });
+    }
+
+    // History Start Date
+    var historyStart = document.getElementById('fees-history-start-date');
+    if (historyStart) {
+      historyStart.addEventListener('input', function() {
+        state.historyStartDate = this.value;
+        state.historyCurrentPage = 1;
+        render();
+      });
+    }
+
+    // History End Date
+    var historyEnd = document.getElementById('fees-history-end-date');
+    if (historyEnd) {
+      historyEnd.addEventListener('input', function() {
+        state.historyEndDate = this.value;
+        state.historyCurrentPage = 1;
+        render();
+      });
+    }
+
+    // PDF Export
+    var exportPdf = document.getElementById('fees-export-pdf-btn');
+    if (exportPdf) {
+      exportPdf.addEventListener('click', function() {
+        exportHistoryToPDF();
+      });
+    }
+
+    // Excel Export
+    var exportExcel = document.getElementById('fees-export-excel-btn');
+    if (exportExcel) {
+      exportExcel.addEventListener('click', function() {
+        exportHistoryToExcel();
+      });
+    }
   }
 
   function attachDynamicEvents() {
@@ -950,7 +1551,11 @@
   // Register Module
   SchoolApp.registerModule('fees', {
     init: function() {},
-    render: render
+    render: render,
+    cleanup: function() {
+      console.log("Fees module unmounted/cleaned up.");
+    }
   });
 
 })();
+

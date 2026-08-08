@@ -182,6 +182,8 @@
     .sa-feature-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; font-size: 12px; color: rgba(255, 255, 255, 0.6); }
     .sa-feature-toggle:hover { border-color: rgba(37, 99, 235, 0.3); background: rgba(37, 99, 235, 0.06); }
     .sa-feature-toggle input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; accent-color: #2563eb; }
+    .sa-feature-toggle:has(input[type="checkbox"]:checked) { border: 2px solid #3b82f6 !important; background: rgba(37, 99, 235, 0.15) !important; color: #ffffff !important; padding: 7px 11px !important; box-shadow: 0 0 10px rgba(37, 99, 235, 0.25) !important; }
+    .sa-light-theme .sa-feature-toggle:has(input[type="checkbox"]:checked) { border: 2px solid #2563eb !important; background: rgba(37, 99, 235, 0.1) !important; color: #1e293b !important; padding: 7px 11px !important; box-shadow: 0 0 10px rgba(37, 99, 235, 0.2) !important; }
 
     /* ---- TOAST ---- */
     .sa-toast-container { position: fixed; top: 24px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 8px; }
@@ -745,6 +747,155 @@
       border: 1px solid rgba(0, 0, 0, 0.08);
     }
 
+    /* ---- COLLAPSIBLE ACCORDIONS & DYNAMIC TAGS ---- */
+    details.sa-accordion {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    details.sa-accordion summary {
+      padding: 14px 20px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #e2e8f0;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      outline: none;
+      border-bottom: 1px solid transparent;
+    }
+    details.sa-accordion summary::-webkit-details-marker {
+      display: none;
+    }
+    details.sa-accordion[open] summary {
+      border-bottom-color: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    details.sa-accordion summary::after {
+      content: 'expand_more';
+      font-family: 'Material Icons Round';
+      font-size: 20px;
+      color: rgba(255,255,255,0.4);
+      transition: transform 0.2s;
+    }
+    details.sa-accordion[open] summary::after {
+      transform: rotate(180deg);
+    }
+    .sa-accordion-content {
+      padding: 20px;
+    }
+    
+    /* Light theme overrides */
+    .sa-light-theme details.sa-accordion {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .sa-light-theme details.sa-accordion summary {
+      color: #1e293b;
+    }
+    .sa-light-theme details.sa-accordion[open] summary {
+      border-bottom-color: rgba(0, 0, 0, 0.08);
+      background: #f8fafc;
+    }
+    .sa-light-theme details.sa-accordion summary::after {
+      color: rgba(0,0,0,0.4);
+    }
+
+    /* Class structure dynamic tags */
+    .class-structure-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      gap: 12px;
+    }
+    .sa-light-theme .class-structure-row {
+      background: #f8fafc;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .section-tags-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      flex-grow: 1;
+    }
+    .section-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid rgba(37, 99, 235, 0.25);
+    }
+    .sa-light-theme .section-tag {
+      background: rgba(37, 99, 235, 0.08);
+      color: #1d4ed8;
+      border-color: rgba(37, 99, 235, 0.15);
+    }
+    .remove-section-btn {
+      cursor: pointer;
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      font-weight: bold;
+      transition: color 0.2s;
+    }
+    .sa-light-theme .remove-section-btn {
+      color: rgba(0,0,0,0.4);
+    }
+    .remove-section-btn:hover {
+      color: #ef4444;
+    }
+
+    /* Lead Details Styles */
+    .lead-detail-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 12px 16px;
+      padding: 16px 0;
+    }
+    .lead-detail-row {
+      display: contents;
+    }
+    .lead-detail-label {
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 0;
+    }
+    .sa-light-theme .lead-detail-label {
+      color: rgba(0, 0, 0, 0.5);
+    }
+    .lead-detail-val {
+      font-size: 14px;
+      color: #e2e8f0;
+      padding: 6px 0;
+      word-break: break-word;
+    }
+    .sa-light-theme .lead-detail-val {
+      color: #1e293b;
+    }
+    .lead-detail-divider {
+      grid-column: 1 / -1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      margin: 8px 0;
+    }
+    .sa-light-theme .lead-detail-divider {
+      background: rgba(0, 0, 0, 0.08);
+    }
+
 </style>
 
   <!-- Structured Data JSON-LD Schemas -->
@@ -827,7 +978,12 @@
           <h2>CTRL Shift Solutions</h2>
           <span>SaaS Control Center</span>
         </div>
+        <div id="live-indicator" class="live-indicator" style="color: var(--success); background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.15);">
+          <span class="live-dot" style="background-color: var(--success); box-shadow: 0 0 6px var(--success); animation: pulse-dot 1.8s infinite;"></span>
+          <span id="live-status-text">Live</span>
+        </div>
       </div>
+
       <div class="sa-header-right">
         <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-theme-toggle" title="Toggle Light/Dark Mode" style="padding: 10px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;">
           <span class="material-icons-round" id="sa-theme-icon" style="font-size:18px;">light_mode</span>
@@ -847,6 +1003,10 @@
           <a class="sa-nav-item active" data-tab="dashboard">
             <span class="material-icons-round">dashboard</span>
             <span>Dashboard</span>
+          </a>
+          <a class="sa-nav-item" data-tab="leads">
+            <span class="material-icons-round">contact_mail</span>
+            <span>Leads & Demos</span>
           </a>
           <a class="sa-nav-item" data-tab="recovery">
             <span class="material-icons-round">restore_from_trash</span>
@@ -898,6 +1058,85 @@
               </thead>
               <tbody id="sa-schools-tbody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Leads & Demos Tab -->
+        <div id="tab-leads" class="sa-tab-page">
+          <div class="sa-section-title">
+            <span class="material-icons-round">contact_mail</span>
+            Leads & Demos
+          </div>
+          <p style="color:rgba(255,255,255,0.5); font-size:13px; margin-bottom:20px; margin-top:-16px;" class="sa-tab-subtitle">
+            Track, contact, and manage new leads requesting virtual demo sandbox environments.
+          </p>
+
+          <div class="sa-metrics-grid" id="sa-leads-metrics-grid" style="grid-template-columns: repeat(5, 1fr); margin-bottom: 28px;">
+            <div class="sa-metric-card">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #60a5fa;">contact_mail</span></div>
+              <div class="sa-metric-value" id="sa-leads-total">0</div>
+              <div class="sa-metric-label">Total Leads</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #3b82f6;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #3b82f6;">fiber_new</span></div>
+              <div class="sa-metric-value" id="sa-leads-new" style="color: #3b82f6;">0</div>
+              <div class="sa-metric-label">New</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #eab308;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #eab308;">phone_in_talk</span></div>
+              <div class="sa-metric-value" id="sa-leads-contacted" style="color: #eab308;">0</div>
+              <div class="sa-metric-label">Contacted</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #22c55e;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #22c55e;">check_circle</span></div>
+              <div class="sa-metric-value" id="sa-leads-converted" style="color: #22c55e;">0</div>
+              <div class="sa-metric-label">Converted</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #ef4444;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #ef4444;">cancel</span></div>
+              <div class="sa-metric-value" id="sa-leads-lost" style="color: #ef4444;">0</div>
+              <div class="sa-metric-label">Lost</div>
+            </div>
+          </div>
+
+          <div class="sa-action-bar">
+            <div class="sa-section-title" style="margin-bottom:0;">
+              <span class="material-icons-round">list_alt</span>
+              Incoming Leads
+            </div>
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+              <div class="sa-search-wrapper">
+                <span class="material-icons-round">search</span>
+                <input type="text" id="sa-leads-search" placeholder="Search leads...">
+              </div>
+            </div>
+          </div>
+
+          <div class="sa-table-card">
+            <div style="overflow-x: auto;">
+              <table class="sa-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>School Name</th>
+                    <th>Contact Name</th>
+                    <th>Phone</th>
+                    <th>City</th>
+                    <th>Students</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-leads-tbody">
+                  <tr>
+                    <td colspan="8" class="sa-empty-state">
+                      <span class="material-icons-round">sync</span>
+                      <h3>Loading leads...</h3>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -959,9 +1198,27 @@
     </div>
   </div>
 
+  <!-- ==================== LEAD DETAILS MODAL ==================== -->
+  <div id="sa-lead-modal-overlay" class="sa-modal-overlay">
+    <div class="sa-modal" style="max-width: 600px;">
+      <div class="sa-modal-header">
+        <h3>Lead Details</h3>
+        <button class="sa-modal-close" id="sa-lead-modal-close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="sa-modal-body" id="sa-lead-modal-body">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="sa-modal-footer">
+        <button class="sa-btn sa-btn-secondary" id="sa-lead-modal-close-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== MODAL ==================== -->
   <div id="sa-modal-overlay" class="sa-modal-overlay">
-    <div class="sa-modal">
+    <div class="sa-modal" style="max-width: 800px;">
       <div class="sa-modal-header">
         <h3><span id="sa-modal-title-text">Onboard New School</span></h3>
         <button class="sa-modal-close" id="sa-modal-close">
@@ -971,74 +1228,187 @@
       <div class="sa-modal-body">
         <form id="sa-school-form" autocomplete="off">
           <input type="hidden" id="sf-school-id" value="">
-          <div class="sa-modal-form-grid">
-            <div class="sa-modal-form-group full-width">
-              <label for="sf-name">School Name *</label>
-              <input type="text" id="sf-name" placeholder="e.g. DPS Bokaro" required>
+          
+          <!-- SECTION 1 - School Info -->
+          <details class="sa-accordion" open>
+            <summary>SECTION 1 — School Info</summary>
+            <div class="sa-accordion-content sa-modal-form-grid">
+              <div class="sa-modal-form-group full-width">
+                <label for="sf-name">School Name *</label>
+                <input type="text" id="sf-name" placeholder="e.g. DPS Bokaro" required>
+              </div>
+              <div class="sa-modal-form-group full-width">
+                <label for="sf-tagline">Tagline</label>
+                <input type="text" id="sf-tagline" placeholder="e.g. Nurturing Young Minds">
+              </div>
+              <div class="sa-modal-form-group full-width">
+                <label for="sf-logo-url">School Logo URL</label>
+                <input type="url" id="sf-logo-url" placeholder="e.g. https://example.com/logo.png or Base64 data">
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-phone">Phone</label>
+                <input type="tel" id="sf-phone" placeholder="+91 98765 43210">
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-email">Email *</label>
+                <input type="email" id="sf-email" placeholder="admin@school.edu.in" required>
+              </div>
+              <div class="sa-modal-form-group full-width">
+                <label for="sf-address">Full Address</label>
+                <input type="text" id="sf-address" placeholder="123 Education Lane, City, State PIN">
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-affiliation">Affiliation / Board</label>
+                <input type="text" id="sf-affiliation" placeholder="e.g. CBSE / ICSE / State Board">
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-udise-code">UDISE Code (11 digits)</label>
+                <input type="text" id="sf-udise-code" placeholder="e.g. 20260101234" maxlength="11" pattern="\d{11}">
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-subdomain">Subdomain *</label>
+                <input type="text" id="sf-subdomain" placeholder="e.g. dps-bokaro" style="font-family:monospace;" required>
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-renewal">Renewal Date</label>
+                <input type="date" id="sf-renewal">
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-plan">Subscription Plan</label>
+                <select id="sf-plan">
+                  <option value="Basic">Basic</option>
+                  <option value="Pro">Pro</option>
+                  <option value="Premium">Premium</option>
+                </select>
+              </div>
+              <div class="sa-modal-form-group full-width">
+                <label for="sf-status">Status</label>
+                <select id="sf-status">
+                  <option value="Active">Active</option>
+                  <option value="Paused">Paused</option>
+                </select>
+              </div>
             </div>
-            <div class="sa-modal-form-group full-width">
-              <label for="sf-tagline">Tagline</label>
-              <input type="text" id="sf-tagline" placeholder="e.g. Nurturing Young Minds">
-            </div>
-            <div class="sa-modal-form-group full-width">
-              <label for="sf-logo-url">School Logo URL</label>
-              <input type="url" id="sf-logo-url" placeholder="e.g. https://example.com/logo.png or Base64 data">
-            </div>
-            <div class="sa-modal-form-group">
-              <label for="sf-phone">Phone</label>
-              <input type="tel" id="sf-phone" placeholder="+91 98765 43210">
-            </div>
-            <div class="sa-modal-form-group">
-              <label for="sf-email">Email *</label>
-              <input type="email" id="sf-email" placeholder="admin@school.edu.in" required>
-            </div>
-            <div class="sa-modal-form-group full-width">
-              <label for="sf-address">Full Address</label>
-              <input type="text" id="sf-address" placeholder="123 Education Lane, City, State PIN">
-            </div>
-            <div class="sa-modal-form-group">
-              <label for="sf-subdomain">Subdomain *</label>
-              <input type="text" id="sf-subdomain" placeholder="e.g. dps-bokaro" style="font-family:monospace;" required>
-            </div>
-            <div class="sa-modal-form-group">
-              <label for="sf-renewal">Renewal Date</label>
-              <input type="date" id="sf-renewal">
-            </div>
-            <div class="sa-modal-form-group">
-              <label for="sf-plan">Subscription Plan</label>
-              <select id="sf-plan">
-                <option value="Basic">Basic</option>
-                <option value="Pro">Pro</option>
-                <option value="Premium">Premium</option>
-              </select>
-            </div>
-            <div class="sa-modal-form-group">
-              <label for="sf-status">Status</label>
-              <select id="sf-status">
-                <option value="Active">Active</option>
-                <option value="Paused">Paused</option>
-              </select>
-            </div>
-          </div>
+          </details>
 
-          <div class="sa-features-section-label" style="margin-top:20px;">
-            <span class="material-icons-round" style="font-size:18px;">extension</span>
-            Module Feature Flags
-          </div>
-          <div class="sa-features-grid" id="sf-features-grid">
-            <label class="sa-feature-toggle"><input type="checkbox" value="students"> Students & Admissions</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="teachers"> Teachers & Staff</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="attendance"> Attendance Tracking</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="fees"> Fees & Payments</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="fee_ledger"> Fee Ledger & Transactions</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="print_receipt"> Print Receipt</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="timetable"> Timetable & Scheduling</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="exams"> Exams & Results</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="notices"> Notice Board</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="promotion"> Class Promotion</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="users"> User Management</label>
-            <label class="sa-feature-toggle"><input type="checkbox" value="recovery"> Recovery Center</label>
-          </div>
+          <!-- SECTION 2 - Admin Account -->
+          <details class="sa-accordion">
+            <summary>SECTION 2 — Admin Account</summary>
+            <div class="sa-accordion-content sa-modal-form-grid">
+              <div class="sa-modal-form-group">
+                <label for="sf-admin-username">Admin Username *</label>
+                <input type="text" id="sf-admin-username" placeholder="e.g. admin" required>
+              </div>
+              <div class="sa-modal-form-group">
+                <label for="sf-admin-password">Admin Password *</label>
+                <input type="password" id="sf-admin-password" placeholder="••••••••" required>
+              </div>
+              <div class="sa-modal-form-group full-width">
+                <label for="sf-admin-email">Admin Email *</label>
+                <input type="email" id="sf-admin-email" placeholder="e.g. admin@school.edu.in" required>
+              </div>
+            </div>
+          </details>
+
+          <!-- SECTION 3 - Class Structure -->
+          <details class="sa-accordion">
+            <summary>SECTION 3 — Class Structure</summary>
+            <div class="sa-accordion-content">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
+                <span style="font-size:12px; color:rgba(255,255,255,0.5);">Define the classes and sections for this school.</span>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs" id="sf-btn-quick-fill">⚡ Quick Fill (Nursery - Class 10)</button>
+                  <input type="text" id="sf-new-class-input" placeholder="e.g. Class 1" style="width:120px; padding:6px; font-size:12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff;">
+                  <button type="button" class="sa-btn sa-btn-primary sa-btn-xs" id="sf-btn-add-class">Add Class</button>
+                </div>
+              </div>
+              <div id="sf-classes-container" style="display:flex; flex-direction:column; gap:8px; max-height:250px; overflow-y:auto; padding-right:4px;">
+                <!-- Classes list populated dynamically -->
+              </div>
+            </div>
+          </details>
+
+          <!-- SECTION 4 - Fee Structure -->
+          <details class="sa-accordion">
+            <summary>SECTION 4 — Fee Structure</summary>
+            <div class="sa-accordion-content" style="overflow-x:auto;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px;">
+                <span style="font-size:12px; color:rgba(255,255,255,0.5);">Set default recurring class fees.</span>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <input type="text" id="sf-new-feehead-input" placeholder="e.g. Computer" style="width:140px; padding:6px; font-size:12px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff;">
+                  <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs" id="sf-btn-add-feehead">Add Fee Head</button>
+                </div>
+              </div>
+              <table class="sa-table" style="min-width:600px;">
+                <thead>
+                  <tr id="sf-fee-table-header">
+                    <th>Class</th>
+                    <th>Tuition</th>
+                    <th>Transport</th>
+                    <th>Exam</th>
+                  </tr>
+                </thead>
+                <tbody id="sf-fee-table-body">
+                  <!-- Generated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </details>
+
+          <!-- SECTION 5 - Extra Charges -->
+          <details class="sa-accordion">
+            <summary>SECTION 5 — Extra Charges</summary>
+            <div class="sa-accordion-content">
+              <div class="sa-modal-form-grid" style="margin-bottom:16px;">
+                <div class="sa-modal-form-group">
+                  <label for="sf-charge-name">Charge Name</label>
+                  <input type="text" id="sf-charge-name" placeholder="e.g. Admission Fee">
+                </div>
+                <div class="sa-modal-form-group">
+                  <label for="sf-charge-amount">Amount (₹)</label>
+                  <input type="number" id="sf-charge-amount" placeholder="e.g. 5000" min="0">
+                </div>
+                <div class="sa-modal-form-group">
+                  <label for="sf-charge-type">Billing Type</label>
+                  <select id="sf-charge-type">
+                    <option value="one-time">One-time</option>
+                    <option value="annual">Annual</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div class="sa-modal-form-group" style="justify-content:flex-end; display:flex;">
+                  <button type="button" class="sa-btn sa-btn-primary" id="sf-btn-add-charge" style="height:38px; width:100%;">Add Charge</button>
+                </div>
+              </div>
+              <div id="sf-charges-list" style="display:flex; flex-direction:column; gap:8px; max-height:150px; overflow-y:auto; padding-right:4px;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </details>
+
+          <!-- SECTION 6 - Feature Flags -->
+          <details class="sa-accordion">
+            <summary>SECTION 6 — Feature Flags</summary>
+            <div class="sa-accordion-content">
+              <div class="sa-features-grid" id="sf-features-grid">
+                <label class="sa-feature-toggle sa-feature-system" style="opacity: 0.7;"><input type="checkbox" value="admin" checked disabled> Admin Panel <span style="font-size: 10px; color: rgba(255,255,255,0.4); margin-left: 4px;">(System feature — always included)</span></label>
+                <label class="sa-feature-toggle sa-feature-system" id="sf-toggle-my-attendance" style="opacity: 0.7;"><input type="checkbox" value="teacher-attendance" checked disabled> My Attendance <span style="font-size: 10px; color: rgba(255,255,255,0.4); margin-left: 4px;">(System feature — always included)</span></label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="students"> Students & Admissions</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="teachers"> Teachers & Staff</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="attendance"> Attendance Tracking</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="fees"> Fees & Payments</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="fee_ledger"> Fee Ledger & Transactions</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="print_receipt"> Print Receipt</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="timetable"> Timetable & Scheduling</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="exams"> Exams & Results</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="report_cards"> Report Cards</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="notices"> Notice Board</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="promotion"> Class Promotion</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="users"> User Management</label>
+                <label class="sa-feature-toggle"><input type="checkbox" value="recovery"> Recovery Center</label>
+              </div>
+            </div>
+          </details>
         </form>
       </div>
       <div class="sa-modal-footer">
@@ -1152,6 +1522,8 @@
   <div class="sa-toast-container" id="sa-toast-container"></div>
 
   <!-- ==================== SCRIPTS ==================== -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>
+  <script src="js/auth-utils.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js"></script>
   <script type="module" src="js/super-admin.js"></script>

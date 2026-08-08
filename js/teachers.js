@@ -38,12 +38,20 @@
   }
 
   function getSubjects() {
-    return ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Computer Science', 'Physical Education', 'Art'];
+    var settings = SchoolApp.store.settings || {};
+    return settings.subjects || ['Hindi', 'English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science', 'Sanskrit', 'Art'];
   }
 
   function render() {
     var container = document.getElementById('page-teachers');
     if (!container) return;
+
+    if (!window.assertSchoolIsolation(SchoolApp.store.teachers, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Teachers Tab!");
+      SchoolApp.showToast("Security error. Please logout and login again.", "error");
+      SchoolApp.logout();
+      return;
+    }
 
     var isAdmin = SchoolApp.isAdmin();
 
@@ -62,7 +70,8 @@
       shellHtml += '<h2><span class="material-icons-round">person</span> Teacher Management <span class="badge badge-purple" id="teachers-total-badge">' + totalCount + '</span></h2>';
       shellHtml += '<div class="header-actions">';
       shellHtml += '<button class="btn btn-secondary btn-sm" id="teacher-export-btn"><span class="material-icons-round">download</span> Export</button>';
-      if (isAdmin) {
+      var canAdd = isAdmin && SchoolApp.checkFeatureAccess('teachers');
+      if (canAdd) {
         shellHtml += '<button class="btn btn-primary" id="teacher-add-btn"><span class="material-icons-round">add</span> Add Teacher</button>';
       }
       shellHtml += '</div></div>';
@@ -121,7 +130,7 @@
         html += '<div class="teacher-card-info"><div class="teacher-card-name">' + t.firstName + ' ' + t.lastName + '</div>';
         html += '<div class="teacher-card-subject">' + t.subject + '</div></div></div>';
 
-        html += '<div class="teacher-card-detail"><span class="material-icons-round">email</span>' + t.email + '</div>';
+        html += '<div class="teacher-card-detail"><span class="material-icons-round">vpn_key</span><strong>Login ID:</strong> ' + t.email + '</div>';
         html += '<div class="teacher-card-detail"><span class="material-icons-round">phone</span>' + t.phone + '</div>';
         html += '<div class="teacher-card-detail"><span class="material-icons-round">school</span>' + t.qualification + '</div>';
 
@@ -135,7 +144,8 @@
         html += '<div class="status-indicator"><span class="status-dot ' + (t.status === 'Active' ? 'active' : 'inactive') + '"></span>' + t.status + '</div>';
         html += '<div class="table-actions">';
         html += '<button class="btn-icon teacher-view-btn" data-id="' + t.id + '" title="View"><span class="material-icons-round">visibility</span></button>';
-        if (isAdmin) {
+        var canEdit = isAdmin && SchoolApp.checkFeatureAccess('teachers');
+        if (canEdit) {
           html += '<button class="btn-icon teacher-edit-btn" data-id="' + t.id + '" title="Edit"><span class="material-icons-round">edit</span></button>';
           html += '<button class="btn-icon teacher-delete-btn" data-id="' + t.id + '" title="Delete"><span class="material-icons-round">delete</span></button>';
         }
@@ -276,14 +286,31 @@
 
   function showTeacherForm(teacher) {
     var isEdit = !!teacher;
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
+    var sections = [];
+    if (Array.isArray(rawSections)) {
+      sections = rawSections;
+    } else if (typeof rawSections === 'object') {
+      var allSecs = new Set();
+      Object.values(rawSections).forEach(function(arr) {
+        if (Array.isArray(arr)) arr.forEach(function(s) { allSecs.add(s); });
+      });
+      sections = Array.from(allSecs);
+    }
 
     var bodyHTML = '<form id="teacher-form" class="form-grid">';
 
     bodyHTML += '<div class="form-group"><label class="form-label">First Name *</label><input type="text" class="form-input" name="firstName" value="' + (teacher ? teacher.firstName : '') + '" required><span class="form-error">Required</span></div>';
     bodyHTML += '<div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" name="lastName" value="' + (teacher ? teacher.lastName : '') + '" required><span class="form-error">Required</span></div>';
     bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (teacher ? teacher.email : '') + '" required><span class="form-error">Valid email required</span></div>';
+    if (isEdit) {
+      bodyHTML += '<div class="form-group full-width" style="grid-column: span 2; background: rgba(37,99,235,0.08); padding: 10px; border-radius: 8px; border: 1px solid rgba(37,99,235,0.15); margin-bottom: 12px; margin-top: 4px;">';
+      bodyHTML += '  <span style="font-size: 11px; font-weight: 700; color: var(--accent-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">Login Email (used to sign in)</span>';
+      bodyHTML += '  <strong style="color: var(--text-primary); font-size: 14px;">' + teacher.email + '</strong>';
+      bodyHTML += '</div>';
+    }
     bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher ? teacher.phone : '') + '" required><span class="form-error">Required</span></div>';
 
     // Global subjects checkboxes selection
@@ -298,7 +325,7 @@
           isChecked = teacher.subject.split(',').map(function(sub) { return sub.trim(); }).indexOf(s) !== -1;
         }
       }
-      bodyHTML += '<label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500;"><input type="checkbox" value="' + s + '"' + (isChecked ? ' checked' : '') + ' class="subject-cb" style="width: 16px; height: 16px;"> ' + s + '</label>';
+      bodyHTML += '<label class="subject-cb-label"><input type="checkbox" value="' + s + '"' + (isChecked ? ' checked' : '') + ' class="subject-cb" style="width: 16px; height: 16px;"> ' + s + '</label>';
     });
     bodyHTML += '</div><span class="form-error" id="subject-error" style="display: none;">Select at least one subject</span></div>';
 
@@ -321,10 +348,18 @@
     classes.forEach(function(c) {
       bodyHTML += '<div class="class-grid-label">Class ' + c + '</div>';
       sections.forEach(function(s) {
+        var hasSection = true;
+        if (typeof rawSections === 'object' && !Array.isArray(rawSections)) {
+          hasSection = (rawSections[c] || []).indexOf(s) !== -1;
+        }
         var checked = teacher && teacher.assignedClasses && teacher.assignedClasses.some(function(ac) {
           return ac.class === c && ac.section === s;
         });
-        bodyHTML += '<div class="class-grid-cell"><input type="checkbox" class="class-assign-cb" data-class="' + c + '" data-section="' + s + '"' + (checked ? ' checked' : '') + '></div>';
+        if (hasSection) {
+          bodyHTML += '<div class="class-grid-cell"><input type="checkbox" class="class-assign-cb" data-class="' + c + '" data-section="' + s + '"' + (checked ? ' checked' : '') + '></div>';
+        } else {
+          bodyHTML += '<div class="class-grid-cell disabled-cell" style="opacity: 0.2;"><input type="checkbox" disabled style="cursor: not-allowed;"></div>';
+        }
       });
     });
     bodyHTML += '</div><span class="form-error" id="class-error" style="display: none;">Select at least one class</span></div>';
@@ -363,7 +398,7 @@
     });
   }
 
-  function saveTeacher(existing) {
+  async function saveTeacher(existing) {
     var form = document.getElementById('teacher-form');
     if (!form) return;
 
@@ -505,22 +540,277 @@
     fields.classTeacherOf = classTeacherOf;
     fields.subjectTeacherOf = subjectTeacherOf;
 
+    var isNewTeacher = !existing;
+    var rawPassword = '';
+    if (isNewTeacher) {
+      rawPassword = form.querySelector('[name="password"]').value.trim() || 'teacher123';
+    }
+
     if (existing) {
       var idx = SchoolApp.store.teachers.findIndex(function(t) { return t.id === existing.id; });
       if (idx !== -1) {
         if (!fields.password) fields.password = existing.password; // Keep existing password
+        if (fields.password && !AuthUtils.isHashed(fields.password)) {
+          fields.password = await AuthUtils.hashPassword(fields.password);
+        }
         Object.assign(SchoolApp.store.teachers[idx], fields);
         SchoolApp.showToast('Teacher updated successfully.', 'success');
       }
     } else {
       fields.id = SchoolApp.generateId();
+      if (fields.password && !AuthUtils.isHashed(fields.password)) {
+        fields.password = await AuthUtils.hashPassword(fields.password);
+      }
       SchoolApp.store.teachers.push(fields);
       SchoolApp.showToast('Teacher added successfully.', 'success');
     }
 
-    SchoolApp.save();
+    await SchoolApp.save();
     SchoolApp.closeModal();
     render();
+
+    function checkExamAccess() {
+      var activeTerms = Object.values(SchoolApp.store.examTerms || {}).filter(function(t) {
+        return t.status !== 'locked';
+      });
+
+      var missingEntries = [];
+      var teacherName = fields.firstName + ' ' + (fields.lastName || '');
+
+      var uniqueKeys = {};
+      (fields.subjectTeacherOf || []).forEach(function(assignment) {
+        var assignedSub = assignment.subject;
+        var assignedCls = assignment.class;
+        var assignedSec = assignment.section;
+
+        activeTerms.forEach(function(term) {
+          var examSubs = (SchoolApp.store.examSubjects && 
+                          SchoolApp.store.examSubjects[term.id] && 
+                          SchoolApp.store.examSubjects[term.id][assignedCls] && 
+                          SchoolApp.store.examSubjects[term.id][assignedCls].subjects) || [];
+
+          var subjectsMatch = window.subjectsMatch || function(s1, s2) {
+            if (!s1 || !s2) return false;
+            return String(s1).toLowerCase().trim() === String(s2).toLowerCase().trim();
+          };
+
+          var exists = examSubs.some(function(es) {
+            return subjectsMatch(es.name, assignedSub);
+          });
+
+          if (!exists) {
+            var key = term.id + '_' + assignedCls + '_' + assignedSub;
+            if (!uniqueKeys[key]) {
+              uniqueKeys[key] = {
+                termId: term.id,
+                termName: term.name,
+                classId: assignedCls,
+                subjectName: assignedSub,
+                sections: []
+              };
+            }
+            if (uniqueKeys[key].sections.indexOf(assignedSec) === -1) {
+              uniqueKeys[key].sections.push(assignedSec);
+            }
+          }
+        });
+      });
+
+      var missingList = Object.values(uniqueKeys);
+      if (missingList.length === 0) return;
+
+      var escapeHTML = function(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      };
+
+      var warningHtml = '<div style="font-size: 14px; line-height: 1.6; color: var(--text-primary); padding: 8px 0; max-height: 400px; overflow-y: auto; padding-right: 6px;">';
+      
+      missingList.forEach(function(entry, idx) {
+        var displaySections = entry.sections.map(function(s) { return entry.classId + '-' + s; }).join(', ');
+        
+        warningHtml += '<div style="margin-bottom: 16px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.15); border-radius: 8px; padding: 14px;">';
+        warningHtml += '  <div style="font-weight: 600; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 6px;">';
+        warningHtml += '    <span class="material-icons-round" style="color: #f59e0b; font-size: 18px; margin-top: 2px;">warning</span>';
+        warningHtml += '    <span>⚠️ ' + escapeHTML(entry.subjectName) + ' is assigned to ' + escapeHTML(teacherName) + ' but is not configured in ' + escapeHTML(entry.termName) + ' &mdash; Class ' + escapeHTML(displaySections) + '</span>';
+        warningHtml += '  </div>';
+        
+        warningHtml += '  <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 500;">Configure as:</div>';
+        warningHtml += '  <div style="display: flex; flex-direction: column; gap: 8px; padding-left: 4px;">';
+        
+        warningHtml += '    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">';
+        warningHtml += '      <input type="radio" name="config-type-' + idx + '" value="Theory" style="margin: 0;">';
+        warningHtml += '      <span>Theory (Full: 100, Pass: 33)</span>';
+        warningHtml += '    </label>';
+        
+        warningHtml += '    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">';
+        warningHtml += '      <input type="radio" name="config-type-' + idx + '" value="Practical" checked style="margin: 0;">';
+        warningHtml += '      <span>Practical (Full: 50, Pass: 17) <span style="font-size: 11px; color: var(--text-muted);">(default)</span></span>';
+        warningHtml += '    </label>';
+        
+        warningHtml += '    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">';
+        warningHtml += '      <input type="radio" name="config-type-' + idx + '" value="Internal" style="margin: 0;">';
+        warningHtml += '      <span>Internal (Full: 25, Pass: 8)</span>';
+        warningHtml += '    </label>';
+        
+        warningHtml += '    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">';
+        warningHtml += '      <input type="radio" name="config-type-' + idx + '" value="Custom" style="margin: 0;" id="radio-custom-' + idx + '">';
+        warningHtml += '      <span>Custom: Full <input type="number" id="custom-full-' + idx + '" value="50" style="width: 55px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px 6px; color: var(--text-primary); font-size:12px; text-align:center;"> Pass <input type="number" id="custom-pass-' + idx + '" value="17" style="width: 50px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 2px 6px; color: var(--text-primary); font-size:12px; text-align:center;"></span>';
+        warningHtml += '    </label>';
+        
+        warningHtml += '  </div>';
+        warningHtml += '</div>';
+      });
+
+      warningHtml += '<p style="margin: 12px 0 0 0; font-weight: 500;">Would you like to add the missing subjects to these exam terms now?</p>';
+      warningHtml += '</div>';
+
+      var footerHTML = '<button class="btn btn-secondary" id="warning-skip-btn">Skip</button>';
+      footerHTML += '<button class="btn btn-primary" id="warning-add-now-btn"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">add_task</span>Add Now</button>';
+
+      SchoolApp.showModal('Exam Configuration Warning', warningHtml, footerHTML);
+
+      missingList.forEach(function(entry, idx) {
+        var customFullInput = document.getElementById('custom-full-' + idx);
+        var customPassInput = document.getElementById('custom-pass-' + idx);
+        var customRadio = document.getElementById('radio-custom-' + idx);
+
+        var selectCustomRadio = function() {
+          if (customRadio) customRadio.checked = true;
+        };
+
+        if (customFullInput) {
+          customFullInput.addEventListener('focus', selectCustomRadio);
+          customFullInput.addEventListener('input', selectCustomRadio);
+        }
+        if (customPassInput) {
+          customPassInput.addEventListener('focus', selectCustomRadio);
+          customPassInput.addEventListener('input', selectCustomRadio);
+        }
+      });
+
+      var skipBtn = document.getElementById('warning-skip-btn');
+      if (skipBtn) {
+        skipBtn.addEventListener('click', function() {
+          SchoolApp.closeModal();
+        });
+      }
+
+      var addNowBtn = document.getElementById('warning-add-now-btn');
+      if (addNowBtn) {
+        addNowBtn.addEventListener('click', async function() {
+          addNowBtn.disabled = true;
+          addNowBtn.innerHTML = 'Adding...';
+
+          if (!SchoolApp.store.examSubjects) {
+            SchoolApp.store.examSubjects = {};
+          }
+
+          missingList.forEach(function(entry, idx) {
+            var selectedType = 'Practical';
+            var selectedFull = 50;
+            var selectedPass = 17;
+
+            var checkedRadio = document.querySelector('input[name="config-type-' + idx + '"]:checked');
+            if (checkedRadio) {
+              selectedType = checkedRadio.value;
+            }
+
+            if (selectedType === 'Theory') {
+              selectedFull = 100;
+              selectedPass = 33;
+            } else if (selectedType === 'Practical') {
+              selectedFull = 50;
+              selectedPass = 17;
+            } else if (selectedType === 'Internal') {
+              selectedFull = 25;
+              selectedPass = 8;
+            } else if (selectedType === 'Custom') {
+              var customFullInput = document.getElementById('custom-full-' + idx);
+              var customPassInput = document.getElementById('custom-pass-' + idx);
+              selectedFull = customFullInput ? parseInt(customFullInput.value) || 50 : 50;
+              selectedPass = customPassInput ? parseInt(customPassInput.value) || 17 : 17;
+              selectedType = 'Theory';
+            }
+
+            if (!SchoolApp.store.examSubjects[entry.termId]) {
+              SchoolApp.store.examSubjects[entry.termId] = {};
+            }
+            if (!SchoolApp.store.examSubjects[entry.termId][entry.classId]) {
+              SchoolApp.store.examSubjects[entry.termId][entry.classId] = { subjects: [] };
+            }
+
+            var list = SchoolApp.store.examSubjects[entry.termId][entry.classId].subjects;
+            var subId = 'subj_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4);
+
+            list.push({
+              id: subId,
+              name: entry.subjectName,
+              code: entry.subjectName.substring(0, 4).toUpperCase(),
+              type: selectedType,
+              fullMarks: selectedFull,
+              passMarks: selectedPass,
+              hasExam: true,
+              isOptional: false,
+              order: list.length + 1
+            });
+          });
+
+          var success = await SchoolApp.save();
+          SchoolApp.closeModal();
+          if (success) {
+            SchoolApp.showToast('Subjects successfully added to Exam configuration.', 'success');
+            if (SchoolApp.modules.exams && typeof SchoolApp.modules.exams.render === 'function') {
+              SchoolApp.modules.exams.render();
+            }
+          }
+        });
+      }
+    }
+
+    if (isNewTeacher) {
+      var hostname = window.location.hostname;
+      var activeSchool = (SchoolApp.store.schools || []).find(function(s) { return s.school_id === SchoolApp.store.currentSchoolId; });
+      var subdomainUrl = '';
+      if (activeSchool && activeSchool.subdomain) {
+        if (hostname.indexOf('localhost') !== -1) {
+          subdomainUrl = activeSchool.subdomain + '.localhost' + (window.location.port ? ':' + window.location.port : '');
+        } else {
+          subdomainUrl = activeSchool.subdomain + '.ctrlshifts.in';
+        }
+      } else {
+        subdomainUrl = window.location.host;
+      }
+      
+      var escapeHTMLStr = function(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      };
+
+      setTimeout(function() {
+        SchoolApp.showModal('Teacher Added!', 
+          '<div style="padding: 10px; text-align: center;">' +
+          '  <div style="font-size: 48px; margin-bottom: 16px;">🎉</div>' +
+          '  <h3 style="margin-bottom: 8px;">Teacher Account Created!</h3>' +
+          '  <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 13px;">Please share these login credentials with the teacher:</p>' +
+          '  <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px; text-align: left; max-width: 400px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">' +
+          '    <div><strong>Login ID:</strong> <span style="font-family: monospace; font-size: 14px; color: #60a5fa; margin-left: 6px;">' + escapeHTMLStr(fields.email) + '</span></div>' +
+          '    <div><strong>Password:</strong> <span style="font-family: monospace; font-size: 14px; color: #60a5fa; margin-left: 6px;">' + escapeHTMLStr(rawPassword) + '</span></div>' +
+          '    <div><strong>Sign-in Link:</strong> <a href="' + window.location.protocol + '//' + subdomainUrl + '" target="_blank" style="color: var(--accent-secondary); font-family: monospace; font-size: 13px; margin-left: 6px; text-decoration: underline;">' + subdomainUrl + '</a></div>' +
+          '  </div>' +
+          '</div>',
+          '<button class="btn btn-primary" id="teacher-added-done-btn">Done</button>'
+        );
+
+        var doneBtn = document.getElementById('teacher-added-done-btn');
+        if (doneBtn) {
+          doneBtn.addEventListener('click', function() {
+            SchoolApp.closeModal();
+            checkExamAccess();
+          });
+        }
+      }, 200);
+    } else {
+      checkExamAccess();
+    }
   }
 
   function viewTeacher(id) {
@@ -567,7 +857,7 @@
 
     if (SchoolApp.isAdmin()) {
       html += '<div class="detail-section"><h4><span class="material-icons-round">vpn_key</span> Login Credentials</h4><div class="detail-grid">';
-      html += '<div class="detail-item"><span class="detail-item-label">Login Email</span><span class="detail-item-value">' + teacher.email + '</span></div>';
+      html += '<div class="detail-item full-width" style="grid-column: span 2; background: rgba(37,99,235,0.08); padding: 10px; border-radius: 8px; border: 1px solid rgba(37,99,235,0.15);"><span class="detail-item-label" style="color: var(--accent-secondary); font-weight: 700;">Login Email (used to sign in)</span><span class="detail-item-value" style="font-weight: 700; color: var(--text-primary); font-size: 14px;">' + teacher.email + '</span></div>';
       html += '<div class="detail-item"><span class="detail-item-label">Password</span><span class="detail-item-value" style="font-family:monospace">••••••••</span></div>';
       html += '</div></div>';
     }

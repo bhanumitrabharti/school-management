@@ -20,6 +20,16 @@
     }
   };
 
+  function escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   function parseClassSection(str) {
     if (!str) return { class: '', section: '' };
     var clean = str.replace(/class\s+/i, '').trim();
@@ -41,8 +51,18 @@
       return SchoolApp.currentUser.classTeacherOf || [];
     }
     var combos = [];
-    (SchoolApp.store.settings.classes || []).forEach(function(c) {
-      (SchoolApp.store.settings.sections || []).forEach(function(s) {
+    var settings = SchoolApp.store.settings || {};
+    var classesList = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
+    
+    classesList.forEach(function(c) {
+      var sectList = [];
+      if (Array.isArray(rawSections)) {
+        sectList = rawSections;
+      } else if (typeof rawSections === 'object') {
+        sectList = rawSections[c] || [];
+      }
+      sectList.forEach(function(s) {
         // Only include classes that have students
         var hasStudents = SchoolApp.store.students.some(function(st) {
           var studentClass = String(st.class).replace(/^class\s+/i, '').trim().toLowerCase();
@@ -121,6 +141,13 @@
   function render() {
     var container = document.getElementById('page-attendance');
     if (!container) return;
+
+    if (!window.assertSchoolIsolation(SchoolApp.store.attendance, SchoolApp.store.currentSchoolId)) {
+      console.error("[SECURITY] Data isolation breach detected in Attendance Tab!");
+      SchoolApp.showToast("Security error. Please logout and login again.", "error");
+      SchoolApp.logout();
+      return;
+    }
 
     var stats = getAttendanceStats();
     var html = '';
@@ -209,7 +236,7 @@
 
           html += '<div class="attendance-card ' + status + '">';
           html += '<div class="avatar avatar-md" data-color="' + color + '">' + initials + '</div>';
-          html += '<div class="student-name">' + s.firstName + ' ' + s.lastName + '</div>';
+          html += '<div class="student-name" style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(s.firstName + ' ' + s.lastName) + '</div>';
           html += '<div class="student-roll">Roll #' + s.rollNumber + '</div>';
           html += '<div class="status-buttons">';
           html += '<button class="status-btn present-btn' + (status === 'present' ? ' active' : '') + '" data-student="' + s.id + '" data-status="present" title="Present">P</button>';
@@ -253,8 +280,19 @@
 
   function renderHistoryView() {
     var html = '';
-    var classes = SchoolApp.store.settings.classes || [];
-    var sections = SchoolApp.store.settings.sections || [];
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
+    var sections = [];
+    if (Array.isArray(rawSections)) {
+      sections = rawSections;
+    } else if (typeof rawSections === 'object') {
+      var allSecs = new Set();
+      Object.values(rawSections).forEach(function(arr) {
+        if (Array.isArray(arr)) arr.forEach(function(s) { allSecs.add(s); });
+      });
+      sections = Array.from(allSecs);
+    }
 
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
@@ -576,7 +614,8 @@
       var statusClass = rec.status === 'present' ? 'badge-success' : rec.status === 'absent' ? 'badge-danger' : 'badge-warning';
       var statusText = rec.status.charAt(0).toUpperCase() + rec.status.slice(1);
 
-      html += '<tr><td>' + name + '</td><td>' + roll + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td></tr>';
+      var nameHtml = student ? '<span style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + student.id + '\')">' + escapeHTML(name) + '</span>' : escapeHTML(name);
+      html += '<tr><td>' + nameHtml + '</td><td>' + roll + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td></tr>';
     });
 
     html += '</tbody></table></div>';

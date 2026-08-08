@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -11,10 +12,18 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
 
-// Expose Firestore globally for any non-module components
+// Expose Firestore and Auth globally for any non-module components
 window.db = db;
-window.firestore = { doc, getDoc, setDoc, updateDoc, collection, getDocs };
+window.auth = auth;
+window.firestore = { doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot };
+window.openStudentProfile = function(studentId) {
+  if (window.SchoolApp && typeof window.SchoolApp.openStudentProfile === 'function') {
+    window.SchoolApp.openStudentProfile(studentId);
+  }
+};
+
 
 window.SchoolApp = {
   // ---------- Data Store ----------
@@ -27,6 +36,7 @@ window.SchoolApp = {
     feeHeads: [],
     feeStructures: {},
     fees: [],
+    feeActivityLog: [],
     exams: [],
     subjectMapping: {},
     timetable: {
@@ -53,7 +63,7 @@ window.SchoolApp = {
       academicYear: '2025-2026',
       address: '123 Education Lane, Knowledge City, Karnataka 560001',
       phone: '+91 98765 43210',
-      email: 'admin@shishuvikash.edu.in',
+      email: 'bhanu.bharti@ctrlshifts.in',
       classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
       sections: ['A','B','C'],
       attendanceTime: '09:00',
@@ -83,6 +93,7 @@ window.SchoolApp = {
       feeHeads: [],
       feeStructures: {},
       fees: [],
+      feeActivityLog: [],
       exams: [],
       subjectMapping: {},
       timetable: {
@@ -109,7 +120,7 @@ window.SchoolApp = {
         academicYear: '2025-2026',
         address: '123 Education Lane, Knowledge City, Karnataka 560001',
         phone: '+91 98765 43210',
-        email: 'admin@shishuvikash.edu.in',
+        email: 'bhanu.bharti@ctrlshifts.in',
         classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
         sections: ['A','B','C'],
         attendanceTime: '09:00',
@@ -152,6 +163,10 @@ window.SchoolApp = {
   sidebarCollapsed: false,
   modules: {},
   feesGeneratedMsg: null,
+  adminIsDirty: false,
+  pendingNavigation: null,
+  lastCleanTab: 'settings',
+  onSaveSuccessNavigate: null,
 
   // ---------- Data Persistence ----------
   // ---------- Data Persistence ----------
@@ -180,6 +195,24 @@ window.SchoolApp = {
     }
   },
 
+  saveWithRetry: async function(fn, attempts = 3) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await fn();
+        return true;
+      } catch(e) {
+        if (i === attempts - 1) {
+          this.showToast(
+            '❌ Save failed. Check connection.',
+            'error');
+          return false;
+        }
+        await new Promise(r => 
+          setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+  },
+
   save: async function(bypassLoader) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
@@ -193,7 +226,45 @@ window.SchoolApp = {
       var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
       const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
       const payload = JSON.parse(JSON.stringify(this.store));
-      await window.firestore.setDoc(docRef, payload);
+      if (!payload.settings) payload.settings = {};
+      
+      // Sync logoUrl and schoolLogo
+      if (payload.settings.schoolLogo && !payload.settings.logoUrl) {
+        payload.settings.logoUrl = payload.settings.schoolLogo;
+      }
+      if (payload.settings.logoUrl && !payload.settings.schoolLogo) {
+        payload.settings.schoolLogo = payload.settings.logoUrl;
+      }
+
+      // Explicitly preserve logo if new payload has no logo field
+      if (!payload.settings.schoolLogo) {
+        try {
+          var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
+          if (cachedRaw) {
+            var cached = JSON.parse(cachedRaw);
+            if (cached && cached.settings) {
+              var existingLogo = cached.settings.schoolLogo || cached.settings.logoUrl;
+              if (existingLogo) {
+                payload.settings.schoolLogo = existingLogo;
+                payload.settings.logoUrl = existingLogo;
+                if (payload.settings.schoolInfo) {
+                  payload.settings.schoolInfo.logoUrl = existingLogo;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to preserve schoolLogo from cache:', err);
+        }
+      }
+      
+      const saveFn = () => window.firestore.setDoc(docRef, payload, { merge: true });
+      const success = await this.saveWithRetry(saveFn);
+      if (!success) {
+        if (!bypassLoader) this.hideLoader();
+        return false;
+      }
+      
       console.log('Successfully saved tenant data to Cloud Firestore for: ' + currentSchoolId);
       
       // Update localStorage cache to match
@@ -206,6 +277,13 @@ window.SchoolApp = {
       if (!bypassLoader) {
         this.hideLoader();
       }
+      this.adminIsDirty = false;
+      this.updateDirtyIndicator();
+      if (this.onSaveSuccessNavigate) {
+        var cb = this.onSaveSuccessNavigate;
+        this.onSaveSuccessNavigate = null;
+        cb();
+      }
       return true;
     } catch (e) {
       console.error('Failed to save data to Firestore:', e);
@@ -217,11 +295,99 @@ window.SchoolApp = {
     }
   },
 
+  saveMarks: async function(termId, classId, sectionId, studentId, markEntry) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    try {
+      var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+      const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+      const markPath = 'examMarks.' + termId + '.' + classId + '.' + sectionId + '.' + studentId;
+
+      console.log('[saveMarks] path:', markPath);
+
+      try {
+        // Attempt 1: targeted updateDoc (fastest path)
+        await window.firestore.updateDoc(docRef, { [markPath]: markEntry });
+        console.log('[saveMarks] updateDoc SUCCESS');
+      } catch (updateErr) {
+        console.warn('[saveMarks] updateDoc failed (' + (updateErr.code || updateErr.message) + '), retrying with setDoc merge...');
+        // Attempt 2: setDoc with merge (works even if sub-path doesn't exist yet)
+        var nested = {};
+        nested['examMarks'] = {};
+        nested['examMarks'][termId] = {};
+        nested['examMarks'][termId][classId] = {};
+        nested['examMarks'][termId][classId][sectionId] = {};
+        nested['examMarks'][termId][classId][sectionId][studentId] = markEntry;
+        await window.firestore.setDoc(docRef, nested, { merge: true });
+        console.log('[saveMarks] setDoc merge SUCCESS');
+      }
+
+      // Update localStorage cache
+      try {
+        const payload = JSON.parse(JSON.stringify(this.store));
+        localStorage.setItem('cached_tenant_data_' + currentSchoolId, JSON.stringify(payload));
+      } catch (err) {
+        console.warn('Failed to write secondary cache to localStorage:', err);
+      }
+      return true;
+    } catch (e) {
+      console.error('[saveMarks] FAILED:', e.code, e.message);
+      this.showToast('Save failed: ' + (e.message || 'Check connection'), 'error');
+      return false;
+    }
+  },
+
+  tenantListenerUnsubscribe: null,
+  schoolsListenerUnsubscribe: null,
+
+  updateConnectionIndicator: function(fromCache) {
+    const indicator = document.getElementById('live-indicator');
+    const dot = indicator ? indicator.querySelector('.live-dot') : null;
+    const text = document.getElementById('live-status-text');
+    
+    if (!indicator || !dot || !text) return;
+    
+    const isOnline = navigator.onLine;
+    if (isOnline && !fromCache) {
+      indicator.style.color = 'var(--success)';
+      indicator.style.backgroundColor = 'rgba(16, 185, 129, 0.08)';
+      indicator.style.borderColor = 'rgba(16, 185, 129, 0.15)';
+      dot.style.backgroundColor = 'var(--success)';
+      dot.style.boxShadow = '0 0 6px var(--success)';
+      dot.style.animation = 'pulse-dot 1.8s infinite';
+      text.textContent = 'Live';
+    } else {
+      indicator.style.color = 'var(--warning)';
+      indicator.style.backgroundColor = 'rgba(245, 158, 11, 0.08)';
+      indicator.style.borderColor = 'rgba(245, 158, 11, 0.15)';
+      dot.style.backgroundColor = 'var(--warning)';
+      dot.style.boxShadow = '0 0 6px var(--warning)';
+      dot.style.animation = 'pulse-dot-warning 1.8s infinite';
+      text.textContent = 'Reconnecting...';
+    }
+  },
+
   load: async function(bypassLoader) {
     if (!bypassLoader) {
       this.showLoader('Loading...');
     }
-    try {
+
+    var self = this;
+    
+    if (!window.connectionEventsBound) {
+      window.connectionEventsBound = true;
+      window.addEventListener('online', function() {
+        self.updateConnectionIndicator(true);
+      });
+      window.addEventListener('offline', function() {
+        self.updateConnectionIndicator(true);
+      });
+    }
+
+    return new Promise((resolve) => {
       var hostname = window.location.hostname.toLowerCase();
       var sub = null;
       if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
@@ -232,353 +398,319 @@ window.SchoolApp = {
         sub = hostname.substring(0, hostname.indexOf('.localhost'));
       }
 
-      var schoolsList = [];
-      try {
-        const querySnapshot = await window.firestore.getDocs(window.firestore.collection(window.db, 'schools'));
+      if (self.schoolsListenerUnsubscribe) {
+        self.schoolsListenerUnsubscribe();
+      }
+      
+      const schoolsCol = window.firestore.collection(window.db, 'schools');
+      self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(schoolsCol, (querySnapshot) => {
+        var schoolsList = [];
         querySnapshot.forEach((doc) => {
           schoolsList.push(doc.data());
         });
-      } catch (e) {
-        console.error('Failed to pre-fetch schools list for subdomain resolution:', e);
-      }
-
-      var activeSchoolId = null;
-      var matchedSchool = null;
-      if (sub) {
-        matchedSchool = schoolsList.find(function(s) {
-          return s.subdomain === sub;
-        });
-        if (matchedSchool) {
-          activeSchoolId = matchedSchool.school_id;
-          console.log('Detected school context from subdomain: ' + sub + ' -> ' + activeSchoolId);
-        } else {
-          console.warn('Subdomain context detected but no matching school found in Firestore: ' + sub);
-        }
-      }
-
-      if (!sub && !activeSchoolId) {
-        activeSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
-      }
-
-      var isSVM = activeSchoolId === 'svm_bokaro_001';
-      this.store.currentSchoolId = activeSchoolId || '';
-
-      var docSnap = null;
-      var loadedFromFirestore = false;
-      if (activeSchoolId) {
-        try {
-          const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
-          docSnap = await window.firestore.getDoc(docRef);
-          loadedFromFirestore = true;
-        } catch (e) {
-          console.warn('Failed to load from Firestore (offline or error):', e);
-        }
-      }
-
-      var parsed = null;
-      if (loadedFromFirestore && docSnap && docSnap.exists()) {
-        parsed = docSnap.data();
-        // Update localStorage cache to match fresh Firestore data
-        try {
-          localStorage.setItem('cached_tenant_data_' + activeSchoolId, JSON.stringify(parsed));
-        } catch (e) {
-          console.warn('Failed to write secondary cache to localStorage:', e);
-        }
-      } else {
-        // Fallback to secondary localStorage cache if Firestore fetch failed or document doesn't exist
-        try {
-          var cachedData = localStorage.getItem('cached_tenant_data_' + activeSchoolId);
-          if (cachedData) {
-            parsed = JSON.parse(cachedData);
-            console.log('Successfully loaded secondary cache from localStorage for: ' + activeSchoolId);
+        self.store.schools = schoolsList;
+        
+        var activeSchoolId = null;
+        var matchedSchool = null;
+        if (sub) {
+          matchedSchool = schoolsList.find(function(s) {
+            return s.subdomain === sub;
+          });
+          if (matchedSchool) {
+            activeSchoolId = matchedSchool.school_id;
+            console.log('Detected school context from subdomain: ' + sub + ' -> ' + activeSchoolId);
+          } else {
+            console.warn('Subdomain context detected but no matching school found in Firestore: ' + sub);
           }
-        } catch (e) {
-          console.error('Failed to parse secondary cache from localStorage:', e);
         }
-      }
 
-      if (parsed) {
-        this.store = Object.assign({}, this.store, parsed);
-        this.store.currentSchoolId = activeSchoolId;
-      } else {
-        if (isSVM) {
-          // Default SVM seed
-          this.store.seederVersion = 2;
-          this.store.students = [];
-          this.store.teachers = [];
-          this.store.attendance = [];
-          this.store.trash = [];
-          this.store.fees = [];
-          this.store.marks = [];
-          this.store.notices = [];
-          this.store.currentSchoolId = 'svm_bokaro_001';
-          this.generateDemoData();
-          await this.save(true);
-        } else if (activeSchoolId) {
-          // Initialize fresh, empty template for new school (not SVM data)
-          var schoolSettings = (matchedSchool && matchedSchool.settings) || {};
-          var schoolInfo = schoolSettings.schoolInfo || {};
+        if (!sub && !activeSchoolId) {
+          activeSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+        }
 
-          this.store = {
-            seederVersion: 2,
-            students: [],
-            teachers: [],
-            attendance: [],
-            trash: [],
-            feeHeads: [
-              { id: 'fh_tuition', name: 'Tuition Fee' },
-              { id: 'fh_transport', name: 'Transport Fee' },
-              { id: 'fh_exam', name: 'Examination Fee' },
-              { id: 'fh_fine', name: 'Late Fee / Fine' },
-              { id: 'fh_annual', name: 'Annual Development Fee' }
-            ],
-            feeStructures: {},
-            fees: [],
-            exams: [],
-            subjectMapping: {},
-            timetable: {
-              settings: {
-                startTime: "08:00",
-                endTime: "14:00",
-                totalPeriods: 8,
-                lunchAfterPeriod: 4,
-                lunchDuration: 30,
-                satStartTime: "08:00",
-                satEndTime: "12:30",
-                satTotalPeriods: 6,
-                satLunchAfterPeriod: 0
+        self.store.currentSchoolId = activeSchoolId || '';
+
+        if (self.tenantListenerUnsubscribe) {
+          self.tenantListenerUnsubscribe();
+          self.tenantListenerUnsubscribe = null;
+        }
+
+        if (activeSchoolId) {
+          const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
+          let firstResolveCalled = false;
+
+          // ISSUE 2 FIX: Declare render guard OUTSIDE onSnapshot callback so it persists
+          var _examsRenderLock = false;
+          var _lastExamsRender = 0;
+          var EXAMS_RENDER_THROTTLE = 5000;
+
+          self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
+            self.updateConnectionIndicator(docSnap.metadata.fromCache);
+
+            var parsed = null;
+            var docExists = docSnap.exists();
+            if (docExists) {
+              parsed = docSnap.data();
+              try {
+                localStorage.setItem('cached_tenant_data_' + activeSchoolId, JSON.stringify(parsed));
+              } catch (e) {
+                console.warn('Failed to write secondary cache to localStorage:', e);
               }
-            },
-            marks: [],
-            notices: [],
-            lastAutomatedFeeRun: '',
-            notifications: [],
-            schools: [],
-            currentSchoolId: activeSchoolId,
-            settings: {
-              schoolInfo: {
-                name: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
-                tagline: schoolInfo.tagline || (matchedSchool ? matchedSchool.tagline : '') || '',
-                logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
-                phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
-                email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
-                address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
-                affiliation: schoolInfo.affiliation || ''
-              },
-              schoolName: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
-              phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
-              email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
-              address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
-              logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
-              adminUsername: schoolSettings.adminUsername || (matchedSchool ? matchedSchool.adminUsername : 'admin') || 'admin',
-              adminPassword: schoolSettings.adminPassword || (matchedSchool ? matchedSchool.adminPassword : '') || '',
-              adminEmail: schoolSettings.adminEmail || (matchedSchool ? matchedSchool.adminEmail : '') || '',
-              classes: schoolSettings.classes || ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
-              sections: schoolSettings.sections || {
-                'Nursery': ['A'], 'LKG': ['A'], 'UKG': ['A'], '1': ['A'], '2': ['A'], '3': ['A'], '4': ['A'], '5': ['A'], '6': ['A'], '7': ['A'], '8': ['A'], '9': ['A'], '10': ['A']
-              },
-              feeStructure: schoolSettings.feeStructure || {},
-              extraCharges: schoolSettings.extraCharges || [],
-              setupCompletedBySuperAdmin: true,
-              clientCanEdit: true,
-              theme: schoolSettings.theme || 'dark',
-              attendanceTime: schoolSettings.attendanceTime || '09:00',
-              academicYear: schoolSettings.academicYear || '2025-2026'
+            } else {
+              try {
+                var cachedData = localStorage.getItem('cached_tenant_data_' + activeSchoolId);
+                if (cachedData) {
+                  parsed = JSON.parse(cachedData);
+                  docExists = true;
+                  console.log('Successfully loaded secondary cache from localStorage for: ' + activeSchoolId);
+                }
+              } catch (e) {
+                console.error('Failed to parse secondary cache from localStorage:', e);
+              }
             }
-          };
 
-          // Populate legacy feeStructures for compatibility
-          var formFeeStructure = this.store.settings.feeStructure || {};
-          var legacyFeeStructures = {};
-          Object.keys(formFeeStructure).forEach(function(c) {
-            var clsFees = formFeeStructure[c] || {};
-            var legacyFees = {};
-            Object.keys(clsFees).forEach(function(k) {
-              var legacyKey = k;
-              if (k === 'tuition') legacyKey = 'fh_tuition';
-              else if (k === 'transport') legacyKey = 'fh_transport';
-              else if (k === 'exam') legacyKey = 'fh_exam';
-              else if (k === 'fine') legacyKey = 'fh_fine';
-              else if (k === 'annual') legacyKey = 'fh_annual';
-              else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
-              legacyFees[legacyKey] = clsFees[k];
-            });
-            legacyFeeStructures[c] = legacyFees;
-          });
-          this.store.feeStructures = legacyFeeStructures;
+            // Initialize fresh template for new school context if Firestore doc doesn't exist
+            if (!docExists) {
+              console.log('Initializing fresh template for new school context: ' + activeSchoolId);
+              var schoolSettings = (matchedSchool && matchedSchool.settings) || {};
+              var schoolInfo = schoolSettings.schoolInfo || {};
+              
+              self.store = {
+                seederVersion: 2,
+                students: [],
+                teachers: [],
+                attendance: [],
+                trash: [],
+                feeHeads: [
+                  { id: 'fh_tuition', name: 'Tuition Fee' },
+                  { id: 'fh_transport', name: 'Transport Fee' },
+                  { id: 'fh_exam', name: 'Examination Fee' },
+                  { id: 'fh_fine', name: 'Late Fee / Fine' },
+                  { id: 'fh_annual', name: 'Annual Development Fee' }
+                ],
+                feeStructures: {},
+                fees: [],
+                exams: [],
+                subjectMapping: {},
+                timetable: {
+                  settings: {
+                    startTime: "08:00",
+                    endTime: "14:00",
+                    totalPeriods: 8,
+                    lunchAfterPeriod: 4,
+                    lunchDuration: 30,
+                    satStartTime: "08:00",
+                    satEndTime: "12:30",
+                    satTotalPeriods: 6,
+                    satLunchAfterPeriod: 0
+                  }
+                },
+                marks: [],
+                notices: [],
+                lastAutomatedFeeRun: '',
+                notifications: [],
+                schools: self.store.schools || [],
+                currentSchoolId: activeSchoolId,
+                settings: {
+                  schoolInfo: {
+                    name: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
+                    tagline: schoolInfo.tagline || (matchedSchool ? matchedSchool.tagline : '') || '',
+                    logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
+                    phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
+                    email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
+                    address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
+                    affiliation: schoolInfo.affiliation || ''
+                  },
+                  schoolName: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
+                  phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
+                  email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
+                  address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
+                  logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
+                  adminUsername: schoolSettings.adminUsername || (matchedSchool ? matchedSchool.adminUsername : 'admin') || 'admin',
+                  adminPassword: schoolSettings.adminPassword || (matchedSchool ? matchedSchool.adminPassword : '') || '',
+                  adminEmail: schoolSettings.adminEmail || (matchedSchool ? matchedSchool.adminEmail : '') || '',
+                  classes: schoolSettings.classes || ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
+                  sections: schoolSettings.sections || {
+                    'Nursery': ['A'], 'LKG': ['A'], 'UKG': ['A'], '1': ['A'], '2': ['A'], '3': ['A'], '4': ['A'], '5': ['A'], '6': ['A'], '7': ['A'], '8': ['A'], '9': ['A'], '10': ['A']
+                  },
+                  feeStructure: schoolSettings.feeStructure || {},
+                  extraCharges: schoolSettings.extraCharges || [],
+                  setupCompletedBySuperAdmin: true,
+                  clientCanEdit: true,
+                  theme: schoolSettings.theme || 'dark',
+                  attendanceTime: schoolSettings.attendanceTime || '09:00',
+                  academicYear: schoolSettings.academicYear || '2025-2026'
+                }
+              };
 
-          await this.save(true);
-        }
-      }
+              // Populate legacy feeStructures for compatibility
+              var formFeeStructure = self.store.settings.feeStructure || {};
+              var legacyFeeStructures = {};
+              Object.keys(formFeeStructure).forEach(function(c) {
+                var clsFees = formFeeStructure[c] || {};
+                var legacyFees = {};
+                Object.keys(clsFees).forEach(function(k) {
+                  var legacyKey = k;
+                  if (k === 'tuition') legacyKey = 'fh_tuition';
+                  else if (k === 'transport') legacyKey = 'fh_transport';
+                  else if (k === 'exam') legacyKey = 'fh_exam';
+                  else if (k === 'fine') legacyKey = 'fh_fine';
+                  else if (k === 'annual') legacyKey = 'fh_annual';
+                  else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
+                  legacyFees[legacyKey] = clsFees[k];
+                });
+                legacyFeeStructures[c] = legacyFees;
+              });
+              self.store.feeStructures = legacyFeeStructures;
 
-      // Populate default arrays/objects if missing
-      if (!this.store.students) this.store.students = [];
-      if (!this.store.teachers) this.store.teachers = [];
-      if (!this.store.attendance) this.store.attendance = [];
-      if (!this.store.trash) this.store.trash = [];
-      if (!this.store.feeHeads) this.store.feeHeads = [];
-      if (!this.store.feeStructures) this.store.feeStructures = {};
-      if (!this.store.fees) this.store.fees = [];
-      if (!this.store.exams) this.store.exams = [];
-      if (!this.store.subjectMapping) this.store.subjectMapping = {};
-      if (!this.store.marks) this.store.marks = [];
-      if (!this.store.notices) this.store.notices = [];
-      if (!this.store.timetable) this.store.timetable = {};
+              await self.save(true);
+              parsed = self.store;
+            }
 
-      if (!this.store.settings) this.store.settings = {};
-      var self = this;
-      
-      // Migrate or initialize settings.feeHeads from store.feeHeads
-      if (!this.store.settings.feeHeads) {
-        if (this.store.feeHeads && this.store.feeHeads.length > 0) {
-          this.store.settings.feeHeads = JSON.parse(JSON.stringify(this.store.feeHeads));
-        } else {
-          this.store.settings.feeHeads = [
-            { id: 'fh_tuition', name: 'Tuition Fee' },
-            { id: 'fh_transport', name: 'Transport Fee' },
-            { id: 'fh_exam', name: 'Examination Fee' },
-            { id: 'fh_fine', name: 'Late Fee / Fine' },
-            { id: 'fh_annual', name: 'Annual Development Fee' }
-          ];
-        }
-      }
-      this.store.feeHeads = this.store.settings.feeHeads; // sync back
+            if (parsed) {
+              var currentStr = JSON.stringify(self.store);
+              var freshStr = JSON.stringify(parsed);
+              if (currentStr !== freshStr) {
+                self.store = Object.assign({}, self.store, parsed);
+                self.store.currentSchoolId = activeSchoolId;
+              }
+            }
 
-      // Migrate or initialize settings.feeStructure from store.feeStructures
-      if (!this.store.settings.feeStructure) {
-        if (this.store.feeStructures && Object.keys(this.store.feeStructures).length > 0) {
-          this.store.settings.feeStructure = {};
-          var fs = this.store.feeStructures;
-          Object.keys(fs).forEach(function(cls) {
-            self.store.settings.feeStructure[cls] = {};
-            Object.keys(fs[cls]).forEach(function(key) {
-              var newKey = key;
-              if (key.startsWith('fh_')) {
-                // If it starts with fh_, keep it as id
+            // Populate default arrays/objects if missing
+            if (!self.store.students) self.store.students = [];
+            if (!self.store.teachers) self.store.teachers = [];
+            if (!self.store.attendance) self.store.attendance = [];
+            if (!self.store.trash) self.store.trash = [];
+            if (!self.store.feeHeads) self.store.feeHeads = [];
+            if (!self.store.feeStructures) self.store.feeStructures = {};
+            if (!self.store.fees) self.store.fees = [];
+            if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
+            if (!self.store.exams) self.store.exams = [];
+            if (!self.store.subjectMapping) self.store.subjectMapping = {};
+            if (!self.store.marks) self.store.marks = [];
+            if (!self.store.notices) self.store.notices = [];
+            if (!self.store.timetable) self.store.timetable = {};
+
+            if (!self.store.settings) self.store.settings = {};
+
+            // Migrate or initialize settings.feeHeads from store.feeHeads
+            if (!self.store.settings.feeHeads) {
+              if (self.store.feeHeads && self.store.feeHeads.length > 0) {
+                self.store.settings.feeHeads = JSON.parse(JSON.stringify(self.store.feeHeads));
               } else {
-                newKey = 'fh_' + key;
+                self.store.settings.feeHeads = [
+                  { id: 'fh_tuition', name: 'Tuition Fee' },
+                  { id: 'fh_transport', name: 'Transport Fee' },
+                  { id: 'fh_exam', name: 'Examination Fee' },
+                  { id: 'fh_fine', name: 'Late Fee / Fine' },
+                  { id: 'fh_annual', name: 'Annual Development Fee' }
+                ];
               }
-              self.store.settings.feeStructure[cls][newKey] = fs[cls][key];
-            });
+            }
+            self.store.feeHeads = self.store.settings.feeHeads;
+
+            // Migrate or initialize settings.feeStructure from store.feeStructures
+            if (!self.store.settings.feeStructure) {
+              if (self.store.feeStructures && Object.keys(self.store.feeStructures).length > 0) {
+                self.store.settings.feeStructure = {};
+                var fs = self.store.feeStructures;
+                Object.keys(fs).forEach(function(cls) {
+                  self.store.settings.feeStructure[cls] = {};
+                  var clsFees = fs[cls] || {};
+                  Object.keys(clsFees).forEach(function(feeId) {
+                    var cleanId = feeId;
+                    if (feeId === 'fh_tuition') cleanId = 'tuition';
+                    else if (feeId === 'fh_transport') cleanId = 'transport';
+                    else if (feeId === 'fh_exam') cleanId = 'exam';
+                    else if (feeId === 'fh_fine') cleanId = 'fine';
+                    else if (feeId === 'fh_annual') cleanId = 'annual';
+                    else if (feeId.startsWith('fh_')) cleanId = feeId.substring(3);
+                    self.store.settings.feeStructure[cls][cleanId] = clsFees[feeId];
+                  });
+                });
+              }
+            }
+
+            // Default subjects
+            if (!self.store.settings.subjects) {
+              self.store.settings.subjects = ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Computer Science', 'Sanskrit', 'Art'];
+            }
+            if (!self.store.settings.schoolInfo) {
+              self.store.settings.schoolInfo = {
+                name: self.store.settings.schoolName || '',
+                tagline: '',
+                logoUrl: self.store.settings.logoUrl || '',
+                phone: self.store.settings.phone || '',
+                email: self.store.settings.email || '',
+                address: self.store.settings.address || '',
+                affiliation: '',
+                udiseCode: ''
+              };
+            } else if (self.store.settings.schoolInfo.udiseCode === undefined) {
+              self.store.settings.schoolInfo.udiseCode = '';
+            }
+
+            if (self.currentPage && firstResolveCalled) {
+              console.log("Auto-refreshing active page: " + self.currentPage);
+              if (self.currentPage === 'dashboard') {
+                self.renderDashboard();
+              } else if (self.currentPage === 'exams') {
+                // ISSUE 2 FIX: onSnapshot NEVER triggers full module re-render.
+                // Only call refreshMarksTable (lightweight, guarded inside exams.js)
+                if (typeof window.renderMarksTable === 'function') {
+                  var _now = Date.now();
+                  if (!_examsRenderLock && (_now - _lastExamsRender > EXAMS_RENDER_THROTTLE)) {
+                    _examsRenderLock = true;
+                    _lastExamsRender = _now;
+                    try { window.renderMarksTable(); } finally { _examsRenderLock = false; }
+                  } else {
+                    console.log('Exams render throttled (' + (Date.now() - _lastExamsRender) + 'ms since last)');
+                  }
+                }
+              } else if (self.modules[self.currentPage] && self.modules[self.currentPage].render) {
+                self.modules[self.currentPage].render();
+              }
+            }
+
+            if (!firstResolveCalled) {
+              firstResolveCalled = true;
+              if (!bypassLoader) self.hideLoader();
+              resolve(true);
+            }
+          }, (error) => {
+            console.error("Firestore tenant onSnapshot error:", error);
+            self.updateConnectionIndicator(true);
+
+            try {
+              var cachedData = localStorage.getItem('cached_tenant_data_' + activeSchoolId);
+              if (cachedData) {
+                var parsed = JSON.parse(cachedData);
+                self.store = Object.assign({}, self.store, parsed);
+                self.store.currentSchoolId = activeSchoolId;
+              }
+            } catch (err) {
+              console.error('Error loading local cache on snapshot failure:', err);
+            }
+
+            if (!firstResolveCalled) {
+              firstResolveCalled = true;
+              if (!bypassLoader) self.hideLoader();
+              resolve(false);
+            }
           });
         } else {
-          this.store.settings.feeStructure = {};
+          if (!bypassLoader) self.hideLoader();
+          resolve(false);
         }
-      }
-      // Sync legacy feeStructures from settings.feeStructure
-      if (this.store.settings.feeStructure) {
-        var legacyFS = {};
-        Object.keys(this.store.settings.feeStructure).forEach(function(cls) {
-          legacyFS[cls] = {};
-          Object.keys(self.store.settings.feeStructure[cls]).forEach(function(key) {
-            legacyFS[cls][key] = self.store.settings.feeStructure[cls][key];
-          });
-        });
-        this.store.feeStructures = legacyFS;
-      }
-      if (!this.store.currentSchoolId) {
-        this.store.currentSchoolId = activeSchoolId || '';
-      }
-
-      // Assign synchronized schools list
-      if (schoolsList.length > 0) {
-        this.store.schools = schoolsList;
-      } else {
-        if (isSVM && (!this.store.schools || this.store.schools.length === 0)) {
-          this.store.schools = [
-            {
-              school_id: "svm_bokaro_001",
-              school_name: "Shishu Vikash Mandir (Bokaro)",
-              subdomain: "svm-bokaro",
-              plan: "Premium",
-              status: "Active",
-              storage_used: "1.2 GB",
-              renewal_date: "2026-12-31",
-              allowed_features: ['dashboard','students','teachers','attendance','fees','fee_ledger','print_receipt','timetable','exams','notices','promotion','users','recovery','help']
-            }
-          ];
-        }
-      }
-
-      // Update name based on schools config
-      if (activeSchoolId) {
-        var schoolObj = (this.store.schools || []).find(function(s) { return s.school_id === activeSchoolId; });
-        if (schoolObj) {
-          this.store.settings.schoolName = schoolObj.school_name;
-        }
-      }
-
-      if (!this.store.timetable.settings) {
-        this.store.timetable.settings = {
-          startTime: "08:00",
-          endTime: "14:00",
-          totalPeriods: 8,
-          lunchAfterPeriod: 4,
-          lunchDuration: 30,
-          satStartTime: "08:00",
-          satEndTime: "12:30",
-          satTotalPeriods: 6,
-          satLunchAfterPeriod: 0
-        };
-      }
-      if (!this.store.notifications) this.store.notifications = [];
-      if (this.store.lastAutomatedFeeRun === undefined || this.store.lastAutomatedFeeRun === '') this.store.lastAutomatedFeeRun = '2026-04';
-      
-      var defaultUsername = isSVM ? 'admin' : '';
-      var defaultPassword = isSVM ? 'admin123' : '';
-      this.store.settings = Object.assign({
-        adminUsername: defaultUsername,
-        adminPassword: defaultPassword,
-        classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
-        sections: ['A','B','C']
-      }, this.store.settings || {});
-
-      // Migration patch for missing settings fields in legacy/onboarded schools
-      if (!this.store.settings.classes) {
-        this.store.settings.classes = 
-          ["Nursery","LKG","UKG","Class 1","Class 2",
-           "Class 3","Class 4","Class 5","Class 6",
-           "Class 7","Class 8","Class 9","Class 10"];
-      }
-      if (!this.store.settings.sections) {
-        this.store.settings.sections = {};
-      }
-      if (!this.store.settings.feeStructure) {
-        this.store.settings.feeStructure = {};
-      }
-      if (!this.store.settings.extraCharges) {
-        this.store.settings.extraCharges = [];
-      }
-      if (!this.store.settings.subjects || !Array.isArray(this.store.settings.subjects) || this.store.settings.subjects.length === 0) {
-        this.store.settings.subjects = ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Computer Science', 'Sanskrit', 'Art'];
-      }
-      if (!this.store.settings.schoolInfo) {
-        this.store.settings.schoolInfo = {
-          name: this.store.settings.schoolName || '',
-          tagline: '',
-          logoUrl: this.store.settings.logoUrl || '',
-          phone: this.store.settings.phone || '',
-          email: this.store.settings.email || '',
-          address: this.store.settings.address || '',
-          affiliation: '',
-          udiseCode: ''
-        };
-      } else if (this.store.settings.schoolInfo.udiseCode === undefined) {
-        this.store.settings.schoolInfo.udiseCode = '';
-      }
-
-      if (!bypassLoader) {
-        this.hideLoader();
-      }
-      return true;
-    } catch (e) {
-      console.error('Failed to load data:', e);
-      if (!bypassLoader) {
-        this.hideLoader();
-      }
-      return false;
-    }
+      }, (error) => {
+        console.error('Failed to sync schools in real-time:', error);
+        if (!bypassLoader) self.hideLoader();
+        resolve(false);
+      });
+    });
   },
+
+
 
   updateBrandUI: function() {
     var settings = this.store.settings || {};
@@ -592,7 +724,7 @@ window.SchoolApp = {
     document.querySelectorAll('.login-title').forEach(function(el) {
       el.textContent = schoolName;
     });
-    document.querySelectorAll('.logo-text').forEach(function(el) {
+    document.querySelectorAll('.logo-text, .mobile-school-name').forEach(function(el) {
       el.textContent = schoolName;
     });
 
@@ -823,61 +955,106 @@ window.SchoolApp = {
 
   // ---------- Authentication ----------
   login: async function(role, credentials) {
+    console.log("Login attempt started");
+
+    // Ensure Firebase config is still correct and not accidentally changed
+    if (!firebaseConfig || firebaseConfig.apiKey !== "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo" || firebaseConfig.authDomain !== "ctrl-shift-solutions.firebaseapp.com") {
+      console.error("Firebase config is incorrect or altered!");
+    }
+
+    // Verify that the auth module is properly initialized before login function is called
+    if (typeof auth === 'undefined' || !auth) {
+      console.error("Firebase Auth module not initialized!");
+    }
+
     this.showLoader('Loading...');
     // ALWAYS load fresh from Firestore first as source of truth
     await this.load(true);
     const schoolData = this.store;
+
+    let firebaseResult = null;
+    let firebaseError = null;
+
+    console.log("Firebase auth called");
+    try {
+      const email = role === 'admin' ? 
+        (credentials.username.includes('@') ? credentials.username : `${credentials.username}@ctrlshifts.in`) : 
+        credentials.email;
+      const password = credentials.password;
+
+      firebaseResult = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Success/Error: " + JSON.stringify(firebaseResult));
+    } catch (err) {
+      firebaseError = err;
+      console.log("Success/Error: " + (err.code || err.message || err));
+    }
+
+    let customResult = null;
     if (role === 'admin') {
-      const result = await AuthUtils.login("admin", credentials.username, credentials.password, schoolData);
-      this.hideLoader();
-      if (result.success) {
+      customResult = await AuthUtils.login("admin", credentials.username, credentials.password, schoolData);
+    } else if (role === 'teacher') {
+      customResult = await AuthUtils.login("teacher", credentials.email, credentials.password, schoolData);
+    }
+
+    this.hideLoader();
+
+    if ((firebaseResult && firebaseResult.user) || (customResult && customResult.success)) {
+      if (role === 'admin') {
+        const userObj = (customResult && customResult.user) ? customResult.user : {};
         this.currentUser = {
           id: 'admin',
-          firstName: result.user.firstName || 'Admin',
-          lastName: result.user.lastName || 'User',
+          firstName: userObj.firstName || 'Admin',
+          lastName: userObj.lastName || 'User',
           role: 'admin'
         };
-        this.applyUserTheme();
-        return true;
-      } else {
-        this.showToast(result.message || "Invalid credentials.", "error");
-        return false;
-      }
-    } else if (role === 'teacher') {
-      const result = await AuthUtils.login("teacher", credentials.email, credentials.password, schoolData);
-      this.hideLoader();
-      if (result.success) {
-        const teacher = result.user;
+      } else if (role === 'teacher') {
+        const teacher = (customResult && customResult.user) ? customResult.user : {};
         var classTeacherOf = Array.isArray(teacher.classTeacherOf) ? teacher.classTeacherOf : (teacher.assignedClasses && teacher.assignedClasses.length > 0 ? [teacher.assignedClasses[0]] : []);
         var subjectTeacherOf = Array.isArray(teacher.subjectTeacherOf) ? teacher.subjectTeacherOf : (teacher.assignedClasses || []).map(function(ac) {
           return { class: ac.class, section: ac.section, subject: teacher.subject };
         });
 
         this.currentUser = {
-          id: teacher.id,
-          firstName: teacher.firstName,
-          lastName: teacher.lastName,
+          id: teacher.id || 'teacher',
+          firstName: teacher.firstName || 'Teacher',
+          lastName: teacher.lastName || '',
           role: 'teacher',
-          email: teacher.email,
-          subject: teacher.subject,
-          assignedClasses: teacher.assignedClasses,
+          email: teacher.email || credentials.email,
+          subject: teacher.subject || '',
+          assignedClasses: teacher.assignedClasses || [],
           classTeacherOf: classTeacherOf,
           subjectTeacherOf: subjectTeacherOf
         };
-        this.applyUserTheme();
-        return true;
-      } else {
-        this.showToast(result.message || "Invalid credentials.", "error");
-        return false;
       }
+      this.applyUserTheme();
+      return true;
+    } else {
+      // Prioritize firebaseError if any, fallback to custom error
+      const finalError = firebaseError || new Error((customResult && customResult.message) ? customResult.message : "Invalid credentials.");
+      throw finalError;
     }
-    this.hideLoader();
-    return false;
   },
 
   logout: function() {
+    this.adminIsDirty = false;
     this.currentUser = null;
     this.currentPage = 'dashboard';
+    
+    // Unsubscribe from real-time listeners
+    if (this.tenantListenerUnsubscribe) {
+      this.tenantListenerUnsubscribe();
+      this.tenantListenerUnsubscribe = null;
+    }
+    if (this.schoolsListenerUnsubscribe) {
+      this.schoolsListenerUnsubscribe();
+      this.schoolsListenerUnsubscribe = null;
+    }
+
+    // Reset sidebar nav to default template
+    var navContainer = document.querySelector('.sidebar-nav');
+    if (navContainer && this.sidebarNavTemplate) {
+      navContainer.innerHTML = this.sidebarNavTemplate;
+    }
     
     // Clear any cached school/tenant data from localStorage (keep only theme preference)
     for (var i = localStorage.length - 1; i >= 0; i--) {
@@ -1028,15 +1205,81 @@ window.SchoolApp = {
     return this.currentUser && this.currentUser.role === 'teacher';
   },
 
+  sidebarNavTemplate: null,
+
+  renderSidebarNav: function() {
+    var navContainer = document.querySelector('.sidebar-nav');
+    if (!navContainer) return;
+
+    if (!this.sidebarNavTemplate) {
+      this.sidebarNavTemplate = navContainer.innerHTML;
+    }
+
+    var parser = new DOMParser();
+    var doc = parser.parseFromString('<nav class="sidebar-nav">' + this.sidebarNavTemplate + '</nav>', 'text/html');
+    var navItems = doc.querySelectorAll('.nav-item');
+
+    var self = this;
+    navItems.forEach(function(item) {
+      var page = item.getAttribute('data-page');
+      var shouldRemove = false;
+
+      if (self.isTeacher()) {
+        if (page === 'fees' || page === 'admin' || page === 'teachers') {
+          shouldRemove = true;
+        }
+      }
+
+      if (shouldRemove) {
+        item.remove();
+      }
+    });
+
+    navContainer.innerHTML = doc.querySelector('.sidebar-nav').innerHTML;
+
+    // Re-attach click event listeners to the new nav items
+    document.querySelectorAll('.nav-item').forEach(function(item) {
+      item.addEventListener('click', function(e) {
+        var page = this.getAttribute('data-page');
+        if (page && !self.checkFeatureAccess(page)) {
+          e.preventDefault();
+          e.stopPropagation();
+          self.showUpsellModal(page);
+          return;
+        }
+        e.preventDefault();
+        if (page) {
+          self.navigate(page);
+        }
+      });
+    });
+
+    this.updateSidebarLockBadges();
+  },
+
   // ---------- Navigation ----------
-  navigate: function(pageName) {
+  navigate: function(pageName, fromHistory) {
+    var self = this;
+    if (this.adminIsDirty && pageName !== this.currentPage) {
+      this.pendingNavigation = { page: pageName, fromHistory: fromHistory };
+      this.confirmUnsavedChanges(function() {
+        self.navigate(pageName, fromHistory);
+      });
+      return;
+    }
+
     // Graceful redirection of old support route to unified help route
     if (pageName === 'support') {
       pageName = 'help';
     }
 
     // Strict role check
-    var adminOnlyPages = ['admin', 'fees', 'timetable'];
+    var adminOnlyPages = ['admin', 'fees'];
+    if (this.isTeacher() && pageName === 'teachers') {
+      this.showToast('Access Denied: You do not have permission to view this page.', 'error');
+      this.navigate('dashboard');
+      return;
+    }
     if (adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
@@ -1049,7 +1292,42 @@ window.SchoolApp = {
       return;
     }
 
+    // Call cleanup of current module before navigating away
+    var oldPage = this.currentPage;
+    if (oldPage && this.modules[oldPage] && typeof this.modules[oldPage].cleanup === 'function') {
+      try {
+        console.log("Cleaning up module: " + oldPage);
+        this.modules[oldPage].cleanup();
+      } catch (e) {
+        console.error("Error during module cleanup:", e);
+      }
+    }
+
+    // Manage HTML5 History API
+    if (this.currentUser && window.history) {
+      if (!fromHistory) {
+        if (pageName === 'dashboard') {
+          window.history.replaceState({page: 'dashboard'}, '', '#dashboard');
+        } else {
+          var tab = undefined;
+          if (pageName === 'admin') {
+            var adminModule = this.modules['admin'];
+            if (adminModule && typeof adminModule.getActiveTab === 'function') {
+              tab = adminModule.getActiveTab() || 'settings';
+            }
+          }
+          var hash = (pageName === 'admin' && tab && tab !== 'settings') ? '#admin-' + tab : '#' + pageName;
+          if (oldPage && oldPage !== 'dashboard' && oldPage !== 'login') {
+            window.history.replaceState({page: pageName, tab: tab}, '', hash);
+          } else {
+            window.history.pushState({page: pageName, tab: tab}, '', hash);
+          }
+        }
+      }
+    }
+
     this.currentPage = pageName;
+
 
     // Hide all pages
     var pages = document.querySelectorAll('.page');
@@ -1108,6 +1386,132 @@ window.SchoolApp = {
 
     // Close mobile sidebar
     document.getElementById('sidebar').classList.remove('mobile-open');
+  },
+
+  updateDirtyIndicator: function() {
+    var existingDots = document.querySelectorAll('.dirty-dot');
+    existingDots.forEach(function(dot) {
+      dot.remove();
+    });
+
+    if (this.adminIsDirty) {
+      var activeTabBtn = document.querySelector('.admin-sidebar .tab-btn.active');
+      if (activeTabBtn) {
+        var dot = document.createElement('span');
+        dot.className = 'dirty-dot';
+        dot.style.color = '#f97316';
+        dot.style.marginLeft = '6px';
+        dot.style.fontSize = '18px';
+        dot.style.lineHeight = '1';
+        dot.style.verticalAlign = 'middle';
+        dot.innerHTML = '•';
+        activeTabBtn.appendChild(dot);
+      }
+    }
+  },
+
+  markAdminDirty: function(e) {
+    var target = e.target;
+    if (!target) return;
+
+    var excludedIds = [
+      'admin-exams-term-select',
+      'admin-exams-class-select',
+      'promotion-source-class',
+      'promotion-dest-class',
+      'txn-search',
+      'txn-start-date',
+      'txn-end-date'
+    ];
+    if (excludedIds.indexOf(target.id) !== -1) {
+      return;
+    }
+
+    if (target.classList.contains('promotion-student-cb') || target.id === 'promotion-toggle-all') {
+      return;
+    }
+
+    this.adminIsDirty = true;
+    this.updateDirtyIndicator();
+  },
+
+  triggerAdminSave: function() {
+    var adminModule = this.modules['admin'];
+    var activeTab = adminModule ? adminModule.getActiveTab() : 'settings';
+    var saveBtn = null;
+    
+    if (activeTab === 'settings') {
+      saveBtn = document.getElementById('save-settings-btn');
+    } else if (activeTab === 'users') {
+      saveBtn = document.getElementById('save-admin-creds');
+    } else if (activeTab === 'fees') {
+      saveBtn = document.getElementById('setup-save-fees-btn') || document.getElementById('setup-save-charges-btn');
+    } else if (activeTab === 'notices') {
+      saveBtn = document.getElementById('admin-notice-submit-btn');
+    }
+
+    if (saveBtn) {
+      saveBtn.click();
+    } else {
+      // Fallback if no button found
+      this.adminIsDirty = false;
+      this.updateDirtyIndicator();
+      if (this.onSaveSuccessNavigate) {
+        var cb = this.onSaveSuccessNavigate;
+        this.onSaveSuccessNavigate = null;
+        cb();
+      }
+    }
+  },
+
+  confirmUnsavedChanges: function(onProceed) {
+    var dialog = document.getElementById('unsaved-changes-dialog');
+    if (!dialog) {
+      this.adminIsDirty = false;
+      if (onProceed) onProceed();
+      return;
+    }
+
+    dialog.classList.add('active');
+
+    var saveBtn = document.getElementById('unsaved-save-btn');
+    var discardBtn = document.getElementById('unsaved-discard-btn');
+    var stayBtn = document.getElementById('unsaved-stay-btn');
+    var self = this;
+
+    function cleanup() {
+      dialog.classList.remove('active');
+      var newSave = saveBtn.cloneNode(true);
+      var newDiscard = discardBtn.cloneNode(true);
+      var newStay = stayBtn.cloneNode(true);
+      saveBtn.parentNode.replaceChild(newSave, saveBtn);
+      discardBtn.parentNode.replaceChild(newDiscard, discardBtn);
+      stayBtn.parentNode.replaceChild(newStay, stayBtn);
+    }
+
+    document.getElementById('unsaved-save-btn').addEventListener('click', function() {
+      cleanup();
+      self.onSaveSuccessNavigate = function() {
+        if (onProceed) onProceed();
+      };
+      self.triggerAdminSave();
+    }, { once: true });
+
+    document.getElementById('unsaved-discard-btn').addEventListener('click', function() {
+      cleanup();
+      self.adminIsDirty = false;
+      self.updateDirtyIndicator();
+      if (onProceed) onProceed();
+    }, { once: true });
+
+    document.getElementById('unsaved-stay-btn').addEventListener('click', function() {
+      cleanup();
+      if (self.pendingNavigation && self.pendingNavigation.fromHistory) {
+        var prevHash = (self.currentPage === 'admin' && self.lastCleanTab && self.lastCleanTab !== 'settings') ? '#admin-' + self.lastCleanTab : '#' + self.currentPage;
+        window.history.pushState({page: self.currentPage, tab: self.lastCleanTab}, '', prevHash);
+      }
+      self.pendingNavigation = null;
+    }, { once: true });
   },
 
   updateHeader: function(title) {
@@ -1524,6 +1928,78 @@ window.SchoolApp = {
   // ---------- Module System ----------
   registerModule: function(name, module) {
     this.modules[name] = module;
+  },
+
+  openStudentProfile: function(studentId) {
+    var student = (window.SchoolApp.store.students || []).find(function(s) {
+      return s.id === studentId;
+    });
+    if (!student) {
+      window.SchoolApp.showToast('Student not found.', 'error');
+      return;
+    }
+
+    var escapeHTML = function(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    };
+
+    var displayClass = ['Nursery','LKG','UKG'].indexOf(student.class) !== -1 ? student.class : 'Class ' + student.class;
+    var initials = (student.firstName ? student.firstName.charAt(0) : '') + (student.lastName ? student.lastName.charAt(0) : '');
+    
+    var avatarHTML = '';
+    if (student.photoUrl) {
+      avatarHTML = '<img src="' + student.photoUrl + '" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);">';
+    } else {
+      var colors = ["#e74c3c","#3498db","#2ecc71","#9b59b6","#f39c12","#1abc9c"];
+      var color = colors[escapeHTML(student.firstName + ' ' + student.lastName).charCodeAt(0) % colors.length] || 'var(--primary)';
+      avatarHTML = '<div style="width:80px; height:80px; border-radius:50%; background:' + color + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:700; border:2px solid var(--border-color);">' + escapeHTML(initials.toUpperCase()) + '</div>';
+    }
+
+    var bodyHTML = '<div style="display:flex; flex-direction:column; gap:20px; color:var(--text-primary); font-size:13px; max-height:450px; overflow-y:auto; padding:5px;">';
+    
+    // Header section
+    bodyHTML += '  <div style="display:flex; align-items:center; gap:20px; border-bottom:1px solid var(--border-color); padding-bottom:16px;">';
+    bodyHTML += '    ' + avatarHTML;
+    bodyHTML += '    <div>';
+    bodyHTML += '      <h3 style="margin:0 0 4px 0; font-size:18px; color:var(--primary); font-weight:700;">' + escapeHTML(student.firstName + ' ' + (student.lastName || '')) + '</h3>';
+    bodyHTML += '      <div style="display:flex; gap:8px; align-items:center; margin:6px 0;">';
+    bodyHTML += '        <span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '" style="font-size:10px; padding:3px 8px;">' + student.status + '</span>';
+    bodyHTML += '        <span style="color:var(--text-secondary); font-size:11px;">Roll No: ' + escapeHTML(student.rollNumber || '—') + '</span>';
+    bodyHTML += '      </div>';
+    bodyHTML += '      <div style="font-size:12px; color:var(--text-secondary);">' + displayClass + ' • Section ' + escapeHTML(student.section || '—') + '</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    // Details Grid
+    bodyHTML += '  <div class="form-grid" style="grid-template-columns:1fr 1fr; gap:16px; display:grid;">';
+    bodyHTML += '    <div><label style="font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.3px;">Date of Birth</label><div style="font-size:13px; font-weight:500;">' + escapeHTML(student.dateOfBirth || student.dob || '—') + '</div></div>';
+    bodyHTML += '    <div><label style="font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.3px;">Admission Date</label><div style="font-size:13px; font-weight:500;">' + escapeHTML(student.admissionDate || '—') + '</div></div>';
+    bodyHTML += '    <div><label style="font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.3px;">Parent/Guardian Name</label><div style="font-size:13px; font-weight:500;">' + escapeHTML(student.parentName || '—') + '</div></div>';
+    bodyHTML += '    <div><label style="font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.3px;">Parent Phone / WhatsApp</label><div style="font-size:13px; font-weight:500;">' + escapeHTML(student.parentPhone || '—') + '</div></div>';
+    bodyHTML += '    <div style="grid-column:span 2;"><label style="font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.3px;">Parent Email</label><div style="font-size:13px; font-weight:500;">' + escapeHTML(student.parentEmail || '—') + '</div></div>';
+    bodyHTML += '    <div style="grid-column:span 2;"><label style="font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px; font-size:11px; text-transform:uppercase; letter-spacing:0.3px;">Address</label><div style="font-size:13px; font-weight:500; line-height:1.4;">' + escapeHTML(student.address || '—') + '</div></div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="window.SchoolApp.closeModal()">Close</button>';
+    footerHTML += '<button class="btn btn-primary" id="quick-view-full-profile-btn" style="display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">visibility</span> View Full Profile</button>';
+
+    window.SchoolApp.showModal('Student Quick Profile', bodyHTML, footerHTML);
+
+    var viewFullBtn = document.getElementById('quick-view-full-profile-btn');
+    if (viewFullBtn) {
+      viewFullBtn.addEventListener('click', function() {
+        window.SchoolApp.closeModal();
+        window.SchoolApp.preselectedStudent = student;
+        window.SchoolApp.navigate('students');
+      });
+    }
   },
 
   // ---------- Demo Data Generation ---------
@@ -2524,6 +3000,9 @@ window.SchoolApp = {
       document.getElementById('sidebar-user-role').textContent = this.currentUser.role === 'admin' ? 'Admin' : 'Teacher';
     }
 
+    // Render filtered sidebar nav
+    this.renderSidebarNav();
+
     // Show/hide admin nav
     var self = this;
     var adminNavs = document.querySelectorAll('.nav-admin-only');
@@ -2549,17 +3028,133 @@ window.SchoolApp = {
       }
     }
 
-    // Navigate to dashboard
-    this.navigate('dashboard');
+    // Check current hash on app load/login and navigate to correct page
+    var hash = window.location.hash;
+    var targetPage = 'dashboard';
+    var targetTab = null;
+
+    if (hash) {
+      var parts = hash.substring(1).split('-');
+      targetPage = parts[0];
+      if (parts[1]) {
+        targetTab = parts[1];
+      }
+    }
+
+    // List of valid pages
+    var validPages = ['dashboard', 'students', 'teachers', 'attendance', 'fees', 'timetable', 'exams', 'admin', 'help', 'teacher-attendance'];
+    if (validPages.indexOf(targetPage) === -1) {
+      targetPage = 'dashboard';
+    }
+
+    if (targetPage === 'admin' && targetTab) {
+      var adminModule = this.modules['admin'];
+      if (adminModule && typeof adminModule.setActiveTab === 'function') {
+        adminModule.setActiveTab(targetTab);
+      }
+    }
+
+    this.adminIsDirty = false;
+    this.lastCleanTab = targetTab || 'settings';
+
+    // Navigate to target page (passing fromHistory=true to avoid double pushing state on initial load)
+    this.navigate(targetPage, true);
+    
+    // Ensure we have the correct initial history state set
+    if (window.history) {
+      var initialHash = (targetPage === 'admin' && targetTab && targetTab !== 'settings') ? '#admin-' + targetTab : '#' + targetPage;
+      window.history.replaceState({page: targetPage, tab: targetTab}, '', initialHash);
+    }
   },
 
   // ---------- Event Listeners ----------
   setupEventListeners: function() {
     var self = this;
 
+    // Listen to changes inside admin page to track dirty state
+    var pageAdmin = document.getElementById('page-admin');
+    if (pageAdmin) {
+      pageAdmin.addEventListener('input', function(e) {
+        self.markAdminDirty(e);
+      });
+      pageAdmin.addEventListener('change', function(e) {
+        self.markAdminDirty(e);
+      });
+    }
+
+    // Intercept refresh and close attempts
+    window.addEventListener('beforeunload', function(e) {
+      if (self.adminIsDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+
+    // Popstate event listener for browser back/forward buttons
+    window.addEventListener('popstate', function(event) {
+      if (self.currentUser) {
+        if (event.state && event.state.page) {
+          var page = event.state.page;
+          var tab = event.state.tab;
+          
+          if (self.adminIsDirty) {
+            self.pendingNavigation = { page: page, tab: tab, fromHistory: true };
+            self.confirmUnsavedChanges(function() {
+              if (page === 'admin') {
+                var adminModule = self.modules['admin'];
+                if (adminModule && typeof adminModule.setActiveTab === 'function') {
+                  adminModule.setActiveTab(tab || 'settings');
+                }
+              }
+              self.navigate(page, true);
+            });
+            return;
+          }
+
+          if (page === 'admin') {
+            var adminModule = self.modules['admin'];
+            if (adminModule && typeof adminModule.setActiveTab === 'function') {
+              adminModule.setActiveTab(tab || 'settings');
+            }
+          }
+          
+          self.navigate(page, true);
+        } else {
+          // Fallback to dashboard if state is empty/null
+          if (self.adminIsDirty) {
+            self.pendingNavigation = { page: 'dashboard', tab: null, fromHistory: true };
+            self.confirmUnsavedChanges(function() {
+              self.navigate('dashboard', true);
+            });
+            return;
+          }
+          self.navigate('dashboard', true);
+        }
+      }
+    });
+
     // Login form
-    document.getElementById('login-form').addEventListener('submit', async function(e) {
-      e.preventDefault();
+    document.getElementById('login-form').addEventListener('submit', async function(event) {
+      event.preventDefault();
+      
+      const errorMsgEl = document.getElementById('login-error-msg');
+      const submitBtn = document.getElementById('login-submit-btn');
+      const btnText = document.getElementById('login-btn-text');
+
+      // Clear previous error message
+      if (errorMsgEl) {
+        errorMsgEl.style.display = 'none';
+        errorMsgEl.textContent = '';
+      }
+
+      // Show loading state: disable button, change text
+      if (submitBtn) {
+        submitBtn.disabled = true;
+      }
+      if (btnText) {
+        btnText.textContent = 'Signing in...';
+      }
+
       var activeTab = document.querySelector('.login-tab.active');
       var role = activeTab ? activeTab.getAttribute('data-role') : 'admin';
 
@@ -2572,14 +3167,73 @@ window.SchoolApp = {
         credentials.password = document.getElementById('teacher-password').value;
       }
 
-      const success = await self.login(role, credentials);
-      if (success) {
-        self.showToast('Welcome back, ' + self.currentUser.firstName + '!', 'success');
-        self.showApp();
-      } else {
+      try {
+        const success = await self.login(role, credentials);
+        if (success) {
+          self.showToast('Welcome back, ' + self.currentUser.firstName + '!', 'success');
+          self.showApp();
+        } else {
+          throw new Error("Login failed");
+        }
+      } catch (error) {
+        console.error("Login attempt failed:", error);
+        
+        let friendlyMsg = "Login failed. Please try again.";
+        const errMsg = (error && error.message) ? error.message.toLowerCase() : String(error).toLowerCase();
+        const errCode = (error && error.code) ? error.code.toLowerCase() : '';
+
+        // Check network status
+        if (
+          !navigator.onLine ||
+          errCode.includes('network') ||
+          errMsg.includes('network') ||
+          errMsg.includes('connection') ||
+          errMsg.includes('offline') ||
+          errMsg.includes('internet') ||
+          errMsg.includes('fetch')
+        ) {
+          friendlyMsg = "Connection error. Check your internet.";
+        } else if (
+          errCode === 'auth/wrong-password' ||
+          errCode === 'auth/invalid-credential' ||
+          errMsg.includes('wrong-password') ||
+          errMsg.includes('incorrect password') ||
+          errMsg.includes('invalid admin password') ||
+          errMsg.includes('invalid password')
+        ) {
+          friendlyMsg = "Incorrect password. Please try again.";
+        } else if (
+          errCode === 'auth/user-not-found' ||
+          errCode === 'auth/invalid-email' ||
+          errMsg.includes('user-not-found') ||
+          errMsg.includes('invalid-email') ||
+          errMsg.includes('account not found') ||
+          errMsg.includes('invalid admin username') ||
+          errMsg.includes('no teacher found')
+        ) {
+          friendlyMsg = "Account not found. Check your credentials.";
+        }
+
+        // Show error message on screen below login button
+        if (errorMsgEl) {
+          errorMsgEl.textContent = friendlyMsg;
+          errorMsgEl.style.display = 'block';
+        }
+
+        // Shake card feedback
         var card = document.querySelector('.login-card');
-        card.classList.add('shake');
-        setTimeout(function() { card.classList.remove('shake'); }, 500);
+        if (card) {
+          card.classList.add('shake');
+          setTimeout(function() { card.classList.remove('shake'); }, 500);
+        }
+      } finally {
+        // Restore button state
+        if (submitBtn) {
+          submitBtn.disabled = false;
+        }
+        if (btnText) {
+          btnText.textContent = 'Sign In';
+        }
       }
     });
 

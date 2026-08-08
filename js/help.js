@@ -395,7 +395,7 @@
     // Support Details Grid
     html += '    <div class="support-details-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; max-width: 750px; margin: 0 auto 24px auto; text-align: left; font-size: 13px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 16px;">';
     html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--success); font-size: 20px;">call</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">PHONE / WHATSAPP</div><div style="font-weight: 600;">+91 91555 15505</div></div></div>';
-    html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--info); font-size: 20px;">email</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">EMAIL SUPPORT</div><div style="font-weight: 600;">admin@shishuvikash.edu.in</div></div></div>';
+    html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--info); font-size: 20px;">email</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">EMAIL SUPPORT</div><div style="font-weight: 600;">bhanu.bharti@ctrlshifts.in</div></div></div>';
     html += '      <div style="display: flex; align-items: center; gap: 10px;"><span class="material-icons-round" style="color: var(--warning); font-size: 20px;">schedule</span><div><div style="font-size: 10.5px; color: var(--text-muted); font-weight:600;">OFFICE HOURS</div><div style="font-weight: 600;">Mon-Sat (9:00 AM - 5:00 PM)</div></div></div>';
     html += '    </div>';
 
@@ -404,7 +404,7 @@
     html += '      <a href="https://wa.me/919155515505" target="_blank" class="btn btn-primary" style="background: #25D366; border: none; color: white; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 20px; border-radius: 8px; text-decoration: none; transition: transform 0.2s; box-shadow: 0 4px 14px rgba(37,211,102,0.2);">';
     html += '        <span class="material-icons-round">chat</span> WhatsApp Support';
     html += '      </a>';
-    html += '      <a href="mailto:admin@shishuvikash.edu.in?subject=SVM%20ERP%20Support%20Request" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 20px; border-radius: 8px; text-decoration: none;">';
+    html += '      <a href="mailto:bhanu.bharti@ctrlshifts.in?subject=SVM%20ERP%20Support%20Request" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 600; padding: 10px 20px; border-radius: 8px; text-decoration: none;">';
     html += '        <span class="material-icons-round">email</span> Email Support';
     html += '      </a>';
     html += '    </div>';

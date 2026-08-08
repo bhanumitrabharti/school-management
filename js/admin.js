@@ -6,6 +6,131 @@
 
 (function() {
 
+  
+  function compressImage(base64Str, maxW, maxH) {
+    return new Promise(function(resolve) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        var width = img.width;
+        var height = img.height;
+        maxW = maxW || 300;
+        maxH = maxH || 300;
+
+        if (width > height) {
+          if (width > maxW) {
+            height = Math.round((height * maxW) / width);
+            width = maxW;
+          }
+        } else {
+          if (height > maxH) {
+            width = Math.round((width * maxH) / height);
+            height = maxH;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function() {
+        resolve(base64Str);
+      };
+      img.src = base64Str;
+    });
+  }
+
+  function showLogoStatus(type, msg) {
+    var container = document.getElementById('logo-status-container');
+    if (!container) return;
+    var color = type === 'success' ? '#15803D' : (type === 'error' ? '#DC2626' : '#2563EB');
+    container.style.color = color;
+    container.innerHTML = msg;
+  }
+
+  function showLogoPreview(src) {
+    var preview = document.getElementById('logo-preview');
+    if (!preview) return;
+    if (!src) {
+      preview.innerHTML = '<span class="text-muted" style="font-size:12px;">No logo uploaded</span>';
+      return;
+    }
+    preview.innerHTML = 
+      '<div style="margin-top:8px;">' +
+      '  <img src="' + src + '" style="max-height:80px;border-radius:8px;border:1px solid #E5E7EB;padding:4px;background:#fff;object-fit:contain;">' +
+      '  <div style="display:flex;gap:8px;margin-top:8px;">' +
+      '    <button type="button" class="btn btn-secondary btn-xs" onclick="window.changeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Change Logo</button>' +
+      '    <button type="button" class="btn btn-danger btn-xs" onclick="window.removeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">delete</span> Remove Logo</button>' +
+      '  </div>' +
+      '</div>';
+  }
+
+  window.changeLogo = function() {
+    var input = document.getElementById('school-logo-input') || document.getElementById('logo-file-input');
+    if (input) input.click();
+  };
+
+  window.removeLogo = function() {
+    if (!confirm('Remove school logo?')) return;
+    if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+    SchoolApp.store.settings.schoolLogo = '';
+    SchoolApp.store.settings.logoUrl = '';
+    if (SchoolApp.store.settings.schoolInfo) {
+      SchoolApp.store.settings.schoolInfo.schoolLogo = '';
+      SchoolApp.store.settings.schoolInfo.logoUrl = '';
+    }
+    SchoolApp.save(true);
+    showLogoPreview('');
+    showLogoStatus('info', 'Logo removed');
+    SchoolApp.showToast('Logo removed', 'info');
+  };
+
+  window.handleLogoSelect = function(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      SchoolApp.showToast('Please select an image file', 'error');
+      showLogoStatus('error', '❌ Please select a valid image file');
+      return;
+    }
+
+    if (file.size > 500 * 1024) {
+      SchoolApp.showToast('Logo size should be under 500KB', 'error');
+      showLogoStatus('error', '❌ Logo size should be under 500KB');
+      return;
+    }
+
+    showLogoStatus('processing', 'Uploading...');
+
+    var reader = new FileReader();
+    reader.onload = async function(ev) {
+      try {
+        var rawBase64 = ev.target.result;
+        var compressed = await compressImage(rawBase64, 300, 300);
+
+        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+        SchoolApp.store.settings.schoolLogo = compressed;
+        SchoolApp.store.settings.logoUrl = compressed;
+        if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+        SchoolApp.store.settings.schoolInfo.schoolLogo = compressed;
+        SchoolApp.store.settings.schoolInfo.logoUrl = compressed;
+
+        await SchoolApp.save(true);
+
+        showLogoPreview(compressed);
+        showLogoStatus('success', '✅ School Logo uploaded successfully!');
+        SchoolApp.showToast('School Logo uploaded successfully!', 'success');
+      } catch(err) {
+        console.error('Logo upload error:', err);
+        showLogoStatus('error', '❌ Upload failed. Try again.');
+        SchoolApp.showToast('Upload failed. Try again.', 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   var state = {
     activeTab: 'settings',
     activeSetupTab: 'profile',
@@ -137,6 +262,520 @@
         SchoolApp.save();
         SchoolApp.showToast('Automatically carried over ' + cloned.length + ' subjects from ' + foundTermName + ' for ' + (['Nursery','LKG','UKG'].indexOf(classId) !== -1 ? classId : 'Class ' + classId) + '.', 'info');
       }
+    }
+  }
+
+  function calculateGrade(percentage) {
+    if (percentage >= 91) return 'A+';
+    if (percentage >= 81) return 'A';
+    if (percentage >= 71) return 'B+';
+    if (percentage >= 61) return 'B';
+    if (percentage >= 51) return 'C+';
+    if (percentage >= 41) return 'C';
+    if (percentage >= 33) return 'D';
+    return 'F';
+  }
+
+  function getDefaultSubjectsForClass(cls) {
+    var c = String(cls).trim();
+    if (['Nursery', 'LKG', 'UKG'].indexOf(c) !== -1) {
+      return ['Hindi', 'English', 'Maths', 'Drawing'];
+    }
+    if (c === '1' || c === '2') {
+      return ['Hindi', 'English', 'Maths', 'EVS', 'Drawing'];
+    }
+    if (['3', '4', '5'].indexOf(c) !== -1) {
+      return ['Hindi', 'English', 'Maths', 'Science', 'Social Studies', 'Sanskrit', 'Drawing'];
+    }
+    if (['6', '7', '8'].indexOf(c) !== -1) {
+      return ['Hindi', 'English', 'Maths', 'Science', 'Social Studies', 'Sanskrit', 'Computer'];
+    }
+    if (['9', '10'].indexOf(c) !== -1) {
+      return ['Hindi', 'English', 'Maths', 'Science', 'Social Studies', 'Computer Science'];
+    }
+    return ['English', 'Physics', 'Chemistry', 'Mathematics'];
+  }
+
+  function getSubjectType(name) {
+    var n = String(name).toLowerCase();
+    if (n.indexOf('drawing') !== -1 || n.indexOf('art') !== -1 || n.indexOf('handcraft') !== -1 || n.indexOf('practical') !== -1 || n.indexOf('music') !== -1 || n.indexOf('physical') !== -1) {
+      return 'Practical';
+    }
+    if (n.indexOf('hindi') !== -1 || n.indexOf('english') !== -1 || n.indexOf('sanskrit') !== -1 || n.indexOf('language') !== -1 || n.indexOf('urdu') !== -1 || n.indexOf('bengali') !== -1) {
+      return 'Language';
+    }
+    if (n.indexOf('internal') !== -1 || n.indexOf('viva') !== -1 || n.indexOf('project') !== -1 || n.indexOf('assignment') !== -1) {
+      return 'Internal';
+    }
+    return 'Theory';
+  }
+
+  function openExamSetupWizard() {
+    var wizardState = {
+      step: 1,
+      availableTerms: [
+        { key: 't1', name: 'Term 1 (Half-Yearly)' },
+        { key: 't2', name: 'Term 2 (Annual)' },
+        { key: 'ut1', name: 'Unit Test 1' },
+        { key: 'ut2', name: 'Unit Test 2' },
+        { key: 'pb', name: 'Pre-Board' }
+      ],
+      selectedTerms: [],
+      classSubjectMap: {},
+      subjectTypeDefaults: {
+        Theory: { full: 100, pass: 33 },
+        Practical: { full: 50, pass: 17 },
+        Language: { full: 100, pass: 33 },
+        Internal: { full: 100, pass: 33 }
+      }
+    };
+
+    function renderStep() {
+      var title = 'Setup New Examination — Step ' + wizardState.step + ' of 4';
+      var bodyHTML = '';
+      var footerHTML = '';
+
+      if (wizardState.step === 1) {
+        bodyHTML += '<p style="color:var(--text-secondary); font-size:13px; margin-bottom:16px;">Select the exam terms you want to conduct and set their start/end dates. These dates are used for calculating student attendance percentages.</p>';
+        bodyHTML += '<div style="display:flex; flex-direction:column; gap:12px;">';
+        
+        wizardState.availableTerms.forEach(function(term) {
+          var matched = wizardState.selectedTerms.find(function(t) { return t.key === term.key; });
+          var isChecked = !!matched;
+          var startDate = matched ? matched.startDate || '' : '';
+          var endDate = matched ? matched.endDate || '' : '';
+
+          bodyHTML += '<div class="card mb-2" style="border: 1px solid var(--border-color); padding: 12px; background: rgba(255,255,255,0.02);">';
+          bodyHTML += '  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">';
+          bodyHTML += '    <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; user-select:none;">';
+          bodyHTML += '      <input type="checkbox" class="wizard-term-cb" data-key="' + term.key + '" data-name="' + term.name + '"' + (isChecked ? ' checked' : '') + '>';
+          bodyHTML += '      ' + term.name;
+          bodyHTML += '    </label>';
+          bodyHTML += '  </div>';
+          bodyHTML += '  <div class="term-date-inputs" id="wizard-dates-' + term.key + '" style="display: ' + (isChecked ? 'grid' : 'none') + '; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">';
+          bodyHTML += '    <div class="form-group mb-0">';
+          bodyHTML += '      <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Term Start Date *</label>';
+          bodyHTML += '      <input type="date" class="form-input wizard-term-start" data-key="' + term.key + '" value="' + startDate + '" style="padding: 6px; min-height: 32px;">';
+          bodyHTML += '    </div>';
+          bodyHTML += '    <div class="form-group mb-0">';
+          bodyHTML += '      <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Term End Date *</label>';
+          bodyHTML += '      <input type="date" class="form-input wizard-term-end" data-key="' + term.key + '" value="' + endDate + '" style="padding: 6px; min-height: 32px;">';
+          bodyHTML += '    </div>';
+          bodyHTML += '  </div>';
+          bodyHTML += '</div>';
+        });
+        bodyHTML += '</div>';
+
+        footerHTML += '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+        footerHTML += '<button class="btn btn-primary" id="wizard-next-btn"' + (wizardState.selectedTerms.length === 0 ? ' disabled' : '') + '>Next</button>';
+
+      } else if (wizardState.step === 2) {
+        bodyHTML += '<p style="color:var(--text-secondary); font-size:13px; margin-bottom:16px;">We analyzed teacher profiles to automatically map subjects for each class. If teacher data was incomplete, standard defaults were applied.</p>';
+        bodyHTML += '<div style="max-height: 320px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.1);">';
+        
+        var classesList = SchoolApp.store.settings.classes || [];
+        classesList.forEach(function(cls) {
+          var subs = wizardState.classSubjectMap[cls] || [];
+          var isFromTeacher = subs.some(function(s) { return s.fromTeacher; });
+          var displayCls = ['Nursery','LKG','UKG'].indexOf(cls) !== -1 ? cls : 'Class ' + cls;
+          
+          bodyHTML += '<div style="display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 8px 0; gap:16px;">';
+          bodyHTML += '  <div>';
+          bodyHTML += '    <strong style="font-size:13px;">' + displayCls + '</strong><br>';
+          bodyHTML += '    <span class="badge ' + (isFromTeacher ? 'badge-success' : 'badge-purple') + '" style="font-size: 9px; padding:2px 6px; display:inline-block; margin-top:4px;">';
+          bodyHTML += '      ' + (isFromTeacher ? 'Teacher Assignments' : 'System Defaults');
+          bodyHTML += '    </span>';
+          bodyHTML += '  </div>';
+          bodyHTML += '  <div style="font-size: 12px; color: var(--text-secondary); text-align: right; max-width: 65%; font-weight:500;">';
+          bodyHTML += '    ' + subs.map(function(s) { return s.name; }).join(', ');
+          bodyHTML += '  </div>';
+          bodyHTML += '</div>';
+        });
+        bodyHTML += '</div>';
+
+        footerHTML += '<button class="btn btn-secondary" id="wizard-prev-btn">Back</button>';
+        footerHTML += '<button class="btn btn-primary" id="wizard-next-btn">Next</button>';
+
+      } else if (wizardState.step === 3) {
+        bodyHTML += '<p style="color:var(--text-secondary); font-size:13px; margin-bottom:16px;">Define the default Full Marks and Pass Marks for each subject type. Changing Full Marks will auto-suggest 33% for Passing Marks.</p>';
+        bodyHTML += '<div class="form-grid" style="grid-template-columns: repeat(2, 1fr); gap: 16px;">';
+
+        Object.keys(wizardState.subjectTypeDefaults).forEach(function(type) {
+          var defaults = wizardState.subjectTypeDefaults[type];
+          bodyHTML += '<div style="grid-column: span 2; font-weight: bold; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; margin-top: 8px; color:var(--primary);">' + type + ' Default Scores</div>';
+          bodyHTML += '<div class="form-group mb-0">';
+          bodyHTML += '  <label class="form-label" style="font-size:11px;">Full Marks *</label>';
+          bodyHTML += '  <input type="number" class="form-input wizard-default-full" data-type="' + type + '" value="' + defaults.full + '" min="1" required style="padding:6px; min-height:32px;">';
+          bodyHTML += '</div>';
+          bodyHTML += '<div class="form-group mb-0">';
+          bodyHTML += '  <label class="form-label" style="font-size:11px;">Passing Marks *</label>';
+          bodyHTML += '  <input type="number" class="form-input wizard-default-pass" data-type="' + type + '" value="' + defaults.pass + '" min="1" required style="padding:6px; min-height:32px;">';
+          bodyHTML += '</div>';
+        });
+
+        bodyHTML += '</div>';
+
+        footerHTML += '<button class="btn btn-secondary" id="wizard-prev-btn">Back</button>';
+        footerHTML += '<button class="btn btn-primary" id="wizard-next-btn">Next</button>';
+
+      } else if (wizardState.step === 4) {
+        bodyHTML += '<p style="color:var(--text-secondary); font-size:13px; margin-bottom:16px;">Please review the setup configuration before creating the examinations. This will populate subject mappings for all classes.</p>';
+        bodyHTML += '<div style="display:flex; flex-direction:column; gap:12px;">';
+        bodyHTML += '  <div><strong>Exam Terms to Create:</strong>';
+        bodyHTML += '    <ul style="margin: 6px 0; padding-left: 20px; font-size:13px; color:var(--text-secondary);">';
+        wizardState.selectedTerms.forEach(function(t) {
+          bodyHTML += '    <li>' + t.name + ' (' + (t.startDate ? SchoolApp.formatDate(t.startDate) : 'Not set') + ' to ' + (t.endDate ? SchoolApp.formatDate(t.endDate) : 'Not set') + ')</li>';
+        });
+        bodyHTML += '    </ul>';
+        bodyHTML += '  </div>';
+
+        var classesList = SchoolApp.store.settings.classes || [];
+        bodyHTML += '  <div><strong>Classes Configured:</strong> ' + classesList.length + ' Classes</div>';
+        bodyHTML += '  <div style="max-height: 180px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: rgba(0,0,0,0.1);">';
+        
+        classesList.forEach(function(cls) {
+          var subs = wizardState.classSubjectMap[cls] || [];
+          var displayCls = ['Nursery','LKG','UKG'].indexOf(cls) !== -1 ? cls : 'Class ' + cls;
+          bodyHTML += '  <div style="margin-bottom: 6px; font-size:12px;">';
+          bodyHTML += '    <span style="font-weight: 600;">' + displayCls + ':</span>';
+          bodyHTML += '    <span style="color: var(--text-secondary);">' + subs.map(function(s) { return s.name + ' (' + s.type + ')'; }).join(', ') + '</span>';
+          bodyHTML += '  </div>';
+        });
+
+        bodyHTML += '  </div>';
+        bodyHTML += '</div>';
+
+        footerHTML += '<button class="btn btn-secondary" id="wizard-prev-btn">Back</button>';
+        footerHTML += '<button class="btn btn-primary" id="wizard-confirm-btn"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">check_circle</span> Confirm & Create</button>';
+      }
+
+      SchoolApp.showModal(title, bodyHTML, footerHTML);
+      attachWizardEvents();
+    }
+
+    function attachWizardEvents() {
+      if (wizardState.step === 1) {
+        document.querySelectorAll('.wizard-term-cb').forEach(function(cb) {
+          cb.addEventListener('change', function() {
+            var key = this.getAttribute('data-key');
+            var name = this.getAttribute('data-name');
+            var datesDiv = document.getElementById('wizard-dates-' + key);
+            
+            if (this.checked) {
+              datesDiv.style.display = 'grid';
+              var startInput = datesDiv.querySelector('.wizard-term-start');
+              var endInput = datesDiv.querySelector('.wizard-term-end');
+              wizardState.selectedTerms.push({
+                key: key,
+                name: name,
+                startDate: startInput.value,
+                endDate: endInput.value
+              });
+            } else {
+              datesDiv.style.display = 'none';
+              wizardState.selectedTerms = wizardState.selectedTerms.filter(function(t) { return t.key !== key; });
+            }
+            
+            var nextBtn = document.getElementById('wizard-next-btn');
+            if (nextBtn) {
+              nextBtn.disabled = wizardState.selectedTerms.length === 0;
+            }
+          });
+        });
+
+        document.querySelectorAll('.wizard-term-start, .wizard-term-end').forEach(function(input) {
+          input.addEventListener('change', function() {
+            var key = this.getAttribute('data-key');
+            var matched = wizardState.selectedTerms.find(function(t) { return t.key === key; });
+            if (matched) {
+              if (this.classList.contains('wizard-term-start')) {
+                matched.startDate = this.value;
+              } else {
+                matched.endDate = this.value;
+              }
+            }
+          });
+        });
+      }
+
+      if (wizardState.step === 3) {
+        document.querySelectorAll('.wizard-default-full').forEach(function(input) {
+          input.addEventListener('input', function() {
+            var type = this.getAttribute('data-type');
+            var val = parseFloat(this.value) || 0;
+            wizardState.subjectTypeDefaults[type].full = val;
+            
+            var passVal = Math.round(val * 0.33);
+            wizardState.subjectTypeDefaults[type].pass = passVal;
+            
+            var passInput = document.querySelector('.wizard-default-pass[data-type="' + type + '"]');
+            if (passInput) passInput.value = passVal;
+          });
+        });
+
+        document.querySelectorAll('.wizard-default-pass').forEach(function(input) {
+          input.addEventListener('input', function() {
+            var type = this.getAttribute('data-type');
+            var val = parseFloat(this.value) || 0;
+            wizardState.subjectTypeDefaults[type].pass = val;
+          });
+        });
+      }
+
+      var nextBtn = document.getElementById('wizard-next-btn');
+      if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+          if (wizardState.step === 1) {
+            var invalid = wizardState.selectedTerms.some(function(t) {
+              return !t.startDate || !t.endDate;
+            });
+            if (invalid) {
+              SchoolApp.showToast('Please fill out Start and End Dates for all selected terms.', 'error');
+              return;
+            }
+          }
+
+          if (wizardState.step === 1) {
+            var classesList = SchoolApp.store.settings.classes || [];
+            wizardState.classSubjectMap = {};
+            classesList.forEach(function(cls) {
+              var subs = new Set();
+              var fromTeacherMap = {};
+              
+              (SchoolApp.store.teachers || []).forEach(function(t) {
+                var assignedToClass = (t.assignedClasses || []).some(function(ac) {
+                  return String(ac.class) === String(cls);
+                });
+                
+                if (assignedToClass && t.subject) {
+                  t.subject.split(',').forEach(function(s) {
+                    var sTrim = s.trim();
+                    if (sTrim) {
+                      subs.add(sTrim);
+                      fromTeacherMap[sTrim] = true;
+                    }
+                  });
+                }
+
+                (t.subjectTeacherOf || []).forEach(function(st) {
+                  if (String(st.class) === String(cls) && st.subject) {
+                    var sTrim = st.subject.trim();
+                    subs.add(sTrim);
+                    fromTeacherMap[sTrim] = true;
+                  }
+                });
+              });
+
+              var list = Array.from(subs);
+              var isFromTeacher = list.length > 0;
+              if (list.length === 0) {
+                list = getDefaultSubjectsForClass(cls);
+              }
+              
+              wizardState.classSubjectMap[cls] = list.map(function(name) {
+                return {
+                  name: name,
+                  type: getSubjectType(name),
+                  fromTeacher: !!fromTeacherMap[name]
+                };
+              });
+            });
+          }
+
+          wizardState.step++;
+          renderStep();
+        });
+      }
+
+      var prevBtn = document.getElementById('wizard-prev-btn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', function() {
+          wizardState.step--;
+          renderStep();
+        });
+      }
+
+      var confirmBtn = document.getElementById('wizard-confirm-btn');
+      if (confirmBtn) {
+        confirmBtn.addEventListener('click', async function() {
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = 'Creating...';
+
+          try {
+            if (!SchoolApp.store.exams) SchoolApp.store.exams = [];
+            if (!SchoolApp.store.subjectMapping) SchoolApp.store.subjectMapping = {};
+
+            var createdTermsCount = 0;
+            var classesList = SchoolApp.store.settings.classes || [];
+
+            wizardState.selectedTerms.forEach(function(term) {
+              var examId = 'ex_' + term.key + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 5);
+              SchoolApp.store.exams.push({
+                id: examId,
+                name: term.name,
+                startDate: term.startDate,
+                endDate: term.endDate,
+                schoolId: SchoolApp.store.currentSchoolId
+              });
+              createdTermsCount++;
+
+              classesList.forEach(function(cls) {
+                var mappingKey = examId + '_' + cls;
+                var classSubjects = wizardState.classSubjectMap[cls] || [];
+                
+                SchoolApp.store.subjectMapping[mappingKey] = classSubjects.map(function(s, idx) {
+                  var defaults = wizardState.subjectTypeDefaults[s.type] || wizardState.subjectTypeDefaults['Theory'];
+                  return {
+                    id: 'sub_' + term.key + '_' + idx + '_' + Math.random().toString(36).substr(2, 7),
+                    name: s.name,
+                    type: s.type,
+                    maxMarks: defaults.full,
+                    fullMarks: defaults.full,
+                    passMarks: defaults.pass,
+                    hasExam: true
+                  };
+                });
+              });
+            });
+
+            SchoolApp.createRestorePoint('Auto-Backup before Save in Exam Wizard');
+            var success = await SchoolApp.save();
+            
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Exam setup complete for ' + classesList.length + ' classes ✅', 'success');
+              render();
+            } else {
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = 'Confirm & Create';
+            }
+          } catch (e) {
+            console.error('Error creating exams in wizard:', e);
+            SchoolApp.showToast('An error occurred during setup. Please try again.', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm & Create';
+          }
+        });
+      }
+    }
+
+    renderStep();
+  }
+
+  function openAddEditSubjectModal(cls, subId) {
+    var subjects = (SchoolApp.store.subjectMapping || {})[cls] || [];
+    var sub = subId ? subjects.find(function(x) { return x.id === subId; }) : null;
+    var isEdit = !!sub;
+
+    var title = isEdit ? 'Edit Subject Details' : 'Add Subject';
+    
+    var subName = sub ? sub.name : '';
+    var subType = sub ? sub.type || 'Theory' : 'Theory';
+    var maxMarks = sub ? sub.maxMarks : 100;
+    var passMarks = sub ? sub.passMarks : 33;
+    var hasExam = sub && sub.hasExam !== undefined ? sub.hasExam : true;
+
+    var bodyHTML = '<form id="admin-add-sub-form" class="form-grid">';
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Subject Name *</label>';
+    bodyHTML += '<input type="text" id="admin-sub-name" class="form-input" value="' + escapeAttr(subName) + '" placeholder="e.g. Hindi, Mathematics, Handcraft" required></div>';
+    
+    bodyHTML += '<div class="form-group"><label class="form-label">Subject Type *</label>';
+    bodyHTML += '<select id="admin-sub-type" class="form-select">';
+    bodyHTML += '<option value="Theory"' + (subType === 'Theory' ? ' selected' : '') + '>Theory</option>';
+    bodyHTML += '<option value="Practical"' + (subType === 'Practical' ? ' selected' : '') + '>Practical</option>';
+    bodyHTML += '<option value="Language"' + (subType === 'Language' ? ' selected' : '') + '>Language</option>';
+    bodyHTML += '<option value="Internal"' + (subType === 'Internal' ? ' selected' : '') + '>Internal</option>';
+    bodyHTML += '</select></div>';
+
+    bodyHTML += '<div class="form-group"><label class="form-label">Has Exam? *</label>';
+    bodyHTML += '<select id="admin-sub-has-exam" class="form-select">';
+    bodyHTML += '<option value="yes"' + (hasExam ? ' selected' : '') + '>Yes</option>';
+    bodyHTML += '<option value="no"' + (!hasExam ? ' selected' : '') + '>No (Internal Assessment Only)</option>';
+    bodyHTML += '</select></div>';
+
+    bodyHTML += '<div class="form-group"><label class="form-label">Full Marks *</label>';
+    bodyHTML += '<input type="number" id="admin-sub-max" class="form-input" value="' + maxMarks + '" min="1" required></div>';
+    
+    bodyHTML += '<div class="form-group"><label class="form-label">Passing Marks (33% Suggested) *</label>';
+    bodyHTML += '<input type="number" id="admin-sub-pass" class="form-input" value="' + passMarks + '" min="1" required></div>';
+    
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="admin-save-subject-btn">' + (isEdit ? 'Save Changes' : 'Add Subject') + '</button>';
+
+    var displayCls = cls;
+    if (cls.indexOf('_') !== -1) {
+      var parts = cls.split('_');
+      var actualClass = parts[parts.length - 1];
+      displayCls = ['Nursery','LKG','UKG'].indexOf(actualClass) !== -1 ? actualClass : 'Class ' + actualClass;
+    } else {
+      displayCls = ['Nursery','LKG','UKG'].indexOf(cls) !== -1 ? cls : 'Class ' + cls;
+    }
+    SchoolApp.showModal((isEdit ? 'Edit Subject - ' : 'Add Subject to ') + displayCls, bodyHTML, footerHTML);
+
+    var maxInput = document.getElementById('admin-sub-max');
+    var passInput = document.getElementById('admin-sub-pass');
+    maxInput.addEventListener('input', function() {
+      var val = parseFloat(this.value) || 0;
+      passInput.value = Math.round(val * 0.33);
+    });
+
+    var saveBtn = document.getElementById('admin-save-subject-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async function() {
+        var name = document.getElementById('admin-sub-name').value.trim();
+        var type = document.getElementById('admin-sub-type').value;
+        var hasExamToggle = document.getElementById('admin-sub-has-exam').value === 'yes';
+        var maxMarksVal = parseFloat(maxInput.value);
+        var passMarksVal = parseFloat(passInput.value);
+
+        if (!name || isNaN(maxMarksVal) || isNaN(passMarksVal) || maxMarksVal <= 0 || passMarksVal <= 0) {
+          SchoolApp.showToast('Please fill out all fields with valid positive values.', 'error');
+          return;
+        }
+
+        if (passMarksVal > maxMarksVal) {
+          SchoolApp.showToast('Passing Marks cannot exceed Full Marks.', 'error');
+          return;
+        }
+
+        if (!SchoolApp.store.subjectMapping) SchoolApp.store.subjectMapping = {};
+        if (!SchoolApp.store.subjectMapping[cls]) SchoolApp.store.subjectMapping[cls] = [];
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        if (isEdit) {
+          sub.name = name;
+          sub.type = type;
+          sub.hasExam = hasExamToggle;
+          sub.maxMarks = maxMarksVal;
+          sub.fullMarks = maxMarksVal;
+          sub.passMarks = passMarksVal;
+        } else {
+          var newId = 'sub_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 5);
+          SchoolApp.store.subjectMapping[cls].push({
+            id: newId,
+            name: name,
+            type: type,
+            hasExam: hasExamToggle,
+            maxMarks: maxMarksVal,
+            fullMarks: maxMarksVal,
+            passMarks: passMarksVal
+          });
+        }
+
+        var success = await SchoolApp.save();
+        saveBtn.disabled = false;
+        saveBtn.textContent = isEdit ? 'Save Changes' : 'Add Subject';
+
+        if (success) {
+          SchoolApp.closeModal();
+          SchoolApp.showToast(isEdit ? 'Subject details updated!' : 'Subject added successfully!', 'success');
+          render();
+        }
+      });
     }
   }
 
@@ -493,12 +1132,12 @@
       html += '    <button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'transactions' ? ' active' : '') + '" data-tab="transactions"><span class="material-icons-round">receipt_long</span> Fee Ledger</button>';
-      html += '    <button class="tab-btn' + (state.activeTab === 'exams' ? ' active' : '') + '" data-tab="exams"><span class="material-icons-round">assignment</span> Examinations</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'reportCard' ? ' active' : '') + '" data-tab="reportCard"><span class="material-icons-round">design_services</span> Report Card Designer</button>';
       html += '  </aside>';
  
       // Right Column: Content Area
@@ -507,12 +1146,12 @@
       html += renderUsersTab();
       html += renderFeesTab();
       html += renderTransactionsTab();
-      html += renderExamsTab();
       html += renderNoticesTab();
       html += renderPromotionTab();
       html += renderDataTab();
       html += renderRecoveryTab();
       html += renderSystemTab();
+      html += renderReportCardTab();
       html += '  </main>';
  
       html += '</div>'; // End Two-Column Layout Container
@@ -530,6 +1169,9 @@
         renderFeesCharges();
       }
       attachEvents();
+      if (typeof SchoolApp.updateDirtyIndicator === 'function') {
+        SchoolApp.updateDirtyIndicator();
+      }
     } catch (error) {
       console.error("Crash in renderAdminPanel:", error);
       container.innerHTML = '<div class="empty-state" style="padding: 40px; border: 1px dashed rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.05); border-radius: 12px; margin: 20px;">' +
@@ -541,6 +1183,501 @@
         '</div></div>';
     }
   }
+
+  var DEFAULT_TEMPLATES = window.DEFAULT_TEMPLATES || {
+    excellent:
+      'Excellent academic performance. ' +
+      '{name} has demonstrated strong ' +
+      'understanding and consistent effort. ' +
+      'Keep up the good work.',
+
+    good:
+      '{name} has demonstrated very good ' +
+      'academic performance. Consistent ' +
+      'effort should be continued.',
+
+    pass_low:
+      '{name} has successfully passed all ' +
+      'mandatory subjects but needs to ' +
+      'improve overall performance. ' +
+      'Greater consistency and regular ' +
+      'revision are recommended.',
+
+    fail_slightly:
+      '{name} is close to the required ' +
+      'level in {subjects}. With consistent ' +
+      'practice and better preparation, ' +
+      'improvement is expected.',
+
+    fail_significant:
+      '{subjects} require significant ' +
+      'improvement. {name} should focus ' +
+      'on strengthening fundamental concepts ' +
+      'and practice regularly.',
+
+    fail_multiple:
+      '{name} has shown satisfactory ' +
+      'performance in several subjects but ' +
+      'needs additional attention in ' +
+      '{subjects}. Regular revision and ' +
+      'consistent practice are recommended.',
+
+    absent_mandatory:
+      '{name} was absent for the {subjects} ' +
+      'examination. Regular attendance and ' +
+      'participation in assessments ' +
+      'are recommended.',
+
+    fail_result:
+      '{name} needs to improve performance ' +
+      'in {subjects}. Regular practice and ' +
+      'focused preparation are recommended.'
+  };
+
+  var TEMPLATE_LABELS = [
+    { key: 'excellent', label: 'Excellent Performance (>= 75%)' },
+    { key: 'good', label: 'Good Performance (50% - 74%)' },
+    { key: 'pass_low', label: 'Passed but Low Marks (< 50%)' },
+    { key: 'fail_slightly', label: 'Slightly Below Passing (Pass Gap <= 10%)' },
+    { key: 'fail_significant', label: 'Significant Failures (Pass Gap > 10%)' },
+    { key: 'fail_multiple', label: 'Multiple Subject Failures' },
+    { key: 'absent_mandatory', label: 'Absent in Mandatory Exam' },
+    { key: 'fail_result', label: 'General Failure Result' }
+  ];
+
+
+  function getDefaultReportCardConfig() {
+    var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
+    return {
+      school: {
+        logo: true,
+        name: true,
+        tagline: true,
+        address: true,
+        phone: true,
+        email: true,
+        website: false,
+        udiseCode: false,
+        session: true,
+        affiliationNo: false
+      },
+      student: {
+        name: true,
+        rollNumber: true,
+        class: true,
+        section: false,
+        admissionNumber: false,
+        address: false,
+        parentName: true,
+        fatherName: false,
+        motherName: false,
+        dob: false,
+        gender: false,
+        photo: false,
+        admissionDate: false
+      },
+      academic: {
+        grandTotal: true,
+        totalObtained: true,
+        percentage: true,
+        grade: true,
+        result: true,
+        rank: true,
+        attendance: false,
+        remarks: true,
+        smartRemarks: false,
+        promotionStatus: true,
+        division: true
+      },
+      design: {
+        primaryColor: '#1E40AF',
+        showBorder: true,
+        headerStyle: 'centered'
+      },
+      remarkTemplates: Object.assign({}, defs)
+    };
+  }
+
+  function getReportCardConfig() {
+    if (!SchoolApp.store.reportCardConfig) {
+      SchoolApp.store.reportCardConfig = getDefaultReportCardConfig();
+    }
+    return SchoolApp.store.reportCardConfig;
+  }
+
+  function saveReportCardConfig() {
+    try {
+      var cfg = extractReportCardConfigFromForm();
+      SchoolApp.store.reportCardConfig = cfg;
+      SchoolApp.save(true);
+      SchoolApp.showToast('✅ Report Card Configuration saved!', 'success');
+    } catch(e) {
+      console.error('Error saving report card config:', e);
+      SchoolApp.showToast('❌ Failed to save configuration', 'error');
+    }
+  }
+
+  function resetReportCardConfig() {
+    if (!confirm('Reset Report Card Designer configuration to defaults?')) return;
+    SchoolApp.store.reportCardConfig = getDefaultReportCardConfig();
+    SchoolApp.save(true);
+    SchoolApp.showToast('Configuration reset to defaults.', 'info');
+    if (typeof window.renderAdminModule === 'function') {
+      window.renderAdminModule();
+    } else {
+      render();
+    }
+  }
+
+  function extractReportCardConfigFromForm() {
+    var cfg = getDefaultReportCardConfig();
+    var form = document.getElementById('rc-designer-form');
+    if (!form) return getReportCardConfig();
+
+    var checkboxes = form.querySelectorAll('input[type="checkbox"][data-section]');
+    checkboxes.forEach(function(cb) {
+      var sec = cb.getAttribute('data-section');
+      var key = cb.getAttribute('data-key');
+      if (sec && key && cfg[sec]) {
+        cfg[sec][key] = cb.checked;
+      }
+    });
+
+    var colorInput = document.getElementById('rc-primary-color');
+    if (colorInput) {
+      cfg.design.primaryColor = colorInput.value || '#1E40AF';
+    }
+
+    var borderCb = document.getElementById('rc-show-border');
+    if (borderCb) {
+      cfg.design.showBorder = borderCb.checked;
+    }
+
+    var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
+    var templates = {};
+    Object.keys(defs).forEach(function(key) {
+      var field = document.getElementById('tpl-' + key);
+      if (field) {
+        templates[key] = field.value.trim() || defs[key];
+      } else if (cfg.remarkTemplates && cfg.remarkTemplates[key]) {
+        templates[key] = cfg.remarkTemplates[key];
+      } else {
+        templates[key] = defs[key];
+      }
+    });
+    cfg.remarkTemplates = templates;
+
+    return cfg;
+  }
+
+  window.resetRemarkTemplates = function() {
+    var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
+    Object.keys(defs).forEach(function(key) {
+      var field = document.getElementById('tpl-' + key);
+      if (field) {
+        field.value = defs[key];
+      }
+    });
+    if (typeof window.updateReportCardLivePreview === 'function') {
+      window.updateReportCardLivePreview();
+    }
+  };
+
+  var maxPreviewRetries = 10;
+  var previewRetryCount = 0;
+
+  window.updateReportCardLivePreview = function() {
+    var previewContainer = document.getElementById('report-card-live-preview-container') || document.getElementById('rc-live-preview');
+    if (!previewContainer) return;
+
+    // Check if generator function is ready
+    var generatorFn = window.generateSingleStudentCardHTML || (typeof generateSingleStudentCardHTML === 'function' ? generateSingleStudentCardHTML : null);
+
+    if (typeof generatorFn !== 'function') {
+      previewRetryCount++;
+      if (previewRetryCount < maxPreviewRetries) {
+        previewContainer.innerHTML = '<p style="color:#6B7280; text-align:center; padding:20px;">Loading preview...</p>';
+        setTimeout(function() {
+          if (typeof window.updateReportCardLivePreview === 'function') {
+            window.updateReportCardLivePreview();
+          }
+        }, 500);
+      } else {
+        previewContainer.innerHTML = '<p style="color:#EF4444; padding:20px; text-align:center;">Preview unavailable. Please refresh page.</p>';
+      }
+      return;
+    }
+    previewRetryCount = 0;
+
+    var cfg = extractReportCardConfigFromForm();
+    if (SchoolApp && SchoolApp.store) {
+      SchoolApp.store.reportCardConfig = cfg;
+    }
+
+    var sampleStudent = {
+      id: 'sample',
+      name: 'Sample Student',
+      firstName: 'Sample',
+      lastName: 'Student',
+      rollNumber: '01',
+      class: 'Class 5',
+      section: 'A',
+      fatherName: 'Parent Name',
+      motherName: 'Mother Name',
+      parentName: 'Parent Name',
+      guardianName: 'Parent Name',
+      dob: '2015-01-15',
+      dateOfBirth: '2015-01-15',
+      gender: 'Male',
+      admissionNumber: 'ADM001',
+      admissionNo: 'ADM001',
+      address: 'Sample Address'
+    };
+
+    var sampleSubjects = [
+      { id: 's1', name: 'Hindi', fullMarks: 100, passMarks: 33, isOptional: false },
+      { id: 's2', name: 'English', fullMarks: 100, passMarks: 33, isOptional: false },
+      { id: 's3', name: 'Mathematics', fullMarks: 100, passMarks: 33, isOptional: false },
+      { id: 's4', name: 'Drawing', fullMarks: 50, passMarks: 17, isOptional: true }
+    ];
+
+    var sampleMarks = {
+      marks: {
+        's1': { obtained: 85, isAbsent: false },
+        's2': { obtained: 90, isAbsent: false },
+        's3': { obtained: 78, isAbsent: false },
+        's4': { obtained: 42, isAbsent: false }
+      },
+      's1': { obtained: 85, isAbsent: false },
+      's2': { obtained: 90, isAbsent: false },
+      's3': { obtained: 78, isAbsent: false },
+      's4': { obtained: 42, isAbsent: false },
+      rank: 1,
+      result: 'Pass'
+    };
+
+    try {
+      var html = generatorFn(
+        sampleStudent,
+        false,
+        sampleMarks,
+        null,
+        null,
+        '2025-26',
+        { name: 'Term 1 (Half-Yearly)' },
+        sampleSubjects
+      );
+
+      previewContainer.innerHTML = '<div style="transform:scale(0.5); transform-origin:top left; width:200%; height:auto;">' + html + '</div>';
+    } catch(err) {
+      previewContainer.innerHTML = '<p style="color:red; padding:20px;">Preview error: ' + err.message + '</p>';
+      console.error('Preview error:', err);
+    }
+  };
+
+  window.saveReportCardConfig = saveReportCardConfig;
+  window.resetReportCardConfig = resetReportCardConfig;
+  window.renderReportCardDesigner = function() {
+    renderReportCardTab();
+  };
+
+  function renderReportCardTab() {
+    var cfg = getReportCardConfig();
+    var displayStyle = (state.activeTab === 'reportCard' ? 'display:flex;' : 'display:none;');
+    var html = '<div class="tab-content' + (state.activeTab === 'reportCard' ? ' active' : '') + '" id="tab-reportCard" style="' + displayStyle + ' flex-direction:column; gap:20px;">';
+
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '  <div>';
+    html += '    <h3 style="margin:0; font-size:18px; color:var(--text-primary);"><span class="material-icons-round" style="vertical-align:middle; margin-right:6px; color:#1E40AF;">badge</span> Report Card Designer</h3>';
+    html += '    <p style="margin:4px 0 0 0; font-size:13px; color:var(--text-secondary);">Customize school header, student info, academic fields, and colors for report card prints.</p>';
+    html += '  </div>';
+    html += '  <div style="display:flex; gap:10px;">';
+    html += '    <button type="button" class="btn btn-secondary btn-sm" onclick="window.resetReportCardConfig()"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">restart_alt</span> Reset Defaults</button>';
+    html += '    <button type="button" class="btn btn-primary btn-sm" id="save-rc-config-btn" onclick="window.saveReportCardConfig()"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">save</span> Save Configuration</button>';
+    html += '  </div>';
+    html += '</div>';
+
+    // 2-Column Layout: Left Controls (Form), Right Live Preview
+    html += '<form id="rc-designer-form" onchange="window.updateReportCardLivePreview()" oninput="window.updateReportCardLivePreview()" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:start;">';
+
+    // Left Column: Configuration Controls
+    html += '  <div style="display:flex; flex-direction:column; gap:16px;">';
+
+    // Section A: School Information
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">school</span> SECTION A: School Information</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+    
+    var schoolFields = [
+      { key: 'logo', label: 'School Logo' },
+      { key: 'name', label: 'School Name' },
+      { key: 'tagline', label: 'School Tagline' },
+      { key: 'address', label: 'Address' },
+      { key: 'phone', label: 'Phone Number' },
+      { key: 'email', label: 'Email Address' },
+      { key: 'website', label: 'School Website' },
+      { key: 'udiseCode', label: 'UDISE Code' },
+      { key: 'session', label: 'Academic Session' },
+      { key: 'affiliationNo', label: 'Affiliation Number' }
+    ];
+
+    schoolFields.forEach(function(f) {
+      var isChecked = cfg.school[f.key] !== false;
+      html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+      html += '          <input type="checkbox" data-section="school" data-key="' + f.key + '" ' + (isChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> ' + f.label;
+      html += '        </label>';
+    });
+
+    html += '      </div>';
+    html += '    </div>';
+
+    // Section B: Student Information
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">person</span> SECTION B: Student Information</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+
+    var studentFields = [
+      { key: 'name', label: 'Student Name' },
+      { key: 'rollNumber', label: 'Roll Number' },
+      { key: 'class', label: 'Class' },
+      { key: 'section', label: 'Section' },
+      { key: 'admissionNumber', label: 'Admission Number' },
+      { key: 'address', label: 'Student Address' },
+      { key: 'parentName', label: 'Parent/Guardian Name' },
+      { key: 'fatherName', label: 'Father Name' },
+      { key: 'motherName', label: 'Mother Name' },
+      { key: 'dob', label: 'Date of Birth' },
+      { key: 'gender', label: 'Gender' },
+      { key: 'photo', label: 'Student Photo' },
+      { key: 'admissionDate', label: 'Admission Date' }
+    ];
+
+    studentFields.forEach(function(f) {
+      var isChecked = cfg.student[f.key] !== false;
+      html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+      html += '          <input type="checkbox" data-section="student" data-key="' + f.key + '" ' + (isChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> ' + f.label;
+      html += '        </label>';
+    });
+
+    html += '      </div>';
+    html += '    </div>';
+
+    // Section C: Academic Information
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">analytics</span> SECTION C: Academic Information</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+
+    var academicFields = [
+      { key: 'grandTotal', label: 'Grand Total' },
+      { key: 'totalObtained', label: 'Total Obtained Marks' },
+      { key: 'percentage', label: 'Overall Percentage' },
+      { key: 'grade', label: 'Academic Grade' },
+      { key: 'result', label: 'Academic Result (Pass/Fail)' },
+      { key: 'rank', label: 'Class Rank' },
+      { key: 'attendance', label: 'Attendance %' },
+      { key: 'remarks', label: 'Teacher Remarks' },
+      { key: 'promotionStatus', label: 'Promotion Status' },
+      { key: 'division', label: 'Division' }
+    ];
+
+    academicFields.forEach(function(f) {
+      var isChecked = cfg.academic[f.key] !== false;
+      html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+      html += '          <input type="checkbox" data-section="academic" data-key="' + f.key + '" ' + (isChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> ' + f.label;
+      html += '        </label>';
+    });
+
+    html += '      </div>';
+    html += '    </div>';
+
+    // Section D: Design Settings
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">palette</span> SECTION D: Design Settings</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body" style="padding:14px; display:flex; flex-direction:column; gap:12px;">';
+    
+    html += '        <div style="display:flex; align-items:center; gap:12px;">';
+    html += '          <label style="font-size:13px; font-weight:600;">Primary Branding Color:</label>';
+    html += '          <input type="color" id="rc-primary-color" value="' + (cfg.design.primaryColor || '#1E40AF') + '" style="width:40px; height:32px; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; padding:2px;">';
+    html += '          <span style="font-family:monospace; font-size:13px;">' + (cfg.design.primaryColor || '#1E40AF') + '</span>';
+    html += '        </div>';
+
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-show-border" ' + (cfg.design.showBorder !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Outer Border on Report Card';
+    html += '        </label>';
+
+    html += '      </div>';
+    html += '    </div>';
+
+    // SECTION E: Smart Teacher Remarks
+    var smartRemarksChecked = cfg.academic && cfg.academic.smartRemarks === true;
+    var savedTemplates = cfg.remarkTemplates || {};
+    var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
+    var currentTemplates = Object.assign({}, defs, savedTemplates);
+
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">auto_fix_high</span> SECTION E: Smart Teacher Remarks</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body" style="padding:14px; display:flex; flex-direction:column; gap:12px;">';
+
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-smart-remarks" data-section="academic" data-key="smartRemarks" ' + (smartRemarksChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;" onchange="var box = document.getElementById(\'smart-remarks-templates\'); if(box) box.style.display = this.checked ? \'block\' : \'none\';">';
+    html += '          <span>Auto-generate personalized remark based on performance</span>';
+    html += '        </label>';
+
+    html += '        <div id="smart-remarks-templates" style="margin-top:12px; display:' + (smartRemarksChecked ? 'block' : 'none') + ';">';
+    html += '          <h4 style="margin:0 0 4px 0; font-size:13px; font-weight:700;">Remark Templates</h4>';
+    html += '          <p style="font-size:12px; color:#6B7280; margin-bottom:12px;">Customize templates. Use {subjects} for subject names, {name} for student name.</p>';
+
+    TEMPLATE_LABELS.forEach(function(t) {
+      var val = currentTemplates[t.key] || defs[t.key] || '';
+      html += '          <div style="margin-bottom:12px;">';
+      html += '            <label style="font-size:12px; font-weight:600; color:#374151; display:block; margin-bottom:4px;">' + t.label + '</label>';
+      html += '            <textarea id="tpl-' + t.key + '" rows="2" style="width:100%; font-size:12px; padding:8px; border:1px solid #E5E7EB; border-radius:6px; resize:vertical;">' + escapeHTML(val) + '</textarea>';
+      html += '          </div>';
+    });
+
+    html += '          <button type="button" class="btn btn-secondary btn-sm" id="reset-templates-btn" onclick="window.resetRemarkTemplates()"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">restart_alt</span> Reset to Defaults</button>';
+    html += '        </div>';
+
+    html += '      </div>';
+    html += '    </div>';
+
+    html += '  </div>'; // End Left Column
+
+    // Right Column: Live Preview Panel
+    html += '  <div class="card" style="border: 1px solid var(--border-color); border-radius:10px; position:sticky; top:20px;">';
+    html += '    <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">';
+    html += '      <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">preview</span> Live Preview (Mini A4)</h4>';
+    html += '      <span style="font-size:11px; font-weight:600; color:var(--text-secondary); background:rgba(30,64,175,0.1); padding:2px 8px; border-radius:12px;">Sample Student Data</span>';
+    html += '    </div>';
+    html += '    <div class="card-body" style="padding:14px; overflow:hidden; min-height:500px; background:#f8fafc;">';
+    html += '      <div id="report-card-live-preview-container"></div>';
+    html += '    </div>';
+    html += '  </div>'; // End Right Column
+
+    html += '</form>'; // End Form
+
+    html += '</div>';
+
+    // Trigger initial preview build after DOM paint
+    setTimeout(function() {
+      if (typeof window.updateReportCardLivePreview === 'function') {
+        window.updateReportCardLivePreview();
+      }
+    }, 100);
+
+    return html;
+  }
+
 
   function renderSettingsTab() {
     var s = SchoolApp.store.settings || {};
@@ -564,24 +1701,33 @@
     html += '        <div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + escapeAttr(s.schoolName || '') + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Tagline</label><input type="text" class="form-input" name="tagline" value="' + escapeAttr(tagline) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Affiliation / Board</label><input type="text" class="form-input" name="affiliation" value="' + escapeAttr(affiliation) + '"></div>';
-    html += '        <div class="form-group"><label class="form-label">UDISE Code (11 digits)</label><input type="text" class="form-input" name="udiseCode" value="' + escapeAttr(udiseCode) + '" maxlength="11" pattern="\\d{11}"></div>';
+    html += '        <div class="form-group"><label class="form-label">UDISE Code (11 digits)</label><input type="text" class="form-input" name="udiseCode" value="' + escapeAttr(udiseCode) + '" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>';
     html += '        <div class="form-group"><label class="form-label">Academic Year</label><input type="text" class="form-input" name="academicYear" value="' + escapeAttr(s.academicYear || '') + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
     
-    var logoDisplay = s.logoUrl ? 'block' : 'none';
-    var logoSrc = s.logoUrl || '';
+        var logoSrc = s.schoolLogo || s.logoUrl || (s.schoolInfo && (s.schoolInfo.schoolLogo || s.schoolInfo.logoUrl)) || '';
     html += '        <div class="form-group">';
     html += '          <label class="form-label">School Logo</label>';
-    html += '          <input type="file" id="logo-file-input" accept="image/*"';
-    html += '            onchange="StorageUtils.previewImage(this.files[0], \'logo-preview\')" />';
-    html += '          <img id="logo-preview" src="' + logoSrc + '" style="max-width:100px;display:' + logoDisplay + ';margin-top:8px;border-radius:8px;" />';
-    html += '          <div id="logo-progress" style="font-size: 12px; color: var(--accent-secondary); margin-top: 4px; display: none;"></div>';
+    html += '          <input type="file" id="school-logo-input" accept="image/*" class="form-input" onchange="window.handleLogoSelect(this)" />';
+    html += '          <div id="logo-status-container" style="margin-top:6px; font-size:13px; font-weight:600;"></div>';
+    html += '          <div id="logo-preview" style="margin-top:8px;">';
+    if (logoSrc) {
+      html += '            <img src="' + logoSrc + '" style="max-height:80px;border-radius:8px;border:1px solid #E5E7EB;padding:4px;background:#fff;object-fit:contain;">';
+      html += '            <div style="display:flex;gap:8px;margin-top:8px;">';
+      html += '              <button type="button" class="btn btn-secondary btn-xs" onclick="window.changeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Change Logo</button>';
+      html += '              <button type="button" class="btn btn-danger btn-xs" onclick="window.removeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">delete</span> Remove Logo</button>';
+      html += '            </div>';
+    } else {
+      html += '            <span class="text-muted" style="font-size:12px;">No logo uploaded</span>';
+    }
+    html += '          </div>';
     html += '        </div>';
 
     html += '      </div>';
     html += '    </div>';
     html += '  </div>';
 
+    var website = s.website || (s.schoolInfo && s.schoolInfo.website) || '';
     // Card 2: Contact Details
     html += '  <div class="card">';
     html += '    <div class="card-header"><h3><span class="material-icons-round">contact_mail</span> Contact Details</h3></div>';
@@ -589,6 +1735,7 @@
     html += '      <div class="admin-form-grid">';
     html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + escapeAttr(phone) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + escapeAttr(email) + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">School Website</label><input type="url" class="form-input" name="website" id="school-website" placeholder="https://yourschool.com" value="' + escapeAttr(website) + '"></div>';
     html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + escapeHTML(address) + '</textarea></div>';
     html += '      </div>';
     html += '    </div>';
@@ -600,6 +1747,21 @@
     html += '    <div class="card-body">';
     html += '      <div class="admin-form-grid">';
     html += '        <div class="form-group"><label class="form-label">Default Attendance Time</label><input type="time" class="form-input" name="attendanceTime" value="' + (s.attendanceTime || '09:00') + '"></div>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 3.5: Examination Settings
+    html += '  <div class="card">';
+    html += '    <div class="card-header"><h3><span class="material-icons-round">assignment</span> Examination Settings</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <div class="admin-form-grid">';
+    html += '        <div class="form-group"><label class="form-label">Combined Report Card Style</label>';
+    html += '          <select class="form-select" name="combinedReportCardStyle">';
+    html += '            <option value="separate"' + (s.combinedReportCardStyle !== 'weighted' ? ' selected' : '') + '>Show marks separately (default)</option>';
+    html += '            <option value="weighted"' + (s.combinedReportCardStyle === 'weighted' ? ' selected' : '') + '>Calculate weighted result</option>';
+    html += '          </select>';
+    html += '        </div>';
     html += '      </div>';
     html += '    </div>';
     html += '  </div>';
@@ -688,8 +1850,9 @@
         html += '<td>' + t.subject + '</td>';
         html += '<td><span class="badge ' + (t.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + t.status + '</span></td>';
         html += '<td><div class="table-actions">';
-        html += '<button class="btn btn-secondary btn-sm reset-pw-btn" data-id="' + t.id + '"><span class="material-icons-round">lock_reset</span></button>';
-        html += '<button class="btn btn-sm toggle-status-btn ' + (t.status === 'Active' ? 'btn-danger' : 'btn-success') + '" data-id="' + t.id + '"><span class="material-icons-round">' + (t.status === 'Active' ? 'block' : 'check_circle') + '</span></button>';
+        html += '<button class="btn btn-secondary btn-sm reset-pw-btn" data-id="' + t.id + '" title="Reset Password"><span class="material-icons-round">lock_reset</span></button>';
+        html += '<button class="btn btn-sm toggle-status-btn ' + (t.status === 'Active' ? 'btn-danger' : 'btn-success') + '" data-id="' + t.id + '" title="' + (t.status === 'Active' ? 'Deactivate' : 'Activate') + '"><span class="material-icons-round">' + (t.status === 'Active' ? 'block' : 'check_circle') + '</span></button>';
+        html += '<button class="btn btn-secondary btn-sm check-exam-access-btn" data-id="' + t.id + '" title="Check Exam Access"><span class="material-icons-round">rule</span></button>';
         html += '</div></td></tr>';
       });
       html += '</tbody></table></div>';
@@ -775,7 +1938,7 @@
     // Card 1: Exam Terms
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">assignment</span> Configure Exam Terms</h3>';
     html += '<div class="flex gap-2">';
-    html += '<button class="btn btn-secondary btn-sm" id="admin-seed-exam-demo-btn"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">science</span> Seed Demo Exam Data</button>';
+    html += '<button class="btn btn-primary btn-sm" id="admin-setup-exam-wizard-btn"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">auto_awesome</span> Setup New Examination</button>';
     html += '<button class="btn btn-primary btn-sm" id="admin-add-examterm-btn"><span class="material-icons-round">add</span> Add Exam Term</button>';
     html += '</div></div><div class="card-body">';
     html += '<p style="color:var(--text-secondary);font-size:13px;margin:-8px 0 16px 0;">Define terms for recording grades, e.g. "Half-Yearly" and "Annual Exam" to enable consolidated multi-term marksheets.</p>';
@@ -786,7 +1949,8 @@
       exams.forEach(function(ex) {
         html += '<tr>';
         html += '<td><strong>' + ex.name + '</strong></td>';
-        html += '<td><div class="table-actions">';
+        html += '<td><div class="table-actions" style="display:flex; gap:8px;">';
+        html += '<button class="btn-icon admin-edit-examterm-btn" data-id="' + ex.id + '" title="Edit Exam Term" style="color:var(--primary)"><span class="material-icons-round">edit</span></button>';
         html += '<button class="btn-icon admin-delete-examterm-btn" data-id="' + ex.id + '" title="Delete Exam Term" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
         html += '</div></td></tr>';
       });
@@ -846,23 +2010,30 @@
       
       html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">';
       html += '<h4>Subjects mapped for ' + displayClsName + '</h4>';
-      html += '<button class="btn btn-primary btn-sm" id="admin-add-subject-btn" data-class="' + mappingKey + '"><span class="material-icons-round">add</span> Add Subject</button>';
       html += '</div>';
 
       if (subjects.length > 0) {
-        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Subject Name</th><th class="center">Max Marks</th><th class="center">Passing Marks</th><th>Actions</th></tr></thead><tbody>';
+        html += '<div class="table-container"><table class="data-table"><thead><tr><th>Subject</th><th>Type</th><th class="center">Full Marks</th><th class="center">Pass</th><th>Action</th></tr></thead><tbody>';
         subjects.forEach(function(sub) {
+          var typeText = sub.type || 'Theory';
           html += '<tr>';
-          html += '<td><strong>' + sub.name + '</strong></td>';
+          html += '<td><strong>' + escapeHTML(sub.name) + '</strong></td>';
+          html += '<td><span class="badge badge-purple">' + typeText + '</span></td>';
           html += '<td class="center">' + sub.maxMarks + '</td>';
           html += '<td class="center">' + sub.passMarks + '</td>';
           html += '<td><div class="table-actions">';
+          html += '<button class="btn-icon admin-edit-subject-btn" data-class="' + mappingKey + '" data-sub-id="' + sub.id + '" title="Edit Subject"><span class="material-icons-round">edit</span></button>';
           html += '<button class="btn-icon admin-delete-subject-btn" data-class="' + mappingKey + '" data-sub-id="' + sub.id + '" title="Delete Subject" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
           html += '</div></td></tr>';
         });
         html += '</tbody></table></div>';
+        html += '<div style="display:flex; justify-content:flex-end; margin-top:16px;">';
+        html += '  <button class="btn btn-primary btn-sm" id="admin-add-subject-btn" data-class="' + mappingKey + '"><span class="material-icons-round">add</span> Add Subject</button>';
+        html += '</div>';
       } else {
-        html += '<div class="empty-state"><span class="material-icons-round">schema</span><h3>No Subjects Mapped</h3><p>There are no subjects configured for ' + displayClsName + ' yet. Click "Add Subject" to define subjects.</p></div>';
+        html += '<div class="empty-state"><span class="material-icons-round">schema</span><h3>No Subjects Mapped</h3><p>There are no subjects configured for ' + displayClsName + ' yet. Click "Add Subject" to define subjects.</p>';
+        html += '  <button class="btn btn-primary btn-sm mt-3" id="admin-add-subject-btn" data-class="' + mappingKey + '"><span class="material-icons-round">add</span> Add Subject</button>';
+        html += '</div>';
       }
     } else {
       html += '<div class="empty-state"><span class="material-icons-round">school</span><h3>No Classes Available</h3><p>Please configure available classes in School Settings first.</p></div>';
@@ -1589,36 +2760,67 @@
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var tabId = this.getAttribute('data-tab');
-        state.activeTab = tabId;
-        
-        // Hide all content sections first
-        var sections = document.querySelectorAll('.tab-content');
-        sections.forEach(function(sec) {
-          sec.style.setProperty('display', 'none', 'important');
-          sec.classList.remove('active');
-        });
-        
-        // Render
-        render();
-        
-        // Enforce visibility of only target section
-        var allSections = document.querySelectorAll('.tab-content');
-        allSections.forEach(function(sec) {
-          sec.style.setProperty('display', 'none', 'important');
-          sec.classList.remove('active');
-        });
-        
-        var targetSec = document.getElementById('tab-' + tabId);
-        if (targetSec) {
-          targetSec.classList.add('active');
-          if (tabId === 'settings') {
-            targetSec.style.setProperty('display', 'flex', 'important');
-          } else {
-            targetSec.style.setProperty('display', 'block', 'important');
-          }
+        if (SchoolApp.adminIsDirty) {
+          SchoolApp.pendingNavigation = { page: 'admin', tab: tabId, fromHistory: false };
+          SchoolApp.confirmUnsavedChanges(function() {
+            switchTab(tabId);
+          });
+        } else {
+          switchTab(tabId);
         }
       });
     });
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      
+      // Update history state
+      if (window.history) {
+        var currentState = window.history.state;
+        if (currentState && currentState.page === 'admin') {
+          if (currentState.tab === 'settings' && tabId !== 'settings') {
+            // Push new state when moving from settings to another tab
+            window.history.pushState({page: 'admin', tab: tabId}, '', '#admin-' + tabId);
+          } else {
+            // Replace state when moving between non-settings tabs, or back to settings
+            window.history.replaceState({page: 'admin', tab: tabId}, '', '#admin' + (tabId === 'settings' ? '' : '-' + tabId));
+          }
+        } else {
+          window.history.pushState({page: 'admin', tab: tabId}, '', '#admin-' + tabId);
+        }
+      }
+
+      // Track last clean tab
+      SchoolApp.lastCleanTab = tabId;
+
+      // Hide all content sections first
+      var sections = document.querySelectorAll('.tab-content');
+      sections.forEach(function(sec) {
+        sec.style.setProperty('display', 'none', 'important');
+        sec.classList.remove('active');
+      });
+      
+      // Render
+      render();
+      
+      // Enforce visibility of only target section
+      var allSections = document.querySelectorAll('.tab-content');
+      allSections.forEach(function(sec) {
+        sec.style.setProperty('display', 'none', 'important');
+        sec.classList.remove('active');
+      });
+      
+      var targetSec = document.getElementById('tab-' + tabId);
+      if (targetSec) {
+        targetSec.classList.add('active');
+        if (tabId === 'settings') {
+          targetSec.style.setProperty('display', 'flex', 'important');
+        } else {
+          targetSec.style.setProperty('display', 'block', 'important');
+        }
+      }
+    }
+
 
     // Add Class inside Settings
     var settingsAddClassBtn = document.getElementById('settings-add-class-btn');
@@ -1988,11 +3190,13 @@
             const uploadedLogo = await StorageUtils.uploadSchoolLogo(logoFile, SchoolApp.store.currentSchoolId, "logo-progress");
             if (uploadedLogo) {
               SchoolApp.store.settings.logoUrl = uploadedLogo;
+              SchoolApp.store.settings.schoolLogo = uploadedLogo;
             } else {
               // Fallback to base64 preview data URL
               const logoPreview = document.getElementById("logo-preview");
               if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
                 SchoolApp.store.settings.logoUrl = logoPreview.src;
+                SchoolApp.store.settings.schoolLogo = logoPreview.src;
               }
             }
           } catch (err) {
@@ -2001,6 +3205,7 @@
             const logoPreview = document.getElementById("logo-preview");
             if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
               SchoolApp.store.settings.logoUrl = logoPreview.src;
+              SchoolApp.store.settings.schoolLogo = logoPreview.src;
             }
           }
         }
@@ -2023,16 +3228,22 @@
 
         // Sync settings to settings.schoolInfo
         var s = SchoolApp.store.settings;
+        if (s.schoolLogo && !s.logoUrl) s.logoUrl = s.schoolLogo;
+        if (s.logoUrl && !s.schoolLogo) s.schoolLogo = s.logoUrl;
+
         if (!s.schoolInfo) s.schoolInfo = {};
         s.schoolInfo.name = s.schoolName || '';
         s.schoolInfo.tagline = s.tagline || '';
         s.schoolInfo.phone = s.phone || '';
         s.schoolInfo.email = s.email || '';
         s.schoolInfo.logoUrl = s.logoUrl || '';
+        s.schoolInfo.schoolLogo = s.logoUrl || '';
         s.schoolInfo.affiliation = s.affiliation || '';
         s.schoolInfo.address = s.address || '';
         s.schoolInfo.udiseCode = s.udiseCode || '';
 
+        s.website = document.getElementById('school-website') ? document.getElementById('school-website').value.trim() : (s.website || '');
+        s.schoolInfo.website = s.website;
         s.phone = s.schoolInfo.phone;
         s.email = s.schoolInfo.email;
         s.address = s.schoolInfo.address;
@@ -2075,7 +3286,7 @@
             academicYear: '2025-2026',
             address: '123 Education Lane, Knowledge City, Karnataka 560001',
             phone: '+91 98765 43210',
-            email: 'admin@shishuvikash.edu.in',
+            email: 'bhanu.bharti@ctrlshifts.in',
             classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
             sections: ['A','B','C'],
             attendanceTime: '09:00',
@@ -2151,6 +3362,14 @@
         SchoolApp.save();
         SchoolApp.showToast('Teacher status updated to ' + teacher.status + '.', 'success');
         render();
+      });
+    });
+
+    // Check Exam Access diagnostic buttons
+    document.querySelectorAll('.check-exam-access-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-id');
+        showExamAccessDiagnostic(id);
       });
     });
 
@@ -2759,184 +3978,11 @@
     });
     // --- Exams Tab Handlers ---
 
-    // Seed Demo Exam Data
-    var seedExamDemoBtn = document.getElementById('admin-seed-exam-demo-btn');
-    if (seedExamDemoBtn) {
-      seedExamDemoBtn.addEventListener('click', function() {
-        SchoolApp.showConfirm('Seed demo examination terms, subject mappings, and student marks for Class 1? This will overwrite existing Class 1 demo marks.', function() {
-          var term1Id = 'exam_term1_demo';
-          var term2Id = 'exam_term2_demo';
-
-          if (!SchoolApp.store.exams) SchoolApp.store.exams = [];
-
-          var t1Exists = SchoolApp.store.exams.some(function(ex) { return ex.id === term1Id; });
-          if (!t1Exists) {
-            SchoolApp.store.exams.push({ id: term1Id, name: 'Term 1 (Half-Yearly)' });
-          }
-
-          var t2Exists = SchoolApp.store.exams.some(function(ex) { return ex.id === term2Id; });
-          if (!t2Exists) {
-            SchoolApp.store.exams.push({ id: term2Id, name: 'Term 2 (Annual)' });
-          }
-
-          var subjects = [
-            { id: 'sub_maths', name: 'Mathematics', maxMarks: 100, passMarks: 33 },
-            { id: 'sub_science', name: 'Science', maxMarks: 100, passMarks: 33 },
-            { id: 'sub_english', name: 'English', maxMarks: 100, passMarks: 33 },
-            { id: 'sub_hindi', name: 'Hindi', maxMarks: 100, passMarks: 33 }
-          ];
-
-          if (!SchoolApp.store.subjectMapping) SchoolApp.store.subjectMapping = {};
-          SchoolApp.store.subjectMapping[term1Id + '_1'] = subjects;
-          SchoolApp.store.subjectMapping[term2Id + '_1'] = subjects;
-
-          var class1Students = (SchoolApp.store.students || []).filter(function(s) {
-            return s.class === '1' && s.status === 'Active';
-          });
-
-          if (class1Students.length === 0) {
-            SchoolApp.showToast('No active students found in Class 1 to seed marks for.', 'error');
-            return;
-          }
-
-          if (!SchoolApp.store.marks) SchoolApp.store.marks = [];
-
-          // Clean up existing marks for these students/terms
-          SchoolApp.store.marks = SchoolApp.store.marks.filter(function(m) {
-            return !(m.class === '1' && (m.examId === term1Id || m.examId === term2Id));
-          });
-
-          function calculateGrade(percentage) {
-            if (percentage >= 90) return 'A+';
-            if (percentage >= 80) return 'A';
-            if (percentage >= 70) return 'B';
-            if (percentage >= 50) return 'C';
-            return 'F';
-          }
-
-          class1Students.forEach(function(s, index) {
-            var scoresTerm1 = {};
-            var scoresTerm2 = {};
-
-            if (index === 0) {
-              // High achiever (above 90)
-              subjects.forEach(function(sub) {
-                scoresTerm1[sub.id] = String(90 + Math.floor(Math.random() * 11)); // 90 to 100
-                scoresTerm2[sub.id] = String(92 + Math.floor(Math.random() * 9));  // 92 to 100
-              });
-            } else if (index === 1) {
-              // Intentionally fail in one subject in Term 1 and Term 2
-              subjects.forEach(function(sub) {
-                if (sub.id === 'sub_maths') {
-                  scoresTerm1[sub.id] = String(20 + Math.floor(Math.random() * 10)); // 20 to 29 (fail)
-                  scoresTerm2[sub.id] = String(25 + Math.floor(Math.random() * 7));  // 25 to 31 (fail)
-                } else {
-                  scoresTerm1[sub.id] = String(55 + Math.floor(Math.random() * 20)); // 55 to 74
-                  scoresTerm2[sub.id] = String(60 + Math.floor(Math.random() * 15)); // 60 to 74
-                }
-              });
-            } else if (index === 2) {
-              // Intentionally fail in multiple subjects in Term 2
-              subjects.forEach(function(sub) {
-                if (sub.id === 'sub_maths' || sub.id === 'sub_science') {
-                  scoresTerm1[sub.id] = String(34 + Math.floor(Math.random() * 10)); // 34 to 43 (low pass)
-                  scoresTerm2[sub.id] = String(15 + Math.floor(Math.random() * 15)); // 15 to 29 (fail)
-                } else {
-                  scoresTerm1[sub.id] = String(50 + Math.floor(Math.random() * 20));
-                  scoresTerm2[sub.id] = String(52 + Math.floor(Math.random() * 18));
-                }
-              });
-            } else {
-              // Rest have varied scores
-              var scoreBase1 = 40 + (index * 6) % 45; // 40 to 85
-              var scoreBase2 = 45 + (index * 7) % 45; // 45 to 90
-
-              subjects.forEach(function(sub) {
-                scoresTerm1[sub.id] = String(Math.max(33, Math.min(100, scoreBase1 + Math.floor(Math.random() * 15))));
-                scoresTerm2[sub.id] = String(Math.max(33, Math.min(100, scoreBase2 + Math.floor(Math.random() * 15))));
-              });
-            }
-
-            // Save Term 1 entry
-            var t1Total = 0, t1Max = 0, t1Passed = true;
-            subjects.forEach(function(sub) {
-              var sc = parseFloat(scoresTerm1[sub.id]);
-              t1Total += sc;
-              t1Max += sub.maxMarks;
-              if (sc < sub.passMarks) t1Passed = false;
-            });
-            var t1Perc = Math.round((t1Total / t1Max) * 100);
-            SchoolApp.store.marks.push({
-              id: 'mk_' + Date.now().toString(36) + '_' + index + '_t1',
-              studentId: s.id,
-              examId: term1Id,
-              class: '1',
-              section: 'A',
-              scores: scoresTerm1,
-              totalScored: t1Total,
-              maxTotal: t1Max,
-              percentage: t1Perc,
-              grade: calculateGrade(t1Perc),
-              status: t1Passed ? 'Pass' : 'Fail'
-            });
-
-            // Save Term 2 entry
-            var t2Total = 0, t2Max = 0, t2Passed = true;
-            subjects.forEach(function(sub) {
-              var sc = parseFloat(scoresTerm2[sub.id]);
-              t2Total += sc;
-              t2Max += sub.maxMarks;
-              if (sc < sub.passMarks) t2Passed = false;
-            });
-            var t2Perc = Math.round((t2Total / t2Max) * 100);
-            SchoolApp.store.marks.push({
-              id: 'mk_' + Date.now().toString(36) + '_' + index + '_t2',
-              studentId: s.id,
-              examId: term2Id,
-              class: '1',
-              section: 'A',
-              scores: scoresTerm2,
-              totalScored: t2Total,
-              maxTotal: t2Max,
-              percentage: t2Perc,
-              grade: calculateGrade(t2Perc),
-              status: t2Passed ? 'Pass' : 'Fail'
-            });
-          });
-
-          // Generate draft notices for the auto-created terms
-          if (!SchoolApp.store.notices) SchoolApp.store.notices = [];
-          
-          var n1Id = 'notice_' + Date.now().toString(36) + '_t1_demo';
-          var n1Exists = SchoolApp.store.notices.some(function(n) { return n.id === n1Id; });
-          if (!n1Exists) {
-            SchoolApp.store.notices.push({
-              id: n1Id,
-              title: 'Upcoming Examination: Term 1 (Half-Yearly)',
-              message: 'The Term 1 (Half-Yearly) examinations have been scheduled. Please start your preparations...',
-              date: new Date().toISOString().split('T')[0],
-              priority: 'Normal',
-              status: 'draft'
-            });
-          }
-
-          var n2Id = 'notice_' + Date.now().toString(36) + '_t2_demo';
-          var n2Exists = SchoolApp.store.notices.some(function(n) { return n.id === n2Id; });
-          if (!n2Exists) {
-            SchoolApp.store.notices.push({
-              id: n2Id,
-              title: 'Upcoming Examination: Term 2 (Annual)',
-              message: 'The Term 2 (Annual) examinations have been scheduled. Please start your preparations...',
-              date: new Date().toISOString().split('T')[0],
-              priority: 'Normal',
-              status: 'draft'
-            });
-          }
-
-          SchoolApp.save();
-          SchoolApp.showToast('Demo Exam Data Injected Successfully!', 'success');
-          render();
-        });
+    // Setup New Examination Wizard Trigger
+    var setupExamWizardBtn = document.getElementById('admin-setup-exam-wizard-btn');
+    if (setupExamWizardBtn) {
+      setupExamWizardBtn.addEventListener('click', function() {
+        openExamSetupWizard();
       });
     }
 
@@ -2993,6 +4039,50 @@
       });
     }
 
+    // Edit Exam Term
+    document.querySelectorAll('.admin-edit-examterm-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-id');
+        var idx = SchoolApp.store.exams.findIndex(function(x) { return x.id === id; });
+        if (idx === -1) return;
+        var ex = SchoolApp.store.exams[idx];
+
+        var bodyHTML = '<div class="form-group"><label class="form-label">Exam Term Name *</label>';
+        bodyHTML += '<input type="text" id="admin-edit-examterm-name" class="form-input" value="' + escapeAttr(ex.name) + '" placeholder="e.g. Mid-Term, Final Exam">';
+        bodyHTML += '</div>';
+
+        var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+        footerHTML += '<button class="btn btn-primary" id="admin-update-examterm-btn">Save Changes</button>';
+
+        SchoolApp.showModal('Edit Exam Term', bodyHTML, footerHTML);
+
+        var updateBtn = document.getElementById('admin-update-examterm-btn');
+        if (updateBtn) {
+          updateBtn.addEventListener('click', async function() {
+            var name = document.getElementById('admin-edit-examterm-name').value.trim();
+            if (!name) {
+              SchoolApp.showToast('Please enter an exam term name.', 'error');
+              return;
+            }
+
+            ex.name = name;
+
+            updateBtn.disabled = true;
+            updateBtn.textContent = 'Saving...';
+            var success = await SchoolApp.save();
+            updateBtn.disabled = false;
+            updateBtn.textContent = 'Save Changes';
+
+            if (success) {
+              SchoolApp.closeModal();
+              SchoolApp.showToast('Exam term renamed successfully', 'success');
+              render();
+            }
+          });
+        }
+      });
+    });
+
     // Delete Exam Term
     document.querySelectorAll('.admin-delete-examterm-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -3001,20 +4091,35 @@
         if (idx === -1) return;
         var ex = SchoolApp.store.exams[idx];
 
-        SchoolApp.showConfirm('Delete Exam Term "' + ex.name + '"? This will remove all associated marks.', function() {
-          SchoolApp.store.exams.splice(idx, 1);
-          
-          // Optionally clean up marks associated with this exam term
-          if (SchoolApp.store.marks) {
-            SchoolApp.store.marks = SchoolApp.store.marks.filter(function(m) {
-              return m.examId !== id;
-            });
-          }
+        SchoolApp.showConfirm(
+          'Are you sure you want to delete ' + ex.name + '? This will also delete all marks and subject data associated with this term. This action cannot be undone.',
+          async function() {
+            SchoolApp.store.exams.splice(idx, 1);
+            
+            // Clean up marks associated with this exam term
+            if (SchoolApp.store.marks) {
+              SchoolApp.store.marks = SchoolApp.store.marks.filter(function(m) {
+                return m.examId !== id;
+              });
+            }
 
-          SchoolApp.save();
-          SchoolApp.showToast('Exam Term deleted.', 'warning');
-          render();
-        });
+            // Clean up subject mappings associated with this exam term
+            if (SchoolApp.store.subjectMapping) {
+              Object.keys(SchoolApp.store.subjectMapping).forEach(function(key) {
+                if (key.indexOf(id + '_') === 0) {
+                  delete SchoolApp.store.subjectMapping[key];
+                }
+              });
+            }
+
+            var success = await SchoolApp.save();
+            if (success) {
+              SchoolApp.showToast('Exam Term deleted.', 'warning');
+              render();
+            }
+          },
+          'Delete Exam Term?'
+        );
       });
     });
 
@@ -3043,76 +4148,18 @@
     if (addSubBtn) {
       addSubBtn.addEventListener('click', function() {
         var cls = this.getAttribute('data-class');
-        var subjectsList = SchoolApp.store.settings.subjects || [];
-        var bodyHTML = '<form id="add-subject-form" class="form-grid">';
-        bodyHTML += '<div class="form-group full-width"><label class="form-label">Subject Name *</label>';
-        bodyHTML += '<select id="admin-sub-name" class="form-select" required>';
-        subjectsList.forEach(function(sub) {
-          bodyHTML += '<option value="' + escapeAttr(sub) + '">' + escapeHTML(sub) + '</option>';
-        });
-        bodyHTML += '</select></div>';
-        bodyHTML += '<div class="form-group"><label class="form-label">Max Marks *</label>';
-        bodyHTML += '<input type="number" id="admin-sub-max" class="form-input" value="100" min="1" required></div>';
-        bodyHTML += '<div class="form-group"><label class="form-label">Passing Marks *</label>';
-        bodyHTML += '<input type="number" id="admin-sub-pass" class="form-input" value="33" min="1" required></div>';
-        bodyHTML += '</form>';
-
-        var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
-        footerHTML += '<button class="btn btn-primary" id="admin-save-subject-btn">Add Subject</button>';
-
-        var displayCls = cls;
-        if (cls.indexOf('_') !== -1) {
-          var parts = cls.split('_');
-          var actualClass = parts[parts.length - 1];
-          displayCls = ['Nursery','LKG','UKG'].indexOf(actualClass) !== -1 ? actualClass : 'Class ' + actualClass;
-        } else {
-          displayCls = ['Nursery','LKG','UKG'].indexOf(cls) !== -1 ? cls : 'Class ' + cls;
-        }
-        SchoolApp.showModal('Add Subject to ' + displayCls, bodyHTML, footerHTML);
-
-        var saveBtn = document.getElementById('admin-save-subject-btn');
-        if (saveBtn) {
-          saveBtn.addEventListener('click', async function() {
-            var name = document.getElementById('admin-sub-name').value.trim();
-            var maxMarks = parseFloat(document.getElementById('admin-sub-max').value);
-            var passMarks = parseFloat(document.getElementById('admin-sub-pass').value);
-
-            if (!name || isNaN(maxMarks) || isNaN(passMarks) || maxMarks <= 0 || passMarks <= 0) {
-              SchoolApp.showToast('Please fill out all fields with valid positive values.', 'error');
-              return;
-            }
-
-            if (passMarks > maxMarks) {
-              SchoolApp.showToast('Passing Marks cannot exceed Max Marks.', 'error');
-              return;
-            }
-
-            if (!SchoolApp.store.subjectMapping) SchoolApp.store.subjectMapping = {};
-            if (!SchoolApp.store.subjectMapping[cls]) SchoolApp.store.subjectMapping[cls] = [];
-
-            var id = 'sub_' + Date.now().toString(36);
-            SchoolApp.store.subjectMapping[cls].push({
-              id: id,
-              name: name,
-              maxMarks: maxMarks,
-              passMarks: passMarks
-            });
-
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Adding...';
-            var success = await SchoolApp.save();
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Add Subject';
-
-            if (success) {
-              SchoolApp.closeModal();
-              SchoolApp.showToast('Subject added successfully!', 'success');
-              render();
-            }
-          });
-        }
+        openAddEditSubjectModal(cls);
       });
     }
+
+    // Edit Subject mapping
+    document.querySelectorAll('.admin-edit-subject-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var cls = this.getAttribute('data-class');
+        var subId = this.getAttribute('data-sub-id');
+        openAddEditSubjectModal(cls, subId);
+      });
+    });
 
     // Delete Subject from Class mapping
     document.querySelectorAll('.admin-delete-subject-btn').forEach(function(btn) {
@@ -3124,10 +4171,47 @@
         if (idx === -1) return;
         var sub = subjects[idx];
 
-        SchoolApp.showConfirm('Delete Subject "' + sub.name + '" from this class? Marks entered for this subject will be ignored.', function() {
+        var parts = cls.split('_');
+        var termId = parts.slice(0, parts.length - 1).join('_');
+        var classId = parts[parts.length - 1];
+
+        var termName = (SchoolApp.store.exams.find(function(ex) { return ex.id === termId; }) || { name: termId }).name;
+        var className = ['Nursery','LKG','UKG'].indexOf(classId) !== -1 ? classId : 'Class ' + classId;
+
+        SchoolApp.showConfirm('Remove "' + sub.name + '" from ' + className + ' ' + termName + '? This will delete all marks entered for this subject.', function() {
           subjects.splice(idx, 1);
+
+          if (SchoolApp.store.marks) {
+            SchoolApp.store.marks.forEach(function(m) {
+              if (m.examId === termId && m.class === classId) {
+                if (m.scores && m.scores[subId] !== undefined) {
+                  delete m.scores[subId];
+
+                  var totalScored = 0;
+                  var maxTotal = 0;
+                  var passedAll = true;
+                  subjects.forEach(function(s) {
+                    if (s.id !== subId) {
+                      var scoreVal = m.scores[s.id];
+                      var score = scoreVal !== undefined && scoreVal !== '' ? parseFloat(scoreVal) : 0;
+                      totalScored += score;
+                      maxTotal += s.maxMarks;
+                      if (score < s.passMarks) passedAll = false;
+                    }
+                  });
+
+                  m.totalScored = totalScored;
+                  m.maxTotal = maxTotal;
+                  m.percentage = maxTotal > 0 ? Math.round((totalScored / maxTotal) * 100) : 0;
+                  m.grade = calculateGrade(m.percentage);
+                  m.status = passedAll ? 'Pass' : 'Fail';
+                }
+              }
+            });
+          }
+
           SchoolApp.save();
-          SchoolApp.showToast('Subject deleted.', 'warning');
+          SchoolApp.showToast('Subject removed and student scores updated.', 'warning');
           render();
         });
       });
@@ -3306,12 +4390,156 @@
   // Register Module
   SchoolApp.registerModule('admin', {
     init: function() {},
-    render: render
+    render: render,
+    setActiveTab: function(tabId) {
+      state.activeTab = tabId;
+    },
+    getActiveTab: function() {
+      return state.activeTab;
+    }
   });
 
   window.migrateAllPasswords = async function() {
     const count = await AuthUtils.bulkMigrateTeacherPasswords();
     SchoolApp.showToast(count > 0 ? count + " passwords secured." : "All passwords already secure.", "success");
   };
+
+  window.showExamAccessDiagnostic = function(teacherId) {
+    var teacher = (SchoolApp.store.teachers || []).find(function(t) { return t.id === teacherId; });
+    if (!teacher) {
+      SchoolApp.showToast('Teacher not found', 'error');
+      return;
+    }
+
+    var normalizedSubjects = (
+      Array.isArray(teacher.subjects) 
+        ? teacher.subjects 
+        : (teacher.subject ? String(teacher.subject).split(',') : [])
+    ).map(function(s) { return s.trim(); });
+
+    var assignedClasses = teacher.assignedClasses || [];
+    var subjectTeacherOf = teacher.subjectTeacherOf || [];
+
+    var bodyHTML = '<div style="max-height: 450px; overflow-y: auto; padding-right: 8px;">';
+    
+    // Summary
+    bodyHTML += '<p>Analyzing exam marks entry access for <strong>' + escapeHTML(teacher.firstName + ' ' + (teacher.lastName || '')) + '</strong>.</p>';
+    
+    // Teacher metadata details
+    bodyHTML += '<div class="alert alert-info mb-3" style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:12px;">';
+    bodyHTML += '  <h4 style="margin-top:0; margin-bottom:8px; font-size:14px; color:var(--primary);">Profile Mappings</h4>';
+    bodyHTML += '  <p style="margin:4px 0; font-size:13px;"><strong>Assigned Subjects:</strong> ' + (normalizedSubjects.length > 0 ? normalizedSubjects.join(', ') : '<span style="color:var(--danger)">None</span>') + '</p>';
+    bodyHTML += '  <p style="margin:4px 0; font-size:13px;"><strong>Assigned Classes (General):</strong> ' + (assignedClasses.length > 0 ? assignedClasses.map(function(c) {
+      return typeof c === 'object' ? (c.class + '-' + c.section) : c;
+    }).join(', ') : '<span style="color:var(--danger)">None</span>') + '</p>';
+    bodyHTML += '  <p style="margin:4px 0; font-size:13px;"><strong>Subject Teacher Of Assignments:</strong> ' + (subjectTeacherOf.length > 0 ? subjectTeacherOf.map(function(s) {
+      var cls = s.class || s.classId || '';
+      var sec = s.section || '';
+      var sub = s.subject || s.subjectName || '';
+      return sub + ' in Class ' + cls + '-' + sec;
+    }).join(', ') : '<span style="color:var(--text-muted)">None</span>') + '</p>';
+    bodyHTML += '</div>';
+
+    // Exam subjects analysis
+    bodyHTML += '<h4 style="margin-top:16px; margin-bottom:8px; font-size:14px;">Evaluated Exam Term Access Matrix</h4>';
+    
+    var examTerms = Object.values(SchoolApp.store.examTerms || {});
+    if (examTerms.length === 0) {
+      bodyHTML += '<p style="color:var(--text-muted); font-size:13px;">No exam terms configured.</p>';
+    } else {
+      bodyHTML += '<table class="table table-sm" style="font-size:12px; width:100%; border-collapse:collapse;">';
+      bodyHTML += '  <thead>';
+      bodyHTML += '    <tr style="border-bottom:1px solid rgba(255,255,255,0.1); text-align:left;">';
+      bodyHTML += '      <th style="padding:6px;">Exam Term</th>';
+      bodyHTML += '      <th style="padding:6px;">Class-Sec</th>';
+      bodyHTML += '      <th style="padding:6px;">Exam Subject</th>';
+      bodyHTML += '      <th style="padding:6px; text-align:center;">Match Status</th>';
+      bodyHTML += '    </tr>';
+      bodyHTML += '  </thead>';
+      bodyHTML += '  <tbody>';
+
+      var totalEvaluations = 0;
+      var matchedCount = 0;
+
+      examTerms.forEach(function(term) {
+        var termSubjects = SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[term.id];
+        if (termSubjects) {
+          Object.keys(termSubjects).forEach(function(classKey) {
+            var classObj = termSubjects[classKey];
+            var subs = classObj.subjects || [];
+            
+            // Evaluated section letters (A, B, C, D)
+            ['A', 'B', 'C', 'D'].forEach(function(sectionLetter) {
+              var classSectionStr = classKey + '-' + sectionLetter;
+              var classSectionNorm = window.normalizeClassId(classSectionStr);
+              
+              subs.forEach(function(sub) {
+                totalEvaluations++;
+                
+                var examSubjectName = sub.name.toLowerCase().trim();
+                
+                // 1. General Profile Match
+                var subjectMatch = normalizedSubjects.some(function(ts) {
+                  return window.subjectsMatch(ts, examSubjectName);
+                });
+                
+                var classMatch = (teacher.assignedClasses || []).some(function(c) {
+                  return window.normalizeClassId(c) === classSectionNorm;
+                });
+                
+                // 2. Direct assignment
+                var directAssignment = (teacher.subjectTeacherOf || []).some(function(assignment) {
+                  var assignmentClassNorm = window.normalizeClassId(assignment.classId || assignment.class || assignment);
+                  var assignmentSubjectName = (assignment.subjectName || assignment.subject || "").toLowerCase().trim();
+                  return assignmentClassNorm === classSectionNorm && window.subjectsMatch(assignmentSubjectName, examSubjectName);
+                });
+
+                var isMatched = (subjectMatch && classMatch) || directAssignment;
+                
+                if (isMatched) {
+                  matchedCount++;
+                  var reason = "";
+                  if (directAssignment) {
+                    reason = "Direct subjectTeacherOf assignment";
+                  } else {
+                    reason = "Matched general profile (" + sub.name + " + Class " + classSectionStr + ")";
+                  }
+                  
+                  bodyHTML += '    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">';
+                  bodyHTML += '      <td style="padding:6px; color:var(--text-muted);">' + escapeHTML(term.name) + '</td>';
+                  bodyHTML += '      <td style="padding:6px;"><strong>Class ' + escapeHTML(classSectionStr) + '</strong></td>';
+                  bodyHTML += '      <td style="padding:6px;">' + escapeHTML(sub.name) + '</td>';
+                  bodyHTML += '      <td style="padding:6px; text-align:center;"><span class="badge badge-success" title="' + escapeHTML(reason) + '">✅ Accessible</span></td>';
+                  bodyHTML += '    </tr>';
+                }
+              });
+            });
+          });
+        }
+      });
+
+      if (matchedCount === 0) {
+        bodyHTML += '    <tr><td colspan="4" style="text-align:center; padding:12px; color:var(--danger);">No matched exam subjects found. Teacher has NO access to enter marks.</td></tr>';
+      }
+
+      bodyHTML += '  </tbody>';
+      bodyHTML += '</table>';
+    }
+
+    bodyHTML += '</div>';
+
+    var footerHTML = '<button class="btn btn-primary" onclick="SchoolApp.closeModal()">Close</button>';
+    SchoolApp.showModal('Exam Marks Entry Access Diagnostics', bodyHTML, footerHTML);
+  };
+
+  function escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
 })();

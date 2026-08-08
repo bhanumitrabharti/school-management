@@ -3,10 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Shishu Vikash Mandir - A modern school management system for managing students, teachers, attendance, and administration.">
-  <meta name="keywords" content="school management, student management, teacher management, attendance tracking">
-  <meta name="author" content="Shishu Vikash Mandir">
   <title>Shishu Vikash Mandir - School Management System</title>
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml">
+  <meta name="description" content="Paathshala — India ke chhote aur medium private schools ke liye School ERP. Fees, attendance, marksheet, notice — sab ek jagah. 30-day free trial. WhatsApp receipts, Hindi + English support. Rs.399/month se shuru.">
+  <meta name="keywords" content="school ERP India, school management software, fee management software, attendance tracking school, marksheet generator, school software Jharkhand, school ERP Hindi, Tier 2 school software, private school management">
+  <meta name="author" content="Bhanu Bharti, Ctrl Shift Solutions">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://ctrlshifts.in">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://ctrlshifts.in">
+  <meta property="og:title" content="Paathshala — School ka pura kaam, ek phone se">
+  <meta property="og:description" content="Fees, attendance, marksheet, notice — sab ek jagah. India ke private schools ke liye banaya gaya. 30-day free trial, no credit card.">
+  <meta property="og:image" content="https://ctrlshifts.in/assets/og-image.jpg">
+  <meta property="og:locale" content="hi_IN">
+  <meta property="og:site_name" content="Paathshala by Ctrl Shift Solutions">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Paathshala — School ka pura kaam, ek phone se">
+  <meta name="twitter:description" content="India ke private schools ke liye School ERP. Rs.399/month se shuru. 30-day free trial.">
+  <meta name="twitter:image" content="https://ctrlshifts.in/assets/og-image.jpg">
+
+  <!-- Geo Targeting -->
+  <meta name="geo.region" content="IN-JH">
+  <meta name="geo.placename" content="Bokaro, Jharkhand, India">
+  <meta name="language" content="Hindi, English">
+
+  <!-- Schema Markup -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Paathshala",
+    "applicationCategory": "EducationalApplication",
+    "url": "https://ctrlshifts.in",
+    "offers": [
+      {"@type": "Offer", "name": "Starter", "price": "399", "priceCurrency": "INR"},
+      {"@type": "Offer", "name": "Growth", "price": "799", "priceCurrency": "INR"},
+      {"@type": "Offer", "name": "Premium", "price": "1499", "priceCurrency": "INR"}
+    ],
+    "publisher": {
+      "@type": "Organization",
+      "name": "Ctrl Shift Solutions",
+      "url": "https://ctrlshifts.in",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "telephone": "+91-91555-15505",
+        "contactType": "sales",
+        "availableLanguage": ["Hindi", "English"]
+      }
+    }
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -21,6 +71,14 @@
   <meta name="theme-color" content="#2563eb">
   <link rel="apple-touch-icon" href="/images/logo.png">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      var savedTheme = localStorage.getItem('erp_theme_preference') || 'dark';
+      if (savedTheme === 'light') {
+        document.documentElement.classList.add('light-theme');
+      }
+    })();
+  </script>
 
   <!-- Structured Data JSON-LD Schemas -->
   <script type="application/ld+json">
@@ -48,6 +106,15 @@
     "description": "A complete multi-tenant School Management System and ERP for tracking students, teachers, fees, and attendance."
   }
   </script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-E76LHV2WTZ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-E76LHV2WTZ');
+  </script>
 </head>
 <body>
 
@@ -62,7 +129,7 @@
     </div>
     <div class="login-card">
       <div class="login-logo">
-        <img src="./school-logo-updated.jpg" class="login-logo-img" alt="School Logo">
+        <img src="" class="login-logo-img" alt="School Logo" style="display:none;">
         <h1 class="login-title">Shishu Vikash Mandir</h1>
         <p class="login-subtitle">School Management System</p>
       </div>
@@ -111,10 +178,11 @@
             </div>
           </div>
         </div>
-        <button type="submit" class="btn btn-primary btn-login">
+        <button type="submit" id="login-submit-btn" class="btn btn-primary btn-login">
           <span class="material-icons-round">login</span>
-          Sign In
+          <span id="login-btn-text">Sign In</span>
         </button>
+        <div id="login-error-msg" style="color: #ef4444; font-size: 13px; font-weight: 600; text-align: center; margin-top: 12px; display: none;"></div>
       </form>
 
       <!-- Marketing Links -->
@@ -133,7 +201,7 @@
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo">
-          <img src="./school-logo-updated.jpg" class="logo-img" alt="Logo">
+          <img src="" class="logo-img" alt="Logo" style="display:none;">
           <span class="logo-text">Shishu Vikash Mandir</span>
         </div>
         <button id="sidebar-toggle" class="sidebar-toggle" title="Toggle Sidebar">
@@ -210,12 +278,20 @@
             <span class="material-icons-round">menu</span>
           </button>
           <h2 class="header-title" id="header-title">Dashboard</h2>
+          <div id="live-indicator" class="live-indicator" style="color: var(--success); background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.15);">
+            <span class="live-dot" style="background-color: var(--success); box-shadow: 0 0 6px var(--success); animation: pulse-dot 1.8s infinite;"></span>
+            <span id="live-status-text">Live</span>
+          </div>
+
         </div>
         <div class="header-right">
           <div class="header-search">
             <span class="material-icons-round">search</span>
             <input type="text" id="global-search" placeholder="Search..." class="form-input">
           </div>
+          <button class="btn-icon theme-toggle-btn" id="app-theme-toggle" title="Toggle Theme" style="margin-right: 8px;">
+            <span class="material-icons-round" id="app-theme-icon">light_mode</span>
+          </button>
           <div class="notification-wrapper" style="position: relative; display: inline-block;">
             <button class="btn-icon notification-btn" id="notification-btn" title="Notifications">
               <span class="material-icons-round">notifications</span>
@@ -234,6 +310,12 @@
           </div>
         </div>
       </header>
+
+      <!-- Mobile-only School Branding Sub-Header -->
+      <div class="mobile-sub-header mobile-only">
+        <span class="mobile-school-name">School Name</span>
+        <img src="" class="logo-img mobile-school-logo" alt="Logo" style="height: 24px; max-width: 80px; object-fit: contain; display: none;">
+      </div>
 
       <!-- Content Area -->
       <div id="content-area" class="content-area">
@@ -279,6 +361,22 @@
       <div class="confirm-actions">
         <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
         <button class="btn btn-danger" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== UNSAVED CHANGES MODAL ==================== -->
+  <div id="unsaved-changes-dialog" class="confirm-overlay">
+    <div class="confirm-container" style="max-width: 450px;">
+      <div class="confirm-icon" style="background: rgba(249, 115, 22, 0.15);">
+        <span class="material-icons-round" style="color: #f97316;">warning</span>
+      </div>
+      <h3 class="confirm-title" style="font-size: 20px;">Unsaved Changes</h3>
+      <p class="confirm-message" style="margin-bottom: 24px;">You have unsaved changes. What would you like to do?</p>
+      <div class="confirm-actions" style="flex-direction: column; gap: 8px;">
+        <button class="btn btn-primary" id="unsaved-save-btn" style="width: 100%;">Save Changes</button>
+        <button class="btn btn-danger" id="unsaved-discard-btn" style="width: 100%;">Discard & Leave</button>
+        <button class="btn btn-secondary" id="unsaved-stay-btn" style="width: 100%;">Stay</button>
       </div>
     </div>
   </div>
@@ -390,6 +488,9 @@
   </div>
 
   <!-- ==================== SCRIPTS ==================== -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>
+  <script src="js/auth-utils.js"></script>
+  <script src="js/storage-utils.js"></script>
   <script type="module" src="js/app.js"></script>
   <script type="module" src="js/utils.js"></script>
   <script type="module" src="js/students.js"></script>

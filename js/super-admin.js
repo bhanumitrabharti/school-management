@@ -6,7 +6,7 @@
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -22,6 +22,14 @@ const db = getFirestore(app);
 (function () {
     'use strict';
 
+    // ─── Collapsible Form States ────────────────────────
+    var formClasses = [];
+    var formSections = {};
+    var formFeeStructure = {};
+    var formFeeHeads = ["tuition", "transport", "exam"];
+    var formExtraCharges = [];
+    var currentAdminPasswordHash = '';
+
     // ─── Constants ──────────────────────────────────────
     var STORAGE_KEY = 'shishuvikash_data';
     var SESSION_KEY = 'sa_session';
@@ -36,61 +44,177 @@ const db = getFirestore(app);
     };
 
     var isDataLoaded = false;
+    var schoolsUnsub = null;
+    var trashUnsub = null;
+    var ticketsUnsub = null;
+    var logsUnsub = null;
+
+    function cleanupSuperAdminListeners() {
+        if (schoolsUnsub) { schoolsUnsub(); schoolsUnsub = null; }
+        if (trashUnsub) { trashUnsub(); trashUnsub = null; }
+        if (ticketsUnsub) { ticketsUnsub(); ticketsUnsub = null; }
+        if (logsUnsub) { logsUnsub(); logsUnsub = null; }
+    }
+
+    function triggerSaTabRender() {
+        const activeTab = document.querySelector('.sa-nav-item.active');
+        if (!activeTab) return;
+        const tabId = activeTab.getAttribute('data-tab');
+        if (tabId === 'dashboard') {
+            renderDashboard();
+        } else if (tabId === 'schools') {
+            renderSchoolsTab();
+        } else if (tabId === 'tickets') {
+            renderTicketsTab();
+        } else if (tabId === 'recovery') {
+            renderRecoveryTab();
+        } else if (tabId === 'logs') {
+            renderLogsTab();
+        }
+    }
+
     async function ensureDataLoaded() {
         if (isDataLoaded) return;
-        try {
-            // Load schools
+        
+        cleanupSuperAdminListeners();
+
+        return new Promise((resolve, reject) => {
+            let loadedCount = 0;
+            const totalToLoad = 4;
+            function checkResolve() {
+                loadedCount++;
+                if (loadedCount === totalToLoad) {
+                    isDataLoaded = true;
+                    resolve();
+                }
+            }
+
+            if (!window.saConnectionEventsBound) {
+                window.saConnectionEventsBound = true;
+                window.addEventListener('online', function() {
+                    updateSaConnectionIndicator(true);
+                });
+                window.addEventListener('offline', function() {
+                    updateSaConnectionIndicator(true);
+                });
+            }
+
+            function updateSaConnectionIndicator(fromCache) {
+                const indicator = document.getElementById('live-indicator');
+                const dot = indicator ? indicator.querySelector('.live-dot') : null;
+                const text = document.getElementById('live-status-text');
+                if (!indicator || !dot || !text) return;
+                const isOnline = navigator.onLine;
+                if (isOnline && !fromCache) {
+                    indicator.style.color = '#10B981';
+                    indicator.style.backgroundColor = 'rgba(16, 185, 129, 0.08)';
+                    indicator.style.borderColor = 'rgba(16, 185, 129, 0.15)';
+                    dot.style.backgroundColor = '#10B981';
+                    dot.style.boxShadow = '0 0 6px #10B981';
+                    dot.style.animation = 'pulse-dot 1.8s infinite';
+                    text.textContent = 'Live';
+                } else {
+                    indicator.style.color = '#F59E0B';
+                    indicator.style.backgroundColor = 'rgba(245, 158, 11, 0.08)';
+                    indicator.style.borderColor = 'rgba(245, 158, 11, 0.15)';
+                    dot.style.backgroundColor = '#F59E0B';
+                    dot.style.boxShadow = '0 0 6px #F59E0B';
+                    dot.style.animation = 'pulse-dot-warning 1.8s infinite';
+                    text.textContent = 'Reconnecting...';
+                }
+            }
+
             const schoolsCol = collection(db, 'schools');
-            const schoolsSnapshot = await getDocs(schoolsCol);
-            let schoolsList = [];
-            schoolsSnapshot.forEach((docSnap) => {
-                schoolsList.push(docSnap.data());
+            schoolsUnsub = onSnapshot(schoolsCol, { includeMetadataChanges: true }, async (snapshot) => {
+                updateSaConnectionIndicator(snapshot.metadata.fromCache);
+                
+                let schoolsList = [];
+                snapshot.forEach((docSnap) => {
+                    schoolsList.push(docSnap.data());
+                });
+
+                if (schoolsList.length === 0) {
+                    for (const s of defaultSchools) {
+                        await setDoc(doc(db, 'schools', s.school_id), s);
+                    }
+                    schoolsList = JSON.parse(JSON.stringify(defaultSchools));
+                }
+                window.saCache.schools = schoolsList;
+                
+                if (loadedCount >= totalToLoad) {
+                    triggerSaTabRender();
+                }
+
+                if (loadedCount < totalToLoad) checkResolve();
+            }, (error) => {
+                console.error("Schools sync error:", error);
+                updateSaConnectionIndicator(true);
+                if (loadedCount < totalToLoad) checkResolve();
             });
 
-            if (schoolsList.length === 0) {
-                // Seed schools
-                for (const s of defaultSchools) {
-                    await setDoc(doc(db, 'schools', s.school_id), s);
-                }
-                schoolsList = JSON.parse(JSON.stringify(defaultSchools));
-            }
-            window.saCache.schools = schoolsList;
-
-            // Load recovery trash
             const trashDocRef = doc(db, 'sa_data', 'recovery_trash');
-            const trashDocSnap = await getDoc(trashDocRef);
-            if (trashDocSnap.exists()) {
-                window.saCache.recovery_trash = trashDocSnap.data().trash || [];
-            } else {
-                await setDoc(trashDocRef, { trash: defaultRecoveryTrash });
-                window.saCache.recovery_trash = JSON.parse(JSON.stringify(defaultRecoveryTrash));
-            }
+            trashUnsub = onSnapshot(trashDocRef, { includeMetadataChanges: true }, async (docSnap) => {
+                updateSaConnectionIndicator(docSnap.metadata.fromCache);
 
-            // Load support tickets
+                if (docSnap.exists()) {
+                    window.saCache.recovery_trash = docSnap.data().trash || [];
+                } else {
+                    await setDoc(trashDocRef, { trash: defaultRecoveryTrash });
+                    window.saCache.recovery_trash = JSON.parse(JSON.stringify(defaultRecoveryTrash));
+                }
+
+                if (loadedCount >= totalToLoad) {
+                    triggerSaTabRender();
+                }
+                if (loadedCount < totalToLoad) checkResolve();
+            }, (error) => {
+                console.error("Trash sync error:", error);
+                updateSaConnectionIndicator(true);
+                if (loadedCount < totalToLoad) checkResolve();
+            });
+
             const ticketsDocRef = doc(db, 'sa_data', 'support_tickets');
-            const ticketsDocSnap = await getDoc(ticketsDocRef);
-            if (ticketsDocSnap.exists()) {
-                window.saCache.support_tickets = ticketsDocSnap.data().tickets || [];
-            } else {
-                await setDoc(ticketsDocRef, { tickets: defaultSupportTickets });
-                window.saCache.support_tickets = JSON.parse(JSON.stringify(defaultSupportTickets));
-            }
+            ticketsUnsub = onSnapshot(ticketsDocRef, { includeMetadataChanges: true }, async (docSnap) => {
+                updateSaConnectionIndicator(docSnap.metadata.fromCache);
 
-            // Load audit logs
+                if (docSnap.exists()) {
+                    window.saCache.support_tickets = docSnap.data().tickets || [];
+                } else {
+                    await setDoc(ticketsDocRef, { tickets: defaultSupportTickets });
+                    window.saCache.support_tickets = JSON.parse(JSON.stringify(defaultSupportTickets));
+                }
+
+                if (loadedCount >= totalToLoad) {
+                    triggerSaTabRender();
+                }
+                if (loadedCount < totalToLoad) checkResolve();
+            }, (error) => {
+                console.error("Tickets sync error:", error);
+                updateSaConnectionIndicator(true);
+                if (loadedCount < totalToLoad) checkResolve();
+            });
+
             const logsDocRef = doc(db, 'sa_data', 'audit_logs');
-            const logsDocSnap = await getDoc(logsDocRef);
-            if (logsDocSnap.exists()) {
-                window.saCache.audit_logs = logsDocSnap.data().logs || [];
-            } else {
-                await setDoc(logsDocRef, { logs: defaultAuditLogs });
-                window.saCache.audit_logs = JSON.parse(JSON.stringify(defaultAuditLogs));
-            }
+            logsUnsub = onSnapshot(logsDocRef, { includeMetadataChanges: true }, async (docSnap) => {
+                updateSaConnectionIndicator(docSnap.metadata.fromCache);
 
-            isDataLoaded = true;
-        } catch (e) {
-            console.error('Error loading Firestore data:', e);
-            showToast('Failed to load data from Cloud Firestore', 'error');
-        }
+                if (docSnap.exists()) {
+                    window.saCache.audit_logs = docSnap.data().logs || [];
+                } else {
+                    await setDoc(logsDocRef, { logs: defaultAuditLogs });
+                    window.saCache.audit_logs = JSON.parse(JSON.stringify(defaultAuditLogs));
+                }
+
+                if (loadedCount >= totalToLoad) {
+                    triggerSaTabRender();
+                }
+                if (loadedCount < totalToLoad) checkResolve();
+            }, (error) => {
+                console.error("Logs sync error:", error);
+                updateSaConnectionIndicator(true);
+                if (loadedCount < totalToLoad) checkResolve();
+            });
+        });
     }
 
     // Expose globally so dashboard can call it
@@ -134,7 +258,7 @@ const db = getFirestore(app);
             school_name: 'Shishu Vikash Mandir (Bokaro)',
             tagline: 'Nurturing Young Minds',
             phone: '+91 98765 43210',
-            email: 'admin@shishuvikash.edu.in',
+            email: 'bhanu.bharti@ctrlshifts.in',
             address: '123 Education Lane, Bokaro Steel City, Jharkhand 827001',
             subdomain: 'svm-bokaro',
             plan: 'Premium',
@@ -376,6 +500,7 @@ const db = getFirestore(app);
             
             showToast('Loading database from Cloud Firestore...', 'info');
             await ensureDataLoaded();
+            initLeadsListener();
             
             renderDashboard();
             showToast('Welcome back, Super Admin!', 'success');
@@ -395,6 +520,322 @@ const db = getFirestore(app);
         dashboard.classList.remove('active');
         loginPage.classList.remove('hidden');
         showToast('Logged out successfully', 'info');
+        unsubscribeLeads();
+        cleanupSuperAdminListeners();
+    }
+
+    // ─── Leads & Demos Logic ────────────────────────────
+    var unsubscribeLeadsListener = null;
+    var leadsCache = [];
+    var initialLeadsLoadDone = false;
+
+    function initLeadsListener() {
+        if (unsubscribeLeadsListener) return;
+
+        const leadsCol = collection(db, 'demo_requests');
+        const q = query(leadsCol, orderBy('createdAt', 'desc'));
+
+        unsubscribeLeadsListener = onSnapshot(q, (snapshot) => {
+            let newlyAddedLeads = [];
+            
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const leadData = change.doc.data();
+                    leadData.id = change.doc.id;
+                    newlyAddedLeads.push(leadData);
+                }
+            });
+
+            // Rebuild cache
+            let updatedLeads = [];
+            snapshot.forEach((docSnap) => {
+                const lead = docSnap.data();
+                lead.id = docSnap.id;
+                updatedLeads.push(lead);
+            });
+            leadsCache = updatedLeads;
+
+            // Trigger toast for new leads ONLY after initial load is complete
+            if (initialLeadsLoadDone) {
+                newlyAddedLeads.forEach((lead) => {
+                    showToast(`🔔 New lead from ${lead.schoolName || 'Unknown School'}!`, 'info');
+                });
+            } else {
+                initialLeadsLoadDone = true;
+            }
+
+            // Re-render leads tab if it's the active tab, and update metrics cards
+            updateLeadsMetrics();
+            const activeTab = document.querySelector('.sa-nav-item.active');
+            if (activeTab && activeTab.getAttribute('data-tab') === 'leads') {
+                renderLeadsTab();
+            }
+        }, (error) => {
+            console.error("Leads real-time sync error:", error);
+            showToast("Failed to sync leads in real time.", "error");
+        });
+    }
+
+    function unsubscribeLeads() {
+        if (unsubscribeLeadsListener) {
+            unsubscribeLeadsListener();
+            unsubscribeLeadsListener = null;
+            initialLeadsLoadDone = false;
+        }
+    }
+
+    function updateLeadsMetrics() {
+        const total = leadsCache.length;
+        let newCount = 0;
+        let contacted = 0;
+        let converted = 0;
+        let lost = 0;
+
+        leadsCache.forEach((lead) => {
+            const status = (lead.status || 'new').toLowerCase();
+            if (status === 'new') newCount++;
+            else if (status === 'contacted') contacted++;
+            else if (status === 'converted') converted++;
+            else if (status === 'lost') lost++;
+        });
+
+        // Update metric DOM elements
+        const totalEl = document.getElementById('sa-leads-total');
+        const newEl = document.getElementById('sa-leads-new');
+        const contactedEl = document.getElementById('sa-leads-contacted');
+        const convertedEl = document.getElementById('sa-leads-converted');
+        const lostEl = document.getElementById('sa-leads-lost');
+
+        if (totalEl) totalEl.textContent = total;
+        if (newEl) newEl.textContent = newCount;
+        if (contactedEl) contactedEl.textContent = contacted;
+        if (convertedEl) convertedEl.textContent = converted;
+        if (lostEl) lostEl.textContent = lost;
+    }
+
+    function renderLeadsTab(searchQuery = '') {
+        const tbody = document.getElementById('sa-leads-tbody');
+        if (!tbody) return;
+
+        const queryVal = searchQuery.trim().toLowerCase();
+        const filteredLeads = leadsCache.filter((lead) => {
+            if (!queryVal) return true;
+            return (
+                (lead.schoolName || '').toLowerCase().includes(queryVal) ||
+                (lead.ownerName || '').toLowerCase().includes(queryVal) ||
+                (lead.phone || '').toLowerCase().includes(queryVal) ||
+                (lead.city || '').toLowerCase().includes(queryVal)
+            );
+        });
+
+        if (filteredLeads.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="sa-empty-state">
+                        <span class="material-icons-round">contact_mail</span>
+                        <h3>No leads found</h3>
+                        <p>${queryVal ? 'Try a different search query' : 'No demo requests submitted yet'}</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = '';
+        filteredLeads.forEach((lead) => {
+            const tr = document.createElement('tr');
+            
+            // Format date
+            let dateStr = 'N/A';
+            if (lead.createdAt) {
+                try {
+                    const dateObj = new Date(lead.createdAt);
+                    dateStr = dateObj.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                    }) + ' ' + dateObj.toLocaleTimeString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                } catch (e) {
+                    dateStr = lead.createdAt;
+                }
+            }
+
+            // Status Badge styling
+            const status = (lead.status || 'new').toLowerCase();
+
+            // WhatsApp link text
+            const waMessage = `Namaste ${lead.ownerName || 'ji'}! Main CTRL Shift Solutions se bol raha hoon. Aapne Paathshala ERP ka demo request kiya tha ${lead.schoolName || ''} ke liye. Kya aap abhi baat kar sakte hain?`;
+            const waUrl = `https://wa.me/91${lead.phone}?text=${encodeURIComponent(waMessage)}`;
+
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td><strong>${lead.schoolName || 'N/A'}</strong></td>
+                <td>${lead.ownerName || 'N/A'}</td>
+                <td><a href="tel:+91${lead.phone}" style="color:#60a5fa; text-decoration:none;">+91 ${lead.phone}</a></td>
+                <td>${lead.city || 'N/A'}</td>
+                <td>${lead.studentCount || 'N/A'}</td>
+                <td>
+                    <select class="sa-lead-status-select" data-lead-id="${lead.id}" style="padding: 4px 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color:#fff; font-size:12px; font-family:'Inter', sans-serif;">
+                        <option value="new" ${status === 'new' ? 'selected' : ''}>New</option>
+                        <option value="contacted" ${status === 'contacted' ? 'selected' : ''}>Contacted</option>
+                        <option value="converted" ${status === 'converted' ? 'selected' : ''}>Converted</option>
+                        <option value="lost" ${status === 'lost' ? 'selected' : ''}>Lost</option>
+                    </select>
+                </td>
+                <td>
+                    <div class="sa-actions">
+                        <a href="tel:+91${lead.phone}" class="sa-action-btn btn-resume" title="Call Lead">
+                            <span class="material-icons-round">phone</span>
+                        </a>
+                        <a href="${waUrl}" target="_blank" class="sa-action-btn btn-impersonate" title="WhatsApp Lead" style="background: rgba(37, 211, 102, 0.1); color: #25D366; border-color: rgba(37, 211, 102, 0.2); text-decoration: none;">
+                            <span class="fab fa-whatsapp"></span>
+                        </a>
+                        <button class="sa-action-btn btn-edit btn-view-lead" data-lead-id="${lead.id}" title="View Details">
+                            <span class="material-icons-round">visibility</span>
+                        </button>
+                        <button class="sa-action-btn btn-pause btn-delete-lead" data-lead-id="${lead.id}" title="Delete Lead">
+                            <span class="material-icons-round">delete</span>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Add event listeners to inline status dropdowns
+        tbody.querySelectorAll('.sa-lead-status-select').forEach((select) => {
+            select.addEventListener('change', async (e) => {
+                const leadId = e.currentTarget.getAttribute('data-lead-id');
+                const newStatus = e.currentTarget.value;
+                try {
+                    const docRef = doc(db, 'demo_requests', leadId);
+                    await updateDoc(docRef, { status: newStatus });
+                    showToast("Lead status updated successfully", "success");
+                } catch (err) {
+                    console.error("Error updating lead status:", err);
+                    showToast("Failed to update lead status.", "error");
+                }
+            });
+        });
+
+        // Add event listeners to view/delete buttons
+        tbody.querySelectorAll('.btn-view-lead').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                const leadId = e.currentTarget.getAttribute('data-lead-id');
+                viewLeadDetails(leadId);
+            });
+        });
+
+        tbody.querySelectorAll('.btn-delete-lead').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                const leadId = e.currentTarget.getAttribute('data-lead-id');
+                deleteLeadRequest(leadId);
+            });
+        });
+    }
+
+    function viewLeadDetails(leadId) {
+        const lead = leadsCache.find((l) => l.id === leadId);
+        if (!lead) return;
+
+        const body = document.getElementById('sa-lead-modal-body');
+        if (!body) return;
+
+        let dateStr = 'N/A';
+        if (lead.createdAt) {
+            try {
+                const dateObj = new Date(lead.createdAt);
+                dateStr = dateObj.toLocaleString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (e) {
+                dateStr = lead.createdAt;
+            }
+        }
+
+        body.innerHTML = `
+            <div class="lead-detail-grid">
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Submitted At</div>
+                    <div class="lead-detail-val">${dateStr}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">School Name</div>
+                    <div class="lead-detail-val" style="font-weight:700;">${lead.schoolName || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Contact Person</div>
+                    <div class="lead-detail-val">${lead.ownerName || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Phone Number</div>
+                    <div class="lead-detail-val"><a href="tel:+91${lead.phone}" style="color:#60a5fa; text-decoration:none;">+91 ${lead.phone}</a></div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">City / District</div>
+                    <div class="lead-detail-val">${lead.city || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Board / Affiliation</div>
+                    <div class="lead-detail-val">${lead.board || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Student Count</div>
+                    <div class="lead-detail-val">${lead.studentCount || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Current Setup</div>
+                    <div class="lead-detail-val">${lead.currentMethod || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Best Time To Call</div>
+                    <div class="lead-detail-val">${lead.bestTimeToCall || 'N/A'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Message</div>
+                    <div class="lead-detail-val" style="white-space: pre-wrap;">${lead.message || 'No specific questions submitted.'}</div>
+                </div>
+                <div class="lead-detail-divider"></div>
+                <div class="lead-detail-row">
+                    <div class="lead-detail-label">Lead Status</div>
+                    <div class="lead-detail-val" style="text-transform: capitalize;">${lead.status || 'New'}</div>
+                </div>
+            </div>
+        `;
+
+        const overlay = document.getElementById('sa-lead-modal-overlay');
+        if (overlay) {
+            overlay.classList.add('active');
+        }
+    }
+
+    async function deleteLeadRequest(leadId) {
+        if (confirm("Are you sure you want to delete this lead? This action cannot be undone.")) {
+            try {
+                const docRef = doc(db, 'demo_requests', leadId);
+                await deleteDoc(docRef);
+                showToast("Lead deleted successfully", "success");
+            } catch (err) {
+                console.error("Error deleting lead:", err);
+                showToast("Failed to delete lead.", "error");
+            }
+        }
     }
 
     /** Toggle password visibility. */
@@ -899,17 +1340,167 @@ const db = getFirestore(app);
 
     // ─── School Modal ───────────────────────────────────
 
+    // ─── Collapsible Onboarding UI Renderers ────────────
+
+    function renderClassesSection() {
+        var container = document.getElementById('sf-classes-container');
+        if (!container) return;
+        
+        var html = '';
+        formClasses.forEach(function(c) {
+            var sections = formSections[c] || [];
+            var id = 'class-row-' + c.replace(/\s+/g, '_');
+            
+            html += '<div class="class-structure-row" id="' + id + '" style="display:flex; align-items:center; justify-content:space-between; padding:10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; gap:12px; margin-bottom:8px;">';
+            html += '  <div style="width:120px; font-weight:700;">' + escapeHTML(c) + '</div>';
+            html += '  <div class="section-tags-container" style="display:flex; flex-wrap:wrap; gap:6px; flex-grow:1;">';
+            sections.forEach(function(sec) {
+                html += '    <span class="section-tag" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; background:rgba(37,99,235,0.15); color:#60a5fa; font-size:11px; font-weight:700; border: 1px solid rgba(37, 99, 235, 0.25);">' + escapeHTML(sec);
+                html += '      <span class="remove-section-btn" data-class="' + escapeAttr(c) + '" data-section="' + escapeAttr(sec) + '" style="cursor:pointer; font-size:12px; color:rgba(255,255,255,0.5); font-weight:bold; margin-left:4px;">&times;</span>';
+                html += '    </span>';
+            });
+            html += '  </div>';
+            html += '  <div style="display:flex; gap:6px; align-items:center;">';
+            html += '    <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs add-section-btn" data-class="' + escapeAttr(c) + '">+ Section</button>';
+            html += '    <button type="button" class="sa-btn sa-btn-danger sa-btn-xs delete-class-btn" data-class="' + escapeAttr(c) + '"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
+            html += '  </div>';
+            html += '</div>';
+        });
+        
+        if (formClasses.length === 0) {
+            html = '<div style="text-align:center; padding:12px; color:rgba(255,255,255,0.4); font-size:12px;">No classes added yet. Use Add Class or Quick Fill.</div>';
+        }
+        
+        container.innerHTML = html;
+        
+        // Attach tag event listeners
+        container.querySelectorAll('.remove-section-btn').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                var cName = this.getAttribute('data-class');
+                var secName = this.getAttribute('data-section');
+                if (formSections[cName]) {
+                    formSections[cName] = formSections[cName].filter(function(s) { return s !== secName; });
+                    renderClassesSection();
+                }
+            });
+        });
+        
+        container.querySelectorAll('.add-section-btn').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                var cName = this.getAttribute('data-class');
+                var sec = prompt("Enter section name (e.g. A, B, C):");
+                if (sec) {
+                    sec = sec.trim().toUpperCase();
+                    if (!formSections[cName]) formSections[cName] = [];
+                    if (formSections[cName].indexOf(sec) === -1) {
+                        formSections[cName].push(sec);
+                        renderClassesSection();
+                    }
+                }
+            });
+        });
+        
+        container.querySelectorAll('.delete-class-btn').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                var cName = this.getAttribute('data-class');
+                formClasses = formClasses.filter(function(c) { return c !== cName; });
+                delete formSections[cName];
+                delete formFeeStructure[cName];
+                renderClassesSection();
+                renderFeesSection();
+            });
+        });
+    }
+
+    function renderFeesSection() {
+        var thead = document.getElementById('sf-fee-table-header');
+        var tbody = document.getElementById('sf-fee-table-body');
+        if (!thead || !tbody) return;
+
+        // Build header
+        var headerHtml = '<th>Class</th>';
+        formFeeHeads.forEach(function(h) {
+            headerHtml += '<th style="text-transform: capitalize;">' + escapeHTML(h) + '</th>';
+        });
+        thead.innerHTML = headerHtml;
+
+        // Build Apply to All row
+        var applyAllHtml = '<tr style="background:rgba(37,99,235,0.1); font-weight:bold;">';
+        applyAllHtml += '  <td>Apply to All</td>';
+        formFeeHeads.forEach(function(h) {
+            applyAllHtml += '  <td><input type="number" class="fee-apply-all-input sa-form-input" data-head="' + escapeAttr(h) + '" style="padding:6px; width:90px; font-size:12px;" min="0"></td>';
+        });
+        applyAllHtml += '</tr>';
+
+        // Build rows
+        var rowsHtml = '';
+        formClasses.forEach(function(c) {
+            rowsHtml += '<tr>';
+            rowsHtml += '  <td style="font-weight:600;">' + escapeHTML(c) + '</td>';
+            formFeeHeads.forEach(function(h) {
+                var val = (formFeeStructure[c] && formFeeStructure[c][h]) || 0;
+                rowsHtml += '  <td><input type="number" class="class-fee-input sa-form-input" data-class="' + escapeAttr(c) + '" data-head="' + escapeAttr(h) + '" value="' + val + '" style="padding:6px; width:90px; font-size:12px;" min="0"></td>';
+            });
+            rowsHtml += '</tr>';
+        });
+
+        tbody.innerHTML = applyAllHtml + rowsHtml;
+    }
+
+    function renderExtraChargesSection() {
+        var container = document.getElementById('sf-charges-list');
+        if (!container) return;
+
+        if (formExtraCharges.length === 0) {
+            container.innerHTML = '<span style="color:rgba(255,255,255,0.4); font-size:12px;">No extra charges added yet.</span>';
+            return;
+        }
+
+        var html = '';
+        formExtraCharges.forEach(function(item) {
+            html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; margin-bottom:6px;">';
+            html += '  <div><strong style="color:#fff;">' + escapeHTML(item.name) + '</strong> <span style="font-size:11px; color:rgba(255,255,255,0.4);">(' + escapeHTML(item.type) + ')</span></div>';
+            html += '  <div style="display:flex; align-items:center; gap:12px;">';
+            html += '    <strong style="color:#60a5fa;">₹' + item.amount + '</strong>';
+            html += '    <span class="remove-charge-btn" data-id="' + escapeAttr(item.id) + '" style="cursor:pointer; font-size:18px; color:#f87171; font-weight:bold;">&times;</span>';
+            html += '  </div>';
+            html += '</div>';
+        });
+        container.innerHTML = html;
+        
+        container.querySelectorAll('.remove-charge-btn').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var id = this.getAttribute('data-id');
+                formExtraCharges = formExtraCharges.filter(function(item) { return item.id !== id; });
+                renderExtraChargesSection();
+            });
+        });
+    }
+
+    // ─── School Modal ───────────────────────────────────
+
     /**
      * Open the modal for add or edit.
      * @param {string|null} schoolId – null for new school, id for edit
      */
-    function showSchoolModal(schoolId) {
+    async function showSchoolModal(schoolId) {
         schoolForm.reset();
         document.getElementById('sf-school-id').value = '';
+
+        // Reset states
+        formClasses = [];
+        formSections = {};
+        formFeeStructure = {};
+        formFeeHeads = ["tuition", "transport", "exam"];
+        formExtraCharges = [];
+        currentAdminPasswordHash = '';
 
         // Reset all feature checkboxes
         var checkboxes = document.querySelectorAll('#sf-features-grid input[type="checkbox"]');
         checkboxes.forEach(function (cb) { cb.checked = false; });
+
+        document.getElementById('sf-admin-password').placeholder = '••••••••';
+        document.getElementById('sf-admin-password').required = true;
 
         if (schoolId) {
             // Edit mode — populate fields
@@ -935,16 +1526,78 @@ const db = getFirestore(app);
             // Check matching feature toggles
             var features = school.allowed_features || [];
             checkboxes.forEach(function (cb) {
-                cb.checked = features.indexOf(cb.value) !== -1;
+                if (cb.value === 'admin') {
+                    cb.checked = true;
+                } else if (cb.value === 'teacher-attendance') {
+                    cb.checked = features.indexOf('teachers') !== -1;
+                } else {
+                    cb.checked = features.indexOf(cb.value) !== -1;
+                }
             });
+
+            // Fetch settings configuration from tenant_data
+            try {
+                showToast('Fetching settings...', 'info');
+                const tenantSnap = await getDoc(doc(db, 'tenant_data', schoolId));
+                if (tenantSnap.exists()) {
+                    var tenantData = tenantSnap.data();
+                    var s = tenantData.settings || {};
+                    
+                    document.getElementById('sf-affiliation').value = (s.schoolInfo && s.schoolInfo.affiliation) || '';
+                    document.getElementById('sf-udise-code').value = (s.schoolInfo && s.schoolInfo.udiseCode) || '';
+                    document.getElementById('sf-admin-username').value = s.adminUsername || '';
+                    document.getElementById('sf-admin-password').value = '********'; // masked
+                    document.getElementById('sf-admin-password').required = false; // not required if unchanged
+                    document.getElementById('sf-admin-email').value = s.adminEmail || '';
+                    
+                    currentAdminPasswordHash = s.adminPassword || '';
+                    
+                    formClasses = s.classes || [];
+                    formSections = s.sections || {};
+                    formFeeStructure = s.feeStructure || {};
+                    formExtraCharges = s.extraCharges || [];
+                    
+                    // Collect fee head keys
+                    var headsSet = new Set(["tuition", "transport", "exam"]);
+                    Object.values(formFeeStructure).forEach(function(clsFees) {
+                        Object.keys(clsFees).forEach(function(k) {
+                            headsSet.add(k);
+                        });
+                    });
+                    formFeeHeads = Array.from(headsSet);
+                } else {
+                    document.getElementById('sf-admin-username').value = 'admin';
+                    document.getElementById('sf-admin-password').value = '';
+                    document.getElementById('sf-admin-email').value = school.email || '';
+                }
+            } catch(e) {
+                console.error('Failed to load school settings from tenant_data:', e);
+                showToast('Could not load detailed setup from Cloud Firestore.', 'warning');
+            }
         } else {
             modalTitleText.textContent = 'Onboard New School';
             // Default: check first 4 features
             var defaults = ['students', 'teachers', 'attendance', 'fees'];
             checkboxes.forEach(function (cb) {
-                cb.checked = defaults.indexOf(cb.value) !== -1;
+                if (cb.value === 'admin') {
+                    cb.checked = true;
+                } else if (cb.value === 'teacher-attendance') {
+                    cb.checked = true; // since 'teachers' is checked by default
+                } else {
+                    cb.checked = defaults.indexOf(cb.value) !== -1;
+                }
             });
+            
+            document.getElementById('sf-admin-username').value = 'admin';
+            document.getElementById('sf-admin-password').value = '';
+            document.getElementById('sf-admin-email').value = '';
+            document.getElementById('sf-affiliation').value = '';
+            document.getElementById('sf-udise-code').value = '';
         }
+
+        renderClassesSection();
+        renderFeesSection();
+        renderExtraChargesSection();
 
         modalOverlay.classList.add('active');
         setTimeout(function () {
@@ -969,21 +1622,87 @@ const db = getFirestore(app);
             return;
         }
 
+        // Section 2 validation
+        var adminUsername = document.getElementById('sf-admin-username').value.trim();
+        var adminPasswordInput = document.getElementById('sf-admin-password').value;
+        var adminEmail = document.getElementById('sf-admin-email').value.trim();
+
+        if (!adminUsername) { showToast('Admin Username is required.', 'error'); return; }
+        if (!adminEmail) { showToast('Admin Email is required.', 'error'); return; }
+
         await ensureDataLoaded();
         var data = loadData();
         var schoolId = document.getElementById('sf-school-id').value;
         var isEdit = !!schoolId;
 
+        var adminPasswordHashed = currentAdminPasswordHash;
+        if (adminPasswordInput && adminPasswordInput !== '********') {
+            if (window.AuthUtils && window.AuthUtils.hashPassword) {
+                adminPasswordHashed = await window.AuthUtils.hashPassword(adminPasswordInput);
+            } else {
+                console.error('AuthUtils.hashPassword not loaded. Saving plain text.');
+                adminPasswordHashed = adminPasswordInput;
+            }
+        } else if (!isEdit && !adminPasswordInput) {
+            showToast('Admin password is required for onboarding.', 'error');
+            return;
+        }
+
         // Gather selected features
-        var selectedFeatures = ['dashboard']; // always include dashboard
+        var selectedFeatures = ['dashboard', 'admin']; // always include dashboard and admin
         var checkboxes = document.querySelectorAll('#sf-features-grid input[type="checkbox"]');
         checkboxes.forEach(function (cb) {
-            if (cb.checked) selectedFeatures.push(cb.value);
+            if (cb.checked || cb.value === 'admin') {
+                selectedFeatures.push(cb.value);
+            }
         });
-        selectedFeatures.push('help'); // always include help
 
-        // Deduplicate
+        // Enforce dependencies before saving (saving-side validation)
+        var dependencies = {
+            'print_receipt': ['fees'],
+            'fee_ledger': ['fees'],
+            'attendance': ['students'],
+            'exams': ['students'],
+            'promotion': ['students', 'exams'],
+            'teacher-attendance': ['teachers'],
+            'timetable': ['teachers'],
+            'report_cards': ['exams']
+        };
+
+        var validatedFeatures = ['dashboard', 'admin'];
+        if (selectedFeatures.indexOf('teachers') !== -1) {
+            validatedFeatures.push('teacher-attendance');
+        }
+
+        selectedFeatures.forEach(function(f) {
+            if (f === 'dashboard' || f === 'admin' || f === 'teacher-attendance') return;
+            var parents = dependencies[f];
+            var allParentsMet = true;
+            if (parents) {
+                parents.forEach(function(p) {
+                    if (selectedFeatures.indexOf(p) === -1) {
+                        allParentsMet = false;
+                    }
+                });
+            }
+            if (allParentsMet) {
+                validatedFeatures.push(f);
+            }
+        });
+
+        selectedFeatures = validatedFeatures;
+        selectedFeatures.push('help'); // always include help
         selectedFeatures = selectedFeatures.filter(function (v, i, a) { return a.indexOf(v) === i; });
+
+        var tagline = document.getElementById('sf-tagline').value.trim();
+        var phone = document.getElementById('sf-phone').value.trim();
+        var address = document.getElementById('sf-address').value.trim();
+        var plan = document.getElementById('sf-plan').value;
+        var status = document.getElementById('sf-status').value;
+        var renewal = document.getElementById('sf-renewal').value || '';
+        var logoUrl = document.getElementById('sf-logo-url').value.trim();
+        var affiliation = document.getElementById('sf-affiliation').value.trim();
+        var udiseCode = document.getElementById('sf-udise-code').value.trim();
 
         if (isEdit) {
             // Update existing school
@@ -994,22 +1713,86 @@ const db = getFirestore(app);
             if (idx === -1) { showToast('School not found for update.', 'error'); return; }
 
             data.schools[idx].school_name       = name;
-            data.schools[idx].tagline            = document.getElementById('sf-tagline').value.trim();
-            data.schools[idx].phone              = document.getElementById('sf-phone').value.trim();
+            data.schools[idx].tagline            = tagline;
+            data.schools[idx].phone              = phone;
             data.schools[idx].email              = email;
-            data.schools[idx].address            = document.getElementById('sf-address').value.trim();
+            data.schools[idx].address            = address;
             data.schools[idx].subdomain          = subdomain;
-            data.schools[idx].plan               = document.getElementById('sf-plan').value;
-            data.schools[idx].status             = document.getElementById('sf-status').value;
-            data.schools[idx].renewal_date       = document.getElementById('sf-renewal').value || '';
-            data.schools[idx].logo_url           = document.getElementById('sf-logo-url').value.trim();
+            data.schools[idx].plan               = plan;
+            data.schools[idx].status             = status;
+            data.schools[idx].renewal_date       = renewal;
+            data.schools[idx].logo_url           = logoUrl;
             data.schools[idx].allowed_features   = selectedFeatures;
+            data.schools[idx].settings           = {
+                schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                adminUsername: adminUsername,
+                adminPassword: adminPasswordHashed,
+                adminEmail: adminEmail,
+                classes: formClasses,
+                sections: formSections,
+                feeStructure: formFeeStructure,
+                extraCharges: formExtraCharges,
+                setupCompletedBySuperAdmin: true,
+                clientCanEdit: true,
+                theme: (data.schools[idx].settings && data.schools[idx].settings.theme) || 'dark',
+                attendanceTime: (data.schools[idx].settings && data.schools[idx].settings.attendanceTime) || '09:00',
+                academicYear: (data.schools[idx].settings && data.schools[idx].settings.academicYear) || '2025-2026'
+            };
 
             saveData(data);
             try {
+                // Save to metadata collection
                 await setDoc(doc(db, 'schools', schoolId), data.schools[idx]);
+                
+                // Fetch existing tenant data or set defaults
+                const tenantSnap = await getDoc(doc(db, 'tenant_data', schoolId));
+                var tenantData = tenantSnap.exists() ? tenantSnap.data() : {
+                    seederVersion: 2,
+                    students: [],
+                    teachers: [],
+                    attendance: [],
+                    trash: [],
+                    feeHeads: [
+                        { id: 'fh_tuition', name: 'Tuition Fee' },
+                        { id: 'fh_transport', name: 'Transport Fee' },
+                        { id: 'fh_exam', name: 'Examination Fee' },
+                        { id: 'fh_fine', name: 'Late Fee / Fine' },
+                        { id: 'fh_annual', name: 'Annual Development Fee' }
+                    ],
+                    feeStructures: {},
+                    fees: [],
+                    exams: [],
+                    subjectMapping: {},
+                    timetable: { settings: { startTime: "08:00", endTime: "14:00", totalPeriods: 8, lunchAfterPeriod: 4, lunchDuration: 30, satStartTime: "08:00", satEndTime: "12:30", satTotalPeriods: 6, satLunchAfterPeriod: 0 } },
+                    marks: [],
+                    notices: [],
+                    lastAutomatedFeeRun: '2026-04',
+                    notifications: [],
+                    currentSchoolId: schoolId
+                };
+
+                // Merge settings
+                tenantData.settings = {
+                    schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                    adminUsername: adminUsername,
+                    adminPassword: adminPasswordHashed,
+                    adminEmail: adminEmail,
+                    classes: formClasses,
+                    sections: formSections,
+                    feeStructure: formFeeStructure,
+                    extraCharges: formExtraCharges,
+                    setupCompletedBySuperAdmin: true,
+                    clientCanEdit: true,
+                    // Keep compatibility settings
+                    theme: (tenantData.settings && tenantData.settings.theme) || 'dark',
+                    attendanceTime: (tenantData.settings && tenantData.settings.attendanceTime) || '09:00',
+                    academicYear: (tenantData.settings && tenantData.settings.academicYear) || '2025-2026'
+                };
+
+                await setDoc(doc(db, 'tenant_data', schoolId), tenantData);
+
             } catch(e) {
-                console.error('Failed to update school in Firestore:', e);
+                console.error('Failed to update school/tenant settings in Firestore:', e);
             }
             closeModal();
             renderDashboard();
@@ -1025,30 +1808,107 @@ const db = getFirestore(app);
                 return;
             }
 
-            // Create new school
+            // Create new school metadata
+            var newSchoolId = generateSchoolId(subdomain);
             var newSchool = {
-                school_id:        generateSchoolId(subdomain),
+                school_id:        newSchoolId,
                 school_name:      name,
-                tagline:          document.getElementById('sf-tagline').value.trim(),
-                phone:            document.getElementById('sf-phone').value.trim(),
+                tagline:          tagline,
+                phone:            phone,
                 email:            email,
-                address:          document.getElementById('sf-address').value.trim(),
+                address:          address,
                 subdomain:        subdomain,
-                plan:             document.getElementById('sf-plan').value,
-                status:           document.getElementById('sf-status').value,
+                plan:             plan,
+                status:           status,
                 storage_used:     '0 MB',
-                renewal_date:     document.getElementById('sf-renewal').value || '',
+                renewal_date:     renewal,
                 last_login:       'Never',
-                logo_url:         document.getElementById('sf-logo-url').value.trim(),
-                allowed_features: selectedFeatures
+                logo_url:         logoUrl,
+                allowed_features: selectedFeatures,
+                settings: {
+                    schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                    adminUsername: adminUsername,
+                    adminPassword: adminPasswordHashed,
+                    adminEmail: adminEmail,
+                    classes: formClasses,
+                    sections: formSections,
+                    feeStructure: formFeeStructure,
+                    extraCharges: formExtraCharges,
+                    setupCompletedBySuperAdmin: true,
+                    clientCanEdit: true,
+                    theme: 'dark',
+                    attendanceTime: '09:00',
+                    academicYear: '2025-2026'
+                }
             };
 
             data.schools.push(newSchool);
             saveData(data);
             try {
-                await setDoc(doc(db, 'schools', newSchool.school_id), newSchool);
+                // Save metadata
+                await setDoc(doc(db, 'schools', newSchoolId), newSchool);
+                
+                // Save fresh settings in tenant_data (merge: false)
+                var legacyFeeStructures = {};
+                if (formFeeStructure) {
+                    Object.keys(formFeeStructure).forEach(function(c) {
+                        var clsFees = formFeeStructure[c] || {};
+                        var legacyFees = {};
+                        Object.keys(clsFees).forEach(function(k) {
+                            var legacyKey = k;
+                            if (k === 'tuition') legacyKey = 'fh_tuition';
+                            else if (k === 'transport') legacyKey = 'fh_transport';
+                            else if (k === 'exam') legacyKey = 'fh_exam';
+                            else if (k === 'fine') legacyKey = 'fh_fine';
+                            else if (k === 'annual') legacyKey = 'fh_annual';
+                            else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
+                            legacyFees[legacyKey] = clsFees[k];
+                        });
+                        legacyFeeStructures[c] = legacyFees;
+                    });
+                }
+
+                var tenantData = {
+                    settings: {
+                        schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                        adminUsername: adminUsername,
+                        adminPassword: adminPasswordHashed,
+                        adminEmail: adminEmail,
+                        classes: formClasses,
+                        sections: formSections,
+                        feeStructure: formFeeStructure,
+                        extraCharges: formExtraCharges,
+                        setupCompletedBySuperAdmin: true,
+                        clientCanEdit: true,
+                        theme: 'dark',
+                        attendanceTime: '09:00',
+                        academicYear: '2025-2026'
+                    },
+                    students: [],
+                    teachers: [],
+                    attendance: [],
+                    fees: [],
+                    feeHeads: [
+                        { id: 'fh_tuition', name: 'Tuition Fee' },
+                        { id: 'fh_transport', name: 'Transport Fee' },
+                        { id: 'fh_exam', name: 'Examination Fee' },
+                        { id: 'fh_fine', name: 'Late Fee / Fine' },
+                        { id: 'fh_annual', name: 'Annual Development Fee' }
+                    ],
+                    feeStructures: legacyFeeStructures,
+                    exams: [],
+                    marks: [],
+                    notices: [],
+                    timetable: {},
+                    subjectMapping: {},
+                    notifications: [],
+                    trash: [],
+                    lastAutomatedFeeRun: ""
+                };
+                await setDoc(doc(db, 'tenant_data', newSchoolId), tenantData, { merge: false });
+
             } catch(e) {
-                console.error('Failed to save new school to Firestore:', e);
+                console.error('Failed to save new school/tenant to Firestore:', e);
             }
             closeModal();
             renderDashboard();
@@ -1101,6 +1961,7 @@ const db = getFirestore(app);
 
         localStorage.setItem('impersonate_school_id', schoolId);
         localStorage.setItem('impersonate_role', role);
+        sessionStorage.setItem('isImpersonating', 'true');
 
         showToast('Redirecting as ' + role + ' of "' + school.school_name + '"…', 'info');
 
@@ -1313,6 +2174,8 @@ const db = getFirestore(app);
                     renderSupportTickets();
                 } else if (targetTab === 'dashboard') {
                     renderDashboard();
+                } else if (targetTab === 'leads') {
+                    renderLeadsTab();
                 }
             });
         }
@@ -1392,6 +2255,7 @@ const db = getFirestore(app);
             (async function() {
                 showToast('Loading database from Cloud Firestore...', 'info');
                 await ensureDataLoaded();
+                initLeadsListener();
                 renderDashboard();
             })();
         }
@@ -1444,13 +2308,175 @@ const db = getFirestore(app);
                 if (modalOverlay.classList.contains('active')) closeModal();
                 if (activityModal && activityModal.classList.contains('active')) closeActivityModal();
                 if (profileModalOverlay && profileModalOverlay.classList.contains('active')) closeSchoolProfileModal();
+                if (leadModalOverlay && leadModalOverlay.classList.contains('active')) closeLeadModal();
             }
         });
+
+        // Lead details modal Escape key close
+        const leadModalOverlay = document.getElementById('sa-lead-modal-overlay');
+        const leadModalCloseBtn = document.getElementById('sa-lead-modal-close');
+        const leadModalFooterCloseBtn = document.getElementById('sa-lead-modal-close-btn');
+
+        const closeLeadModal = () => {
+            if (leadModalOverlay) leadModalOverlay.classList.remove('active');
+        };
+
+        if (leadModalCloseBtn) leadModalCloseBtn.onclick = closeLeadModal;
+        if (leadModalFooterCloseBtn) leadModalFooterCloseBtn.onclick = closeLeadModal;
+        if (leadModalOverlay) {
+            leadModalOverlay.onclick = (e) => {
+                if (e.target === leadModalOverlay) closeLeadModal();
+            };
+        }
+
+        // Leads Search input
+        var leadsSearchInput = document.getElementById('sa-leads-search');
+        if (leadsSearchInput) {
+            leadsSearchInput.addEventListener('input', function () {
+                renderLeadsTab(this.value);
+            });
+        }
 
         // Modal save
         modalSave.addEventListener('click', function () {
             saveSchool();
         });
+
+        // SECTION 3 EVENTS: Add Class
+        var btnAddClass = document.getElementById('sf-btn-add-class');
+        if (btnAddClass) {
+            btnAddClass.addEventListener('click', function() {
+                var input = document.getElementById('sf-new-class-input');
+                var cName = input ? input.value.trim() : '';
+                if (!cName) {
+                    showToast('Class name cannot be empty.', 'error');
+                    return;
+                }
+                if (formClasses.indexOf(cName) !== -1) {
+                    showToast('Class already exists.', 'error');
+                    return;
+                }
+                formClasses.push(cName);
+                formSections[cName] = ["A"]; // default A
+                if (!formFeeStructure[cName]) {
+                    formFeeStructure[cName] = {};
+                    formFeeHeads.forEach(function(h) {
+                        formFeeStructure[cName][h] = 0;
+                    });
+                }
+                if (input) input.value = '';
+                renderClassesSection();
+                renderFeesSection();
+            });
+        }
+
+        // SECTION 3 EVENTS: Quick Fill
+        var btnQuickFill = document.getElementById('sf-btn-quick-fill');
+        if (btnQuickFill) {
+            btnQuickFill.addEventListener('click', function() {
+                formClasses = ["Nursery", "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10"];
+                formClasses.forEach(function(c) {
+                    formSections[c] = ["A"];
+                    if (!formFeeStructure[c]) {
+                        formFeeStructure[c] = {};
+                        formFeeHeads.forEach(function(h) {
+                            formFeeStructure[c][h] = 0;
+                        });
+                    }
+                });
+                renderClassesSection();
+                renderFeesSection();
+            });
+        }
+
+        // SECTION 4 EVENTS: Add Fee Head
+        var btnAddFeehead = document.getElementById('sf-btn-add-feehead');
+        if (btnAddFeehead) {
+            btnAddFeehead.addEventListener('click', function() {
+                var input = document.getElementById('sf-new-feehead-input');
+                var fhName = input ? input.value.trim() : '';
+                if (!fhName) {
+                    showToast('Fee head name cannot be empty.', 'error');
+                    return;
+                }
+                var key = fhName.toLowerCase();
+                if (formFeeHeads.indexOf(key) !== -1) {
+                    showToast('Fee head already exists.', 'error');
+                    return;
+                }
+                formFeeHeads.push(key);
+                formClasses.forEach(function(c) {
+                    if (!formFeeStructure[c]) formFeeStructure[c] = {};
+                    formFeeStructure[c][key] = 0;
+                });
+                if (input) input.value = '';
+                renderFeesSection();
+            });
+        }
+
+        // SECTION 4 EVENTS: Fee Inputs (event delegation)
+        var feeTableBody = document.getElementById('sf-fee-table-body');
+        if (feeTableBody) {
+            feeTableBody.addEventListener('input', function(e) {
+                if (e.target.classList.contains('class-fee-input')) {
+                    var c = e.target.getAttribute('data-class');
+                    var h = e.target.getAttribute('data-head');
+                    var val = parseFloat(e.target.value) || 0;
+                    if (val < 0) val = 0;
+                    if (!formFeeStructure[c]) formFeeStructure[c] = {};
+                    formFeeStructure[c][h] = val;
+                } else if (e.target.classList.contains('fee-apply-all-input')) {
+                    var h = e.target.getAttribute('data-head');
+                    var val = parseFloat(e.target.value) || 0;
+                    if (val < 0) val = 0;
+                    
+                    formClasses.forEach(function(c) {
+                        if (!formFeeStructure[c]) formFeeStructure[c] = {};
+                        formFeeStructure[c][h] = val;
+                    });
+                    
+                    var inputs = feeTableBody.querySelectorAll('.class-fee-input[data-head="' + h + '"]');
+                    inputs.forEach(function(input) {
+                        input.value = val;
+                    });
+                }
+            });
+        }
+
+        // SECTION 5 EVENTS: Add Charge
+        var btnAddCharge = document.getElementById('sf-btn-add-charge');
+        if (btnAddCharge) {
+            btnAddCharge.addEventListener('click', function() {
+                var nameInput = document.getElementById('sf-charge-name');
+                var amtInput = document.getElementById('sf-charge-amount');
+                var typeSelect = document.getElementById('sf-charge-type');
+                
+                var name = nameInput ? nameInput.value.trim() : '';
+                var amount = amtInput ? parseFloat(amtInput.value) : 0;
+                var type = typeSelect ? typeSelect.value : 'one-time';
+                
+                if (!name) {
+                    showToast('Charge name is required.', 'error');
+                    return;
+                }
+                if (isNaN(amount) || amount <= 0) {
+                    showToast('Please enter a valid amount.', 'error');
+                    return;
+                }
+                
+                formExtraCharges.push({
+                    id: 'charge_' + Date.now(),
+                    name: name,
+                    amount: amount,
+                    type: type
+                });
+                
+                if (nameInput) nameInput.value = '';
+                if (amtInput) amtInput.value = '';
+                
+                renderExtraChargesSection();
+            });
+        }
 
         // Delegated events on the schools table
         schoolsTbody.addEventListener('click', function (e) {
@@ -1513,6 +2539,95 @@ const db = getFirestore(app);
             }
         });
 
+        // Initialize feature dependencies
+        setupFeatureDependencies();
+
     }); // END DOMContentLoaded
+
+    function setupFeatureDependencies() {
+        var grid = document.getElementById('sf-features-grid');
+        if (!grid) return;
+
+        // Map child feature to parent requirements
+        var dependencies = {
+            'print_receipt': ['fees'],
+            'fee_ledger': ['fees'],
+            'attendance': ['students'],
+            'exams': ['students'],
+            'promotion': ['students', 'exams'],
+            'teacher-attendance': ['teachers'],
+            'timetable': ['teachers'],
+            'report_cards': ['exams']
+        };
+
+        // Map parent feature to lists of child features
+        var childFeatures = {
+            'fees': ['print_receipt', 'fee_ledger'],
+            'students': ['attendance', 'exams', 'promotion'],
+            'exams': ['promotion', 'report_cards'],
+            'teachers': ['teacher-attendance', 'timetable']
+        };
+
+        var labels = {
+            'fees': 'Fees & Payments',
+            'students': 'Students & Admissions',
+            'exams': 'Exams & Results',
+            'teachers': 'Teachers & Staff',
+            'print_receipt': 'Print Receipt',
+            'fee_ledger': 'Fee Ledger & Transactions',
+            'attendance': 'Attendance Tracking',
+            'timetable': 'Timetable & Scheduling',
+            'promotion': 'Class Promotion',
+            'report_cards': 'Report Cards',
+            'teacher-attendance': 'My Attendance'
+        };
+
+        grid.addEventListener('change', function(e) {
+            if (e.target.tagName !== 'INPUT' || e.target.type !== 'checkbox') return;
+            var cb = e.target;
+            var val = cb.value;
+
+            if (cb.checked) {
+                // Check parent features
+                var parents = dependencies[val];
+                if (parents) {
+                    parents.forEach(function(parentVal) {
+                        var parentCb = grid.querySelector('input[value="' + parentVal + '"]');
+                        if (parentCb && !parentCb.checked) {
+                            parentCb.checked = true;
+                            // Trigger change event recursively for parent to ensure its parents are checked too
+                            var event = new Event('change', { bubbles: true });
+                            parentCb.dispatchEvent(event);
+                        }
+                    });
+                }
+            } else {
+                // Uncheck child features
+                var children = childFeatures[val];
+                if (children) {
+                    children.forEach(function(childVal) {
+                        var childCb = grid.querySelector('input[value="' + childVal + '"]');
+                        if (childCb && childCb.checked) {
+                            childCb.checked = false;
+                            
+                            // Show message / toast to explain auto-uncheck
+                            showToast(labels[val] + ' must be enabled to use ' + labels[childVal], 'info');
+                            
+                            // Trigger change event recursively for child to uncheck its sub-children
+                            var event = new Event('change', { bubbles: true });
+                            childCb.dispatchEvent(event);
+                        }
+                    });
+                }
+            }
+
+            // Sync System feature "My Attendance" locked state visually
+            var teachersCb = grid.querySelector('input[value="teachers"]');
+            var myAttendanceCb = grid.querySelector('input[value="teacher-attendance"]');
+            if (teachersCb && myAttendanceCb) {
+                myAttendanceCb.checked = teachersCb.checked;
+            }
+        });
+    }
 
 })();
