@@ -267,27 +267,555 @@
     return heads;
   }
 
-  function getStudentFeeStats(studentId) {
-    var studentFees = (SchoolApp.store.fees || []).filter(function(f) {
-      return f.studentId === studentId;
+  function getStudentParentPhone(student) {
+    if (!student) return '';
+    var raw = student.parentPhone || student.parentMobile || student.fatherMobile || student.motherMobile || student.phone || student.contactNumber || '';
+    return String(raw).replace(/\D/g, '');
+  }
+
+  function getUncoveredTuitionMonths(tuitionCharges, payments, totalPaid, totalCharged) {
+    if (!tuitionCharges || !tuitionCharges.length) return '';
+    
+    var sorted = tuitionCharges.slice().sort(function(a, b) {
+      return new Date(a.date) - new Date(b.date);
     });
-
-    var totalDues = 0;
-    var totalPaid = 0;
-
-    studentFees.forEach(function(f) {
-      if (f.type === 'due') {
-        totalDues += parseFloat(f.amount || 0);
-      } else if (f.type === 'payment') {
-        totalPaid += parseFloat(f.amount || 0);
+    
+    var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    
+    var labels = [];
+    sorted.forEach(function(d) {
+      if (!d.date) return;
+      var dt = new Date(d.date);
+      if (isNaN(dt.getTime())) return;
+      var lbl = monthNames[dt.getMonth()] + ' ' + dt.getFullYear();
+      if (labels.indexOf(lbl) === -1) {
+        labels.push(lbl);
       }
     });
 
+    if (labels.length === 0) return '';
+    if (labels.length === 1 || labels[0] === labels[labels.length - 1]) return labels[0];
+    return labels[0] + ' – ' + labels[labels.length - 1];
+  }
+
+  function calculateMonthsOverdue(dues, payments) {
+    var tuitionDues = (dues || []).filter(function(d) {
+      return d.feeHeadId === 'fh_tuition';
+    }).sort(function(a, b) {
+      return new Date(a.date) - new Date(b.date);
+    });
+    
+    if (!tuitionDues.length) return 0;
+    
+    var totalTuitionCharged = tuitionDues.reduce(function(sum, d) {
+      return sum + (Number(d.amount) || 0);
+    }, 0);
+    var totalPaid = (payments || []).reduce(function(sum, p) {
+      return sum + (Number(p.amount) || 0);
+    }, 0);
+    
+    // If fully paid or overpaid, 0 months overdue
+    if (totalPaid >= totalTuitionCharged) return 0;
+    
+    var remaining = totalTuitionCharged - totalPaid;
+    var avgMonthlyCharge = totalTuitionCharged / tuitionDues.length;
+    if (avgMonthlyCharge <= 0) return 0;
+    var monthsUncovered = Math.floor(remaining / avgMonthlyCharge);
+    
+    return monthsUncovered;
+  }
+
+  function formatDateDDMMYYYY(dateStr) {
+    if (!dateStr) return '';
+    var clean = String(dateStr).split('T')[0];
+    var parts = clean.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return parts[2].padStart(2, '0') + '/' + parts[1].padStart(2, '0') + '/' + parts[0];
+    }
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    var dd = String(d.getDate()).padStart(2, '0');
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    return dd + '/' + mm + '/' + d.getFullYear();
+  }
+
+  function generateFeeStatement(studentId) {
+    var sId = (studentId && typeof studentId === 'object') ? studentId.id : studentId;
+    var student = (SchoolApp.store.students || []).find(function(s) { return s.id === sId; });
+    if (!student) return null;
+
+    if (!student.name) {
+      student.name = SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(student) : ((student.firstName + ' ' + (student.lastName || '')).trim());
+    }
+
+    var allRecords = (SchoolApp.store.fees || []).filter(function(f) {
+      return f.studentId === sId;
+    });
+
+    var dues = allRecords.filter(function(f) { return f.type === 'due'; });
+    var payments = allRecords.filter(function(f) { return f.type === 'payment'; });
+
+    var totalCharged = dues.reduce(function(sum, d) { return sum + (Number(d.amount) || 0); }, 0);
+    var totalPaid = payments.reduce(function(sum, p) { return sum + (Number(p.amount) || 0); }, 0);
+    var netDue = totalCharged - totalPaid;
+
+    // Current month charges (itemized by fee head)
+    var today = new Date();
+    var currentMonthStart = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-01';
+
+    var currentMonthCharges = dues.filter(function(d) { return d.date >= currentMonthStart; });
+    var priorCharges = dues.filter(function(d) { return d.date < currentMonthStart; });
+
+    var priorChargesTotal = priorCharges.reduce(function(sum, d) { return sum + (Number(d.amount) || 0); }, 0);
+
+    // Group current month charges by fee head
+    var feeHeadsList = getActiveFeeHeads();
+    var currentMonthGrouped = {};
+    currentMonthCharges.forEach(function(d) {
+      var fh = feeHeadsList.find(function(h) { return h.id === d.feeHeadId; });
+      var headName = fh ? fh.name : (d.description || 'Custom Charge');
+      if (!currentMonthGrouped[headName]) currentMonthGrouped[headName] = 0;
+      currentMonthGrouped[headName] += Number(d.amount) || 0;
+    });
+
+    // Tuition month(s) covered — derive from tuition due record dates
+    var tuitionCharges = dues.filter(function(d) { return d.feeHeadId === 'fh_tuition'; });
+    var tuitionMonths = getUncoveredTuitionMonths(tuitionCharges, payments, totalPaid, totalCharged);
+
+    // Last payment date
+    var sortedPayments = payments.slice().sort(function(a, b) {
+      return new Date(b.date) - new Date(a.date);
+    });
+    var lastPaymentDate = sortedPayments.length > 0 ? sortedPayments[0].date : null;
+
+    // Months overdue (for late fine note)
+    var monthsOverdue = calculateMonthsOverdue(dues, payments);
+
     return {
-      totalDues: totalDues,
+      student: student,
+      rollNumber: student.rollNumber || student.rollNo || '',
+      currentMonthGrouped: currentMonthGrouped,
+      currentMonthTotal: Object.values(currentMonthGrouped).reduce(function(a, b) { return a + b; }, 0),
+      priorChargesTotal: priorChargesTotal,
+      totalCharged: totalCharged,
+      totalDues: totalCharged,
       totalPaid: totalPaid,
-      outstanding: totalDues - totalPaid
+      netDue: netDue,
+      outstanding: netDue,
+      lastPaymentDate: lastPaymentDate,
+      monthsOverdue: monthsOverdue,
+      tuitionMonths: tuitionMonths
     };
+  }
+
+  function getStudentFeeStats(studentId) {
+    var stmt = generateFeeStatement(studentId);
+    if (!stmt) {
+      return { totalDues: 0, totalPaid: 0, outstanding: 0 };
+    }
+    return {
+      totalDues: stmt.totalCharged,
+      totalPaid: stmt.totalPaid,
+      outstanding: stmt.netDue
+    };
+  }
+
+  function buildFeeReminderMessage(statement, schoolSettings) {
+    var s = statement;
+    var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'School';
+    var upiId = (schoolSettings && (schoolSettings.upiId || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.upiId))) ? String(schoolSettings.upiId || schoolSettings.schoolInfo.upiId).trim() : '';
+
+    var studentName = s.student.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s.student) : ((s.student.firstName + ' ' + (s.student.lastName || '')).trim()));
+
+    var msg = '*Fee Reminder — ' + studentName + '*\n';
+    msg += 'Class: ' + s.student.class + 
+      (s.student.section ? ' / Sec: ' + s.student.section : '') + 
+      ' | Roll No: ' + (s.rollNumber || '-') + '\n\n';
+    
+    // Itemized current month charges
+    var groupedKeys = Object.keys(s.currentMonthGrouped || {});
+    if (groupedKeys.length > 0) {
+      msg += '*Is Mahine Ke Charges:*\n';
+      groupedKeys.forEach(function(head) {
+        var label = head;
+        if ((head === 'Tuition Fee' || head.toLowerCase().indexOf('tuition') !== -1) && s.tuitionMonths) {
+          label = head + ' (' + s.tuitionMonths + ')';
+        }
+        msg += '• ' + label + ': ₹' + s.currentMonthGrouped[head] + '\n';
+      });
+      msg += 'Is Mahine Ka Total: ₹' + s.currentMonthTotal + '\n\n';
+    }
+    
+    if (s.priorChargesTotal > 0) {
+      msg += 'Pichla Baaki: ₹' + s.priorChargesTotal + '\n';
+    }
+    
+    msg += 'Total Paid Till Date: ₹' + s.totalPaid + '\n';
+    
+    if (s.lastPaymentDate) {
+      msg += 'Last Payment: ' + formatDateDDMMYYYY(s.lastPaymentDate) + '\n';
+    }
+    
+    msg += '\n*Total Due: ₹' + s.netDue + '*\n';
+    
+    if (upiId) {
+      msg += '\nPayment ke liye UPI: ' + upiId + '\n';
+    }
+    
+    if (s.monthsOverdue >= 3) {
+      msg += '\n_Note: 3 mahine se zyada baaki hone par ₹20/mahina late fine lagu ho sakta hai._\n';
+    }
+    
+    msg += '\n- ' + schoolName;
+    
+    return msg;
+  }
+
+  function buildFeeReminderSMS(statement, schoolSettings) {
+    var s = statement;
+    var studentName = s.student.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s.student) : ((s.student.firstName + ' ' + (s.student.lastName || '')).trim()));
+    var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'School';
+    var upiId = (schoolSettings && (schoolSettings.upiId || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.upiId))) ? String(schoolSettings.upiId || schoolSettings.schoolInfo.upiId).trim() : '';
+
+    return studentName + 
+      ' (Class ' + s.student.class + 
+      ') — Fee Due: ₹' + s.netDue + 
+      '. ' + 
+      (upiId ? 'UPI: ' + upiId + '. ' : '') +
+      '- ' + schoolName;
+  }
+
+  function logFeeReminder(studentId, channel, status) {
+    if (!SchoolApp.store.feeReminderLog) {
+      SchoolApp.store.feeReminderLog = [];
+    }
+    SchoolApp.store.feeReminderLog.push({
+      studentId: studentId,
+      date: new Date().toISOString().split('T')[0],
+      channel: channel,
+      status: status,
+      sentBy: (SchoolApp.currentUser && SchoolApp.currentUser.username) || 'unknown',
+      sentAt: new Date().toISOString()
+    });
+    SchoolApp.save(true);
+  }
+
+  async function sendFeeSMS(phone, message, studentId, studentName) {
+    var apiKey = SchoolApp.store.settings && SchoolApp.store.settings.fast2smsApiKey;
+    if (!apiKey) {
+      SchoolApp.showToast('SMS not configured. Please enter Fast2SMS API key in School Settings.', 'error');
+      return false;
+    }
+
+    if (!phone || phone.length < 10) {
+      SchoolApp.showToast('No valid 10-digit mobile number found for ' + studentName, 'error');
+      return false;
+    }
+
+    try {
+      SchoolApp.showToast('Sending SMS to parent of ' + studentName + '...', 'info');
+      var response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+        method: 'POST',
+        headers: {
+          'authorization': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          route: 'q',
+          message: message,
+          language: 'english',
+          flash: 0,
+          numbers: phone
+        })
+      });
+      var result = await response.json();
+      var isSent = result && result.return === true;
+      if (isSent) {
+        SchoolApp.showToast('SMS sent successfully for ' + studentName, 'success');
+        logFeeReminder(studentId, 'sms', 'sent');
+        return true;
+      } else {
+        SchoolApp.showToast('SMS failed: ' + (result.message || 'API error'), 'error');
+        logFeeReminder(studentId, 'sms', 'failed');
+        return false;
+      }
+    } catch (e) {
+      SchoolApp.showToast('SMS dispatch error for ' + studentName, 'error');
+      logFeeReminder(studentId, 'sms', 'failed');
+      return false;
+    }
+  }
+
+  function showFeeReminderPreviewModal(studentId) {
+    var stmt = generateFeeStatement(studentId);
+    if (!stmt) {
+      SchoolApp.showToast('Student fee record not found.', 'error');
+      return;
+    }
+
+    if (stmt.netDue <= 0) {
+      SchoolApp.showToast('This student has no outstanding dues.', 'info');
+      return;
+    }
+
+    var s = stmt.student;
+    var sName = s.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s) : (s.firstName + ' ' + (s.lastName || '')).trim());
+    var parentPhone = getStudentParentPhone(s);
+    var settings = SchoolApp.store.settings || {};
+    var hasSMS = Boolean(settings.fast2smsApiKey && settings.fast2smsApiKey.trim() !== '');
+    var defaultMsg = buildFeeReminderMessage(stmt, settings);
+    var defaultSMS = buildFeeReminderSMS(stmt, settings);
+
+    var bodyHTML = '<div class="fee-reminder-preview-view">';
+    
+    // Student summary header card
+    bodyHTML += '<div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">';
+    bodyHTML += '<div>';
+    bodyHTML += '<h4 style="margin:0 0 4px 0; font-size:15px; color:var(--text-primary);">' + escapeHTML(sName) + '</h4>';
+    bodyHTML += '<span style="font-size:12.5px; color:var(--text-secondary);">Class: ' + escapeHTML(s.class) + (s.section ? ' - ' + escapeHTML(s.section) : '') + ' · Roll: ' + escapeHTML(stmt.rollNumber || '—') + '</span>';
+    bodyHTML += '</div>';
+    bodyHTML += '<div style="text-align:right;">';
+    bodyHTML += '<div style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Parent Phone</div>';
+    bodyHTML += '<div style="font-size:13px; font-weight:600; color:' + (parentPhone.length >= 10 ? 'var(--text-primary)' : 'var(--danger)') + ';">' + (parentPhone.length >= 10 ? parentPhone : 'No valid 10-digit phone') + '</div>';
+    bodyHTML += '</div>';
+    bodyHTML += '</div>';
+
+    // Message preview box & edit toggle
+    bodyHTML += '<div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">';
+    bodyHTML += '<label style="font-size:12px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.3px;">WhatsApp Reminder Message</label>';
+    bodyHTML += '<button type="button" class="btn btn-sm btn-secondary" id="toggle-edit-reminder-btn" style="padding:2px 8px; font-size:11px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:13px">edit</span> ✏️ Edit before sending</button>';
+    bodyHTML += '</div>';
+
+    bodyHTML += '<pre id="reminder-preview-box" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-size:12.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; max-height:220px; overflow-y:auto; margin:0 0 12px 0; color:var(--text-primary); font-family:inherit;">' + escapeHTML(defaultMsg) + '</pre>';
+
+    bodyHTML += '<div id="reminder-edit-container" style="display:none; margin-bottom:12px;">';
+    bodyHTML += '<textarea id="reminder-custom-textarea" class="form-textarea" style="width:100%; height:160px; font-family:inherit; font-size:12.5px; line-height:1.5; resize:vertical;">' + escapeHTML(defaultMsg) + '</textarea>';
+    bodyHTML += '<small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">You can customize the WhatsApp text above prior to clicking "Send WhatsApp".</small>';
+    bodyHTML += '</div>';
+
+    // SMS preview info
+    bodyHTML += '<div style="background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.18); border-radius:8px; padding:10px 12px; font-size:12px; color:var(--text-secondary);">';
+    bodyHTML += '<div style="font-weight:600; color:var(--accent-primary); margin-bottom:3px; display:flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:15px">sms</span> SMS Preview (Fast2SMS route):</div>';
+    bodyHTML += '<div style="font-style:italic;">"' + escapeHTML(defaultSMS) + '"</div>';
+    if (!hasSMS) {
+      bodyHTML += '<div style="color:var(--text-muted); font-size:11px; margin-top:4px;">⚠️ Fast2SMS API key is not configured in School Settings. SMS button is disabled.</div>';
+    }
+    bodyHTML += '</div>';
+
+    bodyHTML += '</div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    
+    if (hasSMS) {
+      footerHTML += '<button class="btn btn-primary" id="preview-send-sms-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">sms</span> 💬 Send SMS</button>';
+    } else {
+      footerHTML += '<button class="btn btn-secondary" id="preview-send-sms-btn" disabled title="SMS not configured in School Settings" style="opacity:0.5; cursor:not-allowed; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">sms</span> 💬 Send SMS</button>';
+    }
+
+    footerHTML += '<button class="btn btn-secondary" id="preview-send-wa-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">send</span> 📱 Send WhatsApp</button>';
+
+    SchoolApp.showModal('Fee Reminder Preview — ' + escapeHTML(sName), bodyHTML, footerHTML);
+
+    // Edit toggle logic
+    var toggleBtn = document.getElementById('toggle-edit-reminder-btn');
+    var previewBox = document.getElementById('reminder-preview-box');
+    var editContainer = document.getElementById('reminder-edit-container');
+    var editArea = document.getElementById('reminder-custom-textarea');
+
+    var isEditing = false;
+    if (toggleBtn && previewBox && editContainer && editArea) {
+      toggleBtn.addEventListener('click', function() {
+        isEditing = !isEditing;
+        if (isEditing) {
+          previewBox.style.display = 'none';
+          editContainer.style.display = 'block';
+          toggleBtn.innerHTML = '<span class="material-icons-round" style="font-size:13px">visibility</span> 👁️ View preview';
+          editArea.focus();
+        } else {
+          previewBox.textContent = editArea.value;
+          previewBox.style.display = 'block';
+          editContainer.style.display = 'none';
+          toggleBtn.innerHTML = '<span class="material-icons-round" style="font-size:13px">edit</span> ✏️ Edit before sending';
+        }
+      });
+    }
+
+    // WhatsApp send handler
+    var waBtn = document.getElementById('preview-send-wa-btn');
+    if (waBtn) {
+      waBtn.addEventListener('click', function() {
+        var finalMsg = (isEditing && editArea) ? editArea.value.trim() : (editArea ? editArea.value.trim() : defaultMsg);
+        if (!parentPhone || parentPhone.length < 10) {
+          SchoolApp.showToast('No valid 10-digit parent mobile number found for ' + sName, 'error');
+          return;
+        }
+        var sent = SchoolApp.shareOnWhatsApp(parentPhone, finalMsg);
+        if (sent) {
+          logFeeReminder(s.id, 'whatsapp', 'sent');
+          SchoolApp.closeModal();
+        }
+      });
+    }
+
+    // SMS send handler
+    var smsBtn = document.getElementById('preview-send-sms-btn');
+    if (smsBtn && hasSMS) {
+      smsBtn.addEventListener('click', async function() {
+        if (!parentPhone || parentPhone.length < 10) {
+          SchoolApp.showToast('No valid 10-digit parent mobile number found for ' + sName, 'error');
+          return;
+        }
+        var finalSMS = defaultSMS;
+        smsBtn.disabled = true;
+        smsBtn.textContent = 'Sending...';
+        var ok = await sendFeeSMS(parentPhone, finalSMS, s.id, sName);
+        smsBtn.disabled = false;
+        smsBtn.innerHTML = '<span class="material-icons-round" style="font-size:16px">sms</span> 💬 Send SMS';
+        if (ok) {
+          SchoolApp.closeModal();
+        }
+      });
+    }
+  }
+
+  function showBulkFeeRemindersModal() {
+    var students = SchoolApp.store.students || [];
+    var defaulters = [];
+
+    students.forEach(function(s) {
+      if (s.status === 'Inactive') return;
+      var stmt = generateFeeStatement(s.id);
+      if (stmt && stmt.netDue > 0) {
+        defaulters.push({
+          student: s,
+          statement: stmt
+        });
+      }
+    });
+
+    if (defaulters.length === 0) {
+      SchoolApp.showToast('No students with outstanding dues found.', 'info');
+      return;
+    }
+
+    // Sort defaulters by class, then roll
+    defaulters.sort(function(a, b) {
+      if (a.student.class !== b.student.class) {
+        return String(a.student.class).localeCompare(String(b.student.class), undefined, { numeric: true });
+      }
+      return (parseInt(a.statement.rollNumber, 10) || 0) - (parseInt(b.statement.rollNumber, 10) || 0);
+    });
+
+    var schoolSettings = SchoolApp.store.settings || {};
+    var hasSMS = Boolean(schoolSettings.fast2smsApiKey && schoolSettings.fast2smsApiKey.trim() !== '');
+
+    var bodyHTML = '<div class="bulk-reminders-modal-view">';
+
+    bodyHTML += '<div style="background:rgba(37,211,102,0.08); border:1px solid rgba(37,211,102,0.25); padding:12px 16px; border-radius:8px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">';
+    bodyHTML += '<span class="material-icons-round" style="color:#25D366; font-size:28px;">campaign</span>';
+    bodyHTML += '<div>';
+    bodyHTML += '<h4 style="margin:0; color:var(--text-primary); font-size:15px;">📢 Bulk Fee Reminders Queue (' + defaulters.length + ' Students)</h4>';
+    bodyHTML += '<p style="margin:2px 0 0 0; color:var(--text-secondary); font-size:12px;">Click to send WhatsApp or SMS one student at a time. WhatsApp Web will open with a pre-filled itemized statement.</p>';
+    bodyHTML += '</div></div>';
+
+    bodyHTML += '<div class="table-container" style="max-height:380px; overflow-y:auto;">';
+    bodyHTML += '<table class="data-table"><thead><tr>';
+    bodyHTML += '<th>Student</th><th>Class</th><th>Total Due</th><th>Parent Contact</th><th>Actions</th><th>Status</th>';
+    bodyHTML += '</tr></thead><tbody>';
+
+    defaulters.forEach(function(d) {
+      var s = d.student;
+      var stmt = d.statement;
+      var sName = s.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s) : (s.firstName + ' ' + (s.lastName || '')).trim());
+      var phone = getStudentParentPhone(s);
+      var displayPhone = (phone && phone.length >= 10) ? phone : '<span style="color:var(--danger)">No Phone</span>';
+
+      bodyHTML += '<tr class="bulk-reminder-row-' + s.id + '">';
+      bodyHTML += '<td><strong>' + escapeHTML(sName) + '</strong>' + (stmt.rollNumber ? '<br><span style="font-size:11px; color:var(--text-muted);">Roll: ' + escapeHTML(stmt.rollNumber) + '</span>' : '') + '</td>';
+      bodyHTML += '<td><span class="badge badge-info">' + escapeHTML(s.class) + (s.section ? '-' + escapeHTML(s.section) : '') + '</span></td>';
+      bodyHTML += '<td><strong style="color:var(--danger);">₹' + stmt.netDue.toLocaleString('en-IN') + '</strong></td>';
+      bodyHTML += '<td style="font-size:12px;">' + displayPhone + '</td>';
+      bodyHTML += '<td><div style="display:flex; gap:6px; align-items:center;">';
+      bodyHTML += '<button class="btn btn-sm bulk-wa-btn" data-student-id="' + s.id + '" style="background:#25D366; color:#fff; border:none; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">send</span> 📱 WhatsApp</button>';
+
+      if (hasSMS) {
+        bodyHTML += '<button class="btn btn-sm btn-primary bulk-sms-btn" data-student-id="' + s.id + '" style="padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
+      } else {
+        bodyHTML += '<button class="btn btn-sm btn-secondary bulk-sms-btn" disabled title="SMS not configured in settings" style="padding:4px 10px; font-size:12px; opacity:0.5; cursor:not-allowed; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
+      }
+
+      bodyHTML += '</div></td>';
+      bodyHTML += '<td><span class="status-badge status-badge-' + s.id + ' badge badge-secondary" style="font-size:11px;">⬜ Pending</span></td>';
+      bodyHTML += '</tr>';
+    });
+
+    bodyHTML += '</tbody></table></div>';
+    bodyHTML += '</div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+
+    SchoolApp.showModal('📢 Send Bulk Fee Reminders', bodyHTML, footerHTML);
+
+    // Wire row click events
+    document.querySelectorAll('.bulk-wa-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var sId = this.getAttribute('data-student-id');
+        var item = defaulters.find(function(x) { return x.student.id === sId; });
+        if (!item) return;
+
+        var phone = getStudentParentPhone(item.student);
+        var sName = item.student.name || (item.student.firstName + ' ' + (item.student.lastName || '')).trim();
+        if (!phone || phone.length < 10) {
+          SchoolApp.showToast('No valid 10-digit mobile number for ' + sName, 'error');
+          return;
+        }
+
+        var msg = buildFeeReminderMessage(item.statement, SchoolApp.store.settings || {});
+        var sent = SchoolApp.shareOnWhatsApp(phone, msg);
+        if (sent) {
+          var badge = document.querySelector('.status-badge-' + sId);
+          if (badge) {
+            badge.className = 'status-badge status-badge-' + sId + ' badge badge-success';
+            badge.innerHTML = '✅ WhatsApp Sent';
+          }
+          logFeeReminder(sId, 'whatsapp', 'sent');
+        }
+      });
+    });
+
+    document.querySelectorAll('.bulk-sms-btn').forEach(function(btn) {
+      if (!hasSMS) return;
+      btn.addEventListener('click', async function() {
+        var sId = this.getAttribute('data-student-id');
+        var item = defaulters.find(function(x) { return x.student.id === sId; });
+        if (!item) return;
+
+        var phone = getStudentParentPhone(item.student);
+        var sName = item.student.name || (item.student.firstName + ' ' + (item.student.lastName || '')).trim();
+        if (!phone || phone.length < 10) {
+          SchoolApp.showToast('No valid 10-digit mobile number for ' + sName, 'error');
+          return;
+        }
+
+        var smsMsg = buildFeeReminderSMS(item.statement, SchoolApp.store.settings || {});
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        var ok = await sendFeeSMS(phone, smsMsg, sId, sName);
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS';
+
+        var badge = document.querySelector('.status-badge-' + sId);
+        if (badge) {
+          if (ok) {
+            badge.className = 'status-badge status-badge-' + sId + ' badge badge-success';
+            badge.innerHTML = '✅ SMS Sent';
+          } else {
+            badge.className = 'status-badge status-badge-' + sId + ' badge badge-danger';
+            badge.innerHTML = '❌ SMS Failed';
+          }
+        }
+      });
+    });
   }
 
   function getFilteredStudents() {
@@ -734,6 +1262,7 @@
       shellHtml += '<div class="header-actions">';
       if (isAdmin) {
         shellHtml += '<button class="btn btn-primary" id="bulk-charge-fee-btn"><span class="material-icons-round">campaign</span> Bulk Charge Class</button>';
+        shellHtml += '<button class="btn btn-secondary bulk-fee-reminders-btn" id="bulk-fee-reminders-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:18px">campaign</span> 📢 Send Bulk Fee Reminders</button>';
         shellHtml += '<button class="btn btn-secondary" id="fees-export-pdf-btn" style="display: none;"><span class="material-icons-round">picture_as_pdf</span> Export PDF</button>';
         shellHtml += '<button class="btn btn-secondary" id="fees-export-excel-btn" style="display: none;"><span class="material-icons-round">grid_on</span> Export Excel</button>';
       }
@@ -851,6 +1380,7 @@
       shellHtml += '<div class="search-wrapper" style="flex: 1; min-width: 200px;"><span class="material-icons-round">search</span>';
       shellHtml += '<input type="text" id="fees-ledger-search" placeholder="Search today\'s payments..." value="' + (state.ledgerSearchQuery || '') + '">';
       shellHtml += '</div>';
+      shellHtml += '<button class="btn btn-secondary bulk-fee-reminders-btn" id="bulk-fee-reminders-ledger-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:18px">campaign</span> 📢 Send Bulk Fee Reminders</button>';
       shellHtml += '</div>';
 
       shellHtml += '<div id="fees-data-container"></div>';
@@ -1007,6 +1537,7 @@
           if (isAdmin) {
             html += '<button class="btn-icon fees-charge-btn" data-id="' + s.id + '" title="Add Custom Charge/Fine" style="color:var(--accent-primary-light)"><span class="material-icons-round">add_card</span></button>';
           }
+          html += '<button class="btn-icon fees-reminder-btn" data-id="' + s.id + '" title="Send Fee Reminder (WhatsApp / SMS)" style="color:#25D366"><span class="material-icons-round">campaign</span></button>';
           html += '</div></td></tr>';
         });
 
@@ -1378,6 +1909,7 @@
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
     if (ledger.outstanding > 0) {
+      footerHTML += '<button class="btn btn-secondary" id="ledger-modal-reminder-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">campaign</span> Send Fee Reminder</button>';
       footerHTML += '<button class="btn btn-primary" id="ledger-modal-collect-btn"><span class="material-icons-round">payments</span> Record Payment</button>';
     }
 
@@ -1389,6 +1921,14 @@
       colBtn.addEventListener('click', function() {
         SchoolApp.closeModal();
         setTimeout(function() { showPaymentModal(studentId); }, 200);
+      });
+    }
+
+    var remBtn = document.getElementById('ledger-modal-reminder-btn');
+    if (remBtn) {
+      remBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+        setTimeout(function() { showFeeReminderPreviewModal(studentId); }, 200);
       });
     }
 
@@ -1908,6 +2448,11 @@
       bulkChargeBtn.addEventListener('click', showBulkChargeModal);
     }
 
+    // Bulk Fee Reminders
+    document.querySelectorAll('.bulk-fee-reminders-btn').forEach(function(btn) {
+      btn.addEventListener('click', showBulkFeeRemindersModal);
+    });
+
     // --- History Tab Events ---
 
     // History Search
@@ -2018,6 +2563,13 @@
       });
     });
 
+    // Fee Reminder Preview
+    document.querySelectorAll('.fees-reminder-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        showFeeReminderPreviewModal(this.getAttribute('data-id'));
+      });
+    });
+
     // Pagination clicks
     document.querySelectorAll('.pagination-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -2033,6 +2585,22 @@
       });
     });
   }
+
+  // Expose Core Calculation Engine & Reminder Helpers
+  window.generateFeeStatement = generateFeeStatement;
+  window.buildFeeReminderMessage = buildFeeReminderMessage;
+  window.buildFeeReminderSMS = buildFeeReminderSMS;
+  window.calculateMonthsOverdue = calculateMonthsOverdue;
+  window.getUncoveredTuitionMonths = getUncoveredTuitionMonths;
+  window.logFeeReminder = logFeeReminder;
+  window.showFeeReminderPreviewModal = showFeeReminderPreviewModal;
+  window.showBulkFeeRemindersModal = showBulkFeeRemindersModal;
+
+  SchoolApp.generateFeeStatement = generateFeeStatement;
+  SchoolApp.buildFeeReminderMessage = buildFeeReminderMessage;
+  SchoolApp.buildFeeReminderSMS = buildFeeReminderSMS;
+  SchoolApp.showFeeReminderPreviewModal = showFeeReminderPreviewModal;
+  SchoolApp.showBulkFeeRemindersModal = showBulkFeeRemindersModal;
 
   // Register Module
   SchoolApp.registerModule('fees', {

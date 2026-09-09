@@ -1699,6 +1699,7 @@
     html += '  </div>';
 
     var website = s.website || (s.schoolInfo && s.schoolInfo.website) || '';
+    var upiId = s.upiId || (s.schoolInfo && s.schoolInfo.upiId) || '';
     // Card 2: Contact Details
     html += '  <div class="card">';
     html += '    <div class="card-header"><h3><span class="material-icons-round">contact_mail</span> Contact Details</h3></div>';
@@ -1707,6 +1708,7 @@
     html += '        <div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + escapeAttr(phone) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + escapeAttr(email) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">School Website</label><input type="url" class="form-input" name="website" id="school-website" placeholder="https://yourschool.com" value="' + escapeAttr(website) + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">Payment UPI ID <span style="color:#9CA3AF; font-weight:400; font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="upiId" id="school-upi-id" placeholder="yourschool@upi" value="' + escapeAttr(upiId) + '"></div>';
     html += '        <div class="form-group full-width" style="grid-column: span 2;"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + escapeHTML(address) + '</textarea></div>';
     html += '      </div>';
     html += '    </div>';
@@ -3587,6 +3589,8 @@
 
         s.website = document.getElementById('school-website') ? document.getElementById('school-website').value.trim() : (s.website || '');
         s.schoolInfo.website = s.website;
+        s.upiId = document.getElementById('school-upi-id') ? document.getElementById('school-upi-id').value.trim() : (s.upiId || '');
+        s.schoolInfo.upiId = s.upiId;
         s.phone = s.schoolInfo.phone;
         s.email = s.schoolInfo.email;
         s.address = s.schoolInfo.address;
