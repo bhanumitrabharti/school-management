@@ -29,6 +29,7 @@ const db = getFirestore(app);
     var formFeeHeads = ["tuition", "transport", "exam"];
     var formExtraCharges = [];
     var currentAdminPasswordHash = '';
+    var currentEditRequestId = 0;
 
     // ─── Constants ──────────────────────────────────────
     var STORAGE_KEY = 'shishuvikash_data';
@@ -491,6 +492,7 @@ const db = getFirestore(app);
 
     /** Validate credentials and switch to dashboard. */
     async function saLogin(username, password) {
+        console.log('SA login attempt started');
         if (username === CREDENTIALS.username && password === CREDENTIALS.password) {
             sessionStorage.setItem(SESSION_KEY, 'active');
             loginPage.classList.add('hidden');
@@ -852,7 +854,10 @@ const db = getFirestore(app);
     /** Compute metrics and render the full dashboard. */
     function renderDashboard() {
         var data = loadData();
-        var schools = data.schools || [];
+        var allSchools = data.schools || [];
+        var schools = allSchools.filter(function (s) {
+            return s.archived !== true;
+        });
 
         var total    = schools.length;
         var active   = 0;
@@ -988,6 +993,9 @@ const db = getFirestore(app);
                         '<button class="sa-action-btn btn-impersonate" data-action="impersonate" data-school-id="' + escapeAttr(school.school_id) + '" data-role="teacher" title="Login as Teacher">' +
                             '<span class="material-icons-round">person</span> Teacher' +
                         '</button>' +
+                        '<button class="sa-action-btn btn-archive" data-action="archive" data-school-id="' + escapeAttr(school.school_id) + '" title="Archive School">' +
+                            '<span class="material-icons-round">archive</span> Archive' +
+                        '</button>' +
                     '</div>' +
                 '</td>' +
             '</tr>';
@@ -1044,6 +1052,507 @@ const db = getFirestore(app);
         });
 
         schoolsTbody.innerHTML = html;
+    }
+
+    /** Render the Archived Schools table in tab-archived. */
+    function renderArchivedSchools() {
+        var tbody = document.getElementById('sa-archived-tbody');
+        if (!tbody) return;
+
+        var data = loadData();
+        var allSchools = data.schools || [];
+        var archivedSchools = allSchools.filter(function (s) {
+            return s.archived === true;
+        });
+
+        var queryInput = document.getElementById('sa-archived-search');
+        if (queryInput && queryInput.value.trim()) {
+            var q = queryInput.value.trim().toLowerCase();
+            archivedSchools = archivedSchools.filter(function (s) {
+                return (s.school_name && s.school_name.toLowerCase().indexOf(q) !== -1) ||
+                       (s.subdomain && s.subdomain.toLowerCase().indexOf(q) !== -1) ||
+                       (s.archiveReason && s.archiveReason.toLowerCase().indexOf(q) !== -1);
+            });
+        }
+
+        if (archivedSchools.length === 0) {
+            tbody.innerHTML =
+                '<tr><td colspan="6">' +
+                    '<div class="sa-empty-state" style="padding: 40px 20px; text-align: center;">' +
+                        '<span class="material-icons-round" style="font-size: 48px; opacity: 0.4;">archive</span>' +
+                        '<h3 style="margin: 12px 0 6px 0;">No Archived Schools</h3>' +
+                        '<p style="opacity: 0.6; margin: 0;">Schools that are archived will appear here for restoration.</p>' +
+                    '</div>' +
+                '</td></tr>';
+            return;
+        }
+
+        var html = '';
+        archivedSchools.forEach(function (school) {
+            var dateStr = school.archivedAt ? new Date(school.archivedAt).toLocaleString() : '—';
+            var archivedBy = school.archivedBy || 'Super Admin';
+            var reason = school.archiveReason || 'No reason provided';
+
+            html += '<tr>' +
+                '<td>' +
+                    '<div style="font-weight: 600; color: var(--text-primary, #fff);">' + escapeHTML(school.school_name) + '</div>' +
+                '</td>' +
+                '<td><code>' + escapeHTML(school.subdomain) + '</code></td>' +
+                '<td>' + escapeHTML(dateStr) + '</td>' +
+                '<td>' + escapeHTML(archivedBy) + '</td>' +
+                '<td>' + escapeHTML(reason) + '</td>' +
+                '<td>' +
+                    '<button class="sa-btn sa-btn-primary sa-btn-sm btn-restore-school" data-school-id="' + escapeAttr(school.school_id) + '" style="background: var(--accent-primary, #3b82f6); display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 12px;">' +
+                        '<span class="material-icons-round" style="font-size: 14px;">unarchive</span> Restore' +
+                    '</button>' +
+                '</td>' +
+            '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    /** Open the Archive Confirmation Modal. */
+    function showArchiveModal(schoolId) {
+        var data = loadData();
+        var school = findSchoolById(data.schools, schoolId);
+        if (!school) {
+            showToast('School not found', 'error');
+            return;
+        }
+
+        document.getElementById('sa-archive-school-id').value = school.school_id;
+        document.getElementById('sa-archive-school-name').textContent = school.school_name;
+        document.getElementById('sa-archive-reason').value = '';
+
+        var overlay = document.getElementById('sa-archive-modal-overlay');
+        if (overlay) {
+            overlay.classList.add('active');
+        }
+    }
+
+    /** Confirm archiving of a school. */
+    async function confirmArchiveSchool() {
+        var schoolId = document.getElementById('sa-archive-school-id').value;
+        var reason = document.getElementById('sa-archive-reason').value.trim();
+
+        await ensureDataLoaded();
+        var data = loadData();
+        var school = findSchoolById(data.schools, schoolId);
+        if (!school) {
+            showToast('School not found', 'error');
+            return;
+        }
+
+        var currentUserEmail = (saCache.currentUser && saCache.currentUser.email) || 'Super Admin';
+        school.archived = true;
+        school.archivedAt = new Date().toISOString();
+        school.archivedBy = currentUserEmail;
+        school.archiveReason = reason;
+
+        await saveData(data);
+        showToast('School "' + school.school_name + '" archived successfully.', 'success');
+
+        var overlay = document.getElementById('sa-archive-modal-overlay');
+        if (overlay) overlay.classList.remove('active');
+
+        renderDashboard();
+        renderArchivedSchools();
+    }
+
+    /** Restore an archived school back to active directory. */
+    async function restoreSchool(schoolId) {
+        await ensureDataLoaded();
+        var data = loadData();
+        var school = findSchoolById(data.schools, schoolId);
+        if (!school) {
+            showToast('School not found', 'error');
+            return;
+        }
+
+        school.archived = false;
+        school.restoredAt = new Date().toISOString();
+
+        await saveData(data);
+        showToast('School "' + school.school_name + '" restored to active directory.', 'success');
+
+        renderDashboard();
+        renderArchivedSchools();
+    }
+
+    // ─── Billing & Agreement Generator ──────────────────────────
+
+    /** Render Billing & Agreements Tab Table */
+    function renderBillingTab() {
+        var tbody = document.getElementById('sa-agreements-tbody');
+        if (!tbody) return;
+
+        var data = loadData();
+        var agreements = data.agreements || [];
+
+        var queryInput = document.getElementById('sa-billing-search');
+        if (queryInput && queryInput.value.trim()) {
+            var q = queryInput.value.trim().toLowerCase();
+            agreements = agreements.filter(function(a) {
+                return (a.refNo && a.refNo.toLowerCase().indexOf(q) !== -1) ||
+                       (a.schoolName && a.schoolName.toLowerCase().indexOf(q) !== -1) ||
+                       (a.plan && a.plan.toLowerCase().indexOf(q) !== -1);
+            });
+        }
+
+        if (agreements.length === 0) {
+            tbody.innerHTML =
+                '<tr><td colspan="7">' +
+                    '<div class="sa-empty-state" style="padding: 40px 20px; text-align: center;">' +
+                        '<span class="material-icons-round" style="font-size: 48px; opacity: 0.4;">receipt_long</span>' +
+                        '<h3 style="margin: 12px 0 6px 0;">No Agreements Created Yet</h3>' +
+                        '<p style="opacity: 0.6; margin: 0;">Click "Generate New Agreement" to create client contracts and billing invoices.</p>' +
+                    '</div>' +
+                '</td></tr>';
+            return;
+        }
+
+        var html = '';
+        agreements.forEach(function(ag) {
+            var statusBadge = ag.status === 'Active' ? 'sa-badge-active' :
+                              ag.status === 'Sent'   ? 'sa-badge-pro' : 'sa-badge-basic';
+
+            html += '<tr>' +
+                '<td><strong style="color: var(--primary-light, #60a5fa);">' + escapeHTML(ag.refNo) + '</strong></td>' +
+                '<td>' + escapeHTML(ag.schoolName) + '</td>' +
+                '<td><span class="sa-badge ' + statusBadge + '">' + escapeHTML(ag.plan || 'Standard') + ' (' + escapeHTML(ag.cycle || 'Annual') + ')</span></td>' +
+                '<td>' + escapeHTML(ag.startDate || '—') + ' to ' + escapeHTML(ag.endDate || '—') + '</td>' +
+                '<td><strong style="color:#34d399;">₹' + Number(ag.netTotal || 0).toLocaleString('en-IN') + '</strong></td>' +
+                '<td><span class="sa-badge ' + statusBadge + '">' + escapeHTML(ag.status || 'Draft') + '</span></td>' +
+                '<td>' +
+                    '<div style="display:flex; gap:6px;">' +
+                        '<button class="sa-action-btn btn-edit-ag" data-id="' + escapeAttr(ag.id) + '" title="Edit Agreement">' +
+                            '<span class="material-icons-round">edit</span> Edit' +
+                        '</button>' +
+                        '<button class="sa-action-btn btn-print-ag" data-id="' + escapeAttr(ag.id) + '" title="Print PDF">' +
+                            '<span class="material-icons-round">print</span> Print' +
+                        '</button>' +
+                        '<button class="sa-action-btn btn-delete-ag" data-id="' + escapeAttr(ag.id) + '" title="Delete Agreement" style="color:#ef4444; border-color:rgba(239,68,68,0.3);">' +
+                            '<span class="material-icons-round">delete</span>' +
+                        '</button>' +
+                    '</div>' +
+                '</td>' +
+            '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    /** Compute and update live pricing calculations in Agreement Generator Modal. */
+    function updateAgreementLivePricing() {
+        var baseFee = parseFloat(document.getElementById('sf-ag-base-fee').value) || 0;
+        var perStudentFee = parseFloat(document.getElementById('sf-ag-per-student-fee').value) || 0;
+        var studentCount = parseInt(document.getElementById('sf-ag-student-count').value, 10) || 0;
+        var discountPct = parseFloat(document.getElementById('sf-ag-discount-pct').value) || 0;
+        var taxPct = parseFloat(document.getElementById('sf-ag-tax-pct').value) || 0;
+
+        var studentTotal = perStudentFee * studentCount;
+        var subtotal = baseFee + studentTotal;
+        var discountAmt = subtotal * (discountPct / 100);
+        var taxableAmt = subtotal - discountAmt;
+        var taxAmt = taxableAmt * (taxPct / 100);
+        var netTotal = Math.round(taxableAmt + taxAmt);
+
+        var breakdownText = 'Base ₹' + baseFee.toLocaleString('en-IN') +
+            ' + (' + studentCount + ' × ₹' + perStudentFee + ' = ₹' + studentTotal.toLocaleString('en-IN') + ')' +
+            (discountPct > 0 ? (' - ' + discountPct + '% Disc') : '') +
+            ' + ' + taxPct + '% GST';
+
+        var breakdownEl = document.getElementById('sa-ag-calc-breakdown');
+        var netTotalEl = document.getElementById('sa-ag-net-total');
+
+        if (breakdownEl) breakdownEl.textContent = breakdownText;
+        if (netTotalEl) netTotalEl.textContent = '₹' + netTotal.toLocaleString('en-IN');
+
+        return {
+            subtotal: subtotal,
+            discountAmt: discountAmt,
+            taxableAmt: taxableAmt,
+            taxAmt: taxAmt,
+            netTotal: netTotal
+        };
+    }
+
+    /** Open the Agreement Generator Modal. */
+    function showAgreementModal(agreementId) {
+        var data = loadData();
+        var schools = (data.schools || []).filter(function(s) { return s.archived !== true; });
+
+        var schoolSelect = document.getElementById('sf-ag-school-id');
+        if (schoolSelect) {
+            schoolSelect.innerHTML = schools.map(function(s) {
+                return '<option value="' + escapeAttr(s.school_id) + '">' + escapeHTML(s.school_name) + ' (' + escapeHTML(s.subdomain) + ')</option>';
+            }).join('');
+        }
+
+        var today = new Date();
+        var nextYear = new Date();
+        nextYear.setFullYear(today.getFullYear() + 1);
+
+        var todayStr = today.toISOString().split('T')[0];
+        var nextYearStr = nextYear.toISOString().split('T')[0];
+
+        if (agreementId) {
+            var agreements = data.agreements || [];
+            var ag = agreements.find(function(item) { return item.id === agreementId; });
+            if (ag) {
+                document.getElementById('sf-ag-id').value = ag.id;
+                document.getElementById('sf-ag-ref-no').value = ag.refNo;
+                document.getElementById('sf-ag-school-id').value = ag.schoolId;
+                document.getElementById('sf-ag-plan').value = ag.plan || 'Pro';
+                document.getElementById('sf-ag-cycle').value = ag.cycle || 'Annual';
+                document.getElementById('sf-ag-start-date').value = ag.startDate || todayStr;
+                document.getElementById('sf-ag-end-date').value = ag.endDate || nextYearStr;
+                document.getElementById('sf-ag-base-fee').value = ag.baseFee !== undefined ? ag.baseFee : 25000;
+                document.getElementById('sf-ag-per-student-fee').value = ag.perStudentFee !== undefined ? ag.perStudentFee : 50;
+                document.getElementById('sf-ag-student-count').value = ag.studentCount !== undefined ? ag.studentCount : 500;
+                document.getElementById('sf-ag-discount-pct').value = ag.discountPct !== undefined ? ag.discountPct : 10;
+                document.getElementById('sf-ag-tax-pct').value = ag.taxPct !== undefined ? ag.taxPct : 18;
+                document.getElementById('sf-ag-status').value = ag.status || 'Active';
+                document.getElementById('sf-ag-notes').value = ag.notes || '';
+                document.getElementById('sa-ag-modal-title').textContent = 'Edit SaaS Agreement — ' + ag.refNo;
+            }
+        } else {
+            var newRef = 'AGR-' + today.getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('sf-ag-id').value = '';
+            document.getElementById('sf-ag-ref-no').value = newRef;
+            document.getElementById('sf-ag-plan').value = 'Pro';
+            document.getElementById('sf-ag-cycle').value = 'Annual';
+            document.getElementById('sf-ag-start-date').value = todayStr;
+            document.getElementById('sf-ag-end-date').value = nextYearStr;
+            document.getElementById('sf-ag-base-fee').value = 25000;
+            document.getElementById('sf-ag-per-student-fee').value = 50;
+            document.getElementById('sf-ag-student-count').value = 500;
+            document.getElementById('sf-ag-discount-pct').value = 10;
+            document.getElementById('sf-ag-tax-pct').value = 18;
+            document.getElementById('sf-ag-status').value = 'Active';
+            document.getElementById('sf-ag-notes').value = 'Payment due within 15 days of invoice date. Support includes priority SLA resolution.';
+            document.getElementById('sa-ag-modal-title').textContent = 'Generate SaaS Agreement / Contract';
+        }
+
+        updateAgreementLivePricing();
+
+        var overlay = document.getElementById('sa-agreement-modal-overlay');
+        if (overlay) overlay.classList.add('active');
+    }
+
+    /** Save an Agreement entry. */
+    async function saveAgreement() {
+        var schoolId = document.getElementById('sf-ag-school-id').value;
+        if (!schoolId) {
+            showToast('Please select a target school tenant.', 'error');
+            return;
+        }
+
+        await ensureDataLoaded();
+        var data = loadData();
+        var school = findSchoolById(data.schools, schoolId);
+        var schoolName = school ? school.school_name : 'Unknown School';
+
+        var calc = updateAgreementLivePricing();
+        var agId = document.getElementById('sf-ag-id').value || ('ag_' + Date.now());
+        var refNo = document.getElementById('sf-ag-ref-no').value || ('AGR-' + Date.now());
+
+        var newAgreement = {
+            id: agId,
+            refNo: refNo,
+            schoolId: schoolId,
+            schoolName: schoolName,
+            plan: document.getElementById('sf-ag-plan').value,
+            cycle: document.getElementById('sf-ag-cycle').value,
+            startDate: document.getElementById('sf-ag-start-date').value,
+            endDate: document.getElementById('sf-ag-end-date').value,
+            baseFee: parseFloat(document.getElementById('sf-ag-base-fee').value) || 0,
+            perStudentFee: parseFloat(document.getElementById('sf-ag-per-student-fee').value) || 0,
+            studentCount: parseInt(document.getElementById('sf-ag-student-count').value, 10) || 0,
+            discountPct: parseFloat(document.getElementById('sf-ag-discount-pct').value) || 0,
+            taxPct: parseFloat(document.getElementById('sf-ag-tax-pct').value) || 0,
+            subtotal: calc.subtotal,
+            discountAmt: calc.discountAmt,
+            taxableAmt: calc.taxableAmt,
+            taxAmt: calc.taxAmt,
+            netTotal: calc.netTotal,
+            status: document.getElementById('sf-ag-status').value,
+            notes: document.getElementById('sf-ag-notes').value.trim(),
+            createdAt: new Date().toISOString()
+        };
+
+        if (!data.agreements) data.agreements = [];
+        var idx = data.agreements.findIndex(function(a) { return a.id === agId; });
+        if (idx !== -1) {
+            data.agreements[idx] = newAgreement;
+        } else {
+            data.agreements.unshift(newAgreement);
+        }
+
+        await saveData(data);
+        showToast('Agreement ' + refNo + ' saved successfully.', 'success');
+
+        var overlay = document.getElementById('sa-agreement-modal-overlay');
+        if (overlay) overlay.classList.remove('active');
+
+        renderBillingTab();
+    }
+
+    /** Print / Export Agreement PDF via Printable Blob Window */
+    function exportAgreementPDF(agreementId) {
+        var data = loadData();
+        var ag = null;
+
+        if (agreementId) {
+            ag = (data.agreements || []).find(function(a) { return a.id === agreementId; });
+        }
+
+        if (!ag) {
+            // Build temporary object from open modal inputs
+            var schoolId = document.getElementById('sf-ag-school-id').value;
+            var school = findSchoolById(data.schools, schoolId);
+            var calc = updateAgreementLivePricing();
+            ag = {
+                refNo: document.getElementById('sf-ag-ref-no').value,
+                schoolName: school ? school.school_name : 'School Tenant',
+                plan: document.getElementById('sf-ag-plan').value,
+                cycle: document.getElementById('sf-ag-cycle').value,
+                startDate: document.getElementById('sf-ag-start-date').value,
+                endDate: document.getElementById('sf-ag-end-date').value,
+                baseFee: parseFloat(document.getElementById('sf-ag-base-fee').value) || 0,
+                perStudentFee: parseFloat(document.getElementById('sf-ag-per-student-fee').value) || 0,
+                studentCount: parseInt(document.getElementById('sf-ag-student-count').value, 10) || 0,
+                discountPct: parseFloat(document.getElementById('sf-ag-discount-pct').value) || 0,
+                taxPct: parseFloat(document.getElementById('sf-ag-tax-pct').value) || 0,
+                subtotal: calc.subtotal,
+                discountAmt: calc.discountAmt,
+                taxableAmt: calc.taxableAmt,
+                taxAmt: calc.taxAmt,
+                netTotal: calc.netTotal,
+                status: document.getElementById('sf-ag-status').value,
+                notes: document.getElementById('sf-ag-notes').value.trim()
+            };
+        }
+
+        var contractHTML =
+            '<div style="max-width: 800px; margin: 0 auto; padding: 24px; font-family: Inter, Arial, sans-serif; color: #1e293b;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #2563eb; padding-bottom:16px; margin-bottom:24px;">' +
+                    '<div>' +
+                        '<h1 style="margin:0; font-size:24px; color:#1e3a8a;">CTRL SHIFT SOLUTIONS</h1>' +
+                        '<p style="margin:4px 0 0 0; font-size:13px; color:#64748b;">Software as a Service (SaaS) Agreement</p>' +
+                    '</div>' +
+                    '<div style="text-align:right;">' +
+                        '<h3 style="margin:0; font-size:16px; color:#2563eb;">' + escapeHTML(ag.refNo) + '</h3>' +
+                        '<p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Date: ' + new Date().toLocaleDateString() + '</p>' +
+                    '</div>' +
+                '</div>' +
+
+                '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:24px;">' +
+                    '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">' +
+                        '<h4 style="margin:0 0 8px 0; color:#1e3a8a; font-size:13px; text-transform:uppercase;">PROVIDER (LICENSOR)</h4>' +
+                        '<strong style="font-size:14px;">CTRL Shift Solutions Private Limited</strong><br>' +
+                        '<span style="font-size:12px; color:#475569;">Email: support@ctrlshifts.in</span><br>' +
+                        '<span style="font-size:12px; color:#475569;">Web: ctrlshifts.in</span>' +
+                    '</div>' +
+                    '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">' +
+                        '<h4 style="margin:0 0 8px 0; color:#1e3a8a; font-size:13px; text-transform:uppercase;">CLIENT (TENANT)</h4>' +
+                        '<strong style="font-size:14px;">' + escapeHTML(ag.schoolName) + '</strong><br>' +
+                        '<span style="font-size:12px; color:#475569;">Plan: ' + escapeHTML(ag.plan) + ' (' + escapeHTML(ag.cycle) + ')</span><br>' +
+                        '<span style="font-size:12px; color:#475569;">Contract Term: ' + escapeHTML(ag.startDate || '—') + ' to ' + escapeHTML(ag.endDate || '—') + '</span>' +
+                    '</div>' +
+                '</div>' +
+
+                '<h3 style="color:#1e3a8a; font-size:16px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">1. Commercial &amp; Pricing Schedule</h3>' +
+                '<table style="width:100%; border-collapse:collapse; margin-bottom:24px; font-size:13px;">' +
+                    '<thead>' +
+                        '<tr style="background:#1e3a8a; color:#fff;">' +
+                            '<th style="padding:10px; text-align:left;">Description</th>' +
+                            '<th style="padding:10px; text-align:center;">Qty / Units</th>' +
+                            '<th style="padding:10px; text-align:right;">Rate (₹)</th>' +
+                            '<th style="padding:10px; text-align:right;">Amount (₹)</th>' +
+                        '</tr>' +
+                    '</thead>' +
+                    '<tbody>' +
+                        '<tr style="border-bottom:1px solid #e2e8f0;">' +
+                            '<td style="padding:10px;">Base Platform Subscription License (' + escapeHTML(ag.plan) + ')</td>' +
+                            '<td style="padding:10px; text-align:center;">1 Year</td>' +
+                            '<td style="padding:10px; text-align:right;">₹' + Number(ag.baseFee || 0).toLocaleString('en-IN') + '</td>' +
+                            '<td style="padding:10px; text-align:right;">₹' + Number(ag.baseFee || 0).toLocaleString('en-IN') + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom:1px solid #e2e8f0;">' +
+                            '<td style="padding:10px;">Student Active User Licenses</td>' +
+                            '<td style="padding:10px; text-align:center;">' + (ag.studentCount || 0) + ' Students</td>' +
+                            '<td style="padding:10px; text-align:right;">₹' + (ag.perStudentFee || 0) + '/student</td>' +
+                            '<td style="padding:10px; text-align:right;">₹' + Number((ag.perStudentFee || 0) * (ag.studentCount || 0)).toLocaleString('en-IN') + '</td>' +
+                        '</tr>' +
+                        '<tr style="border-bottom:1px solid #e2e8f0; font-weight:600; background:#f8fafc;">' +
+                            '<td colspan="3" style="padding:10px; text-align:right;">Subtotal</td>' +
+                            '<td style="padding:10px; text-align:right;">₹' + Number(ag.subtotal || 0).toLocaleString('en-IN') + '</td>' +
+                        '</tr>' +
+                        (ag.discountAmt > 0 ?
+                        '<tr style="border-bottom:1px solid #e2e8f0; color:#dc2626;">' +
+                            '<td colspan="3" style="padding:10px; text-align:right;">Discount (' + (ag.discountPct || 0) + '%)</td>' +
+                            '<td style="padding:10px; text-align:right;">-₹' + Number(ag.discountAmt || 0).toLocaleString('en-IN') + '</td>' +
+                        '</tr>' : '') +
+                        '<tr style="border-bottom:1px solid #e2e8f0;">' +
+                            '<td colspan="3" style="padding:10px; text-align:right;">GST / Applicable Taxes (' + (ag.taxPct || 0) + '%)</td>' +
+                            '<td style="padding:10px; text-align:right;">+₹' + Number(ag.taxAmt || 0).toLocaleString('en-IN') + '</td>' +
+                        '</tr>' +
+                        '<tr style="background:#1e3a8a; color:#fff; font-size:15px; font-weight:700;">' +
+                            '<td colspan="3" style="padding:12px; text-align:right;">Total Annual Payable Amount</td>' +
+                            '<td style="padding:12px; text-align:right;">₹' + Number(ag.netTotal || 0).toLocaleString('en-IN') + '</td>' +
+                        '</tr>' +
+                    '</tbody>' +
+                '</table>' +
+
+                '<h3 style="color:#1e3a8a; font-size:16px; border-bottom:1px solid #cbd5e1; padding-bottom:6px;">2. Terms &amp; Conditions</h3>' +
+                '<p style="font-size:13px; line-height:1.6; color:#475569;">' +
+                    (ag.notes ? escapeHTML(ag.notes) : 'Standard terms apply. Payment is due within 15 days of invoice date. CTRL Shift Solutions guarantees 99.9% uptime SLA.') +
+                '</p>' +
+
+                '<div style="display:flex; justify-content:space-between; margin-top:60px; padding-top:20px; border-top:1px solid #e2e8f0;">' +
+                    '<div style="text-align:center; width:220px;">' +
+                        '<div style="height:40px; border-bottom:1px dashed #94a3b8; margin-bottom:8px;"></div>' +
+                        '<strong style="font-size:13px;">Authorized Signatory</strong><br>' +
+                        '<span style="font-size:11px; color:#64748b;">CTRL Shift Solutions</span>' +
+                    '</div>' +
+                    '<div style="text-align:center; width:220px;">' +
+                        '<div style="height:40px; border-bottom:1px dashed #94a3b8; margin-bottom:8px;"></div>' +
+                        '<strong style="font-size:13px;">Authorized Signatory</strong><br>' +
+                        '<span style="font-size:11px; color:#64748b;">' + escapeHTML(ag.schoolName) + '</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        var fullHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SaaS_Agreement_' + ag.refNo + '</title>' +
+            '<style>@page{size:A4 portrait;margin:12mm;} body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;}</style>' +
+            '</head><body>' + contractHTML + '</body></html>';
+
+        var blob = new Blob([fullHtml], {type: 'text/html'});
+        var url = URL.createObjectURL(blob);
+        var printWin = window.open(url, '_blank', 'width=900,height=800');
+        if (printWin) {
+            printWin.onload = function() {
+                printWin.print();
+            };
+        } else {
+            showToast('Popup blocked. Please allow popups to print agreement.', 'warning');
+        }
+    }
+
+    /** Delete an agreement entry */
+    async function deleteAgreement(agreementId) {
+        if (!confirm('Are you sure you want to delete this agreement contract?')) return;
+
+        await ensureDataLoaded();
+        var data = loadData();
+        if (data.agreements) {
+            data.agreements = data.agreements.filter(function(a) { return a.id !== agreementId; });
+            await saveData(data);
+            showToast('Agreement deleted.', 'info');
+            renderBillingTab();
+        }
     }
 
     /** Render the Recovery Center soft-deleted records. */
@@ -1502,6 +2011,8 @@ const db = getFirestore(app);
         document.getElementById('sf-admin-password').placeholder = '••••••••';
         document.getElementById('sf-admin-password').required = true;
 
+        var requestId = ++currentEditRequestId;
+
         if (schoolId) {
             // Edit mode — populate fields
             var data = loadData();
@@ -1535,45 +2046,127 @@ const db = getFirestore(app);
                 }
             });
 
-            // Fetch settings configuration from tenant_data
-            try {
-                showToast('Fetching settings...', 'info');
-                const tenantSnap = await getDoc(doc(db, 'tenant_data', schoolId));
-                if (tenantSnap.exists()) {
-                    var tenantData = tenantSnap.data();
-                    var s = tenantData.settings || {};
-                    
-                    document.getElementById('sf-affiliation').value = (s.schoolInfo && s.schoolInfo.affiliation) || '';
-                    document.getElementById('sf-udise-code').value = (s.schoolInfo && s.schoolInfo.udiseCode) || '';
-                    document.getElementById('sf-admin-username').value = s.adminUsername || '';
-                    document.getElementById('sf-admin-password').value = '********'; // masked
-                    document.getElementById('sf-admin-password').required = false; // not required if unchanged
-                    document.getElementById('sf-admin-email').value = s.adminEmail || '';
-                    
-                    currentAdminPasswordHash = s.adminPassword || '';
-                    
-                    formClasses = s.classes || [];
-                    formSections = s.sections || {};
-                    formFeeStructure = s.feeStructure || {};
-                    formExtraCharges = s.extraCharges || [];
-                    
-                    // Collect fee head keys
-                    var headsSet = new Set(["tuition", "transport", "exam"]);
-                    Object.values(formFeeStructure).forEach(function(clsFees) {
-                        Object.keys(clsFees).forEach(function(k) {
-                            headsSet.add(k);
-                        });
-                    });
-                    formFeeHeads = Array.from(headsSet);
-                } else {
-                    document.getElementById('sf-admin-username').value = 'admin';
-                    document.getElementById('sf-admin-password').value = '';
-                    document.getElementById('sf-admin-email').value = school.email || '';
-                }
-            } catch(e) {
-                console.error('Failed to load school settings from tenant_data:', e);
-                showToast('Could not load detailed setup from Cloud Firestore.', 'warning');
+            // Show modal IMMEDIATELY so user never waits on blank screen
+            modalOverlay.classList.add('active');
+
+            // Show loading placeholder in classes section
+            var classesContainer = document.getElementById('sf-classes-container');
+            if (classesContainer) {
+                classesContainer.innerHTML = '<div style="text-align:center; padding:16px; color:#60a5fa; font-size:13px; font-weight:600;"><span class="material-icons-round" style="animation:spin 1s linear infinite; vertical-align:middle; margin-right:6px;">sync</span> Fetching settings from cloud...</div>';
             }
+
+            // Fetch settings configuration from tenant_data asynchronously
+            (async function() {
+                var isTimedOut = false;
+                var timeoutTimer = setTimeout(function() {
+                    isTimedOut = true;
+                    if (requestId !== currentEditRequestId) return;
+                    if (classesContainer) {
+                        classesContainer.innerHTML = '<div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); padding:12px; border-radius:8px; margin-bottom:12px;">' +
+                            '<div style="font-weight:700; color:#facc15; font-size:13px; margin-bottom:4px;">⚠️ Taking longer than expected</div>' +
+                            '<p style="margin:0 0 8px 0; font-size:12px; color:rgba(255,255,255,0.7);">Cloud storage did not respond within 8 seconds.</p>' +
+                            '<button type="button" class="sa-btn sa-btn-secondary sa-btn-xs" id="btn-retry-edit-fetch">🔄 Retry Fetching Settings</button>' +
+                            '</div>';
+                        var retryBtn = document.getElementById('btn-retry-edit-fetch');
+                        if (retryBtn) {
+                            retryBtn.addEventListener('click', function() { showSchoolModal(schoolId); });
+                        }
+                    }
+                }, 8000);
+
+                try {
+                    const tenantSnap = await getDoc(doc(db, 'tenant_data', schoolId));
+                    clearTimeout(timeoutTimer);
+                    if (isTimedOut || requestId !== currentEditRequestId) return;
+
+                    if (tenantSnap.exists()) {
+                        var tenantData = tenantSnap.data();
+                        var s = tenantData.settings || {};
+                        
+                        document.getElementById('sf-affiliation').value = (s.schoolInfo && s.schoolInfo.affiliation) || '';
+                        document.getElementById('sf-udise-code').value = (s.schoolInfo && s.schoolInfo.udiseCode) || '';
+                        document.getElementById('sf-admin-username').value = s.adminUsername || '';
+                        document.getElementById('sf-admin-password').value = '********'; // masked
+                        document.getElementById('sf-admin-password').required = false;
+                        document.getElementById('sf-admin-email').value = s.adminEmail || '';
+                        
+                        currentAdminPasswordHash = s.adminPassword || '';
+                        
+                        formClasses = s.classes || [];
+                        formSections = s.sections || {};
+                        formFeeStructure = s.feeStructure || {};
+                        formExtraCharges = s.extraCharges || [];
+                        
+                        // Collect fee head keys
+                        var headsSet = new Set(["tuition", "transport", "exam"]);
+                        Object.values(formFeeStructure).forEach(function(clsFees) {
+                            Object.keys(clsFees).forEach(function(k) {
+                                headsSet.add(k);
+                            });
+                        });
+                        formFeeHeads = Array.from(headsSet);
+
+                        renderClassesSection();
+                        renderFeesSection();
+                        renderExtraChargesSection();
+
+                    } else {
+                        // School has no tenant_data (e.g. Dugda School)
+                        document.getElementById('sf-admin-username').value = 'admin';
+                        document.getElementById('sf-admin-password').value = '';
+                        document.getElementById('sf-admin-email').value = school.email || '';
+
+                        formClasses = [];
+                        formSections = {};
+                        formFeeStructure = {};
+                        formExtraCharges = [];
+                        renderExtraChargesSection();
+                        renderFeesSection();
+
+                        if (classesContainer) {
+                            classesContainer.innerHTML = '<div style="background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); padding:16px; border-radius:8px; margin-bottom:12px;">' +
+                                '<div style="font-weight:700; color:#facc15; font-size:14px; margin-bottom:4px;">⚠️ Missing Cloud Configuration</div>' +
+                                '<p style="margin:0 0 12px 0; color:rgba(255,255,255,0.8); font-size:13px;">This school has no ERP tenant settings configured in Firestore yet.</p>' +
+                                '<button type="button" class="sa-btn sa-btn-primary sa-btn-sm" id="btn-init-default-settings" style="display:inline-flex; align-items:center; gap:6px;">' +
+                                '<span class="material-icons-round" style="font-size:16px;">auto_fix_high</span> Initialize Default Settings</button>' +
+                                '</div>';
+
+                            var initBtn = document.getElementById('btn-init-default-settings');
+                            if (initBtn) {
+                                initBtn.addEventListener('click', function() {
+                                    formClasses = ["Nursery", "LKG", "UKG", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+                                    formSections = {};
+                                    formFeeStructure = {};
+                                    formClasses.forEach(function(c) {
+                                        formSections[c] = ["A"];
+                                        formFeeStructure[c] = { tuition: 500, transport: 0, exam: 100 };
+                                    });
+                                    formFeeHeads = ["tuition", "transport", "exam"];
+                                    renderClassesSection();
+                                    renderFeesSection();
+                                    showToast('Default settings initialized! Review and save.', 'info');
+                                });
+                            }
+                        }
+                    }
+                } catch(e) {
+                    clearTimeout(timeoutTimer);
+                    if (requestId !== currentEditRequestId) return;
+                    console.error('Failed to load school settings from tenant_data:', e);
+                    if (classesContainer) {
+                        classesContainer.innerHTML = '<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); padding:12px; border-radius:8px;">' +
+                            '<div style="font-weight:700; color:#f87171; font-size:13px; margin-bottom:4px;">Failed to load cloud settings</div>' +
+                            '<p style="margin:0 0 8px 0; font-size:12px; color:rgba(255,255,255,0.7);">' + escapeHTML(e.message || 'Cloud Firestore error') + '</p>' +
+                            '<button type="button" class="sa-btn sa-btn-secondary sa-btn-xs" id="btn-retry-edit-error">🔄 Retry Loading Settings</button>' +
+                            '</div>';
+                        var retryBtn = document.getElementById('btn-retry-edit-error');
+                        if (retryBtn) {
+                            retryBtn.addEventListener('click', function() { showSchoolModal(schoolId); });
+                        }
+                    }
+                }
+            })();
+
         } else {
             modalTitleText.textContent = 'Onboard New School';
             // Default: check first 4 features
@@ -1593,17 +2186,19 @@ const db = getFirestore(app);
             document.getElementById('sf-admin-email').value = '';
             document.getElementById('sf-affiliation').value = '';
             document.getElementById('sf-udise-code').value = '';
+
+            renderClassesSection();
+            renderFeesSection();
+            renderExtraChargesSection();
+
+            modalOverlay.classList.add('active');
         }
 
-        renderClassesSection();
-        renderFeesSection();
-        renderExtraChargesSection();
-
-        modalOverlay.classList.add('active');
         setTimeout(function () {
             document.getElementById('sf-name').focus();
         }, 150);
     }
+
 
     /** Save (create or update) school from modal form. */
     async function saveSchool() {
@@ -2167,6 +2762,10 @@ const db = getFirestore(app);
                     }
                 });
 
+                // Auto close mobile drawer on tab navigation
+                if (sidebar) sidebar.classList.remove('mobile-open');
+                if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+
                 // Load active tab data
                 if (targetTab === 'recovery') {
                     renderRecoveryCenter();
@@ -2176,7 +2775,29 @@ const db = getFirestore(app);
                     renderDashboard();
                 } else if (targetTab === 'leads') {
                     renderLeadsTab();
+                } else if (targetTab === 'archived') {
+                    renderArchivedSchools();
+                } else if (targetTab === 'billing') {
+                    renderBillingTab();
                 }
+            });
+        }
+
+        // Mobile Sidebar Drawer Toggle
+        var mobileToggleBtn = document.getElementById('sa-mobile-toggle');
+        var sidebarOverlay = document.getElementById('sa-sidebar-overlay');
+        var sidebar = document.querySelector('.sa-sidebar');
+
+        if (mobileToggleBtn && sidebar) {
+            mobileToggleBtn.addEventListener('click', function () {
+                sidebar.classList.toggle('mobile-open');
+                if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
+            });
+        }
+        if (sidebarOverlay && sidebar) {
+            sidebarOverlay.addEventListener('click', function () {
+                sidebar.classList.remove('mobile-open');
+                sidebarOverlay.classList.remove('active');
             });
         }
 
@@ -2527,6 +3148,9 @@ const db = getFirestore(app);
                     case 'impersonate':
                         impersonateSchool(schoolId, role);
                         break;
+                    case 'archive':
+                        showArchiveModal(schoolId);
+                        break;
                 }
                 return;
             }
@@ -2538,6 +3162,115 @@ const db = getFirestore(app);
                 openSchoolProfileModal(sid);
             }
         });
+
+        // Archive modal listeners
+        var archiveModalOverlay = document.getElementById('sa-archive-modal-overlay');
+        var archiveCloseBtn = document.getElementById('sa-archive-modal-close');
+        var archiveCancelBtn = document.getElementById('sa-archive-modal-cancel');
+        var archiveConfirmBtn = document.getElementById('sa-archive-modal-confirm');
+        var archivedSearchInput = document.getElementById('sa-archived-search');
+        var archivedTbody = document.getElementById('sa-archived-tbody');
+
+        if (archiveCloseBtn && archiveModalOverlay) {
+            archiveCloseBtn.addEventListener('click', function() {
+                archiveModalOverlay.classList.remove('active');
+            });
+        }
+        if (archiveCancelBtn && archiveModalOverlay) {
+            archiveCancelBtn.addEventListener('click', function() {
+                archiveModalOverlay.classList.remove('active');
+            });
+        }
+        if (archiveConfirmBtn) {
+            archiveConfirmBtn.addEventListener('click', function() {
+                confirmArchiveSchool();
+            });
+        }
+        if (archivedSearchInput) {
+            archivedSearchInput.addEventListener('input', function() {
+                renderArchivedSchools();
+            });
+        }
+        if (archivedTbody) {
+            archivedTbody.addEventListener('click', function(e) {
+                var restoreBtn = e.target.closest('.btn-restore-school');
+                if (restoreBtn) {
+                    var sid = restoreBtn.getAttribute('data-school-id');
+                    if (sid) restoreSchool(sid);
+                }
+            });
+        }
+
+        // Billing & Agreement event listeners
+        var btnNewAgreement = document.getElementById('sa-btn-new-agreement');
+        var agModalOverlay = document.getElementById('sa-agreement-modal-overlay');
+        var agModalClose = document.getElementById('sa-ag-modal-close');
+        var agModalCancel = document.getElementById('sa-ag-modal-cancel');
+        var agBtnSave = document.getElementById('sa-ag-btn-save');
+        var agBtnExport = document.getElementById('sa-ag-btn-export');
+        var agSearchInput = document.getElementById('sa-billing-search');
+        var agTbody = document.getElementById('sa-agreements-tbody');
+
+        if (btnNewAgreement) {
+            btnNewAgreement.addEventListener('click', function() {
+                showAgreementModal(null);
+            });
+        }
+        if (agModalClose && agModalOverlay) {
+            agModalClose.addEventListener('click', function() {
+                agModalOverlay.classList.remove('active');
+            });
+        }
+        if (agModalCancel && agModalOverlay) {
+            agModalCancel.addEventListener('click', function() {
+                agModalOverlay.classList.remove('active');
+            });
+        }
+        if (agBtnSave) {
+            agBtnSave.addEventListener('click', function(e) {
+                e.preventDefault();
+                saveAgreement();
+            });
+        }
+        if (agBtnExport) {
+            agBtnExport.addEventListener('click', function(e) {
+                e.preventDefault();
+                exportAgreementPDF(null);
+            });
+        }
+        if (agSearchInput) {
+            agSearchInput.addEventListener('input', function() {
+                renderBillingTab();
+            });
+        }
+
+        // Pricing inputs change listener for live calculations
+        ['sf-ag-base-fee', 'sf-ag-per-student-fee', 'sf-ag-student-count', 'sf-ag-discount-pct', 'sf-ag-tax-pct'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', updateAgreementLivePricing);
+            }
+        });
+
+        // Agreements table action delegation
+        if (agTbody) {
+            agTbody.addEventListener('click', function(e) {
+                var editBtn = e.target.closest('.btn-edit-ag');
+                var printBtn = e.target.closest('.btn-print-ag');
+                var deleteBtn = e.target.closest('.btn-delete-ag');
+
+                if (editBtn) {
+                    var agId = editBtn.getAttribute('data-id');
+                    showAgreementModal(agId);
+                } else if (printBtn) {
+                    var agId = printBtn.getAttribute('data-id');
+                    exportAgreementPDF(agId);
+                } else if (deleteBtn) {
+                    var agId = deleteBtn.getAttribute('data-id');
+                    deleteAgreement(agId);
+                }
+            });
+        }
 
         // Initialize feature dependencies
         setupFeatureDependencies();

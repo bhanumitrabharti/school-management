@@ -209,21 +209,72 @@
     .mc-paused .sa-metric-value { background: linear-gradient(135deg, #ef4444, #f87171); -webkit-background-clip: text; background-clip: text; }
     .sa-metric-label { font-size: 12px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 
-    /* ---- RESPONSIVE ---- */
+    /* ---- MOBILE NAVIGATION & RESPONSIVE ---- */
+    .sa-mobile-toggle {
+      display: none;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      margin-right: 8px;
+    }
+    .sa-mobile-toggle:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .sa-sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 998;
+    }
+    .sa-sidebar-overlay.active {
+      display: block;
+    }
+
     @media (max-width: 1024px) {
       .sa-metrics-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 768px) {
-      .sa-content { padding: 20px 16px; }
+      .sa-mobile-toggle { display: flex !important; }
       .sa-header { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+      .sa-header-left h2 { font-size: 1rem; }
+      .sa-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 999;
+        width: 260px;
+        background: #111827;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+      }
+      .sa-sidebar.mobile-open { transform: translateX(0); }
+      .sa-main { padding: 16px; }
+      .sa-metrics-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+      .sa-action-bar { flex-direction: column; align-items: stretch !important; gap: 12px !important; }
+      .sa-search-wrapper { width: 100%; }
+      .sa-search-wrapper input { width: 100%; }
+      .sa-table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .sa-table { min-width: 600px; }
+      .sa-modal { width: 95vw !important; max-height: 90vh !important; margin: 0 auto !important; border-radius: 12px !important; }
+      .sa-modal-body { max-height: 65vh; overflow-y: auto; }
       .sa-expand-inner { grid-template-columns: 1fr; }
       .sa-modal-form-grid { grid-template-columns: 1fr; }
       .sa-features-grid { grid-template-columns: 1fr; }
-      .sa-search-wrapper { width: 100%; }
-      .sa-action-bar { flex-direction: column; align-items: stretch; }
       .sa-login-card { margin: 16px; padding: 32px 24px; }
-      .sa-metrics-grid { grid-template-columns: 1fr; }
-      .sa-actions { flex-direction: column; }
+      .sa-actions { flex-wrap: wrap; gap: 6px; }
+    }
+    @media (max-width: 480px) {
+      .sa-metrics-grid { grid-template-columns: 1fr !important; }
+      .sa-header-right button span:not(.material-icons-round) { display: none; }
     }
 
     /* ---- LOGO ENHANCEMENTS ---- */
@@ -973,6 +1024,9 @@
   <div id="sa-dashboard" class="sa-dashboard">
     <header class="sa-header">
       <div class="sa-header-left">
+        <button class="sa-mobile-toggle" id="sa-mobile-toggle" aria-label="Toggle navigation">
+          <span class="material-icons-round">menu</span>
+        </button>
         <img src="./ctrl-shift-logo.png" class="sa-logo" alt="Logo">
         <div>
           <h2>CTRL Shift Solutions</h2>
@@ -997,7 +1051,9 @@
           Logout
         </button>
       </div>
-    </header>    <div class="sa-wrapper">
+    </header>
+    <div class="sa-wrapper">
+      <div class="sa-sidebar-overlay" id="sa-sidebar-overlay"></div>
       <aside class="sa-sidebar">
         <nav class="sa-sidebar-nav">
           <a class="sa-nav-item active" data-tab="dashboard">
@@ -1007,6 +1063,14 @@
           <a class="sa-nav-item" data-tab="leads">
             <span class="material-icons-round">contact_mail</span>
             <span>Leads & Demos</span>
+          </a>
+          <a class="sa-nav-item" data-tab="archived">
+            <span class="material-icons-round">archive</span>
+            <span>Archived Schools</span>
+          </a>
+          <a class="sa-nav-item" data-tab="billing">
+            <span class="material-icons-round">receipt_long</span>
+            <span>Billing & Agreements</span>
           </a>
           <a class="sa-nav-item" data-tab="recovery">
             <span class="material-icons-round">restore_from_trash</span>
@@ -1194,7 +1258,243 @@
             </table>
           </div>
         </div>
+
+        <!-- Archived Schools Tab -->
+        <div id="tab-archived" class="sa-tab-page">
+          <div class="sa-section-title">
+            <span class="material-icons-round">archive</span>
+            Archived Schools
+          </div>
+          <p style="color:rgba(255,255,255,0.5); font-size:13px; margin-bottom:20px; margin-top:-16px;" class="sa-tab-subtitle">
+            View and restore archived school tenants. Archived records preserve all tenant settings and data intact.
+          </p>
+
+          <div class="sa-action-bar" style="margin-bottom: 20px;">
+            <div class="sa-search-wrapper">
+              <span class="material-icons-round">search</span>
+              <input type="text" id="sa-archived-search" placeholder="Search archived schools...">
+            </div>
+          </div>
+
+          <div class="sa-table-card">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>School Name</th>
+                  <th>Subdomain</th>
+                  <th>Archived Date</th>
+                  <th>Archived By</th>
+                  <th>Archive Reason</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-archived-tbody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Billing & Agreement Generator Tab -->
+        <div id="tab-billing" class="sa-tab-page">
+          <div class="sa-section-title">
+            <span class="material-icons-round">receipt_long</span>
+            Billing &amp; Agreement Generator
+          </div>
+          <p style="color:rgba(255,255,255,0.5); font-size:13px; margin-bottom:20px; margin-top:-16px;" class="sa-tab-subtitle">
+            Generate SaaS contract agreements, billing invoices, and manage subscription pricing for school tenants.
+          </p>
+
+          <div class="sa-action-bar" style="margin-bottom: 20px;">
+            <div class="sa-search-wrapper">
+              <span class="material-icons-round">search</span>
+              <input type="text" id="sa-billing-search" placeholder="Search agreements...">
+            </div>
+            <button class="sa-btn sa-btn-primary sa-btn-sm" id="sa-btn-new-agreement">
+              <span class="material-icons-round" style="font-size:16px;">add</span>
+              Generate New Agreement
+            </button>
+          </div>
+
+          <div class="sa-table-card">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>Ref No</th>
+                  <th>School Name</th>
+                  <th>Plan &amp; Contract</th>
+                  <th>Duration</th>
+                  <th>Total Amount</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-agreements-tbody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
       </main>
+    </div>
+  </div>
+
+  <!-- ==================== ARCHIVE CONFIRMATION MODAL ==================== -->
+  <div id="sa-archive-modal-overlay" class="sa-modal-overlay">
+    <div class="sa-modal" style="max-width: 500px;">
+      <div class="sa-modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span class="material-icons-round" style="color:#ef4444;">archive</span>
+          <span>Archive School Tenant</span>
+        </h3>
+        <button class="sa-modal-close" id="sa-archive-modal-close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="sa-modal-body" style="padding: 20px 24px;">
+        <input type="hidden" id="sa-archive-school-id" value="">
+        <p style="font-size:14px; margin-bottom:12px; color:rgba(255,255,255,0.85);">
+          Are you sure you want to archive <strong id="sa-archive-school-name" style="color:#fff;"></strong>?
+        </p>
+        <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 13px; color: #fca5a5;">
+          <span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">info</span>
+          Archiving hides this school from active directory dashboard. School data &amp; ERP settings in <code>tenant_data</code> will remain untouched. You can restore it anytime from the <strong>Archived Schools</strong> tab.
+        </div>
+        <div class="sa-modal-form-group full-width">
+          <label for="sa-archive-reason" style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Reason for Archiving (Optional)</label>
+          <textarea id="sa-archive-reason" rows="3" class="sa-form-control" placeholder="e.g. Contract ended, Request from management, Subscription expired" style="width:100%; box-sizing:border-box; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff; font-family:inherit;"></textarea>
+        </div>
+      </div>
+      <div class="sa-modal-footer" style="display:flex; justify-content:flex-end; gap:12px; padding:16px 24px; border-top:1px solid rgba(255,255,255,0.1);">
+        <button class="sa-btn sa-btn-secondary" id="sa-archive-modal-cancel">Cancel</button>
+        <button class="sa-btn sa-btn-danger" id="sa-archive-modal-confirm" style="background:#ef4444; color:#fff;">
+          <span class="material-icons-round" style="font-size:16px;">archive</span> Archive School
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== AGREEMENT GENERATOR MODAL ==================== -->
+  <div id="sa-agreement-modal-overlay" class="sa-modal-overlay">
+    <div class="sa-modal" style="max-width: 850px; width: 90vw;">
+      <div class="sa-modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span class="material-icons-round" style="color:#60a5fa;">receipt_long</span>
+          <span id="sa-ag-modal-title">Generate SaaS Agreement / Contract</span>
+        </h3>
+        <button class="sa-modal-close" id="sa-ag-modal-close">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="sa-modal-body" style="padding: 20px 24px; max-height: 75vh; overflow-y: auto;">
+        <form id="sa-agreement-form" autocomplete="off">
+          <input type="hidden" id="sf-ag-id" value="">
+
+          <div class="sa-modal-form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+            <div class="sa-modal-form-group">
+              <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Target School Tenant *</label>
+              <select id="sf-ag-school-id" class="sa-form-control" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:#111827; color:#fff;" required>
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div class="sa-modal-form-group">
+              <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Agreement Ref No.</label>
+              <input type="text" id="sf-ag-ref-no" class="sa-form-control" placeholder="Auto-generated e.g. AGR-2026-001" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;" readonly>
+            </div>
+            <div class="sa-modal-form-group">
+              <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Contract Plan Type</label>
+              <select id="sf-ag-plan" class="sa-form-control" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:#111827; color:#fff;">
+                <option value="Basic">Basic Plan (Standard ERP)</option>
+                <option value="Pro" selected>Pro Plan (Advanced Modules)</option>
+                <option value="Premium">Premium Plan (Full Suite + Support)</option>
+                <option value="Enterprise">Enterprise Custom</option>
+              </select>
+            </div>
+            <div class="sa-modal-form-group">
+              <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Billing Cycle</label>
+              <select id="sf-ag-cycle" class="sa-form-control" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:#111827; color:#fff;">
+                <option value="Annual">Annual (1 Year)</option>
+                <option value="Semi-Annual">Semi-Annual (6 Months)</option>
+                <option value="Quarterly">Quarterly (3 Months)</option>
+              </select>
+            </div>
+            <div class="sa-modal-form-group">
+              <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Start Date</label>
+              <input type="date" id="sf-ag-start-date" class="sa-form-control" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:#111827; color:#fff;">
+            </div>
+            <div class="sa-modal-form-group">
+              <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">End Date</label>
+              <input type="date" id="sf-ag-end-date" class="sa-form-control" style="width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:#111827; color:#fff;">
+            </div>
+          </div>
+
+          <!-- PRICING & COMMERCIAL TERMS -->
+          <div style="margin-top:20px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px;">
+            <h4 style="margin:0 0 12px 0; color:#60a5fa; font-size:14px; display:flex; align-items:center; gap:6px;">
+              <span class="material-icons-round" style="font-size:18px;">payments</span> Commercial &amp; Pricing Structure
+            </h4>
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px;">
+              <div>
+                <label style="font-size:12px; opacity:0.8; display:block; margin-bottom:4px;">Base Platform Fee (₹)</label>
+                <input type="number" id="sf-ag-base-fee" value="25000" class="sa-form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+              </div>
+              <div>
+                <label style="font-size:12px; opacity:0.8; display:block; margin-bottom:4px;">Per Student Fee (₹/yr)</label>
+                <input type="number" id="sf-ag-per-student-fee" value="50" class="sa-form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+              </div>
+              <div>
+                <label style="font-size:12px; opacity:0.8; display:block; margin-bottom:4px;">Estimated Students</label>
+                <input type="number" id="sf-ag-student-count" value="500" class="sa-form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+              </div>
+              <div>
+                <label style="font-size:12px; opacity:0.8; display:block; margin-bottom:4px;">Discount (%)</label>
+                <input type="number" id="sf-ag-discount-pct" value="10" min="0" max="100" class="sa-form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+              </div>
+              <div>
+                <label style="font-size:12px; opacity:0.8; display:block; margin-bottom:4px;">GST / Tax (%)</label>
+                <input type="number" id="sf-ag-tax-pct" value="18" min="0" max="30" class="sa-form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff;">
+              </div>
+              <div>
+                <label style="font-size:12px; opacity:0.8; display:block; margin-bottom:4px;">Agreement Status</label>
+                <select id="sf-ag-status" class="sa-form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:#111827; color:#fff;">
+                  <option value="Draft">Draft</option>
+                  <option value="Active" selected>Active</option>
+                  <option value="Sent">Sent to Client</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- LIVE PRICING SUMMARY BOX -->
+            <div style="margin-top:16px; background:rgba(37,99,235,0.1); border:1px solid rgba(37,99,235,0.25); border-radius:8px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div>
+                <span style="font-size:12px; color:rgba(255,255,255,0.7); display:block;">Calculation Breakdown:</span>
+                <span style="font-size:12px; color:#93c5fd;" id="sa-ag-calc-breakdown">Base ₹25,000 + (500 × ₹50 = ₹25,000) - 10% Disc + 18% GST</span>
+              </div>
+              <div style="text-align:right;">
+                <span style="font-size:12px; color:rgba(255,255,255,0.7); display:block;">Net Payable Amount:</span>
+                <span style="font-size:20px; font-weight:800; color:#34d399;" id="sa-ag-net-total">₹53,100</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SPECIAL TERMS & NOTES -->
+          <div class="sa-modal-form-group full-width" style="margin-top:16px;">
+            <label style="font-size:13px; font-weight:600; margin-bottom:6px; display:block;">Custom Terms &amp; Payment Notes</label>
+            <textarea id="sf-ag-notes" rows="3" class="sa-form-control" placeholder="Enter special payment conditions, milestone schedules, or SLA commitments..." style="width:100%; box-sizing:border-box; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.2); color:#fff; font-family:inherit;"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="sa-modal-footer" style="display:flex; justify-content:space-between; align-items:center; padding:16px 24px; border-top:1px solid rgba(255,255,255,0.1);">
+        <button class="sa-btn sa-btn-secondary" id="sa-ag-modal-cancel">Cancel</button>
+        <div style="display:flex; gap:12px;">
+          <button class="sa-btn sa-btn-secondary" id="sa-ag-btn-export" style="border-color:#3b82f6; color:#60a5fa;">
+            <span class="material-icons-round" style="font-size:16px;">print</span> Print / Export Agreement
+          </button>
+          <button class="sa-btn sa-btn-primary" id="sa-ag-btn-save">
+            <span class="material-icons-round" style="font-size:16px;">save</span> Save Agreement
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 

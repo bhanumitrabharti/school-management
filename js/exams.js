@@ -66,12 +66,23 @@
     }
   };
 
-  function printViaBlob(htmlContent) {
-    var fullHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>&#8203;</title>' +
+  function printViaBlob(htmlContent, studentName, studentClass) {
+    var safeName = (studentName || 'Student')
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '_');
+
+    var safeClass = (studentClass || '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim();
+
+    var filename = safeName + (safeClass ? '_Class_' + safeClass : '') + '_Report_Card.pdf';
+
+    var fullHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + filename + '</title>' +
       '<link rel="preconnect" href="https://fonts.googleapis.com">' +
       '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap">' +
       '<style>' +
-      '@page{size:A4 portrait;margin:8mm;}' +
+      '@page{size:A4 portrait;margin-top:18mm;margin-bottom:8mm;margin-left:8mm;margin-right:8mm;}' +
       '* { box-sizing: border-box; }' +
       'body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;}' +
       '.marks-header th, .marks-header td {' +
@@ -90,14 +101,18 @@
       '</head><body>' + htmlContent + '</body></html>';
     var blob = new Blob([fullHtml], {type: 'text/html'});
     var url = URL.createObjectURL(blob);
-    var printWin = window.open(url, '_blank', 'width=800,height=600,toolbar=0,menubar=0,scrollbars=0,status=0');
+    var printWin = window.open(url, '_blank', 'width=900,height=700,toolbar=0,menubar=0');
     if (!printWin) {
       SchoolApp.showToast('Popup blocker prevented opening printable report card. Please allow popups.', 'warning');
       return;
     }
     printWin.onload = function() {
+      printWin.document.title = filename;
       printWin.focus();
       printWin.print();
+      setTimeout(function() {
+        URL.revokeObjectURL(url);
+      }, 5000);
     };
   }
 
@@ -467,7 +482,7 @@
         html += '<td>' + t.weightage + '%</td>';
         html += '<td>' + getStatusBadge(t.status) + '</td>';
         html += '<td><div class="table-actions" style="display:flex; gap:8px;">';
-        html += '  <button class="btn-icon exam-edit-term-btn" data-id="' + t.id + '" title="Edit Term" style="color:var(--primary)"><span class="material-icons-round">edit</span></button>';
+        html += '  <button class="btn-icon exam-edit-term-btn" data-id="' + t.id + '" title="Edit Term" style="color:var(--accent-primary)"><span class="material-icons-round">edit</span></button>';
         html += '  <button class="btn-icon exam-delete-term-btn" data-id="' + t.id + '" title="Delete Term" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
         html += '</div></td></tr>';
       });
@@ -551,7 +566,7 @@
           html += '<td>';
           if (activeTerm.status !== 'locked') {
             html += '<div class="table-actions" style="display:flex; gap:8px;">';
-            html += '  <button class="btn-icon exam-edit-subject-btn" data-id="' + sub.id + '" title="Edit Subject" style="color:var(--primary)"><span class="material-icons-round">edit</span></button>';
+            html += '  <button class="btn-icon exam-edit-subject-btn" data-id="' + sub.id + '" title="Edit Subject" style="color:var(--accent-primary)"><span class="material-icons-round">edit</span></button>';
             html += '  <button class="btn-icon exam-delete-subject-btn" data-id="' + sub.id + '" title="Delete Subject" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
             html += '</div>';
           } else {
@@ -744,7 +759,7 @@
 
         html += '<tr>';
         html += '<td>' + (idx + 1) + '</td>';
-        html += '<td><strong>' + escapeHTML(s.firstName + ' ' + s.lastName) + '</strong></td>';
+        html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></td>';
         html += '<td>' + s.rollNumber + '</td>';
         
         // Obtained input
@@ -777,7 +792,7 @@
       html += '  </tbody></table></div>';
 
       // BUG 2: Sticky save bar — always visible, regardless of subjects loading
-      html += '<div id="marks-save-bar" style="position:sticky; bottom:0; background:#fff; border-top:2px solid #1E3A8A; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; z-index:10; box-shadow:0 -4px 12px rgba(0,0,0,0.1); margin-top:8px;">';
+      html += '<div id="marks-save-bar" style="position:sticky; bottom:0; background:var(--bg-secondary); border-top:2px solid #1E3A8A; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; z-index:10; box-shadow:0 -4px 12px rgba(0,0,0,0.1); margin-top:8px;">';
       html += '  <span id="save-status" style="font-size:13px; color:#6B7280;">Auto-saves on input</span>';
       html += '  <button id="save-marks-btn" style="padding:10px 24px; font-size:14px; font-weight:700; background:#1E3A8A; color:#fff; border:none; border-radius:8px; cursor:pointer;">&#128190; Save All Marks</button>';
       html += '</div>';
@@ -905,7 +920,7 @@
     html += '<div class="form-grid mb-3" style="grid-template-columns: repeat(3, 1fr); gap:16px;">';
     
     // Total & Pass Rate
-    html += '  <div class="card p-3 flex flex-column justify-between" style="min-height:100px; border-left:4px solid var(--primary);">';
+    html += '  <div class="card p-3 flex flex-column justify-between" style="min-height:100px; border-left:4px solid var(--accent-primary);">';
     html += '    <div class="text-muted" style="font-size:12px;text-transform:uppercase;font-weight:700;">Total & Pass Rate</div>';
     html += '    <div style="font-size:24px;font-weight:800;margin:6px 0;">' + totalCount + ' <span style="font-size:14px;font-weight:400;color:var(--text-secondary);">Students</span></div>';
     html += '    <div style="font-size:13px;color:var(--success);font-weight:600;">Pass: ' + passPercent + '% (' + passCount + ' passed)</div>';
@@ -965,7 +980,7 @@
       html += '<tr class="result-expandable-row" data-student-id="' + s.id + '" style="cursor:pointer;" title="Click to view subject-wise breakdown">';
       html += '<td><strong>' + rankHtml + '</strong></td>';
       html += '<td>';
-      html += '  <div style="font-weight:600;">' + escapeHTML(s.firstName + ' ' + s.lastName) + '</div>';
+      html += '  <div style="font-weight:600;">' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</div>';
       html += '  <div style="font-size:11px;color:var(--text-secondary);">Roll: ' + s.rollNumber + '</div>';
       html += '</td>';
 
@@ -989,12 +1004,12 @@
       html += '</tr>';
 
       // Dropdown Breakdown Row (Hidden by default)
-      html += '<tr class="breakdown-details-row" id="breakdown-' + s.id + '" style="display:none; background:#fafafa;"><td colspan="7">';
+      html += '<tr class="breakdown-details-row" id="breakdown-' + s.id + '" style="display:none; background:var(--bg-tertiary);"><td colspan="7">';
       html += '  <div class="p-3" style="border:1px solid var(--border-color); border-radius:8px;">';
       html += '    <h5 style="margin-top:0;">Subject Breakdown</h5>';
       
       if (m && m.marks) {
-        html += '    <table class="data-table" style="background:#fff; margin-bottom:0;"><thead><tr><th>Subject</th><th>Full Marks</th><th>Pass Marks</th><th>Obtained</th><th>Grade</th><th>Status</th></tr></thead><tbody>';
+        html += '    <table class="data-table" style="background:var(--bg-secondary); margin-bottom:0;"><thead><tr><th>Subject</th><th>Full Marks</th><th>Pass Marks</th><th>Obtained</th><th>Grade</th><th>Status</th></tr></thead><tbody>';
         subjects.forEach(function(sub) {
           var scoreObj = m.marks[sub.id] || {};
           var obtained = scoreObj.isAbsent ? 'AB' : (scoreObj.isExempted ? 'EX' : (scoreObj.obtained !== undefined ? scoreObj.obtained : '—'));
@@ -1155,7 +1170,7 @@
         
         html += '<tr>';
         html += '<td>' + (idx + 1) + '</td>';
-        html += '<td><strong>' + escapeHTML(s.firstName + ' ' + s.lastName) + '</strong></td>';
+        html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></td>';
 
         if (statusInfo.status === 'none') {
           html += '<td class="center"><span style="color: var(--danger); font-weight: 600;">No marks</span></td>';
@@ -1252,6 +1267,13 @@
       'participation in assessments ' +
       'are recommended.',
 
+    absent_and_fail:
+      '{name} was absent in {subjects} and ' +
+      'also needs to improve in the ' +
+      'remaining weak subjects. Regular ' +
+      'attendance and consistent practice ' +
+      'are strongly recommended.',
+
     fail_result:
       '{name} needs to improve performance ' +
       'in {subjects}. Regular practice and ' +
@@ -1281,10 +1303,10 @@
     });
 
     // Analyze each mandatory subject
-    var failedMandatory = [];
     var absentMandatory = [];
-    var weakMandatory = []; // close to passing
-    var significantFail = []; // far from passing
+    var weakMandatory = []; // close to passing (<= 10% gap)
+    var significantFail = []; // far from passing (> 10% gap)
+    var allWeakSubjects = [];
 
     mandatorySubjects.forEach(function(sub) {
       var sc = savedMarks && savedMarks[sub.id];
@@ -1293,25 +1315,26 @@
       var obtained = Number(sc.obtained) || 0;
       var passMarks = sub.passMarks || 33;
       var fullMarks = sub.fullMarks || 100;
+      var gap = passMarks - obtained;
+      var gapPct = (gap / fullMarks) * 100;
 
       if (sc.isAbsent) {
         absentMandatory.push(sub.name);
-        return;
-      }
-
-      if (obtained < passMarks) {
-        var gap = passMarks - obtained;
-        var gapPercent = (gap / fullMarks) * 100;
-
-        if (gapPercent <= 10) {
-          // Slightly below (within 10%)
+      } else if (obtained < passMarks) {
+        if (gapPct <= 10) {
           weakMandatory.push(sub.name);
         } else {
-          // Significantly below (>10%)
           significantFail.push(sub.name);
-          failedMandatory.push(sub.name);
         }
+        allWeakSubjects.push(sub.name);
       }
+    });
+
+    // Combined: all failed + absent
+    var allProblematic = absentMandatory.concat(significantFail).concat(weakMandatory);
+    // Remove duplicates
+    allProblematic = allProblematic.filter(function(v, i, a) {
+      return a.indexOf(v) === i;
     });
 
     var overallResult = String(entry && entry.result ? entry.result : 'Pass').toUpperCase();
@@ -1334,40 +1357,33 @@
 
     var remark = '';
 
-    // PRIORITY 1: Absent in mandatory
-    if (absentMandatory.length > 0 && overallResult === 'FAIL') {
+    if (allProblematic.length === 0) {
+      // All passed — good/excellent logic
+      if (overallResult === 'PASS' && pct < 50) {
+        remark = fillTemplate(tpl.pass_low, []);
+      } else if (overallResult === 'PASS' && pct >= 50 && pct < 75) {
+        remark = fillTemplate(tpl.good, []);
+      } else if (overallResult === 'PASS' && pct >= 75) {
+        remark = fillTemplate(tpl.excellent, []);
+      } else {
+        remark = fillTemplate(tpl.good, []);
+      }
+    } else if (absentMandatory.length > 0 && allWeakSubjects.length > 0) {
+      // Both absent AND failed subjects
+      remark = fillTemplate(tpl.absent_and_fail, allProblematic);
+    } else if (absentMandatory.length > 0) {
+      // Only absent
       remark = fillTemplate(tpl.absent_mandatory, absentMandatory);
-    }
-    // PRIORITY 2: Significant failures
-    else if (significantFail.length > 0) {
-      if (significantFail.length >= 2) {
-        remark = fillTemplate(tpl.fail_multiple, significantFail);
-      } else {
-        remark = fillTemplate(tpl.fail_result, significantFail);
-      }
-    }
-    // PRIORITY 3: Slightly below passing
-    else if (weakMandatory.length > 0) {
-      if (weakMandatory.length >= 2) {
-        remark = fillTemplate(tpl.fail_multiple, weakMandatory);
-      } else {
-        remark = fillTemplate(tpl.fail_slightly, weakMandatory);
-      }
-    }
-    // PRIORITY 4: Pass but low marks
-    else if (overallResult === 'PASS' && pct < 50) {
-      remark = fillTemplate(tpl.pass_low, []);
-    }
-    // PRIORITY 5: Good performance
-    else if (overallResult === 'PASS' && pct >= 50 && pct < 75) {
-      remark = fillTemplate(tpl.good, []);
-    }
-    // PRIORITY 6: Excellent
-    else if (overallResult === 'PASS' && pct >= 75) {
-      remark = fillTemplate(tpl.excellent, []);
-    }
-    // Fallback
-    else {
+    } else if (allProblematic.length >= 2) {
+      // Multiple failures
+      remark = fillTemplate(tpl.fail_multiple, allProblematic);
+    } else if (significantFail.length === 1) {
+      // One significant fail
+      remark = fillTemplate(tpl.fail_significant, significantFail);
+    } else if (weakMandatory.length === 1) {
+      // One slight fail
+      remark = fillTemplate(tpl.fail_slightly, weakMandatory);
+    } else {
       remark = fillTemplate(tpl.good, []);
     }
 
@@ -1484,7 +1500,7 @@
     var remarks = (savedMarks && savedMarks.remarks) || '';
 
     var html = '';
-    html += '<div class="report-card page-wrapper" style="width:194mm; height:281mm; border:2px solid ' + primaryColor + '; padding:14px 16px; margin:0 auto; box-sizing:border-box; display:flex; flex-direction:column; background:#fff; font-family:Inter,sans-serif; overflow:hidden;">';
+    html += '<div class="report-card page-wrapper" style="width:194mm; height:271mm; max-height:271mm; border:2px solid ' + primaryColor + '; padding:14px 16px; margin:0 auto; box-sizing:border-box; display:flex; flex-direction:column; background:#fff; font-family:Inter,sans-serif; overflow:hidden;">';
 
     html += '<div style="display:flex; align-items:center; gap:16px; padding-bottom:8px; border-bottom:2px solid ' + primaryColor + ';">';
     if (logo && schoolCfg.logo !== false) {
@@ -1592,7 +1608,11 @@
       var isFail = obtNum !== null && obtNum < passNum;
       var obtDisp = isAbsent ? 'AB' : (isExempted ? 'Ex' : (obtNum !== null ? String(obtNum) : '—'));
       var obtStyle = (isAbsent || isFail) ? 'text-align:center; font-weight:700; color:#DC2626; text-decoration:underline;' : 'text-align:center; font-weight:700; color:#1F2937;';
-      var gr = isAbsent ? 'Ab' : (isExempted ? 'Ex' : (obtNum !== null && typeof calculateGrade === 'function' ? (calculateGrade((obtNum / (sub.fullMarks || 100)) * 100).grade || '—') : '—'));
+      var subPct = obtNum !== null ? (obtNum / (sub.fullMarks || 100)) * 100 : 0;
+      var gr = isAbsent ? 'Ab' : (isExempted ? 'Ex' : (obtNum !== null && typeof calculateGrade === 'function' ? (calculateGrade(subPct).grade || '—') : '—'));
+      if (!isAbsent && !isExempted && obtNum !== null && obtNum >= passNum && gr === 'F') {
+        gr = 'D';
+      }
       html += '<tr style="background:' + (idx % 2 === 0 ? '#EFF6FF' : '#FFFFFF') + ';">';
       html += '<td style="padding:' + cellPad + '; font-weight:600; color:#1F2937; text-align:left; border-bottom:1px solid #DBEAFE;">' + escapeHTML(sub.name) + '</td>';
       html += '<td style="padding:' + cellPad + '; text-align:center; border-bottom:1px solid #DBEAFE;">' + (sub.fullMarks || 100) + '</td>';
@@ -1647,8 +1667,7 @@
     html += '<strong>Grading Scale:</strong> A+(91-100) &nbsp;|&nbsp; A(81-90) &nbsp;|&nbsp; B+(71-80) &nbsp;|&nbsp; B(61-70) &nbsp;|&nbsp; C+(51-60) &nbsp;|&nbsp; C(41-50) &nbsp;|&nbsp; D(33-40) &nbsp;|&nbsp; F(&lt;33)';
     html += '</div>';
 
-    var maxSpacer = showRemarks ? '20mm' : '15mm';
-    html += '<div style="flex:1; min-height:4mm; max-height:' + maxSpacer + ';"></div>';
+    html += '<div style="flex:1; min-height:2mm; max-height:10mm;"></div>';
 
     // 7. SIGNATURES + DATE OF ISSUE (FIX 10, FIX 11)
     var dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1675,7 +1694,8 @@
     var savedMarks = getStudentExamMarks(s.id, state.examTerm);
 
     var cardHTML = generateSingleStudentCardHTML(s, false, savedMarks, null, activeTerm, subjects);
-    printViaBlob(cardHTML);
+    var stuName = s.name || ((s.firstName || '') + ' ' + (s.lastName || '')).trim();
+    printViaBlob(cardHTML, stuName, s.class);
   }
 
   function printBulkReportCards() {
@@ -1777,7 +1797,7 @@
           html += '<p class="school-subtitle">' + subtitleHtml + '</p>';
           html += '<div style="display:flex; align-items:center; gap:12px; margin-top:8px;">';
           html += '<h2 class="title">OFFICIAL REPORT CARD</h2>';
-          html += '<span style="font-size:11px; font-weight:600; color:#555;">Term: ' + examName + ' (' + (settings.academicYear || '2025-26') + ')</span>';
+          html += '<span style="font-size:11px; font-weight:600; color:var(--text-muted);">Term: ' + examName + ' (' + (settings.academicYear || '2025-26') + ')</span>';
           html += '</div></div></div>';
 
           var displayClass = ['Nursery','LKG','UKG'].indexOf(s.class) !== -1 ? s.class : 'Class ' + s.class;
@@ -1998,7 +2018,7 @@
         bodyHTML += '  <input type="number" id="admin-examterm-weight" class="form-input" value="50" min="0" max="100">';
         bodyHTML += '</div>';
 
-        var footerHTML = '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Cancel</button>';
+        var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         footerHTML += '<button class="btn btn-primary" id="admin-save-examterm-btn">Save Term</button>';
 
         SchoolApp.showModal('Create Exam Term', bodyHTML, footerHTML);
@@ -2078,7 +2098,7 @@
         bodyHTML += '  <input type="number" id="admin-examterm-weight" class="form-input" value="' + term.weightage + '" min="0" max="100">';
         bodyHTML += '</div>';
 
-        var footerHTML = '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Cancel</button>';
+        var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         footerHTML += '<button class="btn btn-primary" id="admin-update-examterm-btn">Save Changes</button>';
 
         SchoolApp.showModal('Edit Exam Term', bodyHTML, footerHTML);
@@ -2142,7 +2162,7 @@
         bodyHTML += '  <input type="text" id="delete-term-confirm-input" class="form-input" style="border-color:var(--danger);" placeholder="DELETE">';
         bodyHTML += '</div>';
 
-        var footerHTML = '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Cancel</button>';
+        var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         bodyHTML += '<button class="btn btn-danger" id="delete-term-perm-btn" disabled>Delete Permanently</button>';
 
         SchoolApp.showModal('Delete Exam Term?', bodyHTML, footerHTML);
@@ -2218,7 +2238,7 @@
         bodyHTML += '  </div>';
         bodyHTML += '</div>';
 
-        var footerHTML = '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Cancel</button>';
+        var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         footerHTML += '<button class="btn btn-primary" id="admin-save-subject-btn">Add Subject</button>';
 
         SchoolApp.showModal('Add Subject Mapping', bodyHTML, footerHTML);
@@ -2315,7 +2335,7 @@
         bodyHTML += '  </div>';
         bodyHTML += '</div>';
 
-        var footerHTML = '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Cancel</button>';
+        var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         footerHTML += '<button class="btn btn-primary" id="admin-update-subject-btn">Save Changes</button>';
 
         SchoolApp.showModal('Edit Subject Mapping', bodyHTML, footerHTML);
@@ -2529,12 +2549,12 @@
                 }
               }
               if (!hasVal) {
-                missingList.push('<a href="#" class="quick-link-subject" data-sub-id="' + sub.id + '" style="color:var(--primary); font-weight:600; text-decoration:underline; margin-right:8px;">' + escapeHTML(sub.name) + '</a>');
+                missingList.push('<a href="#" class="quick-link-subject" data-sub-id="' + sub.id + '" style="color:var(--accent-primary); font-weight:600; text-decoration:underline; margin-right:8px;">' + escapeHTML(sub.name) + '</a>');
               }
             });
 
             bodyHTML += '<tr>';
-            bodyHTML += '<td><strong>' + escapeHTML(s.firstName + ' ' + s.lastName) + '</strong></td>';
+            bodyHTML += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></td>';
             bodyHTML += '<td>' + (missingList.length > 0 ? missingList.join(', ') : 'All mapped subjects') + '</td>';
             bodyHTML += '</tr>';
           }
@@ -2545,7 +2565,7 @@
         }
 
         bodyHTML += '</tbody></table></div>';
-        var footerHTML = '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Close</button>';
+        var footerHTML = '<button class="btn btn-secondary modal-close-btn">Close</button>';
 
         SchoolApp.showModal('Missing Subject Scores List', bodyHTML, footerHTML);
 
@@ -2916,11 +2936,12 @@
   // -------------------- SETUP WIZARD FLOW --------------------
 
   function openSetupWizard() {
-    var bodyHTML = '<div id="wizard-progress-bar-container" style="margin-bottom:20px; display:flex; justify-content:space-between; font-size:12px; font-weight:700;">';
-    bodyHTML += '  <span style="' + (state.wizardStep === 1 ? 'color:var(--primary);' : '') + '">1. Select Terms</span>';
-    bodyHTML += '  <span style="' + (state.wizardStep === 2 ? 'color:var(--primary);' : '') + '">2. Auto Subjects</span>';
-    bodyHTML += '  <span style="' + (state.wizardStep === 3 ? 'color:var(--primary);' : '') + '">3. Default Marks</span>';
-    bodyHTML += '  <span style="' + (state.wizardStep === 4 ? 'color:var(--primary);' : '') + '">4. Review</span>';
+    var bodyHTML = '<div class="exam-wizard-modal">';
+    bodyHTML += '<div id="wizard-progress-bar-container" style="margin-bottom:20px; display:flex; justify-content:space-between; font-size:12px; font-weight:700;">';
+    bodyHTML += '  <span style="' + (state.wizardStep === 1 ? 'color:var(--accent-primary);' : '') + '">1. Select Terms</span>';
+    bodyHTML += '  <span style="' + (state.wizardStep === 2 ? 'color:var(--accent-primary);' : '') + '">2. Auto Subjects</span>';
+    bodyHTML += '  <span style="' + (state.wizardStep === 3 ? 'color:var(--accent-primary);' : '') + '">3. Default Marks</span>';
+    bodyHTML += '  <span style="' + (state.wizardStep === 4 ? 'color:var(--accent-primary);' : '') + '">4. Review</span>';
     bodyHTML += '</div>';
 
     bodyHTML += '<div id="wizard-step-content" style="min-height:300px; max-height:480px; overflow-y:auto; padding-right:8px;">';
@@ -2931,7 +2952,7 @@
       bodyHTML += '<p class="text-muted" style="font-size:12px; margin-top:-8px;">Configure the dates and weightages for each session term.</p>';
       
       state.wizardTerms.forEach(function(term, idx) {
-        bodyHTML += '<div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:12px; background:var(--bg-secondary);">';
+        bodyHTML += '<div class="wizard-term-card" style="border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:12px; background:var(--bg-secondary);">';
         bodyHTML += '  <label style="display:flex; align-items:center; gap:8px; font-weight:700; cursor:pointer;">';
         bodyHTML += '    <input type="checkbox" class="wizard-term-select" data-idx="' + idx + '" ' + (term.selected ? 'checked' : '') + '> ' + term.name;
         bodyHTML += '  </label>';
@@ -2996,8 +3017,8 @@
         var subs = state.wizardSubjects[cId] || [];
         var displayName = ['Nursery','LKG','UKG'].indexOf(cId) !== -1 ? cId : 'Class ' + cId;
 
-        bodyHTML += '<div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:12px; background:#fff;">';
-        bodyHTML += '  <h5 style="margin:0 0 8px 0; color:var(--primary);">' + displayName + '</h5>';
+        bodyHTML += '<div class="wizard-class-card" style="border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:12px; background:var(--bg-secondary);">';
+        bodyHTML += '  <h5 style="margin:0 0 8px 0; color:var(--accent-primary);">' + displayName + '</h5>';
         
         subs.forEach(function(sub, subIdx) {
           bodyHTML += '  <div style="display:flex; align-items:center; justify-content:between; gap:12px; margin-bottom:8px; font-size:12px; flex-wrap:wrap;">';
@@ -3067,16 +3088,17 @@
       bodyHTML += '    <div>Total Subject Configurations: <strong>' + totalSubjectsConfigured + ' subjects</strong></div>';
       bodyHTML += '  </div>';
       bodyHTML += '</div>';
-      bodyHTML += '<p style="font-size:11px; color:#555;">⚠️ Confirmed setup will overwrite and seed subject settings for selected classes. Existing marks in conflicts will be deleted.</p>';
+      bodyHTML += '<p style="font-size:11px; color:var(--text-muted);">⚠️ Confirmed setup will overwrite and seed subject settings for selected classes. Existing marks in conflicts will be deleted.</p>';
     }
 
     bodyHTML += '</div>'; // End step content
+    bodyHTML += '</div>'; // End exam-wizard-modal
 
     var footerHTML = '';
     if (state.wizardStep > 1) {
       footerHTML += '<button class="btn btn-secondary" id="wizard-prev-btn" style="float:left;">Back</button>';
     }
-    footerHTML += '<button class="btn btn-secondary" class="btn btn-secondary modal-close-btn">Cancel</button>';
+    footerHTML += '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
     if (state.wizardStep < 4) {
       footerHTML += '<button class="btn btn-primary" id="wizard-next-btn">Next</button>';
     } else {
@@ -3428,6 +3450,9 @@
   window.printBulkReportCards = printBulkReportCards;
   window.printViaBlob = printViaBlob;
   window.generateSmartRemark = generateSmartRemark;
+  window.recalculateStudentEntry = recalculateStudentEntry;
+  window.recalculateRanks = recalculateRanks;
+  window.ensureSubjectsArray = ensureSubjectsArray;
 
   // BUG 3: Expose renderMarksTable for onSnapshot in app.js to refresh marks UI on remote changes
   window.renderMarksTable = function() {

@@ -13,14 +13,183 @@
     statusFilter: 'all', // 'all' | 'unpaid' | 'paid'
     currentPage: 1,
     perPage: 10,
-    activeTab: 'students', // 'students' | 'history'
+    activeTab: 'students', // 'students' | 'history' | 'ledger'
     historyClassFilter: 'all',
     historyTypeFilter: 'all',
     historySearchQuery: '',
     historyStartDate: '',
     historyEndDate: '',
-    historyCurrentPage: 1
+    historyCurrentPage: 1,
+    ledgerSearchQuery: ''
   };
+
+  function calculateFeeLedgerStats() {
+    var fees = SchoolApp.store.fees || [];
+    var now = new Date();
+    var todayStr = now.toISOString().split('T')[0];
+    var currentYear = now.getFullYear();
+    var currentMonth = now.getMonth();
+
+    var todaysCollection = 0;
+    var mtdCollection = 0;
+    var cashInHand = 0;
+    var todayTransactions = [];
+
+    fees.forEach(function(f) {
+      if (f.type === 'payment') {
+        var amt = parseFloat(f.amount || 0);
+        var fDateStr = f.date ? f.date.split('T')[0] : '';
+        var dateParts = fDateStr.split('-');
+        var fYear = dateParts.length === 3 ? parseInt(dateParts[0], 10) : now.getFullYear();
+        var fMonth = dateParts.length === 3 ? parseInt(dateParts[1], 10) - 1 : now.getMonth();
+
+        if (fDateStr === todayStr) {
+          todaysCollection += amt;
+          todayTransactions.push(f);
+          if ((f.mode || '').toLowerCase() === 'cash') {
+            cashInHand += amt;
+          }
+        }
+
+        if (fYear === currentYear && fMonth === currentMonth) {
+          mtdCollection += amt;
+        }
+      }
+    });
+
+    return {
+      todaysCollection: todaysCollection,
+      mtdCollection: mtdCollection,
+      cashInHand: cashInHand,
+      todayTransactions: todayTransactions
+    };
+  }
+
+  async function checkAndRunAutoCharge() {
+    var settings = SchoolApp.store.settings || {};
+    if (!settings.autoChargeEnabled) return;
+
+    var triggerDay = parseInt(settings.autoChargeTriggerDate || 1, 10);
+    var now = new Date();
+    var currentDay = now.getDate();
+    var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    if (currentDay >= triggerDay && settings.autoChargeLastRun !== currentMonthKey) {
+      var students = SchoolApp.store.students || [];
+      if (!students.length) return;
+
+      if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
+      if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+
+      var chargedCount = 0;
+      var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      var billingPeriod = "Auto Monthly Tuition - " + monthNames[now.getMonth()] + " " + now.getFullYear();
+      var todayStr = now.toISOString().split('T')[0];
+
+      var feeHeads = getActiveFeeHeads();
+      var tuitionHead = null;
+
+      if (settings.autoChargeFeeHeadId) {
+        tuitionHead = feeHeads.find(function(fh) { return fh.id === settings.autoChargeFeeHeadId; });
+      }
+
+      if (!tuitionHead) {
+        tuitionHead = feeHeads.find(function(fh) {
+          return fh.name.toLowerCase().indexOf('tuition') !== -1 || fh.name.toLowerCase().indexOf('monthly') !== -1;
+        });
+      }
+
+      if (!tuitionHead) {
+        console.warn('Auto Charge skipped: No tuition or monthly fee head configured.');
+        return;
+      }
+
+      students.forEach(function(s) {
+        var amt = getFeeAmount(s.class, tuitionHead.id);
+        if (amt > 0) {
+          SchoolApp.store.fees.push({
+            id: SchoolApp.generateId(),
+            studentId: s.id,
+            schoolId: SchoolApp.currentSchoolId,
+            type: 'due',
+            feeHeadId: tuitionHead.id,
+            amount: amt,
+            date: todayStr,
+            description: billingPeriod
+          });
+          chargedCount++;
+        }
+      });
+
+      if (chargedCount > 0) {
+        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+        SchoolApp.store.settings.autoChargeLastRun = currentMonthKey;
+        await SchoolApp.save();
+        SchoolApp.showToast('Automated monthly fee generated for ' + chargedCount + ' students.', 'info');
+      }
+    }
+  }
+
+  function renderLedgerTab(dataContainer) {
+    var stats = calculateFeeLedgerStats();
+    var todayColl = document.getElementById('ledger-today-collection');
+    if (todayColl) todayColl.textContent = '₹' + stats.todaysCollection.toLocaleString('en-IN');
+    
+    var mtdColl = document.getElementById('ledger-mtd-collection');
+    if (mtdColl) mtdColl.textContent = '₹' + stats.mtdCollection.toLocaleString('en-IN');
+    
+    var cashHand = document.getElementById('ledger-cash-in-hand');
+    if (cashHand) cashHand.textContent = '₹' + stats.cashInHand.toLocaleString('en-IN');
+
+    var studentMap = {};
+    (SchoolApp.store.students || []).forEach(function(s) {
+      studentMap[s.id] = s;
+    });
+
+    var transactions = stats.todayTransactions;
+    if (state.ledgerSearchQuery) {
+      var q = state.ledgerSearchQuery.toLowerCase();
+      transactions = transactions.filter(function(t) {
+        var st = studentMap[t.studentId];
+        var name = st ? (st.firstName + ' ' + st.lastName).toLowerCase() : '';
+        return name.indexOf(q) !== -1 || (t.mode || '').toLowerCase().indexOf(q) !== -1;
+      });
+    }
+
+    var html = '';
+    if (transactions.length === 0) {
+      html += '<div class="empty-state" style="padding: 40px; text-align: center; background: var(--bg-card); border-radius: var(--radius-lg); margin-top: 16px; border: 1px dashed var(--border-color);">';
+      html += '<span class="material-icons-round" style="font-size: 48px; color: var(--text-tertiary); margin-bottom: 12px;">receipt_long</span>';
+      html += '<h3 style="font-size: 18px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">No transactions today</h3>';
+      html += '<p style="color: var(--text-secondary); font-size: 14px;">There are no fee payments recorded for today yet.</p>';
+      html += '</div>';
+    } else {
+      html += '<div class="table-container" style="margin-top:16px;"><table class="data-table"><thead><tr>';
+      html += '<th>Student Name</th><th>Class & Sec</th><th>Amount Paid</th><th>Payment Mode</th><th>Date & Time</th><th>Receipt / Tx ID</th>';
+      html += '</tr></thead><tbody>';
+
+      transactions.forEach(function(t) {
+        var st = studentMap[t.studentId];
+        var name = st ? escapeHTML(st.firstName + ' ' + st.lastName) : 'Unknown Student';
+        var cls = st ? (st.class + '-' + st.section) : '—';
+        var amt = parseFloat(t.amount || 0);
+        var dt = t.date ? new Date(t.date).toLocaleString('en-IN') : '—';
+
+        html += '<tr>';
+        html += '<td><strong style="color:var(--accent-primary);">' + name + '</strong></td>';
+        html += '<td><span class="badge badge-info">' + cls + '</span></td>';
+        html += '<td><strong style="color:var(--success);">₹' + amt.toLocaleString('en-IN') + '</strong></td>';
+        html += '<td><span class="badge badge-secondary">' + (t.mode || 'Cash') + '</span></td>';
+        html += '<td>' + dt + '</td>';
+        html += '<td><code>' + (t.id ? t.id.substring(0, 8) : '—') + '</code></td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+    }
+
+    dataContainer.innerHTML = html;
+  }
 
   function escapeHTML(str) {
     if (!str) return '';
@@ -46,7 +215,8 @@
 
     var settings = SchoolApp.store.settings;
     if (settings && settings.feeStructure && settings.feeStructure[className]) {
-      var val = settings.feeStructure[className][key];
+      var clsFees = settings.feeStructure[className];
+      var val = clsFees[feeHeadId] !== undefined ? clsFees[feeHeadId] : (clsFees[key] !== undefined ? clsFees[key] : clsFees['fh_' + key]);
       if (val !== undefined && val !== null) {
         return parseFloat(val);
       }
@@ -488,7 +658,7 @@
         var logDateStr = SchoolApp.formatDate(log.timestamp.split('T')[0]) + ' ' + new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         html += '<tr>';
         html += '<td>' + logDateStr + '</td>';
-        html += '<td><strong style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + log.studentId + '\')">' + escapeHTML(log.studentName) + '</strong></td>';
+        html += '<td><strong style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + log.studentId + '\')">' + escapeHTML(log.studentName) + '</strong></td>';
         html += '<td><span class="badge badge-info">' + log.className + '</span></td>';
         html += '<td>' + log.feeHeadName + '</td>';
         html += '<td>₹' + parseFloat(log.amount || 0).toLocaleString('en-IN') + '</td>';
@@ -572,6 +742,7 @@
       shellHtml += '<div class="tab-nav">';
       shellHtml += '  <button class="tab-btn active" id="btn-tab-students" data-tab="students"><span class="material-icons-round">payments</span> Student Dues</button>';
       shellHtml += '  <button class="tab-btn" id="btn-tab-history" data-tab="history"><span class="material-icons-round">history</span> Fee History</button>';
+      shellHtml += '  <button class="tab-btn" id="btn-tab-ledger" data-tab="ledger"><span class="material-icons-round">account_balance_wallet</span> Fee Ledger</button>';
       shellHtml += '</div>';
 
       shellHtml += '<div class="stats-grid" id="dues-stats-grid">';
@@ -588,6 +759,15 @@
       shellHtml += '<div class="stat-info"><div class="stat-number" id="history-amount-value">₹0</div><div class="stat-label">Total Filtered Charges</div></div></div>';
       shellHtml += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">history</span></div>';
       shellHtml += '<div class="stat-info"><div class="stat-number" id="history-count-value">0</div><div class="stat-label">Total Logged Entries</div></div></div>';
+      shellHtml += '</div>';
+
+      shellHtml += '<div class="stats-grid" id="ledger-stats-grid" style="display: none;">';
+      shellHtml += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">payments</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="ledger-today-collection">₹0</div><div class="stat-label">Today\'s Collection</div></div></div>';
+      shellHtml += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">calendar_today</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="ledger-mtd-collection">₹0</div><div class="stat-label">MTD Collection</div></div></div>';
+      shellHtml += '<div class="stat-card cyan"><div class="stat-icon"><span class="material-icons-round">account_balance_wallet</span></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="ledger-cash-in-hand">₹0</div><div class="stat-label">Cash in Hand</div></div></div>';
       shellHtml += '</div>';
 
       shellHtml += '<div class="toolbar" id="fees-students-toolbar">';
@@ -667,6 +847,12 @@
 
       shellHtml += '</div></div>';
 
+      shellHtml += '<div class="toolbar" id="fees-ledger-toolbar" style="display: none; flex-wrap: wrap; gap: 12px; align-items: center;">';
+      shellHtml += '<div class="search-wrapper" style="flex: 1; min-width: 200px;"><span class="material-icons-round">search</span>';
+      shellHtml += '<input type="text" id="fees-ledger-search" placeholder="Search today\'s payments..." value="' + (state.ledgerSearchQuery || '') + '">';
+      shellHtml += '</div>';
+      shellHtml += '</div>';
+
       shellHtml += '<div id="fees-data-container"></div>';
 
       container.innerHTML = shellHtml;
@@ -676,37 +862,60 @@
 
     var duesStatsGrid = document.getElementById('dues-stats-grid');
     var historyStatsGrid = document.getElementById('history-stats-grid');
+    var ledgerStatsGrid = document.getElementById('ledger-stats-grid');
     var studentsToolbar = document.getElementById('fees-students-toolbar');
     var historyToolbar = document.getElementById('fees-history-toolbar');
+    var ledgerToolbar = document.getElementById('fees-ledger-toolbar');
     var bulkChargeBtn = document.getElementById('bulk-charge-fee-btn');
     var exportPdfBtn = document.getElementById('fees-export-pdf-btn');
     var exportExcelBtn = document.getElementById('fees-export-excel-btn');
     
     var tabBtnStudents = document.getElementById('btn-tab-students');
     var tabBtnHistory = document.getElementById('btn-tab-history');
+    var tabBtnLedger = document.getElementById('btn-tab-ledger');
 
     if (state.activeTab === 'students') {
       if (duesStatsGrid) duesStatsGrid.style.display = 'grid';
       if (historyStatsGrid) historyStatsGrid.style.display = 'none';
+      if (ledgerStatsGrid) ledgerStatsGrid.style.display = 'none';
       if (studentsToolbar) studentsToolbar.style.display = 'flex';
       if (historyToolbar) historyToolbar.style.display = 'none';
+      if (ledgerToolbar) ledgerToolbar.style.display = 'none';
       if (bulkChargeBtn) bulkChargeBtn.style.display = 'inline-flex';
       if (exportPdfBtn) exportPdfBtn.style.display = 'none';
       if (exportExcelBtn) exportExcelBtn.style.display = 'none';
       
       if (tabBtnStudents) tabBtnStudents.classList.add('active');
       if (tabBtnHistory) tabBtnHistory.classList.remove('active');
-    } else {
+      if (tabBtnLedger) tabBtnLedger.classList.remove('active');
+    } else if (state.activeTab === 'history') {
       if (duesStatsGrid) duesStatsGrid.style.display = 'none';
       if (historyStatsGrid) historyStatsGrid.style.display = 'grid';
+      if (ledgerStatsGrid) ledgerStatsGrid.style.display = 'none';
       if (studentsToolbar) studentsToolbar.style.display = 'none';
       if (historyToolbar) historyToolbar.style.display = 'flex';
+      if (ledgerToolbar) ledgerToolbar.style.display = 'none';
       if (bulkChargeBtn) bulkChargeBtn.style.display = 'none';
       if (exportPdfBtn) exportPdfBtn.style.display = 'inline-flex';
       if (exportExcelBtn) exportExcelBtn.style.display = 'inline-flex';
       
       if (tabBtnStudents) tabBtnStudents.classList.remove('active');
       if (tabBtnHistory) tabBtnHistory.classList.add('active');
+      if (tabBtnLedger) tabBtnLedger.classList.remove('active');
+    } else {
+      if (duesStatsGrid) duesStatsGrid.style.display = 'none';
+      if (historyStatsGrid) historyStatsGrid.style.display = 'none';
+      if (ledgerStatsGrid) ledgerStatsGrid.style.display = 'grid';
+      if (studentsToolbar) studentsToolbar.style.display = 'none';
+      if (historyToolbar) historyToolbar.style.display = 'none';
+      if (ledgerToolbar) ledgerToolbar.style.display = 'flex';
+      if (bulkChargeBtn) bulkChargeBtn.style.display = 'none';
+      if (exportPdfBtn) exportPdfBtn.style.display = 'none';
+      if (exportExcelBtn) exportExcelBtn.style.display = 'none';
+      
+      if (tabBtnStudents) tabBtnStudents.classList.remove('active');
+      if (tabBtnHistory) tabBtnHistory.classList.remove('active');
+      if (tabBtnLedger) tabBtnLedger.classList.add('active');
     }
 
     var searchInput = document.getElementById('fees-search');
@@ -783,7 +992,7 @@
           var stats = getStudentFeeStats(s.id);
 
           html += '<tr>';
-          html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(s.firstName + ' ' + s.lastName) + '</strong></div></div></td>';
+          html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></div></div></td>';
           html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
           html += '<td>' + s.rollNumber + '</td>';
           html += '<td>₹' + stats.totalDues.toLocaleString('en-IN') + '</td>';
@@ -818,8 +1027,10 @@
 
       dataContainer.innerHTML = html;
       attachDynamicEvents();
-    } else {
+    } else if (state.activeTab === 'history') {
       renderHistoryTab(dataContainer);
+    } else {
+      renderLedgerTab(dataContainer);
     }
   }
 
@@ -869,42 +1080,245 @@
     };
   }
 
-  async function sendWhatsAppReceipt(studentId, amount, mode) {
-    const student = SchoolApp.store.students.find(s => s.id === studentId);
-    const school = SchoolApp.store.settings || {};
-    const phone = student ? (student.phone || student.parentPhone) : null;
-    if (!student || !phone) {
-      SchoolApp.showToast("No phone number found for this student.", "error");
+  function generateFeeReceiptHTML(txn, student, currentBalance) {
+    var settings = SchoolApp.store.settings || {};
+    var schoolInfo = settings.schoolInfo || {};
+
+    var schoolName = settings.schoolName || schoolInfo.name || 'Shishu Vikash Mandir';
+    var schoolAddress = settings.address || schoolInfo.address || 'Bokaro Steel City, Jharkhand';
+    var schoolPhone = settings.phone || schoolInfo.phone || '';
+    var schoolEmail = settings.email || schoolInfo.email || '';
+    var logoUrl = settings.schoolLogo || settings.logoUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo || '';
+    var primaryColor = (settings.branding && settings.branding.primaryColor) || '#1E3A8A';
+
+    var schoolPrefix = (SchoolApp.currentSchoolId || 'SVM').substring(0, 4).toUpperCase();
+    var tsStr = txn.id ? txn.id.substring(0, 8).toUpperCase() : Date.now().toString().slice(-6);
+    var receiptNo = txn.receiptNo || ('RCP-' + schoolPrefix + '-' + tsStr);
+
+    var studentName = student ? (student.firstName + ' ' + (student.lastName || '')).trim() : 'N/A';
+    var classSec = student ? ('Class ' + (student.class || '-') + (student.section ? ' - ' + student.section : '')) : 'N/A';
+    var rollNo = student ? (student.rollNumber || student.rollNo || '—') : '—';
+
+    var payDate = txn.date ? SchoolApp.formatDate(txn.date) : SchoolApp.formatDate(new Date().toISOString().split('T')[0]);
+    if (txn.timestamp) {
+      try {
+        var timeStr = new Date(txn.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        payDate += ' ' + timeStr;
+      } catch (e) {}
+    }
+
+    var amount = Number(txn.amount || 0);
+    var mode = txn.mode || 'Cash';
+    var remarks = txn.remarks || 'Fee Payment';
+
+    var html = '';
+    html += '<div style="max-width:680px; margin:0 auto; padding:24px; border:2px solid ' + primaryColor + '; border-radius:10px; background:#ffffff; font-family:Inter, Arial, sans-serif; color:#1e293b; box-sizing:border-box;">';
+    
+    // Header section
+    html += '  <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid ' + primaryColor + '; padding-bottom:14px; margin-bottom:16px;">';
+    html += '    <div style="display:flex; align-items:center; gap:14px;">';
+    if (logoUrl) {
+      html += '      <img src="' + logoUrl + '" alt="Logo" style="max-height:64px; max-width:64px; object-fit:contain; border-radius:6px;" />';
+    } else {
+      html += '      <div style="width:52px; height:52px; border-radius:8px; background:' + primaryColor + '; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:22px; font-family:\'Poppins\',sans-serif;">' + escapeHTML(schoolName.charAt(0)) + '</div>';
+    }
+    html += '      <div>';
+    html += '        <h1 style="margin:0; font-size:22px; font-weight:800; color:' + primaryColor + '; font-family:\'Poppins\', sans-serif; text-transform:uppercase; letter-spacing:0.5px;">' + escapeHTML(schoolName) + '</h1>';
+    if (schoolAddress) html += '        <p style="margin:2px 0 0 0; font-size:12px; color:#64748b;">' + escapeHTML(schoolAddress) + '</p>';
+    if (schoolPhone || schoolEmail) {
+      var contactParts = [];
+      if (schoolPhone) contactParts.push('Ph: ' + escapeHTML(schoolPhone));
+      if (schoolEmail) contactParts.push('Email: ' + escapeHTML(schoolEmail));
+      html += '        <p style="margin:2px 0 0 0; font-size:11px; color:#64748b;">' + contactParts.join(' | ') + '</p>';
+    }
+    html += '      </div>';
+    html += '    </div>';
+    
+    html += '    <div style="text-align:right;">';
+    html += '      <div style="background:' + primaryColor + '; color:#ffffff; padding:6px 14px; border-radius:6px; font-size:13px; font-weight:700; font-family:\'Poppins\',sans-serif; letter-spacing:1px; display:inline-block;">FEE RECEIPT</div>';
+    html += '      <div style="margin-top:6px; font-size:11px; color:#64748b; font-weight:600;">Original Copy</div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Details Grid
+    html += '  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; background:#f8fafc; padding:12px 16px; border-radius:8px; border:1px solid #e2e8f0; margin-bottom:16px; font-size:12px;">';
+    html += '    <div>';
+    html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Receipt No:</strong> <span style="font-weight:700; color:' + primaryColor + ';">' + escapeHTML(receiptNo) + '</span></div>';
+    html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Date & Time:</strong> <span>' + escapeHTML(payDate) + '</span></div>';
+    html += '      <div><strong style="color:#475569;">Payment Mode:</strong> <span style="font-weight:600; text-transform:uppercase; color:#059669;">' + escapeHTML(mode) + '</span></div>';
+    html += '    </div>';
+    html += '    <div>';
+    html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Student Name:</strong> <span style="font-weight:700; color:#0f172a;">' + escapeHTML(studentName) + '</span></div>';
+    html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Class & Sec:</strong> <span>' + escapeHTML(classSec) + '</span></div>';
+    html += '      <div><strong style="color:#475569;">Roll No:</strong> <span>' + escapeHTML(rollNo) + '</span></div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Table Breakdown
+    html += '  <table style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:13px;">';
+    html += '    <thead>';
+    html += '      <tr style="background:' + primaryColor + '; color:#ffffff;">';
+    html += '        <th style="padding:8px 12px; text-align:left; font-weight:600; border-top-left-radius:6px;">Particulars / Description</th>';
+    html += '        <th style="padding:8px 12px; text-align:left; font-weight:600;">Remarks</th>';
+    html += '        <th style="padding:8px 12px; text-align:right; font-weight:600; border-top-right-radius:6px;">Amount Paid (₹)</th>';
+    html += '      </tr>';
+    html += '    </thead>';
+    html += '    <tbody>';
+    html += '      <tr style="border-bottom:1px solid #e2e8f0;">';
+    html += '        <td style="padding:10px 12px; font-weight:500;">School Fee Payment</td>';
+    html += '        <td style="padding:10px 12px; color:#64748b;">' + escapeHTML(remarks) + '</td>';
+    html += '        <td style="padding:10px 12px; text-align:right; font-weight:700; color:#0f172a;">₹' + amount.toLocaleString('en-IN') + '.00</td>';
+    html += '      </tr>';
+    html += '      <tr style="background:#f1f5f9; font-weight:700;">';
+    html += '        <td colspan="2" style="padding:10px 12px; text-align:right; font-size:13px; color:#334155;">TOTAL RECEIVED:</td>';
+    html += '        <td style="padding:10px 12px; text-align:right; font-size:14px; color:' + primaryColor + ';">₹' + amount.toLocaleString('en-IN') + '.00</td>';
+    html += '      </tr>';
+    if (currentBalance !== undefined && currentBalance !== null) {
+      var balColor = currentBalance > 0 ? '#d97706' : '#059669';
+      var balText = currentBalance > 0 ? ('₹' + currentBalance.toLocaleString('en-IN') + '.00 Due') : 'Cleared (₹0)';
+      html += '      <tr style="background:#fafafa; font-size:12px;">';
+      html += '        <td colspan="2" style="padding:8px 12px; text-align:right; color:#64748b; font-weight:600;">Remaining Balance:</td>';
+      html += '        <td style="padding:8px 12px; text-align:right; font-weight:700; color:' + balColor + ';">' + balText + '</td>';
+      html += '      </tr>';
+    }
+    html += '    </tbody>';
+    html += '  </table>';
+
+    // Signature & Footer
+    html += '  <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:28px; padding-top:12px;">';
+    html += '    <div style="font-size:11px; color:#94a3b8;">';
+    html += '      <div>Txn Ref: ' + escapeHTML(txn.id || 'N/A') + '</div>';
+    html += '      <div>This is a computer generated digital fee receipt.</div>';
+    html += '    </div>';
+    html += '    <div style="text-align:center;">';
+    html += '      <div style="width:160px; border-bottom:1.5px dashed #94a3b8; margin-bottom:4px;"></div>';
+    html += '      <div style="font-size:11px; font-weight:600; color:#475569;">Authorized Signatory / Cashier</div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    html += '</div>';
+
+    return html;
+  }
+
+  function printFeeReceipt(txnRef, studentRef) {
+    var txn = typeof txnRef === 'object' ? txnRef : null;
+    var student = typeof studentRef === 'object' ? studentRef : null;
+
+    if (!student && typeof studentRef === 'string') {
+      student = SchoolApp.store.students.find(function(x) { return x.id === studentRef; });
+    }
+
+    if (!txn && typeof txnRef === 'string') {
+      var fees = SchoolApp.store.fees || [];
+      txn = fees.find(function(f) { return f.id === txnRef; });
+    }
+
+    if (!student && txn) {
+      student = SchoolApp.store.students.find(function(x) { return x.id === txn.studentId; });
+    }
+
+    if (!txn) {
+      SchoolApp.showToast('Transaction details not found.', 'error');
       return;
     }
-    try {
-      SchoolApp.showToast("Sending WhatsApp receipt...", "info");
-      const res = await fetch("/api/send-whatsapp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "fee_receipt",
-          phone: phone,
-          studentName: student.firstName + " " + student.lastName,
-          schoolName: school.schoolName || "School",
-          amount: amount,
-          receiptNo: SchoolApp.lastReceiptNo || "—",
-          paymentMode: mode,
-          language: "both"
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        SchoolApp.showToast("WhatsApp receipt sent successfully!", "success");
-      } else {
-        if (data.code === 190) {
-          SchoolApp.showToast("WhatsApp token expired. Contact admin to renew.", "error");
-        } else {
-          SchoolApp.showToast("WhatsApp failed: " + data.error, "error");
-        }
+
+    var currentBalance = 0;
+    if (student) {
+      var ledger = getStudentLedger(student.id);
+      currentBalance = ledger.outstanding || 0;
+    }
+
+    var htmlContent = generateFeeReceiptHTML(txn, student, currentBalance);
+    var studentName = student ? (student.firstName + ' ' + (student.lastName || '')).trim() : 'Student';
+    var className = student ? student.class : '';
+
+    if (typeof window.printViaBlob === 'function') {
+      window.printViaBlob(htmlContent, studentName + '_Fee_Receipt', className);
+    } else {
+      var printWin = window.open('', '_blank');
+      if (printWin) {
+        printWin.document.write(htmlContent);
+        printWin.document.close();
+        printWin.focus();
+        printWin.print();
       }
-    } catch (err) {
-      SchoolApp.showToast("Could not send WhatsApp. Check internet.", "error");
+    }
+  }
+
+  function showPostPaymentOptionsModal(txn, studentId) {
+    var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
+    var studentName = s ? (s.firstName + ' ' + (s.lastName || '')).trim() : 'Student';
+    var classSec = s ? ('Class ' + (s.class || '') + (s.section ? ' - ' + s.section : '')) : '';
+
+    var bodyHTML = '<div style="text-align:center; padding: 12px 0;">' +
+      '<div style="width:56px; height:56px; border-radius:50%; background:rgba(34,197,94,0.1); color:#22c55e; display:inline-flex; align-items:center; justify-content:center; margin-bottom:12px;">' +
+      '<span class="material-icons-round" style="font-size:32px">check_circle</span></div>' +
+      '<h3 style="margin:0 0 6px 0; font-size:18px; color:var(--text-primary);">Payment Recorded Successfully!</h3>' +
+      '<p style="margin:0 0 16px 0; color:var(--text-secondary); font-size:13px;">Collected <strong>₹' + Number(txn.amount).toLocaleString('en-IN') + '</strong> via <strong>' + (txn.mode || 'Cash') + '</strong> for <strong>' + escapeHTML(studentName) + '</strong> (' + escapeHTML(classSec) + ').</p>' +
+      '<div style="display:flex; flex-direction:column; gap:10px; max-width:320px; margin:0 auto;">' +
+      '<button class="btn btn-primary" id="post-pay-print-btn" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px 16px;">' +
+      '<span class="material-icons-round">description</span> 📄 View / Print Receipt PDF</button>' +
+      '<button class="btn btn-secondary" id="post-pay-whatsapp-btn" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px 16px; background:#25D366; color:#fff; border:none;">' +
+      '<span class="material-icons-round">send</span> 📱 Share on WhatsApp</button>' +
+      '</div>' +
+      '</div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Skip / Done</button>';
+
+    SchoolApp.showModal('Payment Receipt Actions', bodyHTML, footerHTML);
+
+    var printBtn = document.getElementById('post-pay-print-btn');
+    if (printBtn) {
+      printBtn.addEventListener('click', function() {
+        printFeeReceipt(txn, s);
+      });
+    }
+
+    var waBtn = document.getElementById('post-pay-whatsapp-btn');
+    if (waBtn) {
+      waBtn.addEventListener('click', function() {
+        sendWhatsAppReceipt(studentId, txn.amount, txn.mode);
+      });
+    }
+  }
+
+  function sendWhatsAppReceipt(studentId, amount, mode) {
+    var student = SchoolApp.store.students.find(function(s) { return s.id === studentId; });
+    var settings = SchoolApp.store.settings || {};
+    var schoolInfo = settings.schoolInfo || {};
+    var schoolName = settings.name || settings.schoolName || schoolInfo.name || 'Shishu Vikash Mandir';
+
+    if (!student) {
+      SchoolApp.showToast('Student record not found.', 'error');
+      return;
+    }
+
+    var phone = student.parentPhone || student.phone || student.parentMobile || student.mobile;
+    if (!phone) {
+      SchoolApp.showToast('No phone number found for ' + (student.firstName || 'student'), 'error');
+      return;
+    }
+
+    var studentName = ((student.firstName || '') + ' ' + (student.lastName || '')).trim();
+    var classSec = 'Class ' + (student.class || '') + (student.section ? ' - ' + student.section : '');
+    var receiptNo = SchoolApp.lastReceiptNo || ('RCP-SVM-' + Date.now().toString().slice(-5));
+    var totalBalance = typeof SchoolApp.getStudentBalance === 'function' ? SchoolApp.getStudentBalance(studentId) : 0;
+    var dateStr = new Date().toLocaleDateString('en-IN');
+
+    var message = 
+      'Namaste! 🙏\n' +
+      'Payment of ₹' + Number(amount).toLocaleString('en-IN') + ' received for ' + studentName + ' (' + classSec + ').\n\n' +
+      'Receipt No: ' + receiptNo + '\n' +
+      'Payment Mode: ' + (mode || 'Cash') + '\n' +
+      'Date: ' + dateStr + '\n' +
+      'Remaining Dues: ₹' + Number(totalBalance).toLocaleString('en-IN') + '\n\n' +
+      'Thank you,\n' +
+      schoolName;
+
+    var sent = SchoolApp.shareOnWhatsApp(phone, message);
+    if (sent) {
+      SchoolApp.showToast('Opening WhatsApp receipt link...', 'success');
     }
   }
 
@@ -945,6 +1359,7 @@
         
         bodyHTML += '<td><div class="table-actions" style="display:flex; gap:4px; align-items:center;">';
         if (t.type === 'payment') {
+          bodyHTML += '<button class="btn-icon fees-print-receipt-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" title="Print Fee Receipt PDF" style="color:var(--accent-secondary); min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">description</span></button>';
           bodyHTML += '<button class="btn-icon fees-whatsapp-btn" data-student-id="' + studentId + '" data-amount="' + t.amount + '" data-mode="' + (t.mode || 'Cash') + '" title="Send WhatsApp Receipt" style="color:#25D366; min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">send</span></button>';
         }
         if (isAdmin) {
@@ -966,7 +1381,7 @@
       footerHTML += '<button class="btn btn-primary" id="ledger-modal-collect-btn"><span class="material-icons-round">payments</span> Record Payment</button>';
     }
 
-    SchoolApp.showModal(s.firstName + ' ' + s.lastName + ' - Fee Ledger (Bahi Khata)', bodyHTML, footerHTML);
+    SchoolApp.showModal(SchoolApp.getStudentFullName(s) + ' - Fee Ledger (Bahi Khata)', bodyHTML, footerHTML);
 
     // Event listener for ledger modals
     var colBtn = document.getElementById('ledger-modal-collect-btn');
@@ -1032,7 +1447,7 @@
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
     footerHTML += '<button class="btn btn-primary" id="collect-payment-save-btn"><span class="material-icons-round">payments</span> Record Payment</button>';
 
-    SchoolApp.showModal('Record Payment - ' + s.firstName + ' ' + s.lastName, bodyHTML, footerHTML);
+    SchoolApp.showModal('Record Payment - ' + SchoolApp.getStudentFullName(s), bodyHTML, footerHTML);
 
     var saveBtn = document.getElementById('collect-payment-save-btn');
     var saveBtn = document.getElementById('collect-payment-save-btn');
@@ -1052,42 +1467,57 @@
           return;
         }
 
-        if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
+        var doSave = async function() {
+          if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
 
-        SchoolApp.store.fees.push({
-          id: SchoolApp.generateId(),
-          studentId: studentId,
-          schoolId: SchoolApp.currentSchoolId,
-          type: 'payment',
-          amount: amt,
-          date: date,
-          mode: mode,
-          remarks: remarks,
-          timestamp: new Date().toISOString()
-        });
+          var newTxn = {
+            id: SchoolApp.generateId(),
+            studentId: studentId,
+            schoolId: SchoolApp.currentSchoolId,
+            type: 'payment',
+            amount: amt,
+            date: date,
+            mode: mode,
+            remarks: remarks,
+            timestamp: new Date().toISOString()
+          };
+          SchoolApp.store.fees.push(newTxn);
 
-        SchoolApp.showLoader('Processing...');
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Processing...';
-        
-        var success = await SchoolApp.save(true);
-        
-        SchoolApp.hideLoader();
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Collect Payment';
+          SchoolApp.showLoader('Processing...');
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Processing...';
+          
+          var success = await SchoolApp.save(true);
+          
+          SchoolApp.hideLoader();
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Collect Payment';
 
-        if (success) {
-          SchoolApp.closeModal();
-          SchoolApp.showToast('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully!', 'success');
-          render();
+          if (success) {
+            SchoolApp.closeModal();
+            SchoolApp.showToast('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully!', 'success');
+            render();
 
-          // Gracefully prompt parent confirmation for WhatsApp receipt
-          setTimeout(function() {
-            SchoolApp.showConfirm('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully! Would you like to send a WhatsApp Fee Receipt notification to the parent?', function() {
-              sendWhatsAppReceipt(studentId, amt, mode);
-            });
-          }, 300);
+            // Show Post-Payment Options Modal (Print PDF, WhatsApp, Skip)
+            setTimeout(function() {
+              showPostPaymentOptionsModal(newTxn, studentId);
+            }, 300);
+          }
+        };
+
+        var ledger = getStudentLedger(studentId);
+        if (ledger.outstanding <= 0) {
+          var promptMsg = ledger.outstanding < 0
+            ? 'This student already has an advance balance of ₹' + Math.abs(ledger.outstanding).toLocaleString('en-IN') + '. Record an additional payment of ₹' + amt.toLocaleString('en-IN') + '?'
+            : 'This student has ₹0 outstanding dues. Are you sure you want to record an advance payment of ₹' + amt.toLocaleString('en-IN') + '?';
+
+          SchoolApp.showConfirm(promptMsg, function() {
+            doSave();
+          });
+          return;
         }
+
+        doSave();
       });
     }
   }
@@ -1135,7 +1565,7 @@
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
     footerHTML += '<button class="btn btn-primary" id="charge-fee-save-btn"><span class="material-icons-round">add_card</span> Charge Fee</button>';
 
-    SchoolApp.showModal('Charge Custom Fee - ' + s.firstName + ' ' + s.lastName, bodyHTML, footerHTML);
+    SchoolApp.showModal('Charge Custom Fee - ' + SchoolApp.getStudentFullName(s), bodyHTML, footerHTML);
 
     // Auto-complete default fee head amounts on select change
     var fhSelect = document.getElementById('charge-feehead');
@@ -1261,6 +1691,24 @@
     bodyHTML += '<input type="text" id="bulk-note" class="form-input" placeholder="e.g. Term charge or annual fine reason">';
     bodyHTML += '</div>';
 
+    // Auto Monthly Fee Controls
+    bodyHTML += '<div class="form-group full-width" style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 12px;">';
+    bodyHTML += '<h4 style="margin-bottom: 8px; font-size: 14px; font-weight: 600; color: var(--text-primary);">⚡ Automated Monthly Fee Settings</h4>';
+    bodyHTML += '<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">';
+    bodyHTML += '<label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; cursor: pointer;">';
+    bodyHTML += '<input type="checkbox" id="auto-charge-enabled"' + (settings.autoChargeEnabled ? ' checked' : '') + ' style="width: 16px; height: 16px; accent-color: var(--accent-primary);">';
+    bodyHTML += '<span>Enable Auto Monthly Fee Charge</span>';
+    bodyHTML += '</label>';
+    bodyHTML += '</div>';
+    bodyHTML += '<div class="form-group" style="margin-bottom: 0;">';
+    bodyHTML += '<label class="form-label">Auto-Charge Trigger Day of Month</label>';
+    bodyHTML += '<select id="auto-charge-trigger-date" class="form-select">';
+    [1, 5, 10, 15, 20, 25].forEach(function(d) {
+      bodyHTML += '<option value="' + d + '"' + ((settings.autoChargeTriggerDate || 1) == d ? ' selected' : '') + '>' + d + (d === 1 ? 'st' : 'th') + ' of the month</option>';
+    });
+    bodyHTML += '</select>';
+    bodyHTML += '</div></div>';
+
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -1276,6 +1724,13 @@
         var date = document.getElementById('bulk-date').value;
         var desc = document.getElementById('bulk-desc').value.trim();
         var note = document.getElementById('bulk-note') ? document.getElementById('bulk-note').value.trim() : '';
+
+        var autoEnabled = document.getElementById('auto-charge-enabled') ? document.getElementById('auto-charge-enabled').checked : false;
+        var triggerDay = document.getElementById('auto-charge-trigger-date') ? parseInt(document.getElementById('auto-charge-trigger-date').value, 10) : 1;
+
+        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+        SchoolApp.store.settings.autoChargeEnabled = autoEnabled;
+        SchoolApp.store.settings.autoChargeTriggerDate = triggerDay;
 
         if (!date) {
           SchoolApp.showToast('Please select a billing date.', 'error');
@@ -1351,7 +1806,13 @@
             render();
           }
         } else {
-          SchoolApp.showToast('No student charged. Make sure default fees are configured in Fee Setup settings.', 'error');
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Saving Settings...';
+          await SchoolApp.save();
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
+          SchoolApp.closeModal();
+          SchoolApp.showToast('Auto-charge settings saved.', 'info');
         }
       });
     }
@@ -1375,12 +1836,28 @@
       });
     }
 
+    var tabBtnLedger = document.getElementById('btn-tab-ledger');
+    if (tabBtnLedger) {
+      tabBtnLedger.addEventListener('click', function() {
+        state.activeTab = 'ledger';
+        render();
+      });
+    }
+
     // Search
     var searchInput = document.getElementById('fees-search');
     if (searchInput) {
       searchInput.addEventListener('input', function() {
         state.searchQuery = this.value;
         state.currentPage = 1;
+        render();
+      });
+    }
+
+    var ledgerSearch = document.getElementById('fees-ledger-search');
+    if (ledgerSearch) {
+      ledgerSearch.addEventListener('input', function() {
+        state.ledgerSearchQuery = this.value;
         render();
       });
     }
@@ -1518,6 +1995,15 @@
       });
     });
 
+    // Print Fee Receipt PDF
+    document.querySelectorAll('.fees-print-receipt-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var studentId = this.getAttribute('data-student-id');
+        var txnId = this.getAttribute('data-txn-id');
+        printFeeReceipt(txnId, studentId);
+      });
+    });
+
     // View Ledger
     document.querySelectorAll('.fees-ledger-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -1550,8 +2036,13 @@
 
   // Register Module
   SchoolApp.registerModule('fees', {
-    init: function() {},
-    render: render,
+    init: function() {
+      checkAndRunAutoCharge();
+    },
+    render: function(c) {
+      checkAndRunAutoCharge();
+      render(c);
+    },
     cleanup: function() {
       console.log("Fees module unmounted/cleaned up.");
     }

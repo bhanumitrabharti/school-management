@@ -58,7 +58,7 @@
     }
     preview.innerHTML = 
       '<div style="margin-top:8px;">' +
-      '  <img src="' + src + '" style="max-height:80px;border-radius:8px;border:1px solid #E5E7EB;padding:4px;background:#fff;object-fit:contain;">' +
+      '  <img src="' + src + '" style="max-height:80px;border-radius:8px;border:1px solid #E5E7EB;padding:4px;background:var(--bg-secondary);object-fit:contain;">' +
       '  <div style="display:flex;gap:8px;margin-top:8px;">' +
       '    <button type="button" class="btn btn-secondary btn-xs" onclick="window.changeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Change Logo</button>' +
       '    <button type="button" class="btn btn-danger btn-xs" onclick="window.removeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">delete</span> Remove Logo</button>' +
@@ -157,40 +157,15 @@
     return yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + min + ':00';
   };
 
-  var mockTransactions = [
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10001", date_time: getRelativeDateString(0, 9, 15), student_name: "Aarav Sharma", class_section: "10-A", payment_method: "Cash", amount: 1500 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10002", date_time: getRelativeDateString(0, 10, 30), student_name: "Priya Patel", class_section: "10-A", payment_method: "UPI", amount: 2500 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10003", date_time: getRelativeDateString(0, 11, 45), student_name: "Rahul Kumar", class_section: "7-B", payment_method: "Cash", amount: 1200 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10004", date_time: getRelativeDateString(0, 14, 0), student_name: "Ananya Singh", class_section: "7-B", payment_method: "Bank", amount: 3000 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10005", date_time: getRelativeDateString(1, 8, 30), student_name: "Vikram Reddy", class_section: "8-A", payment_method: "UPI", amount: 1500 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10006", date_time: getRelativeDateString(2, 12, 0), student_name: "Sneha Gupta", class_section: "8-A", payment_method: "Cash", amount: 1800 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10007", date_time: getRelativeDateString(4, 10, 0), student_name: "Arjun Nair", class_section: "9-C", payment_method: "Bank", amount: 4500 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10008", date_time: getRelativeDateString(15, 11, 0), student_name: "Meera Iyer", class_section: "9-C", payment_method: "UPI", amount: 2000 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10009", date_time: getRelativeDateString(18, 14, 30), student_name: "Karan Verma", class_section: "6-A", payment_method: "Cash", amount: 1200 },
-    { school_id: "svm_bokaro_001", schoolId: "svm_bokaro_001", transaction_id: "TXN10010", date_time: getRelativeDateString(22, 15, 15), student_name: "Divya Joshi", class_section: "6-A", payment_method: "Bank", amount: 3500 }
-  ];
-
   function getMergedTransactions() {
     var currentSchoolId = SchoolApp.store.currentSchoolId || 'svm_bokaro_001';
-    var isSVM = currentSchoolId === 'svm_bokaro_001';
     
-    // 1. Get filtered mock transactions (only for SVM)
-    var txns = [];
-    if (isSVM) {
-      txns = mockTransactions.filter(function(t) {
-        var tSchoolId = t.schoolId || t.school_id;
-        return tSchoolId === currentSchoolId;
-      }).map(function(t) {
-        return Object.assign({}, t, { schoolId: currentSchoolId, school_id: currentSchoolId });
-      });
-    }
-    
-    // 2. Get real transactions from SchoolApp.store.fees (filtered by current schoolId)
+    // Get real transactions from SchoolApp.store.fees (filtered by current schoolId)
     var realPayments = (SchoolApp.store.fees || []).filter(function(f) {
       return f.type === 'payment' && (!f.schoolId || f.schoolId === currentSchoolId);
     });
     
-    var mappedReal = realPayments.map(function(p) {
+    return realPayments.map(function(p) {
       var student = (SchoolApp.store.students || []).find(function(s) { return s.id === p.studentId; });
       var studentName = student ? (student.firstName + ' ' + (student.lastName || '')) : 'Unknown Student';
       var classSection = student ? (student.class + '-' + (student.section || 'A')) : 'Unknown';
@@ -205,8 +180,6 @@
         amount: parseFloat(p.amount)
       };
     });
-    
-    return txns.concat(mappedReal);
   }
 
 
@@ -402,7 +375,7 @@
 
         Object.keys(wizardState.subjectTypeDefaults).forEach(function(type) {
           var defaults = wizardState.subjectTypeDefaults[type];
-          bodyHTML += '<div style="grid-column: span 2; font-weight: bold; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; margin-top: 8px; color:var(--primary);">' + type + ' Default Scores</div>';
+          bodyHTML += '<div style="grid-column: span 2; font-weight: bold; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; margin-top: 8px; color:var(--accent-primary);">' + type + ' Default Scores</div>';
           bodyHTML += '<div class="form-group mb-0">';
           bodyHTML += '  <label class="form-label" style="font-size:11px;">Full Marks *</label>';
           bodyHTML += '  <input type="number" class="form-input wizard-default-full" data-type="' + type + '" value="' + defaults.full + '" min="1" required style="padding:6px; min-height:32px;">';
@@ -1131,21 +1104,19 @@
       html += '    <button class="tab-btn' + (state.activeTab === 'settings' ? ' active' : '') + '" data-tab="settings"><span class="material-icons-round">settings</span> School Settings</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'users' ? ' active' : '') + '" data-tab="users"><span class="material-icons-round">manage_accounts</span> User Management</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'fees' ? ' active' : '') + '" data-tab="fees"><span class="material-icons-round">payments</span> Fee Setup</button>';
-      html += '    <button class="tab-btn' + (state.activeTab === 'transactions' ? ' active' : '') + '" data-tab="transactions"><span class="material-icons-round">receipt_long</span> Fee Ledger</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'notices' ? ' active' : '') + '" data-tab="notices"><span class="material-icons-round">campaign</span> Notice Board</button>';
-      html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">trending_up</span> Class Promotion</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'promotion' ? ' active' : '') + '" data-tab="promotion"><span class="material-icons-round">upgrade</span> Student Promotion</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'data' ? ' active' : '') + '" data-tab="data"><span class="material-icons-round">storage</span> Data Management</button>';
-      html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">settings_backup_restore</span> Recovery Center</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'recovery' ? ' active' : '') + '" data-tab="recovery"><span class="material-icons-round">delete_sweep</span> Recycle Bin</button>';
       html += '    <button class="tab-btn' + (state.activeTab === 'system' ? ' active' : '') + '" data-tab="system"><span class="material-icons-round">info</span> System Info</button>';
-      html += '    <button class="tab-btn' + (state.activeTab === 'reportCard' ? ' active' : '') + '" data-tab="reportCard"><span class="material-icons-round">design_services</span> Report Card Designer</button>';
+      html += '    <button class="tab-btn' + (state.activeTab === 'reportCard' ? ' active' : '') + '" data-tab="reportCard"><span class="material-icons-round">style</span> Report Card Designer</button>';
       html += '  </aside>';
- 
-      // Right Column: Content Area
-      html += '  <main class="admin-content-area">';
+
+      // Right Column: Active Tab Content Area
+      html += '  <main class="admin-content">';
       html += renderSettingsTab();
       html += renderUsersTab();
       html += renderFeesTab();
-      html += renderTransactionsTab();
       html += renderNoticesTab();
       html += renderPromotionTab();
       html += renderDataTab();
@@ -1486,29 +1457,29 @@
     var displayStyle = (state.activeTab === 'reportCard' ? 'display:flex;' : 'display:none;');
     var html = '<div class="tab-content' + (state.activeTab === 'reportCard' ? ' active' : '') + '" id="tab-reportCard" style="' + displayStyle + ' flex-direction:column; gap:20px;">';
 
-    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div class="rc-header-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
     html += '  <div>';
     html += '    <h3 style="margin:0; font-size:18px; color:var(--text-primary);"><span class="material-icons-round" style="vertical-align:middle; margin-right:6px; color:#1E40AF;">badge</span> Report Card Designer</h3>';
     html += '    <p style="margin:4px 0 0 0; font-size:13px; color:var(--text-secondary);">Customize school header, student info, academic fields, and colors for report card prints.</p>';
     html += '  </div>';
-    html += '  <div style="display:flex; gap:10px;">';
+    html += '  <div class="rc-action-buttons" style="display:flex; gap:10px;">';
     html += '    <button type="button" class="btn btn-secondary btn-sm" onclick="window.resetReportCardConfig()"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">restart_alt</span> Reset Defaults</button>';
     html += '    <button type="button" class="btn btn-primary btn-sm" id="save-rc-config-btn" onclick="window.saveReportCardConfig()"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;">save</span> Save Configuration</button>';
     html += '  </div>';
     html += '</div>';
 
     // 2-Column Layout: Left Controls (Form), Right Live Preview
-    html += '<form id="rc-designer-form" onchange="window.updateReportCardLivePreview()" oninput="window.updateReportCardLivePreview()" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:start;">';
+    html += '<form id="rc-designer-form" class="rc-designer-layout" onchange="window.updateReportCardLivePreview()" oninput="window.updateReportCardLivePreview()" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:start;">';
 
     // Left Column: Configuration Controls
-    html += '  <div style="display:flex; flex-direction:column; gap:16px;">';
+    html += '  <div class="rc-config-panel" style="display:flex; flex-direction:column; gap:16px;">';
 
     // Section A: School Information
     html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
     html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
     html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">school</span> SECTION A: School Information</h4>';
     html += '      </div>';
-    html += '      <div class="card-body" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+    html += '      <div class="card-body rc-section-grid rc-checkbox-grid" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
     
     var schoolFields = [
       { key: 'logo', label: 'School Logo' },
@@ -1525,7 +1496,7 @@
 
     schoolFields.forEach(function(f) {
       var isChecked = cfg.school[f.key] !== false;
-      html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+      html += '        <label class="rc-section" style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
       html += '          <input type="checkbox" data-section="school" data-key="' + f.key + '" ' + (isChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> ' + f.label;
       html += '        </label>';
     });
@@ -1538,7 +1509,7 @@
     html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
     html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">person</span> SECTION B: Student Information</h4>';
     html += '      </div>';
-    html += '      <div class="card-body" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+    html += '      <div class="card-body rc-section-grid rc-checkbox-grid" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
 
     var studentFields = [
       { key: 'name', label: 'Student Name' },
@@ -1558,7 +1529,7 @@
 
     studentFields.forEach(function(f) {
       var isChecked = cfg.student[f.key] !== false;
-      html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+      html += '        <label class="rc-section" style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
       html += '          <input type="checkbox" data-section="student" data-key="' + f.key + '" ' + (isChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> ' + f.label;
       html += '        </label>';
     });
@@ -1571,7 +1542,7 @@
     html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
     html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">analytics</span> SECTION C: Academic Information</h4>';
     html += '      </div>';
-    html += '      <div class="card-body" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+    html += '      <div class="card-body rc-section-grid rc-checkbox-grid" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
 
     var academicFields = [
       { key: 'grandTotal', label: 'Grand Total' },
@@ -1588,7 +1559,7 @@
 
     academicFields.forEach(function(f) {
       var isChecked = cfg.academic[f.key] !== false;
-      html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+      html += '        <label class="rc-section" style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
       html += '          <input type="checkbox" data-section="academic" data-key="' + f.key + '" ' + (isChecked ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> ' + f.label;
       html += '        </label>';
     });
@@ -1601,7 +1572,7 @@
     html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
     html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">palette</span> SECTION D: Design Settings</h4>';
     html += '      </div>';
-    html += '      <div class="card-body" style="padding:14px; display:flex; flex-direction:column; gap:12px;">';
+    html += '      <div class="card-body rc-design-settings" style="padding:14px; display:flex; flex-direction:column; gap:12px;">';
     
     html += '        <div style="display:flex; align-items:center; gap:12px;">';
     html += '          <label style="font-size:13px; font-weight:600;">Primary Branding Color:</label>';
@@ -1639,7 +1610,7 @@
 
     TEMPLATE_LABELS.forEach(function(t) {
       var val = currentTemplates[t.key] || defs[t.key] || '';
-      html += '          <div style="margin-bottom:12px;">';
+      html += '          <div class="rc-template-field" style="margin-bottom:12px;">';
       html += '            <label style="font-size:12px; font-weight:600; color:#374151; display:block; margin-bottom:4px;">' + t.label + '</label>';
       html += '            <textarea id="tpl-' + t.key + '" rows="2" style="width:100%; font-size:12px; padding:8px; border:1px solid #E5E7EB; border-radius:6px; resize:vertical;">' + escapeHTML(val) + '</textarea>';
       html += '          </div>';
@@ -1654,13 +1625,13 @@
     html += '  </div>'; // End Left Column
 
     // Right Column: Live Preview Panel
-    html += '  <div class="card" style="border: 1px solid var(--border-color); border-radius:10px; position:sticky; top:20px;">';
+    html += '  <div class="card rc-preview-panel" style="border: 1px solid var(--border-color); border-radius:10px; position:sticky; top:20px;">';
     html += '    <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">';
     html += '      <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">preview</span> Live Preview (Mini A4)</h4>';
     html += '      <span style="font-size:11px; font-weight:600; color:var(--text-secondary); background:rgba(30,64,175,0.1); padding:2px 8px; border-radius:12px;">Sample Student Data</span>';
     html += '    </div>';
     html += '    <div class="card-body" style="padding:14px; overflow:hidden; min-height:500px; background:#f8fafc;">';
-    html += '      <div id="report-card-live-preview-container"></div>';
+    html += '      <div id="rc-live-preview"><div id="report-card-live-preview-container"></div></div>';
     html += '    </div>';
     html += '  </div>'; // End Right Column
 
@@ -1712,7 +1683,7 @@
     html += '          <div id="logo-status-container" style="margin-top:6px; font-size:13px; font-weight:600;"></div>';
     html += '          <div id="logo-preview" style="margin-top:8px;">';
     if (logoSrc) {
-      html += '            <img src="' + logoSrc + '" style="max-height:80px;border-radius:8px;border:1px solid #E5E7EB;padding:4px;background:#fff;object-fit:contain;">';
+      html += '            <img src="' + logoSrc + '" style="max-height:80px;border-radius:8px;border:1px solid #E5E7EB;padding:4px;background:var(--bg-secondary);object-fit:contain;">';
       html += '            <div style="display:flex;gap:8px;margin-top:8px;">';
       html += '              <button type="button" class="btn btn-secondary btn-xs" onclick="window.changeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Change Logo</button>';
       html += '              <button type="button" class="btn btn-danger btn-xs" onclick="window.removeLogo()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">delete</span> Remove Logo</button>';
@@ -1827,29 +1798,29 @@
     var html = '<div class="tab-content' + (state.activeTab === 'users' ? ' active' : '') + '" id="tab-users">';
 
     // Admin Account
-    html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">admin_panel_settings</span> Admin Account</h3></div><div class="card-body">';
-    html += '<form id="admin-creds-form" class="form-grid">';
+    html += '<div class="card mb-3 users-card"><div class="card-header users-header"><h3><span class="material-icons-round">admin_panel_settings</span> Admin Account</h3></div><div class="card-body">';
+    html += '<form id="admin-creds-form" class="form-grid users-form-grid">';
     html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" name="adminUsername" value="' + (s.adminUsername || 'admin') + '"></div>';
     html += '<div class="form-group"><label class="form-label">Password</label><div class="password-wrapper"><input type="password" class="form-input" name="adminPassword" value="' + (s.adminPassword || 'admin123') + '"><i class="fa fa-eye toggle-password"></i></div></div>';
     html += '</form>';
-    html += '<button class="btn btn-primary btn-sm mt-2" id="save-admin-creds"><span class="material-icons-round">save</span> Update Credentials</button>';
+    html += '<button class="btn btn-primary btn-sm mt-2 users-submit-btn" id="save-admin-creds"><span class="material-icons-round">save</span> Update Credentials</button>';
     html += '</div></div>';
 
     // Teacher Accounts
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">people</span> Teacher Accounts</h3>';
-    html += '<button class="btn btn-secondary btn-sm" id="bulk-reset-passwords"><span class="material-icons-round">lock_reset</span> Reset All Passwords</button>';
+    html += '<div class="card users-card"><div class="card-header users-header"><h3><span class="material-icons-round">people</span> Teacher Accounts</h3>';
+    html += '<button class="btn btn-secondary btn-sm users-bulk-btn" id="bulk-reset-passwords"><span class="material-icons-round">lock_reset</span> Reset All Passwords</button>';
     html += '</div><div class="card-body">';
 
     var teachers = SchoolApp.store.teachers || [];
     if (teachers.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+      html += '<div class="table-container users-table-container"><table class="data-table users-teacher-table"><thead><tr><th>Name</th><th>Email</th><th>Subject</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
       teachers.forEach(function(t) {
         html += '<tr>';
-        html += '<td><strong>' + t.firstName + ' ' + t.lastName + '</strong></td>';
-        html += '<td>' + t.email + '</td>';
-        html += '<td>' + t.subject + '</td>';
-        html += '<td><span class="badge ' + (t.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + t.status + '</span></td>';
-        html += '<td><div class="table-actions">';
+        html += '<td data-label="Name"><strong>' + t.firstName + ' ' + t.lastName + '</strong></td>';
+        html += '<td data-label="Email">' + t.email + '</td>';
+        html += '<td data-label="Subject">' + t.subject + '</td>';
+        html += '<td data-label="Status"><span class="badge ' + (t.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + t.status + '</span></td>';
+        html += '<td data-label="Actions"><div class="table-actions users-table-actions">';
         html += '<button class="btn btn-secondary btn-sm reset-pw-btn" data-id="' + t.id + '" title="Reset Password"><span class="material-icons-round">lock_reset</span></button>';
         html += '<button class="btn btn-sm toggle-status-btn ' + (t.status === 'Active' ? 'btn-danger' : 'btn-success') + '" data-id="' + t.id + '" title="' + (t.status === 'Active' ? 'Deactivate' : 'Activate') + '"><span class="material-icons-round">' + (t.status === 'Active' ? 'block' : 'check_circle') + '</span></button>';
         html += '<button class="btn btn-secondary btn-sm check-exam-access-btn" data-id="' + t.id + '" title="Check Exam Access"><span class="material-icons-round">rule</span></button>';
@@ -1870,17 +1841,17 @@
     var html = '<div class="tab-content' + (state.activeTab === 'fees' ? ' active' : '') + '" id="tab-fees" style="' + displayStyle + ' flex-direction:column; gap:20px;">';
 
     // Card 1: Customizable Fee Heads
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">category</span> Customizable Fee Heads</h3>';
+    html += '<div class="card fee-setup-card"><div class="card-header fee-setup-header"><h3><span class="material-icons-round">category</span> Customizable Fee Heads</h3>';
     html += '<button class="btn btn-primary btn-sm" id="admin-add-feehead-btn"><span class="material-icons-round">add</span> Add Fee Head</button>';
     html += '</div><div class="card-body">';
 
     var feeHeads = SchoolApp.store.feeHeads || [];
     if (feeHeads.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Fee Head Name</th><th>Actions</th></tr></thead><tbody>';
+      html += '<div class="table-container fee-setup-table-container"><table class="data-table fee-setup-table"><thead><tr><th>Fee Head Name</th><th>Actions</th></tr></thead><tbody>';
       feeHeads.forEach(function(fh) {
         html += '<tr>';
-        html += '<td><strong>' + fh.name + '</strong></td>';
-        html += '<td><div class="table-actions">';
+        html += '<td data-label="Fee Head Name"><strong>' + fh.name + '</strong></td>';
+        html += '<td data-label="Actions"><div class="table-actions">';
         html += '<button class="btn-icon admin-edit-feehead-btn" data-id="' + fh.id + '" title="Edit Name"><span class="material-icons-round">edit</span></button>';
         html += '<button class="btn-icon admin-delete-feehead-btn" data-id="' + fh.id + '" title="Delete Fee Head" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
         html += '</div></td></tr>';
@@ -1892,37 +1863,40 @@
     html += '</div></div>';
 
     // Card 2: Fee Structure Matrix
-    html += '  <div class="card">';
-    html += '    <div class="card-header">';
+    html += '  <div class="card fee-setup-card">';
+    html += '    <div class="card-header fee-setup-header">';
     html += '      <h3><span class="material-icons-round">grid_on</span> Fee Structure Matrix</h3>';
     html += '    </div>';
-    html += '    <div class="card-body" style="overflow-x:auto;">';
-    html += '      <table class="data-table" style="min-width:600px;">';
-    html += '        <thead>';
-    html += '          <tr id="setup-feehead-row"><th>Class</th><th>Tuition</th><th>Transport</th><th>Exam</th></tr>';
-    html += '        </thead>';
-    html += '        <tbody id="setup-fee-matrix-body">';
-    html += '        </tbody>';
-    html += '      </table>';
+    html += '    <div class="fee-setup-matrix-wrapper">';
+    html += '      <div class="fee-matrix-scroll-hint" style="display:none; font-size:12px; color:var(--text-muted); padding:8px 12px; background:var(--bg-glass); border-bottom:1px solid var(--border-color); text-align:center;">← Swipe to see more →</div>';
+    html += '      <div class="card-body fee-matrix-body" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
+    html += '        <table class="data-table fee-matrix-table" style="min-width:600px;">';
+    html += '          <thead>';
+    html += '            <tr id="setup-feehead-row"><th>Class</th><th>Tuition</th><th>Transport</th><th>Exam</th></tr>';
+    html += '          </thead>';
+    html += '          <tbody id="setup-fee-matrix-body">';
+    html += '          </tbody>';
+    html += '        </table>';
+    html += '      </div>';
     html += '    </div>';
-    html += '    <div class="card-footer" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '    <div class="card-footer fee-setup-actions" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
     html += '      <button type="button" class="btn btn-primary" id="setup-save-fees-btn"><span class="material-icons-round">save</span> Save Changes</button>';
     html += '    </div>';
     html += '  </div>';
 
     // Card 3: Extra Charges
-    html += '  <div class="card">';
-    html += '    <div class="card-header"><h3><span class="material-icons-round">receipt</span> Extra Charges</h3></div>';
+    html += '  <div class="card fee-setup-card">';
+    html += '    <div class="card-header fee-setup-header"><h3><span class="material-icons-round">receipt</span> Extra Charges</h3></div>';
     html += '    <div class="card-body">';
-    html += '      <div class="admin-form-grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; align-items:flex-end;">';
+    html += '      <div class="admin-form-grid fee-setup-form-grid fee-setup-form" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; align-items:flex-end;">';
     html += '        <div class="form-group"><label class="form-label">Charge Name</label><input type="text" class="form-input" id="setup-charge-name" placeholder="e.g. Admission Fee"></div>';
     html += '        <div class="form-group"><label class="form-label">Amount (₹)</label><input type="number" class="form-input" id="setup-charge-amount" placeholder="e.g. 5000" min="0"></div>';
     html += '        <div class="form-group"><label class="form-label">Billing Type</label><select class="form-select" id="setup-charge-type"><option value="one-time">One-time</option><option value="annual">Annual</option><option value="monthly">Monthly</option></select></div>';
-    html += '        <div class="form-group" style="grid-column: span 3; display:flex; justify-content:flex-end;"><button type="button" class="btn btn-primary" id="setup-add-charge-btn" style="height:38px; padding:0 24px;">Add Charge</button></div>';
+    html += '        <div class="form-group fee-setup-add-btn-group" style="grid-column: span 3; display:flex; justify-content:flex-end;"><button type="button" class="btn btn-primary" id="setup-add-charge-btn" style="height:38px; padding:0 24px;">Add Charge</button></div>';
     html += '      </div>';
     html += '      <div id="setup-charges-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>';
     html += '    </div>';
-    html += '    <div class="card-footer" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '    <div class="card-footer fee-setup-actions" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
     html += '      <button type="button" class="btn btn-primary" id="setup-save-charges-btn"><span class="material-icons-round">save</span> Save Charges</button>';
     html += '    </div>';
     html += '  </div>';
@@ -1950,7 +1924,7 @@
         html += '<tr>';
         html += '<td><strong>' + ex.name + '</strong></td>';
         html += '<td><div class="table-actions" style="display:flex; gap:8px;">';
-        html += '<button class="btn-icon admin-edit-examterm-btn" data-id="' + ex.id + '" title="Edit Exam Term" style="color:var(--primary)"><span class="material-icons-round">edit</span></button>';
+        html += '<button class="btn-icon admin-edit-examterm-btn" data-id="' + ex.id + '" title="Edit Exam Term" style="color:var(--accent-primary)"><span class="material-icons-round">edit</span></button>';
         html += '<button class="btn-icon admin-delete-examterm-btn" data-id="' + ex.id + '" title="Delete Exam Term" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
         html += '</div></td></tr>';
       });
@@ -2047,8 +2021,8 @@
     var html = '<div class="tab-content' + (state.activeTab === 'notices' ? ' active' : '') + '" id="tab-notices">';
 
     // Card 1: Publish New Notice Form
-    html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Publish New Announcement</h3></div><div class="card-body">';
-    html += '<form id="admin-notice-form" class="form-grid">';
+    html += '<div class="card mb-3 notices-card"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Publish New Announcement</h3></div><div class="card-body">';
+    html += '<form id="admin-notice-form" class="form-grid notices-form-grid">';
     html += '<div class="form-group full-width"><label class="form-label">Notice Title *</label>';
     html += '<input type="text" id="admin-notice-title" class="form-input" placeholder="e.g. Science Fair Registration" required></div>';
     
@@ -2063,8 +2037,15 @@
     html += '<option value="Normal">Normal (Blue/Green)</option>';
     html += '<option value="Urgent">Urgent (Red/Orange)</option>';
     html += '</select></div>';
+
+    html += '<div class="form-group"><label class="form-label">Audience Target *</label>';
+    html += '<select id="admin-notice-audience" class="form-select">';
+    html += '<option value="everyone">👥 Everyone (All Users)</option>';
+    html += '<option value="teachers">👨‍🏫 Teachers Only</option>';
+    html += '<option value="students">🎓 Students Only</option>';
+    html += '</select></div>';
     
-    html += '<div class="form-group full-width flex gap-2" style="justify-content:flex-end; margin-top: 10px;">';
+    html += '<div class="form-group full-width flex gap-2 notices-form-actions" style="justify-content:flex-end; margin-top: 10px;">';
     html += '<input type="hidden" id="admin-notice-edit-id" value="">';
     html += '<button type="button" class="btn btn-secondary btn-sm" id="admin-notice-reset-btn" style="display:none;"><span class="material-icons-round">close</span> Cancel Edit</button>';
     html += '<button type="submit" class="btn btn-primary btn-sm" id="admin-notice-submit-btn"><span class="material-icons-round">publish</span> Publish Notice</button>';
@@ -2073,12 +2054,12 @@
     html += '</div></div>';
 
     // Card 2: List of Active Notices
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">list</span> Active Announcements</h3></div><div class="card-body">';
+    html += '<div class="card notices-card"><div class="card-header"><h3><span class="material-icons-round">list</span> Active Announcements</h3></div><div class="card-body">';
     
     var notices = SchoolApp.store.notices || [];
     if (notices.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Date</th><th>Announcement Info</th><th class="center">Priority</th><th class="center">Status</th><th>Actions</th>';
+      html += '<div class="table-container notices-table-container"><table class="data-table notices-table"><thead><tr>';
+      html += '<th>Date</th><th>Announcement Info</th><th class="center">Audience</th><th class="center">Priority</th><th class="center">Status</th><th>Actions</th>';
       html += '</tr></thead><tbody>';
       
       notices.forEach(function(notice) {
@@ -2086,12 +2067,25 @@
         var status = notice.status || 'published';
         var statusBadge = status === 'published' ? 'badge-success' : 'badge-warning';
         
+        var audArr = notice.audience || ['everyone'];
+        if (!Array.isArray(audArr)) audArr = [audArr];
+        var audLabel = '👥 Everyone';
+        var audBadge = 'badge-info';
+        if (audArr.indexOf('teachers') !== -1) {
+          audLabel = '👨‍🏫 Teachers';
+          audBadge = 'badge-purple';
+        } else if (audArr.indexOf('students') !== -1) {
+          audLabel = '🎓 Students';
+          audBadge = 'badge-cyan';
+        }
+
         html += '<tr>';
-        html += '<td style="font-size:12px; white-space:nowrap;">' + SchoolApp.formatDate(notice.date) + '</td>';
-        html += '<td><strong>' + notice.title + '</strong><br><span style="font-size:12px; color:var(--text-secondary); white-space: normal; display: block; max-width: 450px;">' + notice.message + '</span></td>';
-        html += '<td class="center"><span class="badge ' + priorityBadge + '">' + notice.priority + '</span></td>';
-        html += '<td class="center"><span class="badge ' + statusBadge + '">' + status.toUpperCase() + '</span></td>';
-        html += '<td><div class="table-actions" style="flex-wrap: nowrap !important; justify-content: flex-end;">';
+        html += '<td data-label="Date" style="font-size:12px; white-space:nowrap;">' + SchoolApp.formatDate(notice.date) + '</td>';
+        html += '<td data-label="Announcement"><strong>' + notice.title + '</strong><br><span style="font-size:12px; color:var(--text-secondary); white-space: normal; display: block; max-width: 450px;">' + notice.message + '</span></td>';
+        html += '<td data-label="Audience" class="center"><span class="badge ' + audBadge + '">' + audLabel + '</span></td>';
+        html += '<td data-label="Priority" class="center"><span class="badge ' + priorityBadge + '">' + notice.priority + '</span></td>';
+        html += '<td data-label="Status" class="center"><span class="badge ' + statusBadge + '">' + status.toUpperCase() + '</span></td>';
+        html += '<td data-label="Actions"><div class="table-actions notices-table-actions" style="flex-wrap: nowrap !important; justify-content: flex-end;">';
         
         if (status === 'draft') {
           html += '<button class="btn btn-success btn-sm admin-approve-notice-btn" data-id="' + notice.id + '" title="Approve & Publish" style="padding: 4px 8px !important; min-height: 28px !important; font-size: 11px !important;"><span class="material-icons-round" style="font-size:14px; vertical-align:middle; margin-right:2px;">check_circle</span> Approve</button>';
@@ -2153,6 +2147,14 @@
 
     html += '</div></div></div>';
 
+    // Demo Data Tools
+    html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">movie</span> 🎬 Demo Data Tools</h3></div><div class="card-body">';
+    html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px">Generate or clear synthetic exam terms, subjects, and realistic marks for all students for sales demonstrations.</p>';
+    html += '<div class="flex gap-2" style="flex-wrap:wrap">';
+    html += '<button class="btn btn-primary" id="seed-demo-exam-btn"><span class="material-icons-round">auto_fix_high</span> 🎬 Generate Demo Exam Data</button>';
+    html += '<button class="btn btn-secondary" id="clear-demo-exam-btn"><span class="material-icons-round">delete</span> 🗑️ Clear Demo Exam Data</button>';
+    html += '</div></div></div>';
+
     // Danger Zone
     html += '<div class="danger-zone"><h3><span class="material-icons-round">warning</span> Danger Zone</h3>';
     html += '<p style="color:var(--text-secondary);margin-bottom:16px">These actions are irreversible. Proceed with caution.</p>';
@@ -2189,7 +2191,7 @@
     html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Deleted students, teachers, and attendance logs are held here. Restoring returns them immediately to their modules.</p>';
 
     if (trash.length > 0) {
-      html += '<div class="table-container" style="max-height: 400px; overflow-y: auto;"><table class="data-table"><thead><tr>';
+      html += '<div class="table-container" style="max-height: 400px; overflow-y: auto;"><table class="data-table recovery-table" id="recovery-center-table"><thead><tr>';
       html += '<th>Item</th><th>Type</th><th>Deleted On</th><th>Actions</th>';
       html += '</tr></thead><tbody>';
 
@@ -2209,10 +2211,10 @@
         }
 
         html += '<tr>';
-        html += '<td><strong>' + item.name + '</strong><br><span style="font-size:11px;color:var(--text-muted)">' + item.details + '</span></td>';
-        html += '<td><span class="badge ' + typeBadge + '">' + item.type + '</span></td>';
-        html += '<td style="font-size:12px">' + formattedDate + '</td>';
-        html += '<td><div class="table-actions">';
+        html += '<td data-label="Item"><strong>' + item.name + '</strong><br><span style="font-size:11px;color:var(--text-muted)">' + item.details + '</span></td>';
+        html += '<td data-label="Type"><span class="badge ' + typeBadge + '">' + item.type + '</span></td>';
+        html += '<td data-label="Deleted" style="font-size:12px">' + formattedDate + '</td>';
+        html += '<td data-label="Action"><div class="table-actions">';
         html += '<button class="btn btn-success btn-sm restore-trash-btn" data-id="' + item.id + '" title="Restore Item"><span class="material-icons-round" style="font-size:16px">restore</span></button>';
         html += '<button class="btn btn-danger btn-sm delete-trash-btn" data-id="' + item.id + '" title="Delete Permanently"><span class="material-icons-round" style="font-size:16px">delete_forever</span></button>';
         html += '</div></td>';
@@ -2237,7 +2239,7 @@
     html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Before performing destructive database resets or restoring backups, the system automatically takes snapshots of your state.</p>';
 
     if (restorePoints.length > 0) {
-      html += '<div class="table-container" style="max-height: 400px; overflow-y: auto;"><table class="data-table"><thead><tr>';
+      html += '<div class="table-container" style="max-height: 400px; overflow-y: auto;"><table class="data-table recovery-table"><thead><tr>';
       html += '<th>Snapshot Name</th><th>Date Taken</th><th>Actions</th>';
       html += '</tr></thead><tbody>';
 
@@ -2257,9 +2259,9 @@
         var aCount = rp.store.attendance ? rp.store.attendance.length : 0;
 
         html += '<tr>';
-        html += '<td><strong>' + rp.description + '</strong><br><span style="font-size:11px;color:var(--text-muted)">' + sCount + ' Students · ' + tCount + ' Teachers · ' + aCount + ' Attendance</span></td>';
-        html += '<td style="font-size:12px">' + formattedDate + '</td>';
-        html += '<td><div class="table-actions">';
+        html += '<td data-label="Item"><strong>' + rp.description + '</strong><br><span style="font-size:11px;color:var(--text-muted)">' + sCount + ' Students · ' + tCount + ' Teachers · ' + aCount + ' Attendance</span></td>';
+        html += '<td data-label="Deleted" style="font-size:12px">' + formattedDate + '</td>';
+        html += '<td data-label="Action"><div class="table-actions">';
         html += '<button class="btn btn-secondary btn-sm rollback-rp-btn" data-id="' + rp.id + '" title="Restore entire database to this point"><span class="material-icons-round" style="font-size:16px">settings_backup_restore</span> Rollback</button>';
         html += '<button class="btn-icon delete-rp-btn" data-id="' + rp.id + '" title="Delete Snapshot" style="color:var(--danger)"><span class="material-icons-round" style="font-size:16px">delete</span></button>';
         html += '</div></td>';
@@ -2611,11 +2613,11 @@
     var classes = settings.classes || [];
     var html = '<div class="tab-content' + (state.activeTab === 'promotion' ? ' active' : '') + '" id="tab-promotion">';
 
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">trending_up</span> Academic Class Promotion</h3></div><div class="card-body">';
+    html += '<div class="card promotion-card"><div class="card-header"><h3><span class="material-icons-round">trending_up</span> Academic Class Promotion</h3></div><div class="card-body">';
     html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Use this module at the end of the academic year to promote active students to their next classes in bulk. Students left unchecked will be held back in their current class.</p>';
 
     // Select source & destination class grid
-    html += '<div class="form-grid mb-3" style="grid-template-columns: repeat(2, 1fr); gap:16px">';
+    html += '<div class="form-grid mb-3 promotion-select-grid">';
     
     // Source Class Select
     html += '<div class="form-group"><label class="form-label">Source Class (Current) *</label>';
@@ -2637,15 +2639,15 @@
     html += '</div>'; // End form-grid
 
     // Student Checklist Box
-    html += '<div style="margin-top:20px;border:1px solid var(--border-color);border-radius:8px;padding:16px;background:rgba(0,0,0,0.15)">';
+    html += '<div class="promotion-checklist-box" style="margin-top:20px;border:1px solid var(--border-color);border-radius:8px;padding:16px;background:rgba(0,0,0,0.15)">';
     html += '<h4 style="margin-bottom:12px;color:var(--text-primary)">Student Checklist</h4>';
-    html += '<div id="promotion-student-list-container">';
+    html += '<div id="promotion-student-list-container" class="promotion-wrapper">';
     html += '<div class="empty-state" style="padding: 20px;"><p style="color:var(--text-muted)">Select a source class to view students checklist.</p></div>';
     html += '</div>'; // End checklist container
     html += '</div>';
 
     // Promote Selected Action Button
-    html += '<div class="flex mt-3" style="justify-content:flex-end">';
+    html += '<div class="flex mt-3 promotion-action-bar" style="justify-content:flex-end">';
     html += '<button class="btn btn-primary" id="promote-selected-btn" disabled><span class="material-icons-round">trending_up</span> Promote Selected Students</button>';
     html += '</div>';
 
@@ -2753,6 +2755,347 @@
     
     var checked = document.querySelectorAll('.promotion-student-cb:checked').length;
     promoteBtn.disabled = (checked === 0);
+  }
+
+  var DEFAULT_SUBJECTS_BY_CLASS = {
+    'nursery': ['Hindi', 'English', 'Mathematics'],
+    'lkg': ['Hindi', 'English', 'Mathematics'],
+    'ukg': ['Hindi', 'English', 'Mathematics'],
+    '1': ['Hindi', 'English', 'Mathematics', 'EVS', 'Drawing'],
+    '2': ['Hindi', 'English', 'Mathematics', 'EVS', 'Drawing'],
+    '3': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Drawing'],
+    '4': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Drawing'],
+    '5': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Drawing'],
+    '6': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'General Knowledge', 'Drawing'],
+    '7': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'General Knowledge', 'Drawing'],
+    '8': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'General Knowledge', 'Drawing'],
+    '9': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'General Knowledge', 'Handy craft'],
+    '10': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'General Knowledge', 'Handy craft'],
+    'default': ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'General Knowledge', 'Drawing', 'Handy craft']
+  };
+
+  function normalizeClassDbKey(clsInput) {
+    if (!clsInput) return '1';
+    var str = String(clsInput).trim();
+    str = str.replace(/^Class\s+/i, '');
+    return str;
+  }
+
+  async function seedDemoExamTerm() {
+    var termId = 'term_demo_1';
+
+    if (!SchoolApp.store.examTerms)
+      SchoolApp.store.examTerms = {};
+
+    if (!SchoolApp.store.examTerms[termId]) {
+      SchoolApp.store.examTerms[termId] = {
+        id: termId,
+        name: 'Term 1 (Half-Yearly)',
+        shortName: 'T1',
+        session: '2025-26',
+        startDate: '2025-10-01',
+        endDate: '2025-10-15',
+        status: 'published',
+        order: 1
+      };
+    }
+    return termId;
+  }
+
+  async function ensureSubjectsForClass(termId, classId) {
+    if (!SchoolApp.store.examSubjects)
+      SchoolApp.store.examSubjects = {};
+    if (!SchoolApp.store.examSubjects[termId])
+      SchoolApp.store.examSubjects[termId] = {};
+
+    if (SchoolApp.store.examSubjects[termId][classId] &&
+        SchoolApp.store.examSubjects[termId][classId].subjects &&
+        SchoolApp.store.examSubjects[termId][classId].subjects.length > 0) {
+      return; // already configured
+    }
+
+    var normalizedKey = String(classId || '').toLowerCase().trim().replace(/^class\s+/i, '');
+    var subjectNames = DEFAULT_SUBJECTS_BY_CLASS[normalizedKey] || DEFAULT_SUBJECTS_BY_CLASS['default'];
+
+    var subjects = subjectNames.map(function(name, idx) {
+      var isOptional = (name === 'Drawing' || name === 'Handy craft');
+      return {
+        id: 'subj_' + idx + '_' + Math.random().toString(36).substr(2, 4),
+        name: name,
+        type: isOptional ? 'Practical' : 'Theory',
+        fullMarks: isOptional ? 50 : 100,
+        passMarks: isOptional ? 15 : 33,
+        isOptional: isOptional,
+        hasExam: true,
+        order: idx
+      };
+    });
+
+    SchoolApp.store.examSubjects[termId][classId] = { subjects: subjects };
+  }
+
+  function generateDemoMarks(studentIndex, subject) {
+    // Create different student profiles based on index for variety:
+    var profile = studentIndex % 6;
+    var fullMarks = subject.fullMarks || 100;
+
+    switch(profile) {
+      case 0: // Topper (85-98%)
+        return Math.round(fullMarks * (0.85 + Math.random() * 0.13));
+
+      case 1: // Good student (65-84%)
+        return Math.round(fullMarks * (0.65 + Math.random() * 0.19));
+
+      case 2: // Average (45-64%)
+        return Math.round(fullMarks * (0.45 + Math.random() * 0.19));
+
+      case 3: // Weak in specific subjects (35-50%, sometimes below pass)
+        var isWeakSubject = (subject.name === 'Mathematics' || subject.name === 'Science');
+        if (isWeakSubject) {
+          return Math.round(fullMarks * (0.20 + Math.random() * 0.15));
+        }
+        return Math.round(fullMarks * (0.50 + Math.random() * 0.20));
+
+      case 4: // Optional subject absent case
+        if (subject.isOptional) {
+          return 'ABSENT'; // special marker
+        }
+        return Math.round(fullMarks * (0.60 + Math.random() * 0.25));
+
+      case 5: // One mandatory subject failed
+        var isFailSubject = (subject.name === 'English');
+        if (isFailSubject) {
+          return Math.round(fullMarks * (0.15 + Math.random() * 0.10));
+        }
+        return Math.round(fullMarks * (0.55 + Math.random() * 0.25));
+    }
+  }
+
+  async function generateDemoExamData() {
+    var btn = document.getElementById('seed-demo-exam-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+    }
+
+    try {
+      var termId = await seedDemoExamTerm();
+
+      var students = SchoolApp.store.students || [];
+      if (students.length === 0) {
+        SchoolApp.showToast('No students found to generate demo exam marks for.', 'warning');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🎬 Generate Demo Exam Data';
+        }
+        return;
+      }
+
+      var classesProcessed = {};
+      var sectionsProcessed = {};
+      var totalMarksEntries = 0;
+
+      var ensureSubArr = window.ensureSubjectsArray || function(input) {
+        if (Array.isArray(input)) return input;
+        if (input && typeof input === 'object') return Object.values(input);
+        return [];
+      };
+
+      var recalcEntry = window.recalculateStudentEntry || function(entry, subjects) {
+        var subjectsArr = ensureSubArr(subjects);
+        var totalFull = 0;
+        var totalObtained = 0;
+        var mandatoryFailed = false;
+        var optionalFailedOrAbsent = false;
+
+        subjectsArr.forEach(function(sub) {
+          var sc = entry.marks && entry.marks[sub.id];
+          if (!sc) return;
+          if (sc.isExempted) return;
+
+          var obtained = sc.isAbsent ? 0 : (Number(sc.obtained) || 0);
+
+          totalFull += (sub.fullMarks || 0);
+          totalObtained += obtained;
+
+          if (sub.isOptional) {
+            if (sc.isAbsent || obtained < (sub.passMarks || 0)) {
+              optionalFailedOrAbsent = true;
+            }
+          } else {
+            if (sc.isAbsent || obtained < (sub.passMarks || 0)) {
+              mandatoryFailed = true;
+            }
+          }
+        });
+
+        entry.total = totalObtained;
+        entry.maxTotal = totalFull;
+        entry.percentage = totalFull > 0 ? Math.round((totalObtained / totalFull) * 100) : 0;
+        if (typeof calculateGrade === 'function') {
+          var gradeObj = calculateGrade(entry.percentage);
+          entry.grade = gradeObj.grade;
+          entry.gradeLabel = gradeObj.label;
+        }
+        if (mandatoryFailed) {
+          entry.result = 'FAIL';
+          entry.division = 'Not Applicable';
+        } else {
+          entry.result = 'PASS';
+          if (optionalFailedOrAbsent) {
+            entry.division = 'Not Awarded';
+          } else {
+            if (entry.percentage >= 75) entry.division = 'First Division (Distinction)';
+            else if (entry.percentage >= 60) entry.division = 'First Division';
+            else if (entry.percentage >= 45) entry.division = 'Second Division';
+            else if (entry.percentage >= 33) entry.division = 'Third Division';
+            else entry.division = 'Pass Division';
+          }
+        }
+      };
+
+      for (var i = 0; i < students.length; i++) {
+        var student = students[i];
+        var classId = normalizeClassDbKey(student.class);
+        var sectionId = student.section || 'A';
+        var keyCS = classId + '_' + sectionId;
+
+        // Ensure subjects configured for this class (once per class)
+        if (!classesProcessed[classId]) {
+          await ensureSubjectsForClass(termId, classId);
+          classesProcessed[classId] = true;
+        }
+        sectionsProcessed[keyCS] = { classId: classId, sectionId: sectionId };
+
+        var subjects = ensureSubArr(
+          SchoolApp.store.examSubjects[termId][classId].subjects
+        );
+
+        var marksObj = {};
+        subjects.forEach(function(sub) {
+          var val = generateDemoMarks(i, sub);
+
+          if (val === 'ABSENT') {
+            marksObj[sub.id] = {
+              obtained: 0,
+              fullMarks: sub.fullMarks,
+              isAbsent: true,
+              isExempted: false,
+              enteredBy: 'Demo Data'
+            };
+          } else {
+            marksObj[sub.id] = {
+              obtained: val,
+              fullMarks: sub.fullMarks,
+              isAbsent: false,
+              isExempted: false,
+              enteredBy: 'Demo Data'
+            };
+          }
+        });
+
+        var entry = {
+          marks: marksObj,
+          isComplete: true,
+          lastUpdated: new Date().toISOString()
+        };
+        recalcEntry(entry, subjects);
+
+        if (!SchoolApp.store.examMarks) SchoolApp.store.examMarks = {};
+        if (!SchoolApp.store.examMarks[termId]) SchoolApp.store.examMarks[termId] = {};
+        if (!SchoolApp.store.examMarks[termId][classId]) SchoolApp.store.examMarks[termId][classId] = {};
+        if (!SchoolApp.store.examMarks[termId][classId][sectionId]) SchoolApp.store.examMarks[termId][classId][sectionId] = {};
+
+        SchoolApp.store.examMarks[termId][classId][sectionId][student.id] = entry;
+
+        totalMarksEntries++;
+
+        if (btn) {
+          btn.textContent = 'Generating ' + (i + 1) + '/' + students.length + '...';
+        }
+      }
+
+      var recalcRanks = window.recalculateRanks || function(tId, cId, sId) {
+        var classMarks = (SchoolApp.store.examMarks && SchoolApp.store.examMarks[tId] && SchoolApp.store.examMarks[tId][cId] && SchoolApp.store.examMarks[tId][cId][sId]) || {};
+        var stus = (SchoolApp.store.students || []).filter(function(s) {
+          return String(s.class).toLowerCase().trim().replace(/^class\s+/i, '') === String(cId).toLowerCase().trim() &&
+                 String(s.section || 'A').toLowerCase().trim() === String(sId).toLowerCase().trim() &&
+                 s.status === 'Active';
+        });
+
+        var rankList = [];
+        stus.forEach(function(s) {
+          var sm = classMarks[s.id];
+          if (sm && sm.isComplete) {
+            if (sm.result === 'N/A') return;
+            rankList.push({ studentId: s.id, percentage: sm.percentage || 0, total: sm.total || 0, sm: sm });
+          }
+        });
+        rankList.sort(function(a, b) {
+          if (b.percentage !== a.percentage) return b.percentage - a.percentage;
+          return b.total - a.total;
+        });
+        var currentRank = 1;
+        var skipped = 0;
+        rankList.forEach(function(item, idx) {
+          if (idx > 0) {
+            var prev = rankList[idx - 1];
+            if (item.percentage === prev.percentage && item.total === prev.total) {
+              skipped++;
+            } else {
+              currentRank += skipped + 1;
+              skipped = 0;
+            }
+          }
+          item.sm.rank = currentRank;
+        });
+      };
+
+      var secKeys = Object.keys(sectionsProcessed);
+      for (var k = 0; k < secKeys.length; k++) {
+        var secItem = sectionsProcessed[secKeys[k]];
+        recalcRanks(termId, secItem.classId, secItem.sectionId);
+      }
+
+      await SchoolApp.save(true);
+
+      if (btn) {
+        btn.textContent = '✅ Done!';
+      }
+      SchoolApp.showToast(
+        'Demo exam data generated for ' + totalMarksEntries + ' students!',
+        'success'
+      );
+
+    } catch(err) {
+      console.error('Demo seed error:', err);
+      SchoolApp.showToast('Failed: ' + err.message, 'error');
+    } finally {
+      if (btn) {
+        setTimeout(function() {
+          btn.disabled = false;
+          btn.textContent = '🎬 Generate Demo Exam Data';
+        }, 2000);
+      }
+    }
+  }
+
+  async function clearDemoExamData() {
+    SchoolApp.showConfirm('Clear all demo exam data? This cannot be undone.', async function() {
+      var termId = 'term_demo_1';
+      if (SchoolApp.store.examTerms && SchoolApp.store.examTerms[termId]) {
+        delete SchoolApp.store.examTerms[termId];
+      }
+      if (SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[termId]) {
+        delete SchoolApp.store.examSubjects[termId];
+      }
+      if (SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId]) {
+        delete SchoolApp.store.examMarks[termId];
+      }
+
+      await SchoolApp.save(true);
+      SchoolApp.showToast('Demo exam data cleared.', 'info');
+    });
   }
 
   function attachEvents() {
@@ -3347,7 +3690,7 @@
         teacher.password = newPw;
         SchoolApp.save();
 
-        SchoolApp.showModal('Password Reset', '<div class="text-center"><div style="font-size:48px;margin-bottom:16px">🔑</div><p>New password for <strong>' + teacher.firstName + ' ' + teacher.lastName + '</strong>:</p><div style="font-family:monospace;font-size:24px;padding:16px;background:rgba(255,255,255,0.05);border-radius:8px;margin:16px 0;letter-spacing:2px;text-align:center"><strong>' + newPw + '</strong></div><p style="color:var(--text-muted);font-size:13px">Please share this password securely with the teacher.</p></div>',
+        SchoolApp.showModal('Password Reset', '<div class="text-center"><div style="font-size:48px;margin-bottom:16px">🔑</div><p>New password for <strong>' + teacher.firstName + ' ' + teacher.lastName + '</strong>:</p><div style="font-family:monospace;font-size:24px;padding:16px;background:var(--bg-tertiary);border:1px solid var(--border-light);border-radius:8px;margin:16px 0;letter-spacing:2px;text-align:center"><strong>' + newPw + '</strong></div><p style="color:var(--text-muted);font-size:13px">Please share this password securely with the teacher.</p></div>',
           '<button class="btn btn-primary" onclick="SchoolApp.closeModal()">Done</button>');
       });
     });
@@ -3526,6 +3869,24 @@
           render();
         });
         this.value = '';
+      });
+    }
+
+    // Seed Demo Exam Data
+    var seedDemoBtn = document.getElementById('seed-demo-exam-btn');
+    if (seedDemoBtn) {
+      seedDemoBtn.addEventListener('click', function() {
+        SchoolApp.showConfirm('This will create a demo exam term (if not exists) with subjects and marks for ALL existing students. Use this for sales demos only. Continue?', function() {
+          generateDemoExamData();
+        });
+      });
+    }
+
+    // Clear Demo Exam Data
+    var clearDemoBtn = document.getElementById('clear-demo-exam-btn');
+    if (clearDemoBtn) {
+      clearDemoBtn.addEventListener('click', function() {
+        clearDemoExamData();
       });
     }
 
@@ -4229,6 +4590,7 @@
         var message = document.getElementById('admin-notice-message').value.trim();
         var date = document.getElementById('admin-notice-date').value;
         var priority = document.getElementById('admin-notice-priority').value;
+        var audienceVal = document.getElementById('admin-notice-audience') ? document.getElementById('admin-notice-audience').value : 'everyone';
         var editId = document.getElementById('admin-notice-edit-id').value;
 
         if (!title || !message || !date) {
@@ -4237,6 +4599,7 @@
         }
 
         if (!SchoolApp.store.notices) SchoolApp.store.notices = [];
+        var audienceArray = [audienceVal]; //Stored as array for future Parent Portal extensibility
 
         if (editId) {
           // Edit existing notice
@@ -4246,6 +4609,7 @@
             notice.message = message;
             notice.date = date;
             notice.priority = priority;
+            notice.audience = audienceArray;
             SchoolApp.showToast('Announcement updated successfully!', 'success');
           }
         } else {
@@ -4257,6 +4621,7 @@
             message: message,
             date: date,
             priority: priority,
+            audience: audienceArray,
             status: 'published'
           });
           SchoolApp.showToast('Announcement published to dashboard!', 'success');
@@ -4278,6 +4643,10 @@
         document.getElementById('admin-notice-message').value = notice.message;
         document.getElementById('admin-notice-date').value = notice.date;
         document.getElementById('admin-notice-priority').value = notice.priority;
+        var aud = notice.audience ? (Array.isArray(notice.audience) ? notice.audience[0] : notice.audience) : 'everyone';
+        if (document.getElementById('admin-notice-audience')) {
+          document.getElementById('admin-notice-audience').value = aud;
+        }
         document.getElementById('admin-notice-edit-id').value = notice.id;
 
         // Update button states
@@ -4427,7 +4796,7 @@
     
     // Teacher metadata details
     bodyHTML += '<div class="alert alert-info mb-3" style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:12px;">';
-    bodyHTML += '  <h4 style="margin-top:0; margin-bottom:8px; font-size:14px; color:var(--primary);">Profile Mappings</h4>';
+    bodyHTML += '  <h4 style="margin-top:0; margin-bottom:8px; font-size:14px; color:var(--accent-primary);">Profile Mappings</h4>';
     bodyHTML += '  <p style="margin:4px 0; font-size:13px;"><strong>Assigned Subjects:</strong> ' + (normalizedSubjects.length > 0 ? normalizedSubjects.join(', ') : '<span style="color:var(--danger)">None</span>') + '</p>';
     bodyHTML += '  <p style="margin:4px 0; font-size:13px;"><strong>Assigned Classes (General):</strong> ' + (assignedClasses.length > 0 ? assignedClasses.map(function(c) {
       return typeof c === 'object' ? (c.class + '-' + c.section) : c;

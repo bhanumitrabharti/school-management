@@ -72,6 +72,25 @@
     return teachers.filter(function(t) { return t.status === 'Active'; });
   }
 
+    function hasAssignedSlots(teacherId, timetable) {
+    if (!timetable) return false;
+    for (var classSection in timetable) {
+      if (classSection === 'settings') continue;
+      var daySchedule = timetable[classSection];
+      if (!daySchedule) continue;
+      for (var day in daySchedule) {
+        var periodSchedule = daySchedule[day];
+        if (!periodSchedule) continue;
+        for (var period in periodSchedule) {
+          if (periodSchedule[period] && periodSchedule[period].teacherId === teacherId) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   function getTeacherConflict(teacherId, day, period, currentClassSection) {
     if (!teacherId) return null;
     initGlobalDraft();
@@ -88,6 +107,174 @@
       }
     }
     return null;
+  }
+
+  function findInactiveTeacherSlots() {
+    initGlobalDraft();
+    var timetable = state.draftTimetable || {};
+    var allTeachers = SchoolApp.store.teachers || [];
+    var inactiveTeacherMap = {};
+    allTeachers.forEach(function(t) {
+      if (t.status !== 'Active') {
+        inactiveTeacherMap[t.id] = t.firstName + ' ' + t.lastName;
+      }
+    });
+
+    var inactiveSlots = [];
+    for (var classSection in timetable) {
+      if (classSection === 'settings') continue;
+      var daySchedule = timetable[classSection];
+      for (var day in daySchedule) {
+        var periodSchedule = daySchedule[day];
+        for (var period in periodSchedule) {
+          var slot = periodSchedule[period];
+          if (slot && slot.teacherId && inactiveTeacherMap[slot.teacherId]) {
+            inactiveSlots.push({
+              classSection: classSection,
+              day: day,
+              period: period,
+              subject: slot.subject || 'Unassigned Subject',
+              teacherName: inactiveTeacherMap[slot.teacherId],
+              teacherId: slot.teacherId
+            });
+          }
+        }
+      }
+    }
+
+    if (inactiveSlots.length === 0) {
+      SchoolApp.showToast("No timetable slots with inactive teachers found!", "success");
+      return;
+    }
+
+    var html = '';
+    html += '<div class="modal-backdrop" id="inactive-slots-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000;">';
+    html += '  <div class="modal-content" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 12px; width: 90%; max-width: 650px; max-height: 80vh; display: flex; flex-direction: column; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">';
+    html += '    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-light); padding-bottom: 12px;">';
+    html += '      <h3 style="margin: 0; font-size: 18px; color: #f59e0b; display: flex; align-items: center; gap: 8px;"><span class="material-icons-round">warning</span> Slots with Inactive Teachers (' + inactiveSlots.length + ')</h3>';
+    html += '      <button class="btn btn-xs btn-secondary" id="close-inactive-modal-x" style="background: transparent; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer;">&times;</button>';
+    html += '    </div>';
+    html += '    <div style="overflow-y: auto; flex: 1; margin-bottom: 16px;">';
+    html += '      <table class="table" style="width: 100%; border-collapse: collapse;">';
+    html += '        <thead>';
+    html += '          <tr style="border-bottom: 2px solid var(--border-light); text-align: left;">';
+    html += '            <th style="padding: 8px;">Class & Section</th>';
+    html += '            <th style="padding: 8px;">Day & Period</th>';
+    html += '            <th style="padding: 8px;">Subject</th>';
+    html += '            <th style="padding: 8px;">Inactive Teacher</th>';
+    html += '            <th style="padding: 8px; text-align: center;">Action</th>';
+    html += '          </tr>';
+    html += '        </thead>';
+    html += '        <tbody>';
+
+    inactiveSlots.forEach(function(s) {
+      html += '          <tr style="border-bottom: 1px solid var(--border-light);">';
+      html += '            <td style="padding: 10px 8px;"><strong>Class ' + s.classSection + '</strong></td>';
+      html += '            <td style="padding: 10px 8px;">' + s.day + ' (Period ' + s.period + ')</td>';
+      html += '            <td style="padding: 10px 8px;"><span class="badge badge-purple">' + s.subject + '</span></td>';
+      html += '            <td style="padding: 10px 8px;"><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">' + s.teacherName + ' (Inactive)</span></td>';
+      
+      var parts = s.classSection.split('-');
+      var cls = parts[0];
+      var sec = parts[1] || '';
+      
+      html += '            <td style="padding: 10px 8px; text-align: center;">';
+      html += '              <button class="btn btn-xs btn-primary nav-to-slot-btn" data-class="' + cls + '" data-section="' + sec + '" data-day="' + s.day + '" style="font-size: 11px;">Go to Class</button>';
+      html += '            </td>';
+      html += '          </tr>';
+    });
+
+    html += '        </tbody>';
+    html += '      </table>';
+    html += '    </div>';
+    html += '    <div style="display: flex; justify-content: flex-end;">';
+    html += '      <button class="btn btn-secondary btn-sm" id="close-inactive-modal-btn">Close</button>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+
+    var existing = document.getElementById('inactive-slots-modal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    var closeModal = function() {
+      var m = document.getElementById('inactive-slots-modal');
+      if (m) m.remove();
+    };
+
+    document.getElementById('close-inactive-modal-btn').addEventListener('click', closeModal);
+    document.getElementById('close-inactive-modal-x').addEventListener('click', closeModal);
+
+    document.querySelectorAll('.nav-to-slot-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        state.viewMode = 'class';
+        state.classVal = this.getAttribute('data-class');
+        state.sectionVal = this.getAttribute('data-section');
+        state.dayVal = this.getAttribute('data-day');
+        closeModal();
+        render();
+      });
+    });
+  }
+
+  function showAutoGenModal() {
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    if (classes.length === 0) {
+      SchoolApp.showToast('No classes configured. Setup classes in Admin Panel first.', 'error');
+      return;
+    }
+
+    var html = '';
+    html += '<div class="modal-backdrop" id="auto-gen-modal-backdrop" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000;">';
+    html += '  <div class="modal-content auto-fill-modal" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 12px; width: 90%; max-width: 520px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">';
+    html += '    <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">';
+    html += '      <span class="material-icons-round" style="color: var(--accent-primary);">auto_awesome</span> Auto-Generate Timetable';
+    html += '    </h3>';
+    html += '    <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">';
+    html += '      Choose how to proceed with auto-generating the timetable schedule across all classes:';
+    html += '    </p>';
+    html += '    <div class="auto-fill-scope-box" style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); padding: 16px; border-radius: 8px;">';
+    html += '      <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 14px; color: var(--text-primary);">';
+    html += '        <input type="radio" name="autoGenScope" value="fill-empty" checked style="margin-top: 3px;">';
+    html += '        <div>';
+    html += '          <strong>Fill only empty slots</strong>';
+    html += '          <div class="auto-fill-subtext" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Keeps your existing manual assignments and only fills unassigned periods across all classes.</div>';
+    html += '        </div>';
+    html += '      </label>';
+    html += '      <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 14px; color: var(--text-primary);">';
+    html += '        <input type="radio" name="autoGenScope" value="reset-all" style="margin-top: 3px;">';
+    html += '        <div>';
+    html += '          <strong style="color: #ef4444;">Reset everything and regenerate from scratch</strong>';
+    html += '          <div class="auto-fill-subtext" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Clears all existing manual and saved slots across all classes before populating a fresh clean timetable.</div>';
+    html += '        </div>';
+    html += '      </label>';
+    html += '    </div>';
+    html += '    <div style="display: flex; justify-content: flex-end; gap: 10px;">';
+    html += '      <button class="btn btn-secondary btn-sm" id="auto-gen-cancel-btn">Cancel</button>';
+    html += '      <button class="btn btn-primary btn-sm" id="auto-gen-proceed-btn">Proceed</button>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+
+    var existing = document.getElementById('auto-gen-modal-backdrop');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+
+    var closeModal = function() {
+      var m = document.getElementById('auto-gen-modal-backdrop');
+      if (m) m.remove();
+    };
+
+    document.getElementById('auto-gen-cancel-btn').addEventListener('click', closeModal);
+
+    document.getElementById('auto-gen-proceed-btn').addEventListener('click', function() {
+      var selectedRadio = document.querySelector('input[name="autoGenScope"]:checked');
+      var option = selectedRadio ? selectedRadio.value : 'fill-empty';
+      closeModal();
+      
+      generateAutoTimetable(option === 'reset-all');
+    });
   }
 
   function render() {
@@ -176,7 +363,8 @@
     if (!SchoolApp.isTeacher()) {
       html += '  <div class="action-buttons-group" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">';
       html += '    <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
-      html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">bolt</span> Auto-Generate Draft</button>';
+      html += '    <button class="btn btn-secondary btn-sm" id="find-inactive-slots-btn" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">search</span> 🔍 Find Inactive Teacher Slots</button>';
+      html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">auto_awesome</span> 🪄 Auto-Fill Empty Slots</button>';
       html += '    <button class="btn btn-primary btn-sm" id="save-timetable-btn" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">save</span> Save Timetable</button>';
       html += '    <button class="btn btn-danger btn-sm" id="btn-reset-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">delete_sweep</span> Reset Timetable</button>';
       html += '  </div>';
@@ -208,6 +396,9 @@
         var savedSubject = draftSlot.subject || '';
         var savedTeacherId = draftSlot.teacherId || '';
 
+        var assignedTeacher = (SchoolApp.store.teachers || []).find(function(t) { return t.id === savedTeacherId; });
+        var isInactiveAssigned = !!(assignedTeacher && assignedTeacher.status !== 'Active');
+
         // Check if slot differs from the database (draft indicator)
         var isDraft = false;
         var hasDraftSlot = !!(draftSlot.subject || draftSlot.teacherId);
@@ -218,7 +409,9 @@
         }
 
         var cardStyle = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
-        if (draftSlot.isWarning) {
+        if (isInactiveAssigned) {
+          cardStyle = 'background: rgba(245, 158, 11, 0.08); border: 1.5px dashed #f59e0b; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
+        } else if (draftSlot.isWarning) {
           cardStyle = 'background: rgba(239, 68, 68, 0.03); border: 1.5px dashed #ef4444; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
         } else if (draftSlot.isFallback) {
           cardStyle = 'background: rgba(245, 158, 11, 0.05); border: 1.5px dashed #f59e0b; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: border-color 0.2s;';
@@ -232,7 +425,11 @@
         html += '          <span class="badge badge-info" style="font-size: 10px;">' + SchoolApp.getPeriodTimeStr(p, state.dayVal) + '</span>';
         html += '        </div>';
 
-        if (draftSlot.isWarning) {
+        if (isInactiveAssigned) {
+          html += '      <div style="margin-top: 4px; display: flex; justify-content: center;">';
+          html += '        <span class="badge badge-warning" style="font-size: 10px; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); width: 100%; text-align: center;">⚠️ ' + (savedSubject || 'Period') + ' — ' + assignedTeacher.firstName + ' ' + assignedTeacher.lastName + ' (Inactive) ⚠️ — Reassign needed</span>';
+          html += '      </div>';
+        } else if (draftSlot.isWarning) {
           html += '      <div style="margin-top: 4px; display: flex; justify-content: center;">';
           html += '        <span class="badge badge-danger" style="font-size: 10px; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); width: 100%; text-align: center;">No teacher available — assign manually</span>';
           html += '      </div>';
@@ -260,9 +457,15 @@
         
         if (savedSubject) {
           var eligibleTeachers = getTeachersForSubject(state.classVal, state.sectionVal, savedSubject);
+          if (assignedTeacher && isInactiveAssigned && !eligibleTeachers.some(function(t) { return t.id === assignedTeacher.id; })) {
+            eligibleTeachers.unshift(assignedTeacher);
+          }
           eligibleTeachers.forEach(function(teacher) {
             var conflict = getTeacherConflict(teacher.id, state.dayVal, p, currentClassSection);
             var label = teacher.firstName + ' ' + teacher.lastName;
+            if (teacher.status !== 'Active') {
+              label += ' (Inactive) ⚠️';
+            }
             var disabledAttr = '';
             if (conflict) {
               label += ' [Busy in ' + conflict + ']';
@@ -284,7 +487,11 @@
       html += '</div>';
     } else {
       // Teacher View Matrix Table (Interactive)
-      var activeTeachers = (SchoolApp.store.teachers || []).filter(function(t) { return t.status === 'Active'; });
+      var allTeachers = SchoolApp.store.teachers || [];
+      var timetableForCheck = state.draftTimetable || SchoolApp.store.timetable || {};
+      var activeTeachers = allTeachers.filter(function(t) {
+        return t.status === 'Active' || hasAssignedSlots(t.id, timetableForCheck);
+      });
       var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
       var periodsCount = (state.dayVal === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
 
@@ -300,7 +507,17 @@
       html += '            <th style="padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); font-weight: 700; text-align: left; width: 150px; color: var(--text-primary);">Period / Time</th>';
       
       activeTeachers.forEach(function(t) {
-        html += '            <th style="padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); font-weight: 700; text-align: center; color: var(--text-primary);">' + t.firstName + ' ' + t.lastName + '<br><span style="font-size: 9px; font-weight: 400; color: var(--text-muted);">' + t.subject + '</span></th>';
+        var isInactive = t.status !== 'Active';
+        var thStyle = isInactive 
+          ? 'padding: 12px 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); font-weight: 700; text-align: center; color: #ef4444;' 
+          : 'padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); font-weight: 700; text-align: center; color: var(--text-primary);';
+        
+        var nameStr = t.firstName + ' ' + t.lastName;
+        if (isInactive) {
+          nameStr += '<br><span class="badge" style="font-size: 9px; background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); margin-top: 2px;">⚠️ Inactive</span>';
+        }
+        
+        html += '            <th style="' + thStyle + '">' + nameStr + '<br><span style="font-size: 9px; font-weight: 400; color: var(--text-muted);">' + (t.subject || 'N/A') + '</span></th>';
       });
       html += '          </tr>';
       html += '        </thead>';
@@ -355,12 +572,16 @@
 
           if (draftAssignment) {
             var borderStyle = isCellDraft ? 'border: 2px dashed #fbbf24; background: rgba(251, 191, 36, 0.05);' : 'border: 1px solid var(--border-light); background: rgba(124, 58, 237, 0.03);';
-            if (draftAssignment.isFallback) {
+            if (t.status !== 'Active') {
+              borderStyle = 'border: 2px dashed #ef4444; background: rgba(239, 68, 68, 0.08);';
+            } else if (draftAssignment.isFallback) {
               borderStyle = 'border: 2px dashed #f59e0b; background: rgba(245, 158, 11, 0.05);';
             }
             html += '            <td style="padding: 12px 16px; ' + borderStyle + ' text-align: center; vertical-align: middle; position: relative;">';
-            html += '              <strong style="color: var(--accent-primary-light); font-size: 13px;">Class ' + draftAssignment.classSection + '</strong><br>';
-            html += '              <span class="badge badge-purple" style="font-size: 10px; margin-top: 4px;">' + draftAssignment.subject + '</span>';
+            html += '              <strong style="' + (t.status !== 'Active' ? 'color: #ef4444;' : 'color: var(--accent-primary-light);') + ' font-size: 13px;">Class ' + draftAssignment.classSection + '</strong><br>';
+            var badgeClass = t.status !== 'Active' ? 'badge' : 'badge badge-purple';
+            var badgeStyle = t.status !== 'Active' ? 'background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);' : '';
+            html += '              <span class="' + badgeClass + '" style="font-size: 10px; margin-top: 4px; ' + badgeStyle + '">' + draftAssignment.subject + (t.status !== 'Active' ? ' (Inactive) ⚠️' : '') + '</span>';
             if (!SchoolApp.isTeacher()) {
               html += '              <button class="clear-cell-btn btn-xs" data-class="' + draftAssignment.classSection + '" data-period="' + p + '" data-day="' + state.dayVal + '" style="position: absolute; top: 2px; right: 2px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #ef4444; border-radius: 4px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: all 0.2s;" title="Unassign"><span class="material-icons-round" style="font-size: 12px;">close</span></button>';
             }
@@ -413,8 +634,11 @@
     var saveBtn = document.getElementById('save-timetable-btn');
     if (saveBtn) saveBtn.addEventListener('click', saveTimetable);
 
+    var findInactiveBtn = document.getElementById('find-inactive-slots-btn');
+    if (findInactiveBtn) findInactiveBtn.addEventListener('click', findInactiveTeacherSlots);
+
     var autoGenBtn = document.getElementById('auto-generate-btn');
-    if (autoGenBtn) autoGenBtn.addEventListener('click', generateAutoTimetable);
+    if (autoGenBtn) autoGenBtn.addEventListener('click', showAutoGenModal);
 
     var classToggle = document.getElementById('toggle-view-class');
     var teacherToggle = document.getElementById('toggle-view-teacher');
@@ -778,7 +1002,7 @@
     });
   }
 
-  function generateAutoTimetable() {
+  function generateAutoTimetable(resetFirst) {
     var settings = SchoolApp.store.settings || {};
     var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
     var rawSections = settings.sections || {};
@@ -788,10 +1012,13 @@
       return;
     }
 
-    SchoolApp.showConfirm('This will auto-fill empty slots for all classes across the school for the entire week. Existing saved and draft slots will not be overwritten. Proceed?', function() {
-      var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+    if (resetFirst) {
+      state.draftTimetable = {};
+    } else {
       initGlobalDraft();
+    }
 
       days.forEach(function(day) {
         var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
@@ -1017,9 +1244,9 @@
         });
       });
 
-      SchoolApp.showToast('School-wide draft generated successfully! Please review and click Save to confirm.', 'success');
       render();
-    }, 'Auto-Generate Draft');
+      var msg = resetFirst ? 'Timetable reset and regenerated from scratch!' : 'Empty timetable slots auto-filled across all classes!';
+      SchoolApp.showToast(msg, 'success');
   }
 
   function saveTimetable() {

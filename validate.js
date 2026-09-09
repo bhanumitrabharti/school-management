@@ -9,7 +9,8 @@ const files = [
   'js/teachers.js',
   'js/fees.js',
   'js/attendance.js',
-  'js/students.js'
+  'js/students.js',
+  'js/timetable.js'
 ];
 
 let hasError = false;

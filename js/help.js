@@ -17,206 +17,378 @@
   };
 
   var articles = {
-    timetable: [
-      {
-        title: "How to view and change timetables",
-        description: "Learn how to view class timetables and make changes to daily schedules.",
-        steps: [
-          "Go to the **Timetable** page from the left menu.",
-          "Use the **Class View** / **Teacher View** buttons at the top to switch layouts.",
-          "In **Class View**, select a Class, Section, and Day to see the periods.",
-          "In **Teacher View**, any free period has a green **[+ Assign]** button.",
-          "Click the **[+ Assign]** button to open the schedule box.",
-          "Select the Class, Section, and Subject for the teacher, then click **Save Assignment**.",
-          "If you see a yellow dashed border around a class block, it means the changes are not saved yet."
-        ]
-      },
-      {
-        title: "How to set school timings",
-        description: "Set when school starts and ends, and let the system calculate period timings for you.",
-        steps: [
-          "Click the blue **Timing Settings** gear button on the Timetable page.",
-          "Enter the **School Start Time** (like 08:00) and **School End Time** (like 14:00).",
-          "Enter the **Total Periods** count for normal weekdays and Saturdays.",
-          "Set the **Lunch Break** period offset and duration in minutes.",
-          "Click **Save Settings**. The system will automatically divide the school day into equal periods and assign the start and end times for each period."
-        ]
-      },
-      {
-        title: "How to auto-generate class schedules",
-        description: "Let the system automatically fill in empty periods with qualified teachers and subjects.",
-        steps: [
-          "Click the purple **Auto-Generate Draft** lightning button.",
-          "Click **Confirm** in the popup box. This will create a fresh draft timetable for the whole school.",
-          "The system works in two passes: first it tries to schedule subjects that haven't been taught today. If there are still empty periods, it repeats subjects but ensures they are not consecutive.",
-          "If a teacher is already busy in another class, the system will leave the period empty so you can manually assign it later."
-        ]
-      },
-      {
-        title: "How to reset or clear timetables",
-        description: "Wipe schedules clean if you want to start over.",
-        steps: [
-          "Click the red **Reset Timetable** trash button.",
-          "If you are in **Class View**, this will clear the schedule only for the selected class.",
-          "If you are in **Teacher View**, this will clear the schedule for the **entire school**. Be careful, as this cannot be undone.",
-          "Confirm the warning popup to clear the schedule slots. This does not change your timing settings."
-        ]
-      }
-    ],
     students: [
       {
-        title: "How to add a new student",
-        description: "Add a new student profile to the school records.",
+        title: "Naya Student Profile Add Karna",
+        description: "School record me naye student ki complete profile, parent details aur admission info register karta hai.",
         steps: [
-          "Go to the **Students** page from the left menu.",
-          "Click the green **+ Add Student** button at the top.",
-          "Fill in the student's name, class, section, roll number, and parent's phone number.",
-          "Click **Save Student** to save the record."
+          "Left navigation menu se **Students** page par jayein.",
+          "Top right corner me green **+ Add Student** button par click karein.",
+          "Form me student ka **Full Name**, **Class**, **Section**, **Roll Number**, **Date of Birth**, aur **Parent Phone Number** fill karein.",
+          "Modal ke bottom me **Save Student** button par click karke record save karein."
+        ],
+        notes: [
+          "Roll Number, Class aur Section ka combination unique hona chahiye taaki conflicts na hon.",
+          "Mandatory fields (Name, Class, Phone) ko khali nahi chhod sakte."
         ]
       },
       {
-        title: "How to change or delete student info",
-        description: "Update student details or remove a student from the list.",
+        title: "Excel File Se Bulk Student Import Karna",
+        description: "Ek saath poori class ya saare students ki list Excel sheet se system me import karta hai.",
         steps: [
-          "Go to the **Students** list and find the student.",
-          "Click the blue edit icon (pencil symbol) in the student's row.",
-          "Change any details in the form and click **Save Student** to update.",
-          "To delete a student, click the red trash icon in their row. This moves the student to the Recycle Bin."
+          "**Students** page par jayein aur top header par **Import Excel** button par click karein.",
+          "Computer se apni `.xlsx` ya `.csv` student file select karein.",
+          "System automatically columns (Full Name, Class, Section, Roll Number, Parent Phone) map kar lega.",
+          "Preview check karke **Confirm & Import** par click karein. Complete roster download karne ke liye **Export Excel** button use karein."
+        ],
+        notes: [
+          "Excel headers me standard column names (Full Name, Class, Section, Roll Number, Parent Phone) hona zaroori hain.",
+          "Invalid formatting ya incomplete data waali rows skip ho jati hain."
         ]
       },
       {
-        title: "How to upload students using Excel",
-        description: "Add a large list of students all at once using an Excel spreadsheet.",
+        title: "Student Soft Delete Aur Recycle Bin Se Restore",
+        description: "Unused ya left-school student record ko safe tareeqe se hide karta hai bina permanent deletion ke.",
         steps: [
-          "On the **Students** page, click the **Import Excel** button.",
-          "Choose the Excel file from your computer.",
-          "The system will read the columns (like Name, Class, Section, Roll No, and Phone Number) and add all students to the system automatically."
-        ]
-      },
-      {
-        title: "How to download student lists",
-        description: "Save your student roster as an Excel spreadsheet.",
-        steps: [
-          "Go to the **Students** page.",
-          "Use the filters to choose a specific class or section, or leave it empty to get all students.",
-          "Click the **Export Excel** button to download the file to your computer."
-        ]
-      }
-    ],
-    teachers: [
-      {
-        title: "How to add a new teacher",
-        description: "Create a login account and profile for a new teacher.",
-        steps: [
-          "Go to the **Admin Panel** and select the **User Management** tab.",
-          "Scroll to the teacher list and click **Add Teacher**.",
-          "Enter the teacher's name, email, password, and the subjects they teach.",
-          "Click **Save Account**."
-        ]
-      },
-      {
-        title: "How to assign classes and subjects to teachers",
-        description: "Assign classes, map subjects, and set who is the class teacher.",
-        steps: [
-          "In the **User Management** tab under Admin Panel, click the blue edit icon next to the teacher's name.",
-          "Check the boxes for the classes and sections they will teach.",
-          "Below each checked class, select the subjects they will teach.",
-          "If they are the primary class teacher for a section, check the **Class Teacher** box.",
-          "Note: Only one teacher can be the class teacher for any section. The system will show a warning if you try to assign two class teachers.",
-          "Click **Save Assignments** to save changes."
-        ]
-      }
-    ],
-    fees: [
-      {
-        title: "How to collect fees",
-        description: "Record fee payments from parents and update their account balances.",
-        steps: [
-          "Go to the **Fees** page from the left menu.",
-          "Find the student and click the green pay icon (currency symbol) in their row.",
-          "Verify how much they owe, select the payment method (Cash, UPI, or Bank Transfer), enter the amount paid, and click **Record Payment**."
-        ]
-      },
-      {
-        title: "How to send receipts on WhatsApp",
-        description: "Send a payment receipt message in English and Hindi to the parent's phone.",
-        steps: [
-          "After saving a fee payment, click **Confirm** on the popup to send a receipt.",
-          "Alternatively, open the student's fee ledger and click the green **WhatsApp** icon next to any previous payment.",
-          "The system will automatically write a bilingual message with the receipt number, amount paid, and remaining balance, and open WhatsApp for you to send it."
-        ]
-      },
-      {
-        title: "How to charge fees in bulk and auto-bill",
-        description: "Apply monthly fees to a whole class at once and let the system bill recurring fees.",
-        steps: [
-          "Click **Bulk Charge Class** at the top of the Fees page.",
-          "Select the class, choose the fee type (like Tuition Fee), enter the amount, and click **Apply Charge**.",
-          "The system also bills tuition fees automatically at the start of each month in the background and displays a message when you log in."
+          "**Students** list me student row ke aage red **Trash** (delete) icon par click karein.",
+          "Confirmation prompt me **Delete Student** confirm karein. Record list se hat kar Recycle Bin me chala jayega.",
+          "Student ko wapas lane ke liye **Admin Panel** -> **Recycle Bin** tab par jayein.",
+          "Student ke aage **Restore** button par click karein. Agar permanently delete karna ho toh **Permanently Delete** chunein."
+        ],
+        notes: [
+          "Normal delete se data turant permanently nahi mita, balki Recycle Bin me safe rehta hai jahan se kabhi bhi Restore ho sakta hai.",
+          "Permanently Delete karne par hi record database se Hamesha ke liye mit-ta hai."
         ]
       }
     ],
     attendance: [
       {
-        title: "How to mark student attendance",
-        description: "Record who is present, absent, or late for class today.",
+        title: "Daily Student Attendance Mark Karna (P / A / L)",
+        description: "Class-wise daily attendance register update karta hai jisme Present, Absent aur Late marking hoti hai.",
         steps: [
-          "Go to the **Attendance** page from the left menu.",
-          "Select the Class, Section, and Date, then click **Mark Attendance**.",
-          "Click **P** for present, **A** for absent, or **L** for late for each student.",
-          "You can use **Mark All Present** or **Mark All Absent** to set everyone at once.",
-          "Click **Submit Attendance** at the bottom to save."
+          "Left menu se **Attendance** page par jayein.",
+          "Dropdown se **Class**, **Section**, aur **Date** select karke **Mark Attendance** par click karein.",
+          "Har student ke samne **P** (Present), **A** (Absent), ya **L** (Late) button par click karein.",
+          "Bottom me **Submit Attendance** button par click karke records save karein."
+        ],
+        notes: [
+          "**L** (Late) status ko present counts me include kiya jata hai par stats me late flag alag rehta hai.",
+          "Same Class aur Date par dobara submit karne par duplicate entry nahi banti, existing record update ho jata hai."
         ]
       },
       {
-        title: "How to view attendance history",
-        description: "Check attendance records from previous days.",
+        title: "Bulk All Present Ya All Absent Mark Karna",
+        description: "Poori class ko ek saath Present ya Absent set karta hai taaki time bache.",
         steps: [
-          "On the **Attendance** page, select the **History** tab at the top.",
-          "Choose the dates and the Class/Section to see the records.",
-          "Click the blue view icon (eye symbol) on any row to see the attendance list for that day."
+          "Attendance grid ke top panel par jayein.",
+          "Agar zyadatar bacche aaye hain toh **Mark All Present** button par click karein.",
+          "Jo bacche absent hain, unka status manually **A** ya **L** me change karein.",
+          "Final checks ke baad **Submit Attendance** button press karein."
+        ],
+        notes: [
+          "Bulk button click karne se saare rows ka status current selection se overwrite ho jata hai.",
+          "Submit karne se pehle individual changes zaroor check karein."
         ]
       },
       {
-        title: "How teachers mark their own attendance with GPS",
-        description: "How staff check in and check out using their phone's location.",
+        title: "Absent Student Parent Intimation (WhatsApp / SMS)",
+        description: "Attendance submit hote hi absent baccho ke parents ko automatic notification bhejne me madad karta hai.",
         steps: [
-          "Teachers can click **Punch In** or **Punch Out** on their dashboard.",
-          "The browser will check their device location. They must be within **200 meters** of the school campus to check in.",
-          "If check-in fails or they forget, teachers can submit a **Correction Request** with the correct times.",
-          "Admins can review, approve, or reject these requests under the User Management or logs tab."
+          "Attendance submit karte hi **Absent Student Intimation** popup automatically open hoga.",
+          "Popup me har absent student ke aage green **WhatsApp** button par click karein. Direct pre-filled Hinglish message parent number par open hoga.",
+          "Agar SMS API integrated hai toh **SMS** button active rahega, warna disabled/hidden rehta hai.",
+          "**History** tab me kisi bhi date ki row par **Notify Absentees** click karke manual trigger bhi kar sakte hain."
+        ],
+        notes: [
+          "Per-student intimation log (`absenceIntimationLog`) maintain hota hai taaki ek hi din baar-baar message na jaye.",
+          "WhatsApp send karne ke liye WhatsApp Web ya Desktop/Mobile app logged in hona chahiye."
+        ]
+      },
+      {
+        title: "Past Attendance History Aur Summary Reports Dekhna",
+        description: "Purani dates ki attendance logs aur class-wise monthly reports view karta hai.",
+        steps: [
+          "**Attendance** page par top tab **History** select karein.",
+          "**Date Range**, **Class**, aur **Section** filter apply karein.",
+          "Target date ke aage blue **View** (eye icon) button par click karke detailed student-wise attendance sheet dekhein.",
+          "Overall monthly percentage aur total present/absent counts visual summary me dekhein."
+        ],
+        notes: [
+          "History records audit trial ke sath read-only display hote hain.",
+          "Specific date par re-submit karne par past attendance history overwrite hokar correction ho jati hai."
+        ]
+      }
+    ],
+    fees: [
+      {
+        title: "Student Fee Collection Aur Payment Record",
+        description: "Parents se received fee amount collect karke student account balance update karta hai.",
+        steps: [
+          "Left menu se **Fees** page par jayein aur student search karein.",
+          "Student row ke right side green **Pay Fee** (currency symbol ₹) icon par click karein.",
+          "Payment collection modal me **Fee Head** (Tuition Fee, Transport Fee etc.) aur **Payment Mode** (Cash, UPI, Bank Transfer) select karein.",
+          "**Amount Paid** enter karein aur **Record Payment** button par click karein."
+        ],
+        notes: [
+          "Zero dues wale student par overpayment warning prompt aata hai.",
+          "Payment record hote hi student ka outstanding balance automatically recalculate ho jata hai."
+        ]
+      },
+      {
+        title: "Fee Receipt PDF Generate Aur Print Karna",
+        description: "Clean A4 print-ready fee receipt PDF create karta hai standard receipt number format me.",
+        steps: [
+          "Payment save hone ke baad dikhne wale Post-Pay Modal me **View / Print Receipt** option select karein.",
+          "Automatic PDF generator print preview open karega jisme receipt number **RCP-SVM-xxxxx** format me rahega.",
+          "Print lene ke liye **Print** ya PDF file save karne ke liye **Download PDF** click karein.",
+          "Student Fee Ledger se kisi bhi past payment ke **Print** icon par click karke bhi purani receipt download kar sakte hain."
+        ],
+        notes: [
+          "Receipt me Student Name, Class, Roll No, Amount Paid, Total Remaining Balance, aur Date automatically populate hoti hain."
+        ]
+      },
+      {
+        title: "Payment Receipt Direct WhatsApp Par Share Karna",
+        description: "Parent ke mobile number par Hindi/English bilingual payment confirmation message aur receipt details bhejta hai.",
+        steps: [
+          "Payment record karne ke baad Post-Pay Modal me **Share WhatsApp** button par click karein.",
+          "Ya Fee Ledger me kisi bhi payment transaction ke aage green **WhatsApp** icon par click karein.",
+          "WhatsApp App automatically open ho jayega jisme parent ka phone number aur pre-filled text hoga. Send hit karein."
+        ],
+        notes: [
+          "Direct parent ke verified phone number par formatted message load hota hai."
+        ]
+      },
+      {
+        title: "Bulk Charge Class - Ek Saath Poori Class Par Fee Apply Karna",
+        description: "Poori class ya multiple sections ke sabhi students par monthly fee head due add karta hai.",
+        steps: [
+          "**Fees** page par top header par **Bulk Charge Class** button par click karein.",
+          "Target **Class** & **Section** select karein.",
+          "**Fee Head** (jaise Tuition Fee) aur **Amount** (jaise ₹1200) specify karein.",
+          "**Apply Charge** click karein. Class ke sabhi active students ke ledger me fee amount add ho jayega."
+        ],
+        notes: [
+          "Bulk charge sirf active status wale students par apply hota hai; left ya deleted students skip ho jate hain."
+        ]
+      },
+      {
+        title: "Automated Monthly Recurring Fee Charging Setup",
+        description: "Har mahine ki fixed date ko recurring tuition fee automatically sabhi active students par charge karta hai.",
+        steps: [
+          "**Fees** page par **Fee Settings** (Auto Charge config) par jayein.",
+          "**Auto Charge Date** (jaise 1st of every month) aur default **Fee Head** configure karein.",
+          "Settings save karein.",
+          "Har mahine ki fixed date ko login karne par system background me auto-charge run karega aur notice dikhayega."
+        ],
+        notes: [
+          "Explicit fee head selection required hai taaki silent wrong-head guessing na ho."
+        ]
+      },
+      {
+        title: "Fee Ledger Summary Cards Aur Filter Analytics",
+        description: "Daily collection, MTD (Month-To-Date), aur Cash-In-Hand balances ko live recalculate karta hai.",
+        steps: [
+          "**Fees** dashboard kholte hi top par Summary Cards dekhein: **Today Collection**, **MTD Collection**, aur **Cash-in-Hand**.",
+          "Naya payment collect hote hi yeh figures bina page refresh kiye live update hoti hain.",
+          "Specific duration ke liye **Date Range Filter** aur payment mode ke liye **Payment Mode Filter** (Cash / UPI / Bank) choose karein."
+        ],
+        notes: [
+          "Timezone-safe calculation ensure karti hai ki midnight ke baad daily totals bilkul accurate rahein."
         ]
       }
     ],
     exams: [
       {
-        title: "How to set up exams and subjects",
-        description: "Set up academic terms and subject passing marks for each class.",
+        title: "Naya Academic Exam Term Create Karna",
+        description: "Session ke examinations (jaise Mid-Term, Final Exam, Unit Test) define karta hai.",
         steps: [
-          "Go to the **Admin Panel** -> **Examinations** tab.",
-          "Click **Add Exam Term** to create an exam term (like Mid-Term or Annual Exam).",
-          "Select a class, click **Add Subject Mapping**, type the subject name, and enter the Max Marks and Passing Marks.",
-          "Click **Save Mapping**."
+          "**Admin Panel** -> **Examinations** tab par jayein.",
+          "Top right corner me **Add Exam Term** button click karein.",
+          "Term Title (e.g. `Mid-Term Exam 2026`), Start Date, aur Academic Session select karein.",
+          "**Save Term** par click karein."
+        ],
+        notes: [
+          "Exam Term active hone par hi marks entry screen par dropdown me appear hota hai."
         ]
       },
       {
-        title: "How to enter exam marks",
-        description: "Enter test scores for students and calculate grades.",
+        title: "Class-Wise Exam Subject & Marks Mapping Configure Karna",
+        description: "Har class ke liye subjects, Maximum Marks aur Passing Marks set karta hai.",
         steps: [
-          "Go to the **Exams** page from the left menu.",
-          "Select the Exam Term, Class, and Section.",
-          "Type in the marks for each student. The system will automatically calculate total marks, percentages, pass/fail status, and letter grades (like A, B, C, F).",
-          "Click **Save Marks** to save."
+          "**Admin Panel** -> **Examinations** tab me target Class select karein.",
+          "**Add Subject Mapping** button click karein.",
+          "Subject Name (e.g. Mathematics, Science), **Max Marks** (e.g. 100), aur **Pass Marks** (e.g. 33) fill karein.",
+          "**Save Mapping** par click karein."
+        ],
+        notes: [
+          "Report card generation me subjects mapped order me hi display hote hain."
         ]
       },
       {
-        title: "How to print report cards",
-        description: "Generate print-ready A4 report cards for parents.",
+        title: "Student Exam Marks Entry & Auto-Grade Calculation",
+        description: "Students ke subject marks enter karta hai aur total, percentage, grade, aur pass/fail compute karta hai.",
         steps: [
-          "Open the **Exams** marks page for a class.",
-          "Click the green **Report Card** button next to a student's name.",
-          "A preview will pop up showing their scores, rank, grades, and signature boxes. Click **Print** to print it out or save it as a PDF.",
-          "You can also click **Consolidated View** to compare and print marks from two terms side-by-side."
+          "Left menu se **Exams** page par jayein.",
+          "Top bar se **Exam Term**, **Class**, aur **Section** select karein.",
+          "Grid me har student ke subjects ke samne obtained marks type karein. Absent hone par **A** type karein.",
+          "Total Marks, Percentage, aur Letter Grade (A+, A, B, C, F) system real-time compute karega.",
+          "Bottom par **Save Marks** button par click karein."
+        ],
+        notes: [
+          "Max marks se zyada digits enter karne par validation alert aata hai."
+        ]
+      },
+      {
+        title: "Student A4 Print-Ready Report Card Generate Karna",
+        description: "Complete Academic Performance Report Card generate karta hai with Grades, Ranks aur Remarks.",
+        steps: [
+          "**Exams** marks entry sheet me student row ke aage green **Report Card** button click karein.",
+          "Modal popup me formatted print preview open hoga.",
+          "**Print Report Card** par click karke physical print lein ya PDF save karein.",
+          "Multiple terms compare karne ke liye **Consolidated View** button select karke multi-term report card nikalein."
+        ],
+        notes: [
+          "Consolidated view me 2 terms ke scores side-by-side display hote hain aur aggregate result compute hota hai."
+        ]
+      },
+      {
+        title: "Report Card Designer - Layout, Logo & Smart Remarks Setup",
+        description: "Report card layout, school logo, custom fields, aur automated Smart Remarks conditions customize karta hai.",
+        steps: [
+          "**Admin Panel** -> **Report Card Designer** tab par jayein.",
+          "School Logo toggle enable karein, Header Address, Affiliation No fill karein.",
+          "**Smart Remarks Rules** section me percentage criteria set karein (e.g. >90% -> 'Outstanding student with excellent analytical skills').",
+          "**Save Designer Settings** click karein."
+        ],
+        notes: [
+          "Smart Remarks rules student percentage bracket ke hisab se automatic intelligent remarks assign karti hain."
+        ]
+      }
+    ],
+    timetable: [
+      {
+        title: "Automatic Timetable Solver (Fill Empty Slots vs Complete Reset)",
+        description: "3-Step intelligent constraint solver se bina teacher conflict ke school timetable generate karta hai.",
+        steps: [
+          "Left menu se **Timetable** page par jayein.",
+          "Header par purple **Auto-Generate Draft** button par click karein.",
+          "Popup modal me 2 options me se chunein:",
+          "  - **Fill Empty Slots Only**: Pehle se manually setup kiye slots ko maintain rakhega, baaki khali slots fill karega.",
+          "  - **Reset & Re-generate All**: Purana saara schedule clear karke poori school ka naya draft banaye ga.",
+          "**Generate Timetable** par click karein."
+        ],
+        notes: [
+          "Conflict detection engine ensure karta hai ki koi bhi teacher same period me 2 alag classes me double-book na ho."
+        ]
+      },
+      {
+        title: "Timetable Grid Manual Editing & Assigning",
+        description: "Specific class period ya teacher slot me subject aur teacher change karne ke liye.",
+        steps: [
+          "**Class View** me kisi bhi period cell par click karein, ya **Teacher View** me green **[+ Assign]** button click karein.",
+          "Popup me **Subject** aur **Teacher** select karein.",
+          "**Save Assignment** click karein.",
+          "Grid me unsaved slot yellow dashed border ke sath highlight hoga. Main header se **Save Timetable** click karein."
+        ],
+        notes: [
+          "Inactive teachers jinke paas slots baaki hain unki columns visually gray badge se alag highlight hoti hain taaki orphaned slots na rahein."
+        ]
+      },
+      {
+        title: "Teacher Portal - 'My Schedule' View",
+        description: "Logged-in teacher ko unka daily aur weekly teaching schedule direct dikhata hai.",
+        steps: [
+          "Teacher login karne ke baad Dashboard ya **Timetable** page par jayein.",
+          "**My Schedule** tab par click karein.",
+          "Logged-in teacher ko sirf unke assigned periods, classes, aur sections ki matrix list dikhayi degi."
+        ],
+        notes: [
+          "Teacher view direct master timetable store se live sync hota hai; stale mismatch nahi hota."
+        ]
+      }
+    ],
+    notice: [
+      {
+        title: "School Notice Board Par Notice Publish Karna",
+        description: "Important circulars, event alerts aur holiday notices publish karta hai.",
+        steps: [
+          "**Admin Panel** -> **Notice Board** tab par jayein (ya left menu Notice Board).",
+          "Top right corner me **Create Notice** button click karein.",
+          "**Title**, **Content**, aur Priority (**Normal / High**) fill karein.",
+          "Status **Published** select karke **Publish Notice** button click karein."
+        ],
+        notes: [
+          "High Priority notices user dashboards par top alert banner ke roop me float hoti hain."
+        ]
+      },
+      {
+        title: "Notice Audience Targeting (Everyone / Teachers / Students)",
+        description: "Notice ki visibility select karne ki azadi deta hai ki kiske dashboard par notice dikhega.",
+        steps: [
+          "Notice creation modal me **Target Audience** section par dhyaan dein.",
+          "Checkboxes select karein: **Everyone** (sabke liye), **Teachers** (sirf staff ke liye), ya **Students** (sirf student portal ke liye).",
+          "Selection ke baad **Publish Notice** par click karein."
+        ],
+        notes: [
+          "Student-only notices Teacher dashboard par leakage nahi karti (`isNoticeVisibleForUser` restriction).",
+          "Purani notice bina audience tag ke default Everyone treat hoti hain."
+        ]
+      }
+    ],
+    staff: [
+      {
+        title: "Staff Mobile GPS Location Punch In & Punch Out",
+        description: "Mobile device GPS location verify karke school campus boundary ke andar teacher attendance mark karta hai.",
+        steps: [
+          "Logged-in Teacher / Staff member dashboard open karein.",
+          "Subah aane par green **Punch In** button par click karein.",
+          "Browser device location access ka permission maangega - **Allow** click karein.",
+          "Location check successfully hone par (within 200m campus radius) Punch-In time save ho jayega. Sham ko jane waqt red **Punch Out** click karein."
+        ],
+        notes: [
+          "Geofencing radius (200m) check fail hone par alert aata hai ki aap school campus ke bahar hain."
+        ]
+      },
+      {
+        title: "GPS Location Error & Manual Correction Request",
+        description: "Location permission deny hone ya desktop me GPS na hone par attendance issue resolve karne ke liye.",
+        steps: [
+          "Agar GPS fetch error aaye ya location denied ho, toh Punch panel ke niche **Submit Correction Request** link par click karein.",
+          "Form me actual **Punch In Time**, **Punch Out Time**, aur valid **Reason** (e.g. 'GPS location access denied on browser') enter karein.",
+          "**Submit Request** par click karein.",
+          "Admin -> **Staff Attendance Logs** tab me Admin request review karke **Approve** ya **Reject** karega. Approve hote hi attendance valid ho jaayegi."
+        ],
+        notes: [
+          "Manual correction requests ka proper audit trail rehta hai taaki proxy attendance na lag sake."
+        ]
+      }
+    ],
+    teachers: [
+      {
+        title: "Naya Teacher Profile Aur Account Banayein",
+        description: "Teacher Profile add karta hai aur unka login credential setup karta hai.",
+        steps: [
+          "**Admin Panel** -> **User Management** tab par jayein.",
+          "**Add Teacher** button click karein.",
+          "Teacher Name, Email, Password, aur Designation fill karein.",
+          "**Save Teacher** par click karein."
+        ],
+        notes: [
+          "Password edit karte waqt khali chhodne par purana password hash retain rehta hai."
+        ]
+      },
+      {
+        title: "Class Teacher Aur Subjects Assign Karna",
+        description: "Teacher ko unki assigned classes, subjects, aur primary Class Teacher role allocate karta hai.",
+        steps: [
+          "**User Management** me teacher row ke aage edit icon par click karein.",
+          "Assigned Classes & Sections check karein aur unke subjects map karein.",
+          "Agar Section ke primary class teacher hain toh **Class Teacher** box check karein.",
+          "**Save Assignments** click karein."
+        ],
+        notes: [
+          "Ek section ka sirf ek hi Class Teacher ho sakta hai. Duplicate assignment par warning milti hai."
         ]
       }
     ]
@@ -230,10 +402,10 @@
 
     // Hero Search Section
     html += '<div class="support-hero" style="text-align: center; margin-bottom: 30px;">';
-    html += '  <h1 style="font-size: 24px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary);">Documentation & Support</h1>';
-    html += '  <p style="color: var(--text-secondary); margin-bottom: 20px;">Search our self-help guides to understand timetable settings, scheduling rules, and ERP modules.</p>';
+    html += '  <h1 style="font-size: 24px; font-weight: 700; margin-bottom: 12px; color: var(--text-primary);">Documentation & Help Center</h1>';
+    html += '  <p style="color: var(--text-secondary); margin-bottom: 20px;">Search user guides in simple Hinglish to learn how to manage students, fees, attendance, exams, and timetables.</p>';
     html += '  <div class="support-search-bar" style="max-width: 600px; margin: 0 auto; position: relative;">';
-    html += '    <input type="text" id="help-search-input" placeholder="Search documentation (e.g. timetable, auto-generate, reset)..." value="' + state.searchQuery + '" style="width:100%; padding: 12px 16px 12px 40px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-primary);">';
+    html += '    <input type="text" id="help-search-input" placeholder="Search guides (e.g. fee collection, attendance, timetable, report card)..." value="' + state.searchQuery + '" style="width:100%; padding: 12px 16px 12px 40px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-primary);">';
     html += '    <span class="material-icons-round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);">search</span>';
     html += '  </div>';
     html += '</div>';
@@ -257,40 +429,52 @@
     var html = '';
     html += '<div class="support-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
 
-    html += '  <div class="support-card" data-category="timetable" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
-    html += '    <div style="font-size: 32px; margin-bottom: 10px;">📅</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Timetable & Classes</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to set timings, schedule periods, auto-fill classes, and clear schedules.</p>';
-    html += '  </div>';
-
     html += '  <div class="support-card" data-category="students" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">🎓</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Student Details & Admissions</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to add new students, change their details, and upload lists using Excel.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Students & Admissions</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Naya student add karna, Excel bulk import, aur Recycle Bin se restore karna.</p>';
     html += '  </div>';
 
-    html += '  <div class="support-card" data-category="teachers" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
-    html += '    <div style="font-size: 32px; margin-bottom: 10px;">🏫</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Teachers & Subjects</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to add teachers, assign their classes, map subjects, and set class teachers.</p>';
+    html += '  <div class="support-card" data-category="attendance" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
+    html += '    <div style="font-size: 32px; margin-bottom: 10px;">📋</div>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Student Attendance</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Attendance P/A/L mark karna, Bulk present, aur WhatsApp/SMS intimation.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="fees" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">💰</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Fees & Payments</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to collect payments, check outstanding dues, and send WhatsApp receipts.</p>';
-    html += '  </div>';
-
-    html += '  <div class="support-card" data-category="attendance" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
-    html += '    <div style="font-size: 32px; margin-bottom: 10px;">📅</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Attendance Tracking</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to mark student attendance daily, check past logs, and punch in with GPS.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Fees & Ledger</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Fee collection, PDF receipts, WhatsApp sharing, Bulk charge, aur live ledger.</p>';
     html += '  </div>';
 
     html += '  <div class="support-card" data-category="exams" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
     html += '    <div style="font-size: 32px; margin-bottom: 10px;">📝</div>';
-    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Exams & Results</h3>';
-    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">How to set up exams, enter subject marks, and print A4 student report cards.</p>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Exams & Report Cards</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Exam terms, marks entry, A4 Report Cards, aur Designer customization.</p>';
+    html += '  </div>';
+
+    html += '  <div class="support-card" data-category="timetable" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
+    html += '    <div style="font-size: 32px; margin-bottom: 10px;">📅</div>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Timetable & Schedules</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Auto-generate draft solver, manual edit, aur Teacher "My Schedule" view.</p>';
+    html += '  </div>';
+
+    html += '  <div class="support-card" data-category="notice" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
+    html += '    <div style="font-size: 32px; margin-bottom: 10px;">📢</div>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Notice Board</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Notice publish karna aur audience targeting (Everyone/Teachers/Students).</p>';
+    html += '  </div>';
+
+    html += '  <div class="support-card" data-category="staff" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
+    html += '    <div style="font-size: 32px; margin-bottom: 10px;">⏱️</div>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Staff GPS Attendance</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">GPS location se punch in/out karna aur manual correction request submit karna.</p>';
+    html += '  </div>';
+
+    html += '  <div class="support-card" data-category="teachers" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s;">';
+    html += '    <div style="font-size: 32px; margin-bottom: 10px;">🏫</div>';
+    html += '    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Teachers & Staff</h3>';
+    html += '    <p style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5;">Teacher profile, credentials reset, aur Class Teacher assignment.</p>';
     html += '  </div>';
 
     html += '</div>';
@@ -301,18 +485,20 @@
     var cat = state.selectedCategory;
     var list = articles[cat] || [];
     var catNames = {
-      timetable: '📅 Timetable & Classes Help',
       students: '🎓 Student Details & Admissions Help',
-      teachers: '🏫 Teachers & Subjects Help',
-      fees: '💰 Fees & Payments Help',
-      attendance: '📅 Attendance Tracking Help',
-      exams: '📝 Exams & Results Help'
+      attendance: '📋 Student Attendance Help',
+      fees: '💰 Fees & Ledger Help',
+      exams: '📝 Exams & Report Cards Help',
+      timetable: '📅 Timetable & Schedule Help',
+      notice: '📢 Notice Board & Audience Targeting Help',
+      staff: '⏱️ Staff Attendance & GPS Help',
+      teachers: '🏫 Teachers & Staff Management Help'
     };
 
     var html = '';
     html += '<div class="support-detail-header" style="display:flex; align-items:center; gap:16px; margin-bottom: 20px;">';
     html += '  <button class="btn btn-secondary btn-sm" id="help-back-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">arrow_back</span> Back</button>';
-    html += '  <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--text-primary);">' + catNames[cat] + '</h2>';
+    html += '  <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: var(--text-primary);">' + (catNames[cat] || 'Help Topics') + '</h2>';
     html += '</div>';
 
     html += '<div class="support-accordion-list" style="display:flex; flex-direction:column; gap:12px;">';
@@ -332,7 +518,8 @@
       articles[cat].forEach(function(art, index) {
         if (art.title.toLowerCase().indexOf(query) !== -1 || 
             (art.description && art.description.toLowerCase().indexOf(query) !== -1) ||
-            art.steps.some(function(s) { return s.toLowerCase().indexOf(query) !== -1; })) {
+            (art.steps && art.steps.some(function(s) { return s.toLowerCase().indexOf(query) !== -1; })) ||
+            (art.notes && art.notes.some(function(n) { return n.toLowerCase().indexOf(query) !== -1; }))) {
           found.push({ art: art, id: cat + '-' + index });
         }
       });
@@ -370,15 +557,31 @@
     html += '  <div class="accordion-panel" id="panel-' + id + '" style="padding: 0 20px 16px 20px; border-top: 1px solid rgba(255,255,255,0.04); display: none;">';
     
     if (art.description) {
-      html += '    <p style="font-size: 13px; color: var(--text-primary); margin: 14px 0 8px 0; line-height: 1.5; font-weight: 500;">' + art.description + '</p>';
+      html += '    <p style="font-size: 13.5px; color: var(--text-primary); margin: 14px 0 10px 0; line-height: 1.5; font-weight: 500;">' + art.description + '</p>';
     }
     
-    html += '    <div class="accordion-steps" style="display:flex; flex-direction:column; gap:8px; margin-top:10px; margin-bottom:12px;">';
-    art.steps.forEach(function(step) {
-      var formatted = step.replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--accent-primary-light);">$1</strong>');
-      html += '    <div class="step-row" style="display:flex; gap:8px; align-items: flex-start; font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><span class="step-bullet" style="color: var(--accent-primary); font-weight:700;">•</span><span>' + formatted + '</span></div>';
-    });
-    html += '    </div>';
+    if (art.steps && art.steps.length > 0) {
+      html += '    <div style="font-size: 12.5px; font-weight: 700; color: var(--accent-primary-light); margin-top: 10px; margin-bottom: 6px;">Kaise Use Karein:</div>';
+      html += '    <div class="accordion-steps" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">';
+      art.steps.forEach(function(step, idx) {
+        var formatted = step.replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--accent-primary-light);">$1</strong>');
+        html += '    <div class="step-row" style="display:flex; gap:8px; align-items: flex-start; font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><span class="step-bullet" style="color: var(--accent-primary); font-weight:700;">' + (idx + 1) + '.</span><span>' + formatted + '</span></div>';
+      });
+      html += '    </div>';
+    }
+
+    if (art.notes && art.notes.length > 0) {
+      html += '    <div style="margin-top: 12px; padding: 12px 14px; background: rgba(255, 193, 7, 0.08); border-left: 3px solid var(--warning); border-radius: 6px;">';
+      html += '      <strong style="color: var(--warning); font-size: 12.5px; display: block; margin-bottom: 6px;">Zaroori Baatein:</strong>';
+      html += '      <div style="display:flex; flex-direction:column; gap:6px;">';
+      art.notes.forEach(function(note) {
+        var formattedNote = note.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        html += '        <div style="font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; display:flex; gap:6px;"><span style="color: var(--warning);">•</span><span>' + formattedNote + '</span></div>';
+      });
+      html += '      </div>';
+      html += '    </div>';
+    }
+    
     html += '  </div>';
     html += '</div>';
     return html;
@@ -416,12 +619,14 @@
     html += '        <div class="form-group" style="margin-bottom: 12px;">';
     html += '          <label class="form-label" style="font-size: 11px; margin-bottom: 6px; display: block; color: var(--text-muted); font-weight:600;">Category</label>';
     html += '          <select id="ticket-category" class="form-select" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: 6px; color: var(--text-primary); font-size: 13px;">';
-    html += '            <option value="timetable">Timetable & Classes</option>';
     html += '            <option value="students">Student Details & Admissions</option>';
-    html += '            <option value="teachers">Teachers & Subjects</option>';
-    html += '            <option value="fees">Fees & Payments</option>';
-    html += '            <option value="attendance">Attendance Tracking</option>';
-    html += '            <option value="exams">Exams & Results</option>';
+    html += '            <option value="attendance">Student Attendance</option>';
+    html += '            <option value="fees">Fees & Ledger</option>';
+    html += '            <option value="exams">Exams & Report Cards</option>';
+    html += '            <option value="timetable">Timetable & Schedule</option>';
+    html += '            <option value="notice">Notice Board</option>';
+    html += '            <option value="staff">Staff Attendance & GPS</option>';
+    html += '            <option value="teachers">Teachers & Staff</option>';
     html += '            <option value="other">Other Help</option>';
     html += '          </select>';
     html += '        </div>';
@@ -552,7 +757,6 @@
     // Scroll Contact Button click listener
     var contactBtn = document.getElementById('contact-admin-btn');
     if (contactBtn) {
-      // Clean up previous listeners
       var newContactBtn = contactBtn.cloneNode(true);
       contactBtn.parentNode.replaceChild(newContactBtn, contactBtn);
       newContactBtn.addEventListener('click', function() {

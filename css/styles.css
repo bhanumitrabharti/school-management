@@ -166,7 +166,7 @@ a:hover { color: var(--accent-secondary); }
   height: 120px;
   width: auto;
   object-fit: contain;
-  margin-bottom: 16px;
+  margin: 0 auto 16px auto;
   filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));
 }
 
@@ -4066,8 +4066,91 @@ body.light-theme .chatbot-input-area {
   border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
 }
 
+body.light-theme .chatbot-header {
+  background: #f1f5f9 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme .chatbot-close-btn:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #333333 !important;
+}
+
+body.light-theme .chatbot-input:focus {
+  background: #ffffff !important;
+  border-color: var(--accent-primary) !important;
+}
+
+body.light-theme .chatbot-opt-btn {
+  background: rgba(0, 0, 0, 0.03) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  color: #333333 !important;
+}
+
+body.light-theme .chatbot-opt-btn:hover {
+  background: rgba(124, 58, 237, 0.06) !important;
+  border-color: var(--accent-primary-light) !important;
+  color: #1F2937 !important;
+}
+
 body.light-theme .data-table th {
   background: rgba(0, 0, 0, 0.02) !important;
+}
+
+/* ---- Light Theme: Help Center / Support Portal ---- */
+body.light-theme .support-hero {
+  background: rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme .support-search-bar input {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  color: #333333 !important;
+}
+
+body.light-theme .support-search-bar input:focus {
+  background: #ffffff !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12) !important;
+}
+
+body.light-theme .support-card:hover {
+  background: rgba(124, 58, 237, 0.04) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+body.light-theme .accordion-item {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme .accordion-item:hover {
+  border-color: rgba(0, 0, 0, 0.2) !important;
+}
+
+body.light-theme .accordion-trigger:hover {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+body.light-theme .accordion-panel {
+  border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+body.light-theme .support-guide-video {
+  background: rgba(0, 0, 0, 0.02) !important;
+  border: 1.5px dashed rgba(0, 0, 0, 0.12) !important;
+}
+
+body.light-theme .support-guide-video:hover {
+  background: rgba(124, 58, 237, 0.04) !important;
+}
+
+body.light-theme .contact-admin-btn {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  color: #333333 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* ============================================================
@@ -5014,6 +5097,591 @@ body:not(.light-theme) #marks-save-bar {
 [data-theme="dark"] #save-marks-btn,
 body:not(.light-theme) #save-marks-btn {
   background: #3B82F6 !important;
+}
+
+/* ==================== GLOBAL SAFEGUARD & MOBILE RESPONSIVENESS ==================== */
+
+* {
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .admin-content-area {
+    overflow-x: hidden;
+    max-width: 100vw;
+    padding: 12px;
+  }
+}
+
+/* ==================== SECTION 1: RECOVERY CENTER / RECYCLE BIN ==================== */
+
+@media (max-width: 768px) {
+  #recovery-center-table,
+  .recovery-table {
+    width: 100%;
+  }
+  
+  .recovery-table thead {
+    display: none;
+  }
+  
+  .recovery-table tr {
+    display: block;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color, #E5E7EB);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--bg-card, #fff);
+  }
+  
+  .recovery-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border: none;
+    font-size: 13px;
+    white-space: normal;
+    word-break: break-word;
+  }
+  
+  .recovery-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted, #6B7280);
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+  
+  .recovery-table td[data-label="Action"] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  
+  .recovery-table td[data-label="Action"] button {
+    width: 100%;
+    padding: 8px;
+  }
+  
+  .recovery-table td[data-label="Action"]::before {
+    margin-bottom: 4px;
+  }
+
+  .recovery-filters {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .recovery-filters select,
+  .recovery-filters input {
+    width: 100%;
+  }
+}
+
+/* ==================== SECTION 2: REPORT CARD DESIGNER ==================== */
+
+@media (max-width: 900px) {
+  .rc-designer-layout,
+  #rc-designer-form {
+    grid-template-columns: 1fr !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .rc-config-panel {
+    order: 1;
+    width: 100%;
+  }
+  
+  .rc-preview-panel {
+    order: 2;
+    width: 100%;
+    margin-top: 20px;
+    position: static !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .rc-section-grid,
+  .rc-checkbox-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .rc-section label,
+  label.rc-section {
+    font-size: 14px;
+    padding: 8px 0;
+  }
+}
+
+@media (max-width: 600px) {
+  #rc-live-preview,
+  #report-card-live-preview-container {
+    width: 100%;
+    overflow-x: auto;
+  }
+  
+  #rc-live-preview > div,
+  #report-card-live-preview-container > div {
+    transform: scale(0.35) !important;
+    transform-origin: top left !important;
+    width: 286% !important; /* compensate for scale(0.35) = 1/0.35 */
+  }
+}
+
+@media (max-width: 600px) {
+  .rc-design-settings {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .rc-design-settings input[type="color"] {
+    width: 100%;
+    height: 44px;
+  }
+}
+
+@media (max-width: 600px) {
+  .rc-action-buttons {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  .rc-action-buttons button {
+    width: 100%;
+    padding: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .rc-template-field textarea {
+    font-size: 14px;
+    width: 100%;
+  }
+}
+
+/* ============================================================
+   DARK THEME VISIBILITY FIXES
+   ============================================================ */
+
+/* Timetable "Auto-Fill Empty Slots" Modal */
+[data-theme="dark"] .auto-fill-modal,
+body:not(.light-theme) .auto-fill-modal {
+  background: #1E293B !important;
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .auto-fill-modal input,
+[data-theme="dark"] .auto-fill-modal label,
+[data-theme="dark"] .auto-fill-modal button,
+body:not(.light-theme) .auto-fill-modal input,
+body:not(.light-theme) .auto-fill-modal label,
+body:not(.light-theme) .auto-fill-modal button {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .auto-fill-modal h3,
+[data-theme="dark"] .auto-fill-modal strong,
+body:not(.light-theme) .auto-fill-modal h3,
+body:not(.light-theme) .auto-fill-modal strong {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .auto-fill-modal p,
+[data-theme="dark"] .auto-fill-modal .auto-fill-subtext,
+body:not(.light-theme) .auto-fill-modal p,
+body:not(.light-theme) .auto-fill-modal .auto-fill-subtext {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .auto-fill-modal .auto-fill-scope-box,
+body:not(.light-theme) .auto-fill-modal .auto-fill-scope-box {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.light-theme .auto-fill-modal {
+  background: #FFFFFF !important;
+  color: #1F2937 !important;
+}
+
+body.light-theme .auto-fill-modal input,
+body.light-theme .auto-fill-modal label,
+body.light-theme .auto-fill-modal button {
+  color: #1F2937 !important;
+}
+
+body.light-theme .auto-fill-modal h3,
+body.light-theme .auto-fill-modal strong {
+  color: #1F2937 !important;
+}
+
+body.light-theme .auto-fill-modal p,
+body.light-theme .auto-fill-modal .auto-fill-subtext {
+  color: #64748B !important;
+}
+
+body.light-theme .auto-fill-modal .auto-fill-scope-box {
+  background: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+
+/* Exam Setup Wizard Modal */
+[data-theme="dark"] .exam-wizard-modal,
+body:not(.light-theme) .exam-wizard-modal {
+  background: #1E293B !important;
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .exam-wizard-modal input,
+[data-theme="dark"] .exam-wizard-modal label,
+[data-theme="dark"] .exam-wizard-modal button,
+body:not(.light-theme) .exam-wizard-modal input,
+body:not(.light-theme) .exam-wizard-modal label,
+body:not(.light-theme) .exam-wizard-modal button {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .exam-wizard-modal select,
+body:not(.light-theme) .exam-wizard-modal select {
+  color: #F1F5F9 !important;
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .exam-wizard-modal h4,
+[data-theme="dark"] .exam-wizard-modal h5,
+[data-theme="dark"] .exam-wizard-modal strong,
+body:not(.light-theme) .exam-wizard-modal h4,
+body:not(.light-theme) .exam-wizard-modal h5,
+body:not(.light-theme) .exam-wizard-modal strong {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .exam-wizard-modal .text-muted,
+body:not(.light-theme) .exam-wizard-modal .text-muted {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .exam-wizard-modal .wizard-term-card,
+[data-theme="dark"] .exam-wizard-modal .wizard-class-card,
+body:not(.light-theme) .exam-wizard-modal .wizard-term-card,
+body:not(.light-theme) .exam-wizard-modal .wizard-class-card {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .exam-wizard-modal .form-input,
+body:not(.light-theme) .exam-wizard-modal .form-input {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+  color: #F1F5F9 !important;
+}
+
+body.light-theme .exam-wizard-modal {
+  background: #FFFFFF !important;
+  color: #1F2937 !important;
+}
+
+body.light-theme .exam-wizard-modal input,
+body.light-theme .exam-wizard-modal label,
+body.light-theme .exam-wizard-modal button {
+  color: #1F2937 !important;
+}
+
+body.light-theme .exam-wizard-modal select {
+  color: #1F2937 !important;
+  background: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+}
+
+body.light-theme .exam-wizard-modal h4,
+body.light-theme .exam-wizard-modal h5,
+body.light-theme .exam-wizard-modal strong {
+  color: #1F2937 !important;
+}
+
+body.light-theme .exam-wizard-modal .text-muted {
+  color: #64748B !important;
+}
+
+body.light-theme .exam-wizard-modal .wizard-term-card,
+body.light-theme .exam-wizard-modal .wizard-class-card {
+  background: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+body.light-theme .exam-wizard-modal .form-input {
+  background: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #1F2937 !important;
+}
+
+/* ==================== SECTION: FEE SETUP MOBILE RESPONSIVENESS ==================== */
+@media (max-width: 768px) {
+  /* Card 1: Fee Heads Table -> Card conversion */
+  .fee-setup-table thead { 
+    display: none; 
+  }
+  .fee-setup-table tr {
+    display: block;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color, #E5E7EB);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--bg-card, rgba(255,255,255,0.02));
+  }
+  .fee-setup-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border: none;
+    font-size: 13px;
+  }
+  .fee-setup-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-right: 8px;
+  }
+  .fee-setup-table td[data-label="Actions"] {
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.06));
+    margin-top: 6px;
+    padding-top: 8px;
+  }
+
+  /* Card 2: Fee Structure Matrix -> Scroll wrapper with hint */
+  .fee-setup-matrix-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+  .fee-setup-matrix-wrapper table,
+  .fee-matrix-table {
+    min-width: 600px;
+  }
+  .fee-matrix-scroll-hint {
+    display: block !important;
+  }
+
+  /* Card 3: Extra Charges Form -> Single column on mobile */
+  .fee-setup-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .fee-setup-form-grid .form-group {
+    grid-column: span 1 !important;
+  }
+  .fee-setup-form input,
+  .fee-setup-form select {
+    width: 100%;
+    font-size: 16px; /* Prevents iOS auto-zoom on focus */
+  }
+  .fee-setup-add-btn-group {
+    grid-column: span 1 !important;
+  }
+  .fee-setup-add-btn-group button {
+    width: 100%;
+    height: 44px !important;
+  }
+
+  /* Action Buttons (Save/Add/Delete) */
+  .fee-setup-actions {
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 12px 16px !important;
+  }
+  .fee-setup-actions button {
+    width: 100% !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+  }
+
+  /* Header adjustments */
+  .fee-setup-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+  .fee-setup-header button {
+    width: 100% !important;
+  }
+}
+
+/* ==================== SECTION: ADMIN PANEL MOBILE RESPONSIVENESS ==================== */
+@media (max-width: 768px) {
+  /* 1. User Management */
+  .users-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+  .users-header button,
+  .users-submit-btn,
+  .users-bulk-btn {
+    width: 100% !important;
+    padding: 12px !important;
+    min-height: 44px !important;
+    font-size: 14px !important;
+  }
+  .users-teacher-table thead {
+    display: none !important;
+  }
+  .users-teacher-table tr {
+    display: block !important;
+    margin-bottom: 12px !important;
+    border: 1px solid var(--border-color, #E5E7EB) !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    background: var(--bg-card, rgba(255,255,255,0.02)) !important;
+  }
+  .users-teacher-table td {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 6px 0 !important;
+    border: none !important;
+    font-size: 13px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .users-teacher-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+  .users-teacher-table td[data-label="Actions"] {
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.06)) !important;
+    margin-top: 6px !important;
+    padding-top: 8px !important;
+    justify-content: space-between !important;
+  }
+  .users-table-actions {
+    display: flex !important;
+    gap: 8px !important;
+    justify-content: flex-end !important;
+  }
+  .users-table-actions button {
+    min-width: 38px !important;
+    min-height: 38px !important;
+    padding: 6px 10px !important;
+  }
+
+  /* 2. Notice Board */
+  .notices-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .notices-form-actions {
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .notices-form-actions button {
+    width: 100% !important;
+    padding: 12px !important;
+    min-height: 44px !important;
+    font-size: 14px !important;
+  }
+  .notices-table thead {
+    display: none !important;
+  }
+  .notices-table tr {
+    display: block !important;
+    margin-bottom: 12px !important;
+    border: 1px solid var(--border-color, #E5E7EB) !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    background: var(--bg-card, rgba(255,255,255,0.02)) !important;
+  }
+  .notices-table td {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 6px 0 !important;
+    border: none !important;
+    font-size: 13px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .notices-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+  .notices-table td[data-label="Announcement"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+  .notices-table td[data-label="Announcement"]::before {
+    margin-bottom: 2px !important;
+  }
+  .notices-table td[data-label="Actions"] {
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.06)) !important;
+    margin-top: 6px !important;
+    padding-top: 8px !important;
+    justify-content: space-between !important;
+  }
+  .notices-table-actions {
+    display: flex !important;
+    gap: 8px !important;
+    justify-content: flex-end !important;
+    width: auto !important;
+  }
+
+  /* 3. Class / Student Promotion */
+  .promotion-select-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .promotion-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .promotion-card-item {
+    padding: 12px !important;
+  }
+  .promotion-action-bar {
+    width: 100% !important;
+  }
+  .promotion-action-bar button,
+  #promote-selected-btn {
+    width: 100% !important;
+    min-height: 44px !important;
+    padding: 12px !important;
+    font-size: 14px !important;
+  }
+
+  /* 4. School Settings & Website Input */
+  #school-website,
+  #school-website-input,
+  input[name="website"],
+  input[type="url"] {
+    width: 100% !important;
+    font-size: 16px !important;
+    box-sizing: border-box !important;
+  }
+  .admin-form-grid .form-group,
+  .admin-form-grid .full-width,
+  .admin-form-grid [style*="grid-column: span 2"] {
+    grid-column: 1 / -1 !important;
+  }
 }
 
 

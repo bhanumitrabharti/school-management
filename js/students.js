@@ -17,17 +17,75 @@
     editingStudent: null
   };
 
+  function getStudentFullName(student) {
+    if (!student) return 'Unknown';
+    if (student.name && String(student.name).trim()) return String(student.name).trim();
+    if (student.firstName || student.lastName) {
+      return ((student.firstName || '') + ' ' + (student.lastName || '')).trim();
+    }
+    return 'Unknown';
+  }
+
+  var _migratedSchoolId = null;
+
+  function migrateStudentNames() {
+    var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
+    if (_migratedSchoolId === currentSchoolId) return;
+
+    var students = SchoolApp.store.students || [];
+    var changed = false;
+
+    students.forEach(function(s) {
+      if (!s) return;
+
+      // 1. Derive fullName if missing but firstName/lastName exist
+      if (!s.name && (s.firstName || s.lastName)) {
+        var fullName = getStudentFullName(s);
+        if (s.name !== fullName) {
+          s.name = fullName;
+          changed = true;
+        }
+      }
+
+      // 2. Derive firstName and lastName from name if missing/empty
+      if (s.name && (s.firstName === undefined || s.lastName === undefined || (!s.firstName && !s.lastName))) {
+        var parts = s.name.trim().split(/\s+/);
+        var newFirst = parts[0] || '';
+        var newLast = parts.slice(1).join(' ') || '';
+        if (s.firstName !== newFirst || s.lastName !== newLast) {
+          s.firstName = newFirst;
+          s.lastName = newLast;
+          changed = true;
+        }
+      }
+
+      // 3. Ensure firstName & lastName are never undefined or null
+      if (s.firstName === undefined || s.firstName === null) {
+        s.firstName = s.name || '';
+        changed = true;
+      }
+      if (s.lastName === undefined || s.lastName === null) {
+        s.lastName = '';
+        changed = true;
+      }
+    });
+
+    _migratedSchoolId = currentSchoolId;
+
+    if (changed) {
+      SchoolApp.save(true); // Bypass loader for silent background migration
+    }
+  }
+
   function getStudentAvatar(student, size) {
     size = size || 40;
     if (student && student.photoUrl) {
       return '<img src="' + student.photoUrl + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;" />';
     }
-    var first = (student && student.firstName) || '';
-    var last = (student && student.lastName) || '';
-    var name = (first + " " + last).trim() || 'Student';
+    var name = getStudentFullName(student);
     var initials = name.split(" ").filter(Boolean).map(function(w) { return w[0]; }).slice(0, 2).join("").toUpperCase();
     var colors = ["#e74c3c","#3498db","#2ecc71","#9b59b6","#f39c12","#1abc9c"];
-    var color = colors[name.charCodeAt(0) % colors.length];
+    var color = colors[name.charCodeAt(0) % colors.length] || colors[0];
     return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + color + ';color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:' + Math.round(size*0.35) + 'px;">' + initials + '</div>';
   }
 
@@ -78,9 +136,9 @@
     if (state.searchQuery) {
       var q = state.searchQuery.toLowerCase();
       students = students.filter(function(s) {
-        return (s.firstName + ' ' + s.lastName).toLowerCase().indexOf(q) !== -1 ||
-               s.rollNumber.toLowerCase().indexOf(q) !== -1 ||
-               s.parentName.toLowerCase().indexOf(q) !== -1;
+        return getStudentFullName(s).toLowerCase().indexOf(q) !== -1 ||
+               (s.rollNumber && s.rollNumber.toLowerCase().indexOf(q) !== -1) ||
+               (s.parentName && s.parentName.toLowerCase().indexOf(q) !== -1);
       });
     }
 
@@ -91,9 +149,11 @@
     var container = document.getElementById('page-students');
     if (!container) return;
 
+    migrateStudentNames();
+
     if (SchoolApp.preselectedStudent) {
       var ps = SchoolApp.preselectedStudent;
-      state.searchQuery = ps.rollNumber || (ps.firstName + ' ' + ps.lastName);
+      state.searchQuery = ps.rollNumber || getStudentFullName(ps);
       state.classFilter = 'all';
       state.sectionFilter = 'all';
       state.statusFilter = 'all';
@@ -249,7 +309,7 @@
 
         html += '<tr>';
         if (isAdmin) html += '<td><input type="checkbox" class="student-checkbox" data-id="' + s.id + '"' + (isSelected ? ' checked' : '') + ' style="cursor:pointer"></td>';
-        html += '<td><div class="table-student-name">' + getStudentAvatar(s, 32) + '<div><strong>' + s.firstName + ' ' + s.lastName + '</strong></div></div></td>';
+        html += '<td><div class="table-student-name">' + getStudentAvatar(s, 32) + '<div><strong>' + getStudentFullName(s) + '</strong></div></div></td>';
         html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
         html += '<td>' + s.rollNumber + '</td>';
         html += '<td>' + s.parentName + '</td>';
@@ -383,7 +443,7 @@
             return state.selectedIds.indexOf(s.id) !== -1;
           });
           deleted.forEach(function(s) {
-            SchoolApp.moveToTrash('student', s.id, s.firstName + ' ' + s.lastName, 'Class ' + s.class + '-' + s.section, s);
+            SchoolApp.moveToTrash('student', s.id, getStudentFullName(s), 'Class ' + s.class + '-' + s.section, s);
           });
           SchoolApp.store.students = SchoolApp.store.students.filter(function(s) {
             return state.selectedIds.indexOf(s.id) === -1;
@@ -424,8 +484,7 @@
 
     var bodyHTML = '<form id="student-form" class="form-grid">';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">First Name *</label><input type="text" class="form-input" name="firstName" value="' + (student ? student.firstName : '') + '" required><span class="form-error">Required</span></div>';
-    bodyHTML += '<div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" name="lastName" value="' + (student ? student.lastName : '') + '" required><span class="form-error">Required</span></div>';
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Full Name *</label><input type="text" class="form-input" name="name" id="student-fullname" value="' + (student ? getStudentFullName(student) : '') + '" placeholder="Full Name" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Class *</label><select class="form-select" name="class" required><option value="">Select Class</option>';
     classes.forEach(function(c) { bodyHTML += '<option value="' + c + '"' + (student && student.class === c ? ' selected' : '') + '>' + c + '</option>'; });
@@ -443,26 +502,26 @@
     ['Male', 'Female', 'Other'].forEach(function(g) { bodyHTML += '<option value="' + g + '"' + (student && student.gender === g ? ' selected' : '') + '>' + g + '</option>'; });
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Aadhaar Number</label><input type="text" class="form-input" name="aadhaarNumber" value="' + (student ? student.aadhaarNumber : '') + '" placeholder="XXXX XXXX XXXX"><span class="form-error">Must be 12 digits</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Aadhaar Number <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="aadhaarNumber" value="' + (student ? student.aadhaarNumber : '') + '" placeholder="XXXX XXXX XXXX"><span class="form-error">Must be 12 digits</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Parent/Guardian Name *</label><input type="text" class="form-input" name="parentName" value="' + (student ? student.parentName : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone *</label><input type="text" class="form-input" name="parentPhone" value="' + (student ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Parent Email</label><input type="email" class="form-input" name="parentEmail" value="' + (student ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="parentEmail" value="' + (student ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Admission Date</label><input type="date" class="form-input" name="admissionDate" value="' + (student ? student.admissionDate : new Date().toISOString().split('T')[0]) + '"></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Admission Date <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="date" class="form-input" name="admissionDate" value="' + (student ? student.admissionDate : new Date().toISOString().split('T')[0]) + '"></div>';
 
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Address</label><textarea class="form-textarea" name="address" rows="2">' + (student ? student.address : '') + '</textarea></div>';
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Address <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><textarea class="form-textarea" name="address" rows="2">' + (student ? student.address : '') + '</textarea></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Status</label><select class="form-select" name="status">';
+    bodyHTML += '<div class="form-group"><label class="form-label">Status <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><select class="form-select" name="status">';
     ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (student && student.status === s ? ' selected' : '') + '>' + s + '</option>'; });
     bodyHTML += '</select></div>';
 
     var photoDisplay = (student && student.photoUrl) ? 'block' : 'none';
     var photoSrc = (student && student.photoUrl) || '';
     bodyHTML += '<div class="form-group">';
-    bodyHTML += '  <label class="form-label">Student Photo (Optional)</label>';
+    bodyHTML += '  <label class="form-label">Student Photo <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label>';
     bodyHTML += '  <input type="file" id="student-photo-input" accept="image/*"';
     bodyHTML += '    onchange="StorageUtils.previewImage(this.files[0], \'student-photo-preview\')" />';
     bodyHTML += '  <img id="student-photo-preview" src="' + photoSrc + '" style="max-width:80px;max-height:80px;display:' + photoDisplay + ';border-radius:50%;margin-top:8px;object-fit:cover;" />';
@@ -541,6 +600,13 @@
       }
     });
 
+    // Populate firstName & lastName for legacy compatibility
+    if (fields.name) {
+      var nameParts = fields.name.trim().split(/\s+/);
+      fields.firstName = nameParts[0] || '';
+      fields.lastName = nameParts.slice(1).join(' ') || '';
+    }
+
     // Validate aadhaar
     if (fields.aadhaarNumber && !SchoolApp.utils.validate.aadhaar(fields.aadhaarNumber)) {
       var aadhaarGroup = form.querySelector('[name="aadhaarNumber"]').closest('.form-group');
@@ -609,12 +675,13 @@
       }
     }
 
-    var initials = SchoolApp.getInitials(student.firstName, student.lastName);
-    var color = SchoolApp.getAvatarColor(student.firstName + student.lastName);
+    var sName = getStudentFullName(student);
+    var initials = SchoolApp.getInitials(sName);
+    var color = SchoolApp.getAvatarColor(sName);
 
     var html = '<div class="detail-header">';
     html += getStudentAvatar(student, 80);
-    html += '<div><div class="detail-name">' + student.firstName + ' ' + student.lastName + '</div>';
+    html += '<div><div class="detail-name">' + sName + '</div>';
     html += '<div class="detail-subtitle">Class ' + student.class + '-' + student.section + ' · Roll No. ' + student.rollNumber + '</div>';
     html += '<span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + student.status + '</span>';
     html += '</div></div>';
@@ -645,8 +712,9 @@
   function deleteStudent(id) {
     var student = SchoolApp.store.students.find(function(s) { return s.id === id; });
     if (!student) return;
-    SchoolApp.showConfirm('Delete student "' + student.firstName + ' ' + student.lastName + '"? They can be recovered from the Recycle Bin.', function() {
-      SchoolApp.moveToTrash('student', student.id, student.firstName + ' ' + student.lastName, 'Class ' + student.class + '-' + student.section, student);
+    var sName = getStudentFullName(student);
+    SchoolApp.showConfirm('Delete student "' + sName + '"? They can be recovered from the Recycle Bin.', function() {
+      SchoolApp.moveToTrash('student', student.id, sName, 'Class ' + student.class + '-' + student.section, student);
       SchoolApp.store.students = SchoolApp.store.students.filter(function(s) { return s.id !== id; });
       SchoolApp.save();
       SchoolApp.showToast('Student moved to Recycle Bin.', 'success');
@@ -656,6 +724,7 @@
 
   function exportStudents(students) {
     var columns = [
+      { header: 'Full Name', key: 'name', transform: function(v, row) { return getStudentFullName(row); } },
       { header: 'First Name', key: 'firstName' },
       { header: 'Last Name', key: 'lastName' },
       { header: 'Class', key: 'class' },
@@ -684,6 +753,8 @@
 
       // Field mapping
       var mapping = {
+        'Full Name': 'name', 'full name': 'name', 'fullname': 'name', 'Name': 'name', 'name': 'name',
+        'Student Name': 'name', 'student name': 'name',
         'First Name': 'firstName', 'first name': 'firstName', 'firstname': 'firstName', 'firstName': 'firstName',
         'Last Name': 'lastName', 'last name': 'lastName', 'lastname': 'lastName', 'lastName': 'lastName',
         'Class': 'class', 'class': 'class',
@@ -711,8 +782,18 @@
           if (mapped) student[mapped] = String(row[key]).trim();
         });
 
+        if (student.name && (!student.firstName || !student.lastName)) {
+          var parts = student.name.trim().split(/\s+/);
+          student.firstName = parts[0] || '';
+          student.lastName = parts.slice(1).join(' ') || '';
+        } else if ((student.firstName || student.lastName) && !student.name) {
+          student.name = getStudentFullName(student);
+        }
+        if (student.firstName === undefined) student.firstName = '';
+        if (student.lastName === undefined) student.lastName = '';
+
         // Validate minimum fields
-        if (student.firstName && student.class) {
+        if ((student.name || student.firstName) && student.class) {
           SchoolApp.store.students.push(student);
           imported++;
         }

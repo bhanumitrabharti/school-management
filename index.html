@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -128,8 +128,8 @@
       <div class="shape shape-5"></div>
     </div>
     <div class="login-card">
-      <div class="login-logo">
-        <img src="" class="login-logo-img" alt="School Logo" style="display:none;">
+      <div class="login-logo" style="text-align: center;">
+        <img src="" class="login-logo-img" alt="School Logo" style="display:none; margin: 0 auto 16px auto;">
         <h1 class="login-title">Shishu Vikash Mandir</h1>
         <p class="login-subtitle">School Management System</p>
       </div>
@@ -235,7 +235,7 @@
           <span class="material-icons-round nav-icon">payments</span>
           <span class="nav-text">Fees</span>
         </a>
-        <a href="#" class="nav-item nav-admin-only" data-page="timetable">
+        <a href="#" class="nav-item" data-page="timetable">
           <span class="material-icons-round nav-icon">schedule</span>
           <span class="nav-text">Timetable</span>
         </a>
@@ -445,47 +445,6 @@
     <option value="General Knowledge"></option>
   </datalist>
 
-  <!-- ==================== PRINT RECEIPT TEMPLATE ==================== -->
-  <div id="print-receipt-container" class="print-receipt-container">
-    <div class="receipt-header">
-      <h2 id="receipt-school-name">Shishu Vikash Mandir</h2>
-      <p id="receipt-school-address">Bokaro Steel City, Jharkhand</p>
-      <h3>FEE RECEIPT</h3>
-    </div>
-    <div class="receipt-body">
-      <div class="receipt-row">
-        <span class="label">Receipt No:</span>
-        <span class="value" id="receipt-txn-id"></span>
-      </div>
-      <div class="receipt-row">
-        <span class="label">Date & Time:</span>
-        <span class="value" id="receipt-date"></span>
-      </div>
-      <div class="receipt-row">
-        <span class="label">Student Name:</span>
-        <span class="value" id="receipt-student-name"></span>
-      </div>
-      <div class="receipt-row">
-        <span class="label">Class & Section:</span>
-        <span class="value" id="receipt-class"></span>
-      </div>
-      <div class="receipt-row">
-        <span class="label">Payment Method:</span>
-        <span class="value" id="receipt-payment-method"></span>
-      </div>
-      <div class="receipt-row amount-row">
-        <span class="label">Amount Paid:</span>
-        <span class="value" id="receipt-amount"></span>
-      </div>
-    </div>
-    <div class="receipt-footer">
-      <p>Thank you for your payment!</p>
-      <div class="signature-area">
-        <div class="signature-line"></div>
-        <p>Authorized Signature / Cashier</p>
-      </div>
-    </div>
-  </div>
 
   <!-- ==================== SCRIPTS ==================== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>

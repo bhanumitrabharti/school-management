@@ -158,6 +158,22 @@ window.SchoolApp = {
     return !sId || sId === schoolId;
   },
 
+  shareOnWhatsApp: function(phone, message) {
+    if (!phone) {
+      this.showToast('No parent phone number found.', 'error');
+      return false;
+    }
+    var cleanPhone = String(phone).replace(/[^0-9]/g, '');
+    if (cleanPhone.length > 10) cleanPhone = cleanPhone.slice(-10);
+    if (cleanPhone.length < 10) {
+      this.showToast('Invalid 10-digit mobile number for WhatsApp.', 'error');
+      return false;
+    }
+    var waLink = 'https://wa.me/91' + cleanPhone + '?text=' + encodeURIComponent(message);
+    window.open(waLink, '_blank');
+    return true;
+  },
+
   currentUser: null,
   currentPage: 'dashboard',
   sidebarCollapsed: false,
@@ -761,9 +777,13 @@ window.SchoolApp = {
     if (theme === 'light') {
       document.body.classList.add('light-theme');
       document.documentElement.classList.add('light-theme');
+      document.body.setAttribute('data-theme', 'light');
+      document.documentElement.setAttribute('data-theme', 'light');
     } else {
       document.body.classList.remove('light-theme');
       document.documentElement.classList.remove('light-theme');
+      document.body.setAttribute('data-theme', 'dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
     }
     
     var themeIcon = document.getElementById('app-theme-icon');
@@ -781,6 +801,8 @@ window.SchoolApp = {
     var isLight = document.body.classList.toggle('light-theme');
     document.documentElement.classList.toggle('light-theme', isLight);
     var theme = isLight ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
     
     // Save to global preference
     localStorage.setItem('erp_theme_preference', theme);
@@ -1698,6 +1720,20 @@ window.SchoolApp = {
     }
   },
   
+  isNoticeVisibleForUser: function(notice) {
+    if (!notice || notice.status !== 'published') return false;
+    if (this.isAdmin()) return true;
+
+    var aud = notice.audience || ['everyone'];
+    if (!Array.isArray(aud)) aud = [aud];
+
+    if (this.isTeacher()) {
+      return aud.indexOf('everyone') !== -1 || aud.indexOf('teachers') !== -1;
+    }
+
+    return aud.indexOf('everyone') !== -1 || aud.indexOf('students') !== -1;
+  },
+
   renderNotificationDropdown: function() {
     if (!this.assertSchoolIsolation(this.store.notifications, this.currentSchoolId)) {
       console.error("[SECURITY] Data isolation breach detected!");
@@ -1721,7 +1757,10 @@ window.SchoolApp = {
     // Section A: Recent Notices (3 most recently published)
     html += '<div style="padding: 10px 16px 4px 16px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.03);">Recent Notices</div>';
     
-    var noticesList = (this.store.notices || []).filter(function(n) { return n.status === 'published'; });
+    var self = this;
+    var noticesList = (this.store.notices || []).filter(function(n) {
+      return self.isNoticeVisibleForUser(n);
+    });
     noticesList = noticesList.slice().sort(function(a, b) {
       return new Date(b.date) - new Date(a.date);
     }).slice(0, 3);
@@ -1912,7 +1951,20 @@ window.SchoolApp = {
     return formatTime(pStart) + ' - ' + formatTime(pEnd);
   },
 
+  getStudentFullName: function(student) {
+    if (!student) return 'Unknown';
+    if (student.name && String(student.name).trim()) return String(student.name).trim();
+    if (student.firstName || student.lastName) {
+      return ((student.firstName || '') + ' ' + (student.lastName || '')).trim();
+    }
+    return 'Unknown';
+  },
+
   getInitials: function(firstName, lastName) {
+    if (firstName && !lastName && firstName.includes(' ')) {
+      var parts = firstName.trim().split(/\s+/);
+      return ((parts[0] || '')[0] || '') + ((parts[parts.length - 1] || '')[0] || '');
+    }
     return ((firstName || '')[0] || '') + ((lastName || '')[0] || '');
   },
 
@@ -1949,15 +2001,16 @@ window.SchoolApp = {
         .replace(/'/g, '&#039;');
     };
 
+    var sFullName = this.getStudentFullName(student);
     var displayClass = ['Nursery','LKG','UKG'].indexOf(student.class) !== -1 ? student.class : 'Class ' + student.class;
-    var initials = (student.firstName ? student.firstName.charAt(0) : '') + (student.lastName ? student.lastName.charAt(0) : '');
+    var initials = this.getInitials(sFullName);
     
     var avatarHTML = '';
     if (student.photoUrl) {
-      avatarHTML = '<img src="' + student.photoUrl + '" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);">';
+      avatarHTML = '<img src="' + student.photoUrl + '" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--accent-primary);">';
     } else {
       var colors = ["#e74c3c","#3498db","#2ecc71","#9b59b6","#f39c12","#1abc9c"];
-      var color = colors[escapeHTML(student.firstName + ' ' + student.lastName).charCodeAt(0) % colors.length] || 'var(--primary)';
+      var color = colors[escapeHTML(sFullName).charCodeAt(0) % colors.length] || 'var(--accent-primary)';
       avatarHTML = '<div style="width:80px; height:80px; border-radius:50%; background:' + color + '; color:#fff; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:700; border:2px solid var(--border-color);">' + escapeHTML(initials.toUpperCase()) + '</div>';
     }
 
@@ -1967,7 +2020,7 @@ window.SchoolApp = {
     bodyHTML += '  <div style="display:flex; align-items:center; gap:20px; border-bottom:1px solid var(--border-color); padding-bottom:16px;">';
     bodyHTML += '    ' + avatarHTML;
     bodyHTML += '    <div>';
-    bodyHTML += '      <h3 style="margin:0 0 4px 0; font-size:18px; color:var(--primary); font-weight:700;">' + escapeHTML(student.firstName + ' ' + (student.lastName || '')) + '</h3>';
+    bodyHTML += '      <h3 style="margin:0 0 4px 0; font-size:18px; color:var(--accent-primary); font-weight:700;">' + escapeHTML(sFullName) + '</h3>';
     bodyHTML += '      <div style="display:flex; gap:8px; align-items:center; margin:6px 0;">';
     bodyHTML += '        <span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '" style="font-size:10px; padding:3px 8px;">' + student.status + '</span>';
     bodyHTML += '        <span style="color:var(--text-secondary); font-size:11px;">Roll No: ' + escapeHTML(student.rollNumber || '—') + '</span>';
@@ -2621,7 +2674,9 @@ window.SchoolApp = {
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Digital Notice Board</h3></div>';
     html += '<div class="card-body" style="max-height: 250px; overflow-y: auto; padding: 16px;">';
     
-    var noticesList = (this.store.notices || []).filter(function(n) { return n.status === 'published'; });
+    var noticesList = (this.store.notices || []).filter(function(n) {
+      return self.isNoticeVisibleForUser(n);
+    });
     // Sort by date newest first
     noticesList = noticesList.slice().sort(function(a, b) {
       return new Date(b.date) - new Date(a.date);
@@ -2633,12 +2688,25 @@ window.SchoolApp = {
         var priorityClass = notice.priority === 'Urgent' ? 'urgent-notice' : 'normal-notice';
         var dateFormatted = self.formatDate(notice.date);
         
+        var audArr = notice.audience || ['everyone'];
+        if (!Array.isArray(audArr)) audArr = [audArr];
+        var audLabel = '👥 Everyone';
+        var audBadge = 'badge-info';
+        if (audArr.indexOf('teachers') !== -1) {
+          audLabel = '👨‍🏫 Teachers';
+          audBadge = 'badge-purple';
+        } else if (audArr.indexOf('students') !== -1) {
+          audLabel = '🎓 Students';
+          audBadge = 'badge-cyan';
+        }
+
         html += '<div class="notice-item ' + priorityClass + '" style="padding:14px; border-radius:8px; border-left:4px solid; transition:all var(--transition-fast);">';
         html += '<div class="flex justify-between" style="align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">';
         html += '<h4 style="margin:0; font-size:14px; font-weight:700;">' + notice.title + '</h4>';
         
         var badgeColor = notice.priority === 'Urgent' ? 'badge-danger' : 'badge-purple';
         html += '<div class="flex gap-2" style="align-items:center;">';
+        html += '<span class="badge ' + audBadge + '" style="font-size:10px;">' + audLabel + '</span>';
         html += '<span class="badge ' + badgeColor + '">' + notice.priority + '</span>';
         html += '<span style="font-size:11px; color:var(--text-muted);">' + dateFormatted + '</span>';
         html += '</div>';
@@ -2837,7 +2905,9 @@ window.SchoolApp = {
     html += '<div class="card mb-3"><div class="card-header"><h3><span class="material-icons-round">campaign</span> Digital Notice Board</h3></div>';
     html += '<div class="card-body" style="max-height: 250px; overflow-y: auto; padding: 16px;">';
     
-    var noticesList = (this.store.notices || []).filter(function(n) { return n.status === 'published'; });
+    var noticesList = (this.store.notices || []).filter(function(n) {
+      return n.status === 'published' && self.isNoticeVisibleForUser(n);
+    });
     noticesList = noticesList.slice().sort(function(a, b) {
       return new Date(b.date) - new Date(a.date);
     });

@@ -30,6 +30,21 @@
       .replace(/'/g, '&#039;');
   }
 
+  function normalizeClassName(cls) {
+    if (!cls) return '';
+    return cls.toString()
+      .replace(/^class\s+/i, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function normalizeSectionName(sec) {
+    if (!sec) return '';
+    return sec.toString()
+      .trim()
+      .toLowerCase();
+  }
+
   function parseClassSection(str) {
     if (!str) return { class: '', section: '' };
     var clean = str.replace(/class\s+/i, '').trim();
@@ -65,10 +80,8 @@
       sectList.forEach(function(s) {
         // Only include classes that have students
         var hasStudents = SchoolApp.store.students.some(function(st) {
-          var studentClass = String(st.class).replace(/^class\s+/i, '').trim().toLowerCase();
-          var studentSection = String(st.section).trim().toLowerCase();
-          return studentClass === String(c).replace(/^class\s+/i, '').trim().toLowerCase() &&
-                 studentSection === String(s).trim().toLowerCase();
+          return normalizeClassName(st.class) === normalizeClassName(c) &&
+                 normalizeSectionName(st.section) === normalizeSectionName(s);
         });
         if (hasStudents) combos.push({ class: c, section: s });
       });
@@ -78,11 +91,9 @@
 
   function getStudentsForClass(cls, section) {
     return SchoolApp.store.students.filter(function(s) {
-      var studentClass = String(s.class).replace(/^class\s+/i, '').trim().toLowerCase();
-      var studentSection = String(s.section).trim().toLowerCase();
-      var filterClass = String(cls).replace(/^class\s+/i, '').trim().toLowerCase();
-      var filterSection = String(section).trim().toLowerCase();
-      return studentClass === filterClass && studentSection === filterSection && s.status === 'Active';
+      return normalizeClassName(s.class) === normalizeClassName(cls) &&
+             normalizeSectionName(s.section) === normalizeSectionName(section) &&
+             s.status === 'Active';
     }).sort(function(a, b) {
       return a.rollNumber.localeCompare(b.rollNumber);
     });
@@ -194,8 +205,8 @@
     html += '<select class="form-select" id="att-class-select" style="width:auto;min-width:150px"><option value="">Select Class</option>';
     availableClasses.forEach(function(c) {
       var val = c.class + '-' + c.section;
-      var isSelected = String(state.selectedClass).replace(/^class\s+/i, '').trim().toLowerCase() === String(c.class).replace(/^class\s+/i, '').trim().toLowerCase() &&
-                       String(state.selectedSection).trim().toLowerCase() === String(c.section).trim().toLowerCase();
+      var isSelected = normalizeClassName(state.selectedClass) === normalizeClassName(c.class) &&
+                       normalizeSectionName(state.selectedSection) === normalizeSectionName(c.section);
       html += '<option value="' + val + '"' + (isSelected ? ' selected' : '') + '>Class ' + val + '</option>';
     });
     html += '</select>';
@@ -207,8 +218,8 @@
       // Check for existing record
       var existing = SchoolApp.store.attendance.find(function(a) {
         return a.date === state.selectedDate &&
-               String(a.class).replace(/^class\s+/i, '').trim().toLowerCase() === String(state.selectedClass).replace(/^class\s+/i, '').trim().toLowerCase() &&
-               String(a.section).trim().toLowerCase() === String(state.selectedSection).trim().toLowerCase();
+               normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+               normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
       });
       if (existing) {
         html += '<span class="badge badge-warning" style="font-size:13px;padding:8px 16px">⚠ Already submitted for this date</span>';
@@ -236,7 +247,7 @@
 
           html += '<div class="attendance-card ' + status + '">';
           html += '<div class="avatar avatar-md" data-color="' + color + '">' + initials + '</div>';
-          html += '<div class="student-name" style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(s.firstName + ' ' + s.lastName) + '</div>';
+          html += '<div class="student-name" style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</div>';
           html += '<div class="student-roll">Roll #' + s.rollNumber + '</div>';
           html += '<div class="status-buttons">';
           html += '<button class="status-btn present-btn' + (status === 'present' ? ' active' : '') + '" data-student="' + s.id + '" data-status="present" title="Present">P</button>';
@@ -327,8 +338,8 @@
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       records = records.filter(function(r) {
         return ct.some(function(c) {
-          return String(c.class).toLowerCase().trim() === String(r.class).toLowerCase().trim() &&
-                 String(c.section).toLowerCase().trim() === String(r.section).toLowerCase().trim();
+          return normalizeClassName(c.class) === normalizeClassName(r.class) &&
+                 normalizeSectionName(c.section) === normalizeSectionName(r.section);
         });
       });
     }
@@ -372,6 +383,9 @@
         html += '<td><span style="color:var(--warning)">' + late + '</span></td>';
         html += '<td><span class="badge ' + percClass + '">' + perc + '%</span></td>';
         html += '<td><button class="btn-icon history-view-btn" data-id="' + r.id + '" title="View Details"><span class="material-icons-round">visibility</span></button>';
+        if (absent > 0) {
+          html += '<button class="btn-icon history-absence-notify-btn" data-id="' + r.id + '" title="Send Absence Intimation" style="color:var(--warning);"><span class="material-icons-round">campaign</span></button>';
+        }
         if (SchoolApp.isAdmin()) {
           html += '<button class="btn-icon history-delete-btn" data-id="' + r.id + '" title="Delete"><span class="material-icons-round">delete</span></button>';
         }
@@ -417,8 +431,8 @@
           // Load existing record if any
           var existing = SchoolApp.store.attendance.find(function(a) {
             return a.date === state.selectedDate &&
-                   String(a.class).replace(/^class\s+/i, '').trim().toLowerCase() === String(state.selectedClass).replace(/^class\s+/i, '').trim().toLowerCase() &&
-                   String(a.section).trim().toLowerCase() === String(state.selectedSection).trim().toLowerCase();
+                   normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+                   normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
           });
           if (existing) {
             existing.records.forEach(function(rec) {
@@ -497,6 +511,24 @@
       btn.addEventListener('click', function() { viewAttendanceDetail(this.getAttribute('data-id')); });
     });
 
+    // History absence intimation buttons
+    document.querySelectorAll('.history-absence-notify-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-id');
+        var att = SchoolApp.store.attendance.find(function(a) { return a.id === id; });
+        if (!att) return;
+        var absentRecs = att.records.filter(function(r) { return r.status === 'absent'; });
+        var absentStudents = absentRecs.map(function(r) {
+          return SchoolApp.store.students.find(function(s) { return s.id === r.studentId; });
+        }).filter(Boolean);
+        if (absentStudents.length > 0) {
+          showAbsentIntimationModal(absentStudents, att.class, att.section, att.date);
+        } else {
+          SchoolApp.showToast('No absent students in this record.', 'info');
+        }
+      });
+    });
+
     // History delete buttons
     document.querySelectorAll('.history-delete-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -523,8 +555,8 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var isCt = ct.some(function(c) {
-        return String(c.class).toLowerCase().trim() === String(state.selectedClass).toLowerCase().trim() &&
-               String(c.section).toLowerCase().trim() === String(state.selectedSection).toLowerCase().trim();
+        return normalizeClassName(c.class) === normalizeClassName(state.selectedClass) &&
+               normalizeSectionName(c.section) === normalizeSectionName(state.selectedSection);
       });
       if (!isCt) {
         SchoolApp.showToast('Access Denied: You are not the Class Teacher for this class.', 'error');
@@ -534,7 +566,9 @@
 
     // Check for existing record
     var existingIdx = SchoolApp.store.attendance.findIndex(function(a) {
-      return a.date === state.selectedDate && a.class === state.selectedClass && a.section === state.selectedSection;
+      return a.date === state.selectedDate &&
+             normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+             normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
     });
 
     var records = Object.keys(state.attendanceStatus).map(function(studentId) {
@@ -565,6 +599,20 @@
 
     SchoolApp.save();
     render();
+
+    // Auto-trigger Absent Student Parent Intimation modal if absent students exist
+    var absentStudentRecords = records.filter(function(r) { return r.status === 'absent'; });
+    if (absentStudentRecords.length > 0) {
+      var absentStudents = absentStudentRecords.map(function(r) {
+        return SchoolApp.store.students.find(function(s) { return s.id === r.studentId; });
+      }).filter(Boolean);
+
+      if (absentStudents.length > 0) {
+        setTimeout(function() {
+          showAbsentIntimationModal(absentStudents, state.selectedClass, state.selectedSection, state.selectedDate);
+        }, 300);
+      }
+    }
   }
 
   function viewAttendanceDetail(id) {
@@ -574,8 +622,8 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var isCt = ct.some(function(c) {
-        return String(c.class).toLowerCase().trim() === String(record.class).toLowerCase().trim() &&
-               String(c.section).toLowerCase().trim() === String(record.section).toLowerCase().trim();
+        return normalizeClassName(c.class) === normalizeClassName(record.class) &&
+               normalizeSectionName(c.section) === normalizeSectionName(record.section);
       });
       if (!isCt) {
         SchoolApp.showToast('Access Denied: You do not have permission to view attendance for this class.', 'error');
@@ -609,24 +657,217 @@
 
     record.records.forEach(function(rec) {
       var student = SchoolApp.store.students.find(function(s) { return s.id === rec.studentId; });
-      var name = student ? student.firstName + ' ' + student.lastName : 'Unknown';
+      var name = student ? SchoolApp.getStudentFullName(student) : 'Unknown';
       var roll = student ? student.rollNumber : '—';
       var statusClass = rec.status === 'present' ? 'badge-success' : rec.status === 'absent' ? 'badge-danger' : 'badge-warning';
       var statusText = rec.status.charAt(0).toUpperCase() + rec.status.slice(1);
 
-      var nameHtml = student ? '<span style="color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + student.id + '\')">' + escapeHTML(name) + '</span>' : escapeHTML(name);
+      var nameHtml = student ? '<span style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + student.id + '\')">' + escapeHTML(name) + '</span>' : escapeHTML(name);
       html += '<tr><td>' + nameHtml + '</td><td>' + roll + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td></tr>';
     });
 
     html += '</tbody></table></div>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+    if (absent > 0) {
+      footerHTML += '<button class="btn btn-warning" id="modal-absence-notify-btn"><span class="material-icons-round">campaign</span> Notify Absent Parents (' + absent + ')</button>';
+    }
     footerHTML += '<button class="btn btn-primary" onclick="SchoolApp.utils.exportToExcel(' + JSON.stringify(record.records.map(function(rec) {
       var student = SchoolApp.store.students.find(function(s) { return s.id === rec.studentId; });
-      return { Name: student ? student.firstName + ' ' + student.lastName : 'Unknown', Roll: student ? student.rollNumber : '', Status: rec.status };
+      return { Name: student ? SchoolApp.getStudentFullName(student) : 'Unknown', Roll: student ? student.rollNumber : '', Status: rec.status };
     })) + ', [{header:\'Name\',key:\'Name\'},{header:\'Roll No\',key:\'Roll\'},{header:\'Status\',key:\'Status\'}], \'attendance_' + record.date + '_' + record.class + record.section + '.xlsx\')"><span class="material-icons-round">download</span> Export</button>';
 
     SchoolApp.showModal('Attendance Details - ' + SchoolApp.formatDate(record.date), html, footerHTML);
+
+    var notifyBtn = document.getElementById('modal-absence-notify-btn');
+    if (notifyBtn) {
+      notifyBtn.addEventListener('click', function() {
+        var absentRecs = record.records.filter(function(r) { return r.status === 'absent'; });
+        var absentStudents = absentRecs.map(function(r) {
+          return SchoolApp.store.students.find(function(s) { return s.id === r.studentId; });
+        }).filter(Boolean);
+        if (absentStudents.length > 0) {
+          showAbsentIntimationModal(absentStudents, record.class, record.section, record.date);
+        }
+      });
+    }
+  }
+
+  /* ============================================================
+     ABSENT STUDENT PARENT INTIMATION MODULE
+     ============================================================ */
+
+  function buildAbsenceMessage(student, className, sectionName, date, schoolName) {
+    var studentName = (student.firstName + ' ' + (student.lastName || '')).trim();
+    return 'Dear Parent/Guardian,\n\n' +
+      'This is to inform you that your ward ' + studentName +
+      ' (Class ' + className + (sectionName ? ' - ' + sectionName : '') + ') was marked ABSENT from school today, ' + SchoolApp.formatDate(date) +
+      '.\n\nRegards,\n' + (schoolName || 'School Management');
+  }
+
+  function getStudentParentPhone(student) {
+    if (!student) return '';
+    var raw = student.parentPhone || student.parentMobile || student.fatherMobile || student.phone || '';
+    return String(raw).replace(/\D/g, '');
+  }
+
+  function markAbsenceRowSent(studentId, channel, rowEl) {
+    var badgeEl = rowEl ? rowEl.querySelector('.status-badge') : document.querySelector('.status-badge-' + studentId);
+    if (badgeEl) {
+      badgeEl.className = 'status-badge status-badge-' + studentId + ' badge badge-success';
+      badgeEl.innerHTML = channel === 'whatsapp' ? '✅ WhatsApp Sent' : '✅ SMS Sent';
+    }
+  }
+
+  function logAbsenceIntimation(studentId, date, channel, status) {
+    if (!SchoolApp.store.absenceIntimationLog) {
+      SchoolApp.store.absenceIntimationLog = [];
+    }
+    SchoolApp.store.absenceIntimationLog.push({
+      studentId: studentId,
+      date: date,
+      channel: channel,
+      status: status,
+      sentBy: (SchoolApp.currentUser && SchoolApp.currentUser.username) || 'unknown',
+      sentAt: new Date().toISOString()
+    });
+    SchoolApp.save(true);
+  }
+
+  function sendAbsenceWhatsApp(student, className, sectionName, date, schoolSettings, rowEl) {
+    var parentMobile = getStudentParentPhone(student);
+    var studentName = (student.firstName + ' ' + (student.lastName || '')).trim();
+
+    if (!parentMobile || parentMobile.length < 10) {
+      SchoolApp.showToast('No valid parent phone number found for ' + studentName, 'error');
+      return;
+    }
+
+    var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'Shishu Vikash Mandir';
+    var message = buildAbsenceMessage(student, className, sectionName, date, schoolName);
+
+    var sent = SchoolApp.shareOnWhatsApp(parentMobile, message);
+    if (sent) {
+      markAbsenceRowSent(student.id, 'whatsapp', rowEl);
+      logAbsenceIntimation(student.id, date, 'whatsapp', 'sent');
+    }
+  }
+
+  async function sendAbsenceSMS(student, className, sectionName, date, schoolSettings, rowEl) {
+    var apiKey = schoolSettings && schoolSettings.fast2smsApiKey;
+    if (!apiKey) return;
+
+    var parentMobile = getStudentParentPhone(student);
+    var studentName = (student.firstName + ' ' + (student.lastName || '')).trim();
+    if (!parentMobile || parentMobile.length < 10) {
+      SchoolApp.showToast('No valid parent phone number found for ' + studentName, 'error');
+      return;
+    }
+
+    var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'School Management';
+    var message = buildAbsenceMessage(student, className, sectionName, date, schoolName);
+
+    try {
+      SchoolApp.showToast('Sending SMS to parent of ' + studentName + '...', 'info');
+      var response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+        method: 'POST',
+        headers: {
+          'authorization': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          route: 'q',
+          message: message,
+          language: 'english',
+          flash: 0,
+          numbers: parentMobile
+        })
+      });
+      var result = await response.json();
+      var isSent = result && result.return === true;
+      if (isSent) {
+        markAbsenceRowSent(student.id, 'sms', rowEl);
+        SchoolApp.showToast('SMS sent successfully for ' + studentName, 'success');
+      } else {
+        SchoolApp.showToast('SMS failed: ' + (result.message || 'API error'), 'error');
+      }
+      logAbsenceIntimation(student.id, date, 'sms', isSent ? 'sent' : 'failed');
+    } catch (err) {
+      SchoolApp.showToast('SMS dispatch error for ' + studentName, 'error');
+      logAbsenceIntimation(student.id, date, 'sms', 'failed');
+    }
+  }
+
+  function showAbsentIntimationModal(absentStudents, className, sectionName, date) {
+    if (!absentStudents || absentStudents.length === 0) return;
+
+    var schoolSettings = SchoolApp.store.settings || {};
+    var hasSMS = Boolean(schoolSettings.fast2smsApiKey && schoolSettings.fast2smsApiKey.trim() !== '');
+
+    var bodyHTML = '<div class="absent-intimation-view">';
+    bodyHTML += '<div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); padding:12px 16px; border-radius:8px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">';
+    bodyHTML += '<span class="material-icons-round" style="color:var(--danger); font-size:28px;">campaign</span>';
+    bodyHTML += '<div>';
+    bodyHTML += '<h4 style="margin:0; color:var(--text-primary); font-size:15px;">📢 Inform Absent Student Parents (' + absentStudents.length + ')</h4>';
+    bodyHTML += '<p style="margin:2px 0 0 0; color:var(--text-secondary); font-size:12px;">Class ' + escapeHTML(className) + (sectionName ? '-' + escapeHTML(sectionName) : '') + ' · Date: ' + SchoolApp.formatDate(date) + '</p>';
+    bodyHTML += '</div></div>';
+
+    bodyHTML += '<div class="table-container" style="max-height:360px; overflow-y:auto;">';
+    bodyHTML += '<table class="data-table"><thead><tr>';
+    bodyHTML += '<th>Student</th><th>Roll</th><th>Parent Contact</th><th>Actions</th><th>Status</th>';
+    bodyHTML += '</tr></thead><tbody>';
+
+    absentStudents.forEach(function(s) {
+      var sName = (s.firstName + ' ' + (s.lastName || '')).trim();
+      var rawPhone = s.parentPhone || s.parentMobile || s.fatherMobile || s.phone || '';
+      var displayPhone = rawPhone ? rawPhone : '<span style="color:var(--danger)">No Phone</span>';
+
+      bodyHTML += '<tr class="absent-row-' + s.id + '">';
+      bodyHTML += '<td><strong>' + escapeHTML(sName) + '</strong></td>';
+      bodyHTML += '<td>#' + (s.rollNumber || '—') + '</td>';
+      bodyHTML += '<td>' + displayPhone + '</td>';
+      bodyHTML += '<td><div style="display:flex; gap:6px; align-items:center;">';
+      bodyHTML += '<button class="btn btn-sm absence-wa-btn" data-student-id="' + s.id + '" style="background:#25D366; color:#fff; border:none; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">send</span> 📱 WhatsApp</button>';
+
+      if (hasSMS) {
+        bodyHTML += '<button class="btn btn-sm btn-primary absence-sms-btn" data-student-id="' + s.id + '" style="padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
+      } else {
+        bodyHTML += '<button class="btn btn-sm btn-secondary absence-sms-btn" disabled title="SMS not configured. Contact admin to enable automatic SMS." style="padding:4px 10px; font-size:12px; opacity:0.5; cursor:not-allowed; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
+      }
+
+      bodyHTML += '</div></td>';
+      bodyHTML += '<td><span class="status-badge status-badge-' + s.id + ' badge badge-secondary" style="font-size:11px;">⬜ Pending</span></td>';
+      bodyHTML += '</tr>';
+    });
+
+    bodyHTML += '</tbody></table></div></div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close / Skip</button>';
+
+    SchoolApp.showModal('Absent Students Intimation', bodyHTML, footerHTML);
+
+    document.querySelectorAll('.absence-wa-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var sId = this.getAttribute('data-student-id');
+        var studentObj = absentStudents.find(function(x) { return x.id === sId; });
+        var rowEl = document.querySelector('.absent-row-' + sId);
+        if (studentObj) {
+          sendAbsenceWhatsApp(studentObj, className, sectionName, date, schoolSettings, rowEl);
+        }
+      });
+    });
+
+    document.querySelectorAll('.absence-sms-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (this.disabled) return;
+        var sId = this.getAttribute('data-student-id');
+        var studentObj = absentStudents.find(function(x) { return x.id === sId; });
+        var rowEl = document.querySelector('.absent-row-' + sId);
+        if (studentObj) {
+          sendAbsenceSMS(studentObj, className, sectionName, date, schoolSettings, rowEl);
+        }
+      });
+    });
   }
 
   // Register Module
@@ -636,3 +877,4 @@
   });
 
 })();
+
