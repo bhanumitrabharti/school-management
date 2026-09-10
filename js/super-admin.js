@@ -1150,7 +1150,26 @@ const db = getFirestore(app);
         school.archivedBy = currentUserEmail;
         school.archiveReason = reason;
 
-        await saveData(data);
+        // Log the event in detailed school audit logs (matching existing recovery/ticket pattern)
+        if (!data.audit_logs) data.audit_logs = [];
+        data.audit_logs.unshift({
+            school_id: schoolId,
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            actor: currentUserEmail,
+            action: 'Archived school' + (reason ? ': ' + reason : ''),
+            type: 'delete' // red badge
+        });
+
+        saveData(data);
+        try {
+            await setDoc(doc(db, 'schools', schoolId), school);
+            await setDoc(doc(db, 'sa_data', 'audit_logs'), { logs: data.audit_logs });
+        } catch (e) {
+            console.error('Failed to save archive state to Firestore:', e);
+            showToast('Failed to save archive state to cloud database.', 'error');
+            return;
+        }
+
         showToast('School "' + school.school_name + '" archived successfully.', 'success');
 
         var overlay = document.getElementById('sa-archive-modal-overlay');
@@ -1170,10 +1189,30 @@ const db = getFirestore(app);
             return;
         }
 
+        var currentUserEmail = (saCache.currentUser && saCache.currentUser.email) || 'Super Admin';
         school.archived = false;
         school.restoredAt = new Date().toISOString();
 
-        await saveData(data);
+        // Log the event in detailed school audit logs (matching existing recovery/ticket pattern)
+        if (!data.audit_logs) data.audit_logs = [];
+        data.audit_logs.unshift({
+            school_id: schoolId,
+            timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+            actor: currentUserEmail,
+            action: 'Restored school to active directory',
+            type: 'add' // green badge
+        });
+
+        saveData(data);
+        try {
+            await setDoc(doc(db, 'schools', schoolId), school);
+            await setDoc(doc(db, 'sa_data', 'audit_logs'), { logs: data.audit_logs });
+        } catch (e) {
+            console.error('Failed to save restore state to Firestore:', e);
+            showToast('Failed to save restore state to cloud database.', 'error');
+            return;
+        }
+
         showToast('School "' + school.school_name + '" restored to active directory.', 'success');
 
         renderDashboard();
@@ -2225,6 +2264,12 @@ const db = getFirestore(app);
         if (!adminUsername) { showToast('Admin Username is required.', 'error'); return; }
         if (!adminEmail) { showToast('Admin Email is required.', 'error'); return; }
 
+        var classes = formClasses;
+        if (!classes || classes.length === 0) {
+            showError('Please configure at least one class before creating this school. Classes cannot be empty.');
+            return; // block creation
+        }
+
         await ensureDataLoaded();
         var data = loadData();
         var schoolId = document.getElementById('sf-school-id').value;
@@ -2554,6 +2599,11 @@ const db = getFirestore(app);
             return;
         }
 
+        if (school.archived) {
+            showToast('Cannot impersonate an archived school. Restore it first.', 'error');
+            return;
+        }
+
         localStorage.setItem('impersonate_school_id', schoolId);
         localStorage.setItem('impersonate_role', role);
         sessionStorage.setItem('isImpersonating', 'true');
@@ -2594,6 +2644,10 @@ const db = getFirestore(app);
                 if (toast.parentNode) toast.parentNode.removeChild(toast);
             }, 300);
         }, 3500);
+    }
+
+    function showError(msg) {
+        showToast(msg, 'error');
     }
 
     /** Close the modal. */

@@ -216,6 +216,7 @@
       shellHtml += '<div class="header-actions">';
       var canAdd = isAdmin && SchoolApp.checkFeatureAccess('students');
       if (canAdd) {
+        shellHtml += '<button class="btn btn-secondary btn-sm" id="student-template-btn"><span class="material-icons-round">description</span> Download Template</button>';
         shellHtml += '<button class="btn btn-secondary btn-sm" id="student-import-btn"><span class="material-icons-round">upload_file</span> Import</button>';
       }
       shellHtml += '<button class="btn btn-secondary btn-sm" id="student-export-btn"><span class="material-icons-round">download</span> Export</button>';
@@ -376,6 +377,10 @@
     // Export
     var exportBtn = document.getElementById('student-export-btn');
     if (exportBtn) exportBtn.addEventListener('click', function() { exportStudents(getFilteredStudents()); });
+
+    // Template Download
+    var templateBtn = document.getElementById('student-template-btn');
+    if (templateBtn) templateBtn.addEventListener('click', function() { downloadStudentTemplate(); });
 
     // Import
     var importBtn = document.getElementById('student-import-btn');
@@ -744,44 +749,249 @@
     SchoolApp.utils.exportToExcel(students, columns, 'students_export_' + dateStr + '.xlsx');
   }
 
-  function importStudents(file) {
-    SchoolApp.utils.importFromExcel(file, function(data, headers) {
-      if (!data || data.length === 0) {
-        SchoolApp.showToast('No data found in file.', 'warning');
-        return;
-      }
+  // ─── Phase 1B: Template Download ───
 
-      // Field mapping
-      var mapping = {
-        'Full Name': 'name', 'full name': 'name', 'fullname': 'name', 'Name': 'name', 'name': 'name',
-        'Student Name': 'name', 'student name': 'name',
-        'First Name': 'firstName', 'first name': 'firstName', 'firstname': 'firstName', 'firstName': 'firstName',
-        'Last Name': 'lastName', 'last name': 'lastName', 'lastname': 'lastName', 'lastName': 'lastName',
-        'Class': 'class', 'class': 'class',
-        'Section': 'section', 'section': 'section',
-        'Roll Number': 'rollNumber', 'roll number': 'rollNumber', 'rollnumber': 'rollNumber', 'rollNumber': 'rollNumber',
-        'Date of Birth': 'dateOfBirth', 'date of birth': 'dateOfBirth', 'dob': 'dateOfBirth', 'dateOfBirth': 'dateOfBirth',
-        'Gender': 'gender', 'gender': 'gender',
-        'Aadhaar Number': 'aadhaarNumber', 'aadhaar': 'aadhaarNumber', 'aadhaarNumber': 'aadhaarNumber',
-        'Address': 'address', 'address': 'address',
-        'Parent Name': 'parentName', 'parent name': 'parentName', 'parentName': 'parentName',
-        'Parent Phone': 'parentPhone', 'parent phone': 'parentPhone', 'parentPhone': 'parentPhone',
-        'Parent Email': 'parentEmail', 'parent email': 'parentEmail', 'parentEmail': 'parentEmail',
-        'Admission Date': 'admissionDate', 'admissionDate': 'admissionDate',
-        'Status': 'status', 'status': 'status'
+  function downloadStudentTemplate() {
+    var columns = [
+      { header: 'Student Name', key: 'name' },
+      { header: 'Class', key: 'class' },
+      { header: 'Section', key: 'section' },
+      { header: 'Roll Number', key: 'rollNumber' },
+      { header: 'Date of Birth', key: 'dateOfBirth' },
+      { header: 'Gender', key: 'gender' },
+      { header: 'Parent Name', key: 'parentName' },
+      { header: 'Parent Phone', key: 'parentPhone' },
+      { header: 'Parent Email', key: 'parentEmail' },
+      { header: 'Address', key: 'address' },
+      { header: 'Admission Date', key: 'admissionDate' }
+    ];
+
+    var sampleRows = [
+      {
+        name: 'Aarav Kumar',
+        class: '1',
+        section: 'A',
+        rollNumber: '1',
+        dateOfBirth: '2018-05-15',
+        gender: 'Male',
+        parentName: 'Rajesh Kumar',
+        parentPhone: '9876543210',
+        parentEmail: 'rajesh@example.com',
+        address: 'Bokaro Steel City, Jharkhand',
+        admissionDate: '2024-04-01'
+      },
+      {
+        name: 'Priya Sharma',
+        class: '1',
+        section: 'A',
+        rollNumber: '2',
+        dateOfBirth: '2018-08-20',
+        gender: 'Female',
+        parentName: 'Sunil Sharma',
+        parentPhone: '9876543211',
+        parentEmail: 'sunil@example.com',
+        address: 'Sector 4, Bokaro, Jharkhand',
+        admissionDate: '2024-04-01'
+      }
+    ];
+
+    SchoolApp.utils.exportToExcel(sampleRows, columns, 'student_import_template.xlsx');
+  }
+
+  // ─── Import Helpers (Phase 1A + 1B) ───
+
+  var HEADER_MAPPING_DICTIONARY = {
+    'full name': 'name', 'fullname': 'name', 'name': 'name', 'student name': 'name',
+    'first name': 'firstName', 'firstname': 'firstName',
+    'last name': 'lastName', 'lastname': 'lastName',
+    'class': 'class',
+    'section': 'section',
+    'roll number': 'rollNumber', 'rollnumber': 'rollNumber',
+    'date of birth': 'dateOfBirth', 'dob': 'dateOfBirth',
+    'gender': 'gender',
+    'aadhaar number': 'aadhaarNumber', 'aadhaar': 'aadhaarNumber',
+    'address': 'address',
+    'parent name': 'parentName',
+    'parent phone': 'parentPhone',
+    'parent email': 'parentEmail',
+    'admission date': 'admissionDate',
+    'status': 'status'
+  };
+
+  var HEADER_KEYWORD_GROUPS = {
+    'name': ['name', 'student name', 'full name', 'pupil name', 'student'],
+    'firstName': ['first name', 'firstname', 'fname'],
+    'lastName': ['last name', 'lastname', 'lname', 'surname'],
+    'class': ['class', 'std', 'std.', 'standard', 'grade'],
+    'section': ['section', 'sec'],
+    'rollNumber': ['roll number', 'roll no', 'rollno', 'roll', 'serial no'],
+    'dateOfBirth': ['date of birth', 'dob', 'birth date', 'birthdate'],
+    'gender': ['gender', 'sex'],
+    'parentName': ['parent name', 'father name', "father's name", 'guardian', 'guardian name'],
+    'parentPhone': ['parent phone', 'mobile', 'phone', 'contact', 'contact no', 'whatsapp', 'ph no', 'parent mobile'],
+    'parentEmail': ['parent email', 'email', 'email id'],
+    'aadhaarNumber': ['aadhaar', 'aadhaar number', 'adhar'],
+    'address': ['address'],
+    'admissionDate': ['admission date', 'adm date', 'doa'],
+    'status': ['status']
+  };
+
+  var AVAILABLE_FIELDS = [
+    { id: 'name', label: 'Student Name' },
+    { id: 'firstName', label: 'First Name' },
+    { id: 'lastName', label: 'Last Name' },
+    { id: 'class', label: 'Class' },
+    { id: 'section', label: 'Section' },
+    { id: 'rollNumber', label: 'Roll Number' },
+    { id: 'dateOfBirth', label: 'Date of Birth' },
+    { id: 'gender', label: 'Gender' },
+    { id: 'parentName', label: 'Parent Name' },
+    { id: 'parentPhone', label: 'Parent Phone' },
+    { id: 'parentEmail', label: 'Parent Email' },
+    { id: 'aadhaarNumber', label: 'Aadhaar Number' },
+    { id: 'address', label: 'Address' },
+    { id: 'admissionDate', label: 'Admission Date' },
+    { id: 'status', label: 'Status' }
+  ];
+
+  function escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function escapeAttr(str) {
+    return escapeHTML(str);
+  }
+
+  function sanitizeHeader(header) {
+    return String(header)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  function detectColumnMapping(header) {
+    var clean = sanitizeHeader(header);
+
+    // Try exact match against existing dictionary first
+    var exactMatch = HEADER_MAPPING_DICTIONARY[clean];
+    if (exactMatch) {
+      return {
+        field: exactMatch,
+        confidence: 'exact'
       };
+    }
 
-      var imported = 0;
-      if (data && data.length > 0) {
-        SchoolApp.createRestorePoint('Auto-Backup before Student Excel Import');
+    // Try fuzzy keyword match
+    for (var field in HEADER_KEYWORD_GROUPS) {
+      var keywords = HEADER_KEYWORD_GROUPS[field];
+      if (keywords.includes(clean)) {
+        return {
+          field: field,
+          confidence: 'fuzzy'
+        };
       }
-      data.forEach(function(row) {
+    }
+
+    return { field: null, confidence: 'none' };
+  }
+
+  function normalizeImportedClass(rawClass, configuredClasses) {
+    if (!rawClass) return rawClass;
+    var clean = String(rawClass).trim();
+    if (!configuredClasses || !Array.isArray(configuredClasses) || configuredClasses.length === 0) {
+      return clean;
+    }
+
+    var strClasses = configuredClasses.map(function(c) { return String(c).trim(); });
+
+    // Try exact match first
+    if (strClasses.includes(clean)) {
+      return clean;
+    }
+
+    // Try common variations
+    var stripped = clean
+      .replace(/^class\s*/i, '')
+      .replace(/^std\.?\s*/i, '')
+      .replace(/^grade\s*/i, '')
+      .trim();
+
+    if (strClasses.includes(stripped)) {
+      return stripped;
+    }
+
+    // Try with "Class " prefix
+    var withPrefix = 'Class ' + stripped;
+    if (strClasses.includes(withPrefix)) {
+      return withPrefix;
+    }
+
+    // No match found — flag for admin review, don't silently guess
+    return null;
+  }
+
+  function isDuplicateStudent(newStudent, existingStudents) {
+    if (!existingStudents || !existingStudents.length) return false;
+    return existingStudents.some(function(s) {
+      // Match on roll number + class (most reliable for schools)
+      if (newStudent.rollNumber && s.rollNumber &&
+          String(s.rollNumber).trim() === String(newStudent.rollNumber).trim() &&
+          String(s.class || '').trim() === String(newStudent.class || '').trim()) {
+        return true;
+      }
+      // Fallback: name + parent phone
+      if (newStudent.name && newStudent.parentPhone &&
+          s.name && s.parentPhone &&
+          String(s.name).trim().toLowerCase() === String(newStudent.name).trim().toLowerCase() &&
+          String(s.parentPhone).trim() === String(newStudent.parentPhone).trim()) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  // ─── Step 2: Preview Modal & Evaluation ───
+
+  function showImportPreviewModal(fileName, data, rawHeaders, initialMapping, mappingConfidence) {
+    var currentMapping = Object.assign({}, initialMapping);
+
+    function evaluateCurrentData() {
+      var configuredClasses = (SchoolApp.store.settings && SchoolApp.store.settings.classes) || [];
+      var readyStudents = [];
+      var classMismatchList = [];
+      var duplicateList = [];
+      var skippedRows = [];
+
+      data.forEach(function(row, index) {
         var student = { id: SchoolApp.generateId(), status: 'Active' };
-        Object.keys(row).forEach(function(key) {
-          var mapped = mapping[key] || mapping[key.toLowerCase()];
-          if (mapped) student[mapped] = String(row[key]).trim();
+
+        // Apply mapping
+        rawHeaders.forEach(function(origH) {
+          var targetField = currentMapping[origH];
+          if (!targetField) return;
+          var val = row[origH];
+          if (val === undefined || val === null) {
+            var cleanTarget = sanitizeHeader(origH);
+            for (var rk in row) {
+              if (sanitizeHeader(rk) === cleanTarget) {
+                val = row[rk];
+                break;
+              }
+            }
+          }
+          if (val !== undefined && val !== null) {
+            var strVal = String(val).trim();
+            if (strVal !== '') student[targetField] = strVal;
+          }
         });
 
+        // Name decomposition / composition
         if (student.name && (!student.firstName || !student.lastName)) {
           var parts = student.name.trim().split(/\s+/);
           student.firstName = parts[0] || '';
@@ -792,18 +1002,305 @@
         if (student.firstName === undefined) student.firstName = '';
         if (student.lastName === undefined) student.lastName = '';
 
-        // Validate minimum fields
-        if ((student.name || student.firstName) && student.class) {
-          SchoolApp.store.students.push(student);
-          imported++;
+        // Minimum required fields check
+        var hasName = !!((student.name && student.name.trim()) || (student.firstName && student.firstName.trim()));
+        var hasClass = !!(student.class && student.class.trim());
+
+        if (!hasName || !hasClass) {
+          var reason = !hasName && !hasClass
+            ? 'Missing name and class'
+            : (!hasClass ? 'Missing class' : 'Missing name');
+          skippedRows.push({
+            rowNumber: index + 2,
+            reason: reason,
+            name: student.name || '(Empty)'
+          });
+          return;
         }
+
+        // Class normalization
+        var rawClass = student.class;
+        var normalizedClass = normalizeImportedClass(rawClass, configuredClasses);
+        if (normalizedClass) {
+          student.class = normalizedClass;
+        } else {
+          student._classMismatch = true;
+          student.class = rawClass;
+          classMismatchList.push({
+            rowNumber: index + 2,
+            name: student.name,
+            rawClass: rawClass
+          });
+        }
+
+        // Duplicate check (against existing students and already ready students in this batch)
+        if (isDuplicateStudent(student, SchoolApp.store.students) || isDuplicateStudent(student, readyStudents)) {
+          duplicateList.push({
+            rowNumber: index + 2,
+            name: student.name,
+            rollNumber: student.rollNumber || 'N/A',
+            class: student.class
+          });
+          return;
+        }
+
+        readyStudents.push(student);
       });
 
-      SchoolApp.save();
-      SchoolApp.showToast('Imported ' + imported + ' students from Excel.', 'success');
-      render();
+      return {
+        readyStudents: readyStudents,
+        classMismatchList: classMismatchList,
+        duplicateList: duplicateList,
+        skippedRows: skippedRows
+      };
+    }
+
+    function buildSummaryCardsHTML(evalRes) {
+      var html = '<div style="padding:14px; border-radius:8px; border:1px solid var(--border-color); background:rgba(255,255,255,0.03); display:flex; flex-direction:column; gap:8px;">';
+      html += '<div style="font-weight:700; font-size:13px; margin-bottom:4px;">Validation Summary</div>';
+
+      html += '<div style="display:flex; flex-direction:column; gap:6px; font-size:12px;">';
+      html += '<div style="color:#10B981; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">check_circle</span> ' + evalRes.readyStudents.length + ' students ready to import</div>';
+
+      if (evalRes.classMismatchList.length > 0) {
+        html += '<div style="color:#F59E0B; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> ' + evalRes.classMismatchList.length + ' need class review (unrecognized class value)</div>';
+      }
+
+      if (evalRes.duplicateList.length > 0) {
+        html += '<div style="color:#F59E0B; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">content_copy</span> ' + evalRes.duplicateList.length + ' skipped as duplicates</div>';
+      }
+
+      if (evalRes.skippedRows.length > 0) {
+        var rowNums = evalRes.skippedRows.slice(0, 5).map(function(r) { return 'Row ' + r.rowNumber; }).join(', ');
+        if (evalRes.skippedRows.length > 5) rowNums += ', +' + (evalRes.skippedRows.length - 5) + ' more';
+        html += '<div style="color:#EF4444; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">cancel</span> ' + evalRes.skippedRows.length + ' rows skipped (missing required fields) — ' + rowNums + '</div>';
+      }
+      html += '</div>';
+
+      // View Details Collapsible
+      var hasIssues = evalRes.classMismatchList.length > 0 || evalRes.duplicateList.length > 0 || evalRes.skippedRows.length > 0;
+      if (hasIssues) {
+        html += '<details style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:8px;">';
+        html += '<summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--primary); user-select:none;">View Details (Expand to see rows)</summary>';
+        html += '<div style="display:flex; flex-direction:column; gap:8px; margin-top:8px; font-size:11px; max-height:160px; overflow-y:auto;">';
+
+        if (evalRes.classMismatchList.length > 0) {
+          html += '<div><span style="font-weight:700; color:#F59E0B;">Unrecognized Classes:</span>';
+          evalRes.classMismatchList.forEach(function(item) {
+            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.name || 'Unnamed') + ' (Value: "' + escapeHTML(item.rawClass) + '")</div>';
+          });
+          html += '</div>';
+        }
+
+        if (evalRes.duplicateList.length > 0) {
+          html += '<div><span style="font-weight:700; color:#F59E0B;">Duplicates Skipped:</span>';
+          evalRes.duplicateList.forEach(function(item) {
+            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.name || 'Unnamed') + ' (Class: ' + escapeHTML(item.class) + ', Roll: ' + escapeHTML(item.rollNumber) + ')</div>';
+          });
+          html += '</div>';
+        }
+
+        if (evalRes.skippedRows.length > 0) {
+          html += '<div><span style="font-weight:700; color:#EF4444;">Missing Required Fields:</span>';
+          evalRes.skippedRows.forEach(function(item) {
+            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.reason) + '</div>';
+          });
+          html += '</div>';
+        }
+
+        html += '</div></details>';
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function buildBodyHTML(evalRes) {
+      var html = '<div class="import-preview-modal" style="display:flex; flex-direction:column; gap:16px; max-height:75vh; overflow-y:auto; padding-right:4px;">';
+
+      // Section: Column Mapping Detected
+      html += '<div>';
+      html += '<h4 style="margin:0 0 8px 0; font-size:14px; font-weight:700; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:18px; color:var(--primary);">view_column</span> Column Mapping Detected</h4>';
+      html += '<p style="margin:0 0 10px 0; font-size:12px; color:var(--text-secondary);">Your Column &rarr; Paathshala Field. Each row has a dropdown to override if auto-detection is wrong.</p>';
+
+      html += '<div style="border:1px solid var(--border-color); border-radius:8px; overflow:hidden; background:var(--bg-glass, rgba(255,255,255,0.02));">';
+      html += '<table class="table" style="margin:0; width:100%; font-size:12px;">';
+      html += '<thead><tr style="background:rgba(255,255,255,0.04); border-bottom:1px solid var(--border-color);">';
+      html += '<th style="padding:8px 12px; text-align:left;">Your Column</th>';
+      html += '<th style="padding:8px 12px; text-align:left;">Paathshala Field</th>';
+      html += '<th style="padding:8px 12px; text-align:center; width:130px;">Detection</th>';
+      html += '</tr></thead><tbody>';
+
+      rawHeaders.forEach(function(h) {
+        var conf = mappingConfidence[h] || 'none';
+        var currentField = currentMapping[h] || '';
+
+        var badgeHtml = '';
+        if (conf === 'exact') {
+          badgeHtml = '<span class="badge badge-success" style="font-size:10px; padding:3px 6px;">✅ exact</span>';
+        } else if (conf === 'fuzzy') {
+          badgeHtml = '<span class="badge badge-info" style="font-size:10px; padding:3px 6px;">✅ auto-detected</span>';
+        } else {
+          badgeHtml = '<span class="badge badge-secondary" style="font-size:10px; padding:3px 6px;">⚪ unmapped</span>';
+        }
+
+        html += '<tr style="border-bottom:1px solid var(--border-color);">';
+        html += '<td style="padding:8px 12px; font-weight:600;">' + escapeHTML(h) + '</td>';
+        html += '<td style="padding:8px 12px;">';
+        html += '<select class="form-select import-col-map-select" data-header="' + escapeAttr(h) + '" style="padding:4px 8px; font-size:12px; width:100%; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-primary);">';
+        html += '<option value="">[Ignore / Do not import]</option>';
+        AVAILABLE_FIELDS.forEach(function(f) {
+          html += '<option value="' + f.id + '"' + (currentField === f.id ? ' selected' : '') + '>' + f.label + '</option>';
+        });
+        html += '</select></td>';
+        html += '<td style="padding:8px 12px; text-align:center;">' + badgeHtml + '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div></div>';
+
+      // Section: Validation Summary
+      html += '<div id="import-preview-summary-container">';
+      html += buildSummaryCardsHTML(evalRes);
+      html += '</div>';
+
+      html += '</div>';
+      return html;
+    }
+
+    var evalRes = evaluateCurrentData();
+    var bodyHTML = buildBodyHTML(evalRes);
+    var footerHTML = '<button class="btn btn-secondary" id="import-preview-cancel-btn">Cancel</button>' +
+      '<button class="btn btn-primary" id="import-preview-confirm-btn"' + (evalRes.readyStudents.length === 0 ? ' disabled' : '') + '>' +
+      '<span class="material-icons-round" style="font-size:16px;">check_circle</span> Confirm Import — ' + evalRes.readyStudents.length + ' students</button>';
+
+    SchoolApp.showModal('Import Preview — ' + fileName, bodyHTML, footerHTML);
+
+    // Cancel Button Handler (0 writes to Firestore)
+    var cancelBtn = document.getElementById('import-preview-cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+      });
+    }
+
+    // Confirm Button Handler (writes to Firestore only here)
+    var confirmBtn = document.getElementById('import-preview-confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function() {
+        var currentEval = evaluateCurrentData();
+        SchoolApp.closeModal();
+
+        if (currentEval.readyStudents.length > 0) {
+          SchoolApp.createRestorePoint('Auto-Backup before Student Excel Import');
+          currentEval.readyStudents.forEach(function(s) {
+            SchoolApp.store.students.push(s);
+          });
+          SchoolApp.save();
+        }
+
+        // Summary feedback reporting
+        var summaryParts = [currentEval.readyStudents.length + ' imported'];
+        if (currentEval.duplicateList.length > 0) {
+          summaryParts.push(currentEval.duplicateList.length + ' skipped as duplicates');
+        }
+        if (currentEval.classMismatchList.length > 0) {
+          summaryParts.push(currentEval.classMismatchList.length + ' need class review');
+        }
+
+        var summaryMsg = summaryParts.join(', ');
+        if (currentEval.skippedRows.length > 0) {
+          var rowList = currentEval.skippedRows.slice(0, 3).map(function(r) {
+            return 'Row ' + r.rowNumber + ' (' + r.reason + ')';
+          }).join(', ');
+          if (currentEval.skippedRows.length > 3) {
+            rowList += ', +' + (currentEval.skippedRows.length - 3) + ' more';
+          }
+          summaryMsg += '. ' + currentEval.skippedRows.length + ' rows skipped: ' + rowList;
+        } else {
+          summaryMsg += '.';
+        }
+
+        var toastType = (currentEval.classMismatchList.length > 0 || currentEval.skippedRows.length > 0) ? 'warning' : 'success';
+        SchoolApp.showToast(summaryMsg, toastType);
+
+        if (currentEval.classMismatchList.length > 0) {
+          setTimeout(function() {
+            SchoolApp.showToast(currentEval.classMismatchList.length + ' students imported with unrecognized class values — please review and fix manually in Student Management.', 'warning');
+          }, 1200);
+        }
+
+        render();
+      });
+    }
+
+    // Dynamic Override Listeners
+    var selects = document.querySelectorAll('.import-col-map-select');
+    selects.forEach(function(sel) {
+      sel.addEventListener('change', function() {
+        var h = this.getAttribute('data-header');
+        currentMapping[h] = this.value;
+
+        // Re-evaluate in real time
+        var updatedEval = evaluateCurrentData();
+
+        var summaryContainer = document.getElementById('import-preview-summary-container');
+        if (summaryContainer) {
+          summaryContainer.innerHTML = buildSummaryCardsHTML(updatedEval);
+        }
+
+        var confirmBtnLive = document.getElementById('import-preview-confirm-btn');
+        if (confirmBtnLive) {
+          confirmBtnLive.disabled = updatedEval.readyStudents.length === 0;
+          confirmBtnLive.innerHTML = '<span class="material-icons-round" style="font-size:16px;">check_circle</span> Confirm Import — ' + updatedEval.readyStudents.length + ' students';
+        }
+      });
     });
   }
+
+  function processParsedData(data, headers, fileName) {
+    var rawHeaders = (headers && headers.length > 0) ? headers : Object.keys(data[0] || {});
+    var initialMapping = {};
+    var mappingConfidence = {};
+
+    rawHeaders.forEach(function(h) {
+      var res = detectColumnMapping(h);
+      initialMapping[h] = res.field || '';
+      mappingConfidence[h] = res.confidence;
+    });
+
+    showImportPreviewModal(fileName, data, rawHeaders, initialMapping, mappingConfidence);
+  }
+
+  function importStudents(fileOrData, optionalFileName) {
+    if (Array.isArray(fileOrData)) {
+      processParsedData(fileOrData, [], optionalFileName || 'Students Import');
+      return;
+    }
+
+    var file = fileOrData;
+    SchoolApp.utils.importFromExcel(file, function(data, headers) {
+      if (!data || data.length === 0) {
+        SchoolApp.showToast('No data found in file.', 'warning');
+        return;
+      }
+      processParsedData(data, headers, (file && file.name) ? file.name : 'Students File');
+    });
+  }
+
+  // Expose import utils for testing and preview modals
+  window.StudentImportUtils = {
+    sanitizeHeader: sanitizeHeader,
+    normalizeImportedClass: normalizeImportedClass,
+    isDuplicateStudent: isDuplicateStudent,
+    detectColumnMapping: detectColumnMapping,
+    HEADER_KEYWORD_GROUPS: HEADER_KEYWORD_GROUPS,
+    HEADER_MAPPING_DICTIONARY: HEADER_MAPPING_DICTIONARY,
+    AVAILABLE_FIELDS: AVAILABLE_FIELDS,
+    showImportPreviewModal: showImportPreviewModal,
+    downloadStudentTemplate: downloadStudentTemplate,
+    importStudents: importStudents
+  };
 
   // Register Module
   SchoolApp.registerModule('students', {

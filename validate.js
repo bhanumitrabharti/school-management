@@ -10,7 +10,8 @@ const files = [
   'js/fees.js',
   'js/attendance.js',
   'js/students.js',
-  'js/timetable.js'
+  'js/timetable.js',
+  'js/super-admin.js'
 ];
 
 let hasError = false;
@@ -18,7 +19,7 @@ let hasError = false;
 files.forEach(f => {
   try {
     const code = fs.readFileSync(path.join(__dirname, f), 'utf-8');
-    const sanitizedCode = code.replace(/^\s*(import|export)\s+.*/gm, '// $&');
+    const sanitizedCode = code.split(/\r?\n/).map(l => l.replace(/^\s*(import|export)\s+.*/, '// $&')).join('\n');
     new vm.Script(sanitizedCode, { filename: f });
     console.log('✅ ' + f);
   } catch(e) {
