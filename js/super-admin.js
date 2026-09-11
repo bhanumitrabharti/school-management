@@ -30,6 +30,8 @@ const db = getFirestore(app);
     var formExtraCharges = [];
     var currentAdminPasswordHash = '';
     var currentEditRequestId = 0;
+    var currentEditingSchoolId = null;
+    var currentEditingTenantData = null;
 
     // ─── Constants ──────────────────────────────────────
     var STORAGE_KEY = 'shishuvikash_data';
@@ -1890,17 +1892,287 @@ const db = getFirestore(app);
 
     // ─── Collapsible Onboarding UI Renderers ────────────
 
+    /**
+     * Full 12-store cascade migration for class rename in Super Admin.
+     * Creates a restore point BEFORE executing and updates all affected stores in Firestore.
+     */
+    async function executeSuperAdminClassRename(oldClass, newClass) {
+        if (!oldClass || !newClass || oldClass === newClass) return;
+        
+        var cleanNew = String(newClass).trim();
+        if (!cleanNew) {
+            showToast('Class name cannot be empty.', 'error');
+            return;
+        }
+
+        // Check if cleanNew already exists
+        if (formClasses.indexOf(cleanNew) !== -1) {
+            showToast("Class '" + cleanNew + "' already exists.", 'error');
+            return;
+        }
+
+        var schoolId = currentEditingSchoolId;
+        var data = loadData();
+        var school = schoolId ? findSchoolById(data.schools, schoolId) : null;
+        var schoolName = school ? school.school_name : 'New School';
+        var currentUserEmail = (saCache.currentUser && saCache.currentUser.email) || 'Super Admin';
+
+        var affectedCount = 0;
+        if (currentEditingTenantData && currentEditingTenantData.students) {
+            affectedCount = currentEditingTenantData.students.filter(function(s) {
+                return String(s.class || '').trim() === String(oldClass).trim();
+            }).length;
+        }
+
+        var confirmMsg = "Rename class '" + oldClass + "' to '" + cleanNew + "'?\n\n";
+        if (affectedCount > 0) {
+            confirmMsg += "This will automatically cascade and update " + affectedCount + " enrolled student(s), attendance records, exam subjects, marks, fee ledger activity, and timetable.";
+        } else {
+            confirmMsg += "This class currently has 0 enrolled students. Structure and fee settings will be updated.";
+        }
+
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        // 1. If existing school in Firestore, perform full cascade migration with restore point
+        if (schoolId) {
+            showToast("Creating restore point and cascading class rename...", "info");
+
+            try {
+                // Load fresh tenant_data from Firestore
+                var tenantRef = doc(db, 'tenant_data', schoolId);
+                var tenantSnap = await getDoc(tenantRef);
+                var tenantData = tenantSnap.exists() ? tenantSnap.data() : (currentEditingTenantData || {});
+
+                // Create Restore Point BEFORE cascade executes
+                if (!tenantData.trash) tenantData.trash = [];
+                var restorePointId = 'rp_' + Date.now().toString(36);
+                tenantData.trash.unshift({
+                    id: restorePointId,
+                    timestamp: new Date().toISOString(),
+                    description: "Auto-Backup before renaming class '" + oldClass + "' to '" + cleanNew + "' in " + schoolName,
+                    type: 'restore_point',
+                    schoolId: schoolId,
+                    snapshot: JSON.parse(JSON.stringify(tenantData))
+                });
+                if (tenantData.trash.length > 10) tenantData.trash = tenantData.trash.slice(0, 10);
+
+                // Mirror restore point to recovery_trash for Super Admin inspectability
+                if (!data.recovery_trash) data.recovery_trash = [];
+                data.recovery_trash.unshift({
+                    id: 'rec_' + Date.now().toString(36),
+                    school_id: schoolId,
+                    school_name: schoolName,
+                    data_type: "Class Rename Snapshot ('" + oldClass + "' → '" + cleanNew + "')",
+                    deleted_by: currentUserEmail,
+                    deleted_time: new Date().toISOString().replace('T', ' ').substring(0, 16)
+                });
+                if (data.recovery_trash.length > 20) data.recovery_trash = data.recovery_trash.slice(0, 20);
+
+                // Cascade Migration Across All 12 Stores:
+                // 1. settings.classes
+                if (tenantData.settings && tenantData.settings.classes) {
+                    var cIdx = tenantData.settings.classes.indexOf(oldClass);
+                    if (cIdx !== -1) tenantData.settings.classes[cIdx] = cleanNew;
+                }
+
+                // 2. settings.sections
+                if (tenantData.settings && tenantData.settings.sections && tenantData.settings.sections[oldClass]) {
+                    tenantData.settings.sections[cleanNew] = tenantData.settings.sections[oldClass];
+                    delete tenantData.settings.sections[oldClass];
+                }
+
+                // 3. settings.feeStructure
+                if (tenantData.settings && tenantData.settings.feeStructure && tenantData.settings.feeStructure[oldClass]) {
+                    tenantData.settings.feeStructure[cleanNew] = tenantData.settings.feeStructure[oldClass];
+                    delete tenantData.settings.feeStructure[oldClass];
+                }
+
+                // 4. feeStructures (legacy)
+                if (tenantData.feeStructures && tenantData.feeStructures[oldClass]) {
+                    tenantData.feeStructures[cleanNew] = tenantData.feeStructures[oldClass];
+                    delete tenantData.feeStructures[oldClass];
+                }
+
+                // 5. students (student.class)
+                var migratedStudents = 0;
+                if (tenantData.students) {
+                    tenantData.students.forEach(function(s) {
+                        if (String(s.class || '').trim() === String(oldClass).trim()) {
+                            s.class = cleanNew;
+                            migratedStudents++;
+                        }
+                    });
+                }
+
+                // 6. teachers (assignedClasses, classTeacherOf, subjectTeacherOf)
+                if (tenantData.teachers) {
+                    tenantData.teachers.forEach(function(t) {
+                        (t.assignedClasses || []).forEach(function(ac, idx) {
+                            if (typeof ac === 'string' && ac.trim() === oldClass.trim()) {
+                                t.assignedClasses[idx] = cleanNew;
+                            } else if (ac && typeof ac === 'object' && String(ac.class || '').trim() === String(oldClass).trim()) {
+                                ac.class = cleanNew;
+                            }
+                        });
+                        (t.classTeacherOf || []).forEach(function(ct, idx) {
+                            if (typeof ct === 'string' && ct.trim() === oldClass.trim()) {
+                                t.classTeacherOf[idx] = cleanNew;
+                            } else if (ct && typeof ct === 'object' && String(ct.class || '').trim() === String(oldClass).trim()) {
+                                ct.class = cleanNew;
+                            }
+                        });
+                        (t.subjectTeacherOf || []).forEach(function(st, idx) {
+                            if (typeof st === 'string' && st.trim() === oldClass.trim()) {
+                                t.subjectTeacherOf[idx] = cleanNew;
+                            } else if (st && typeof st === 'object' && String(st.class || '').trim() === String(oldClass).trim()) {
+                                st.class = cleanNew;
+                            }
+                        });
+                    });
+                }
+
+                // 7. attendance (class, classId)
+                if (tenantData.attendance) {
+                    tenantData.attendance.forEach(function(rec) {
+                        if (String(rec.class || '').trim() === String(oldClass).trim()) rec.class = cleanNew;
+                        if (String(rec.classId || '').trim() === String(oldClass).trim()) rec.classId = cleanNew;
+                    });
+                }
+
+                // 8. examSubjects (examSubjects[termId][classId])
+                if (tenantData.examSubjects) {
+                    Object.keys(tenantData.examSubjects).forEach(function(termId) {
+                        if (tenantData.examSubjects[termId] && tenantData.examSubjects[termId][oldClass]) {
+                            tenantData.examSubjects[termId][cleanNew] = tenantData.examSubjects[termId][oldClass];
+                            delete tenantData.examSubjects[termId][oldClass];
+                        }
+                    });
+                }
+
+                // 9. examMarks (examMarks[termId][classId])
+                if (tenantData.examMarks) {
+                    Object.keys(tenantData.examMarks).forEach(function(termId) {
+                        if (tenantData.examMarks[termId] && tenantData.examMarks[termId][oldClass]) {
+                            tenantData.examMarks[termId][cleanNew] = tenantData.examMarks[termId][oldClass];
+                            delete tenantData.examMarks[termId][oldClass];
+                        }
+                    });
+                }
+
+                // 10. subjectMapping (direct key & composite term_class keys)
+                if (tenantData.subjectMapping) {
+                    if (tenantData.subjectMapping[oldClass]) {
+                        tenantData.subjectMapping[cleanNew] = tenantData.subjectMapping[oldClass];
+                        delete tenantData.subjectMapping[oldClass];
+                    }
+                    Object.keys(tenantData.subjectMapping).forEach(function(k) {
+                        if (k.endsWith('_' + oldClass)) {
+                            var prefix = k.substring(0, k.length - oldClass.length);
+                            tenantData.subjectMapping[prefix + cleanNew] = tenantData.subjectMapping[k];
+                            delete tenantData.subjectMapping[k];
+                        }
+                    });
+                }
+
+                // 11. timetable (classSection keys: "oldClass-A" -> "newClass-A")
+                if (tenantData.timetable) {
+                    Object.keys(tenantData.timetable).forEach(function(k) {
+                        if (k !== 'settings') {
+                            if (k === oldClass) {
+                                tenantData.timetable[cleanNew] = tenantData.timetable[k];
+                                delete tenantData.timetable[k];
+                            } else if (k.startsWith(oldClass + '-')) {
+                                var newKey = cleanNew + '-' + k.substring(oldClass.length + 1);
+                                tenantData.timetable[newKey] = tenantData.timetable[k];
+                                delete tenantData.timetable[k];
+                            }
+                        }
+                    });
+                }
+
+                // 12. feeActivityLog (className: "oldClass-A" -> "newClass-A")
+                if (tenantData.feeActivityLog) {
+                    tenantData.feeActivityLog.forEach(function(log) {
+                        if (log.className) {
+                            if (log.className === oldClass) {
+                                log.className = cleanNew;
+                            } else if (log.className.startsWith(oldClass + '-')) {
+                                log.className = cleanNew + '-' + log.className.substring(oldClass.length + 1);
+                            }
+                        }
+                    });
+                }
+
+                // Persist migrated tenantData to Firestore
+                await setDoc(tenantRef, tenantData);
+
+                // Update school metadata in schools/{schoolId}
+                if (school) {
+                    if (!school.settings) school.settings = {};
+                    school.settings.classes = tenantData.settings.classes;
+                    school.settings.sections = tenantData.settings.sections;
+                    school.settings.feeStructure = tenantData.settings.feeStructure;
+                    await setDoc(doc(db, 'schools', schoolId), school);
+                }
+
+                // Persist recovery trash and audit log
+                if (!data.audit_logs) data.audit_logs = [];
+                data.audit_logs.unshift({
+                    school_id: schoolId,
+                    timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                    actor: currentUserEmail,
+                    action: "Renamed class '" + oldClass + "' → '" + cleanNew + "' (" + migratedStudents + " students migrated)",
+                    type: 'update'
+                });
+                saveData(data);
+                await setDoc(doc(db, 'sa_data', 'recovery_trash'), { trash: data.recovery_trash });
+                await setDoc(doc(db, 'sa_data', 'audit_logs'), { logs: data.audit_logs });
+
+                currentEditingTenantData = tenantData;
+                showToast("Class '" + oldClass + "' renamed to '" + cleanNew + "'! " + migratedStudents + " student records updated.", "success");
+
+            } catch (err) {
+                console.error("Failed to cascade class rename:", err);
+                showToast("Failed to rename class in cloud storage: " + err.message, "error");
+                return;
+            }
+        }
+
+        // Update modal in-memory state
+        var idx = formClasses.indexOf(oldClass);
+        if (idx !== -1) formClasses[idx] = cleanNew;
+        if (formSections[oldClass]) {
+            formSections[cleanNew] = formSections[oldClass];
+            delete formSections[oldClass];
+        }
+        if (formFeeStructure[oldClass]) {
+            formFeeStructure[cleanNew] = formFeeStructure[oldClass];
+            delete formFeeStructure[oldClass];
+        }
+
+        renderClassesSection();
+        renderFeesSection();
+    }
+
     function renderClassesSection() {
         var container = document.getElementById('sf-classes-container');
         if (!container) return;
         
         var html = '';
-        formClasses.forEach(function(c) {
+        formClasses.forEach(function(c, i) {
             var sections = formSections[c] || [];
             var id = 'class-row-' + c.replace(/\s+/g, '_');
             
-            html += '<div class="class-structure-row" id="' + id + '" style="display:flex; align-items:center; justify-content:space-between; padding:10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; gap:12px; margin-bottom:8px;">';
-            html += '  <div style="width:120px; font-weight:700;">' + escapeHTML(c) + '</div>';
+            html += '<div class="class-structure-row" id="' + id + '" style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; gap:8px; margin-bottom:8px;">';
+            
+            // Left: Class name display & inline rename container
+            html += '  <div class="class-name-container" data-class="' + escapeAttr(c) + '" style="min-width:145px; display:flex; align-items:center; gap:6px; flex-shrink:0;">';
+            html += '    <span class="class-name-text" style="font-weight:700; font-size:13px; color:#fff;">' + escapeHTML(c) + '</span>';
+            html += '  </div>';
+
+            // Middle: Section tags
             html += '  <div class="section-tags-container" style="display:flex; flex-wrap:wrap; gap:6px; flex-grow:1;">';
             sections.forEach(function(sec) {
                 html += '    <span class="section-tag" style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; background:rgba(37,99,235,0.15); color:#60a5fa; font-size:11px; font-weight:700; border: 1px solid rgba(37, 99, 235, 0.25);">' + escapeHTML(sec);
@@ -1908,9 +2180,14 @@ const db = getFirestore(app);
                 html += '    </span>';
             });
             html += '  </div>';
-            html += '  <div style="display:flex; gap:6px; align-items:center;">';
-            html += '    <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs add-section-btn" data-class="' + escapeAttr(c) + '">+ Section</button>';
-            html += '    <button type="button" class="sa-btn sa-btn-danger sa-btn-xs delete-class-btn" data-class="' + escapeAttr(c) + '"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
+
+            // Right: Action controls (Move Up, Move Down, Edit, + Sec, Delete)
+            html += '  <div class="class-actions-bar" style="display:flex; gap:4px; align-items:center; flex-shrink:0;">';
+            html += '    <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs move-up-class-btn" data-index="' + i + '" title="Move Up"' + (i === 0 ? ' disabled style="opacity:0.3; cursor:not-allowed;"' : '') + '><span class="material-icons-round" style="font-size:14px;">arrow_upward</span></button>';
+            html += '    <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs move-down-class-btn" data-index="' + i + '" title="Move Down"' + (i === formClasses.length - 1 ? ' disabled style="opacity:0.3; cursor:not-allowed;"' : '') + '><span class="material-icons-round" style="font-size:14px;">arrow_downward</span></button>';
+            html += '    <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs edit-class-btn" data-class="' + escapeAttr(c) + '" title="Rename Class"><span class="material-icons-round" style="font-size:13px; margin-right:2px;">edit</span>Edit</button>';
+            html += '    <button type="button" class="sa-btn sa-btn-secondary sa-btn-xs add-section-btn" data-class="' + escapeAttr(c) + '">+ Sec</button>';
+            html += '    <button type="button" class="sa-btn sa-btn-danger sa-btn-xs delete-class-btn" data-class="' + escapeAttr(c) + '" title="Delete Class"><span class="material-icons-round" style="font-size:14px;">delete</span></button>';
             html += '  </div>';
             html += '</div>';
         });
@@ -1920,8 +2197,96 @@ const db = getFirestore(app);
         }
         
         container.innerHTML = html;
-        
-        // Attach tag event listeners
+        attachClassesSectionEvents();
+    }
+
+    function attachClassesSectionEvents() {
+        var container = document.getElementById('sf-classes-container');
+        if (!container) return;
+
+        // 1. Move Up
+        container.querySelectorAll('.move-up-class-btn').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var idx = parseInt(this.getAttribute('data-index'), 10);
+                if (idx > 0) {
+                    var temp = formClasses[idx - 1];
+                    formClasses[idx - 1] = formClasses[idx];
+                    formClasses[idx] = temp;
+                    renderClassesSection();
+                    renderFeesSection();
+                }
+            });
+        });
+
+        // 2. Move Down
+        container.querySelectorAll('.move-down-class-btn').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var idx = parseInt(this.getAttribute('data-index'), 10);
+                if (idx < formClasses.length - 1) {
+                    var temp = formClasses[idx + 1];
+                    formClasses[idx + 1] = formClasses[idx];
+                    formClasses[idx] = temp;
+                    renderClassesSection();
+                    renderFeesSection();
+                }
+            });
+        });
+
+        // 3. Edit / Rename (Inline input)
+        container.querySelectorAll('.edit-class-btn').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var oldC = this.getAttribute('data-class');
+                var nameContainer = container.querySelector('.class-name-container[data-class="' + oldC.replace(/"/g, '\\"') + '"]');
+                if (!nameContainer) return;
+
+                nameContainer.innerHTML = 
+                    '<input type="text" class="sa-form-input sa-class-rename-input" value="' + escapeAttr(oldC) + '" data-old="' + escapeAttr(oldC) + '" style="width:100px; padding:3px 6px; font-size:12px; font-weight:700; height:28px; background:rgba(255,255,255,0.1); border:1px solid #60a5fa; color:#fff; border-radius:4px; outline:none;">' +
+                    '<button type="button" class="sa-btn sa-btn-primary sa-btn-xs sa-class-save-rename-btn" data-old="' + escapeAttr(oldC) + '" title="Save Name" style="padding:2px 5px;"><span class="material-icons-round" style="font-size:13px;">check</span></button>' +
+                    '<button type="button" class="sa-btn sa-btn-secondary sa-btn-xs sa-class-cancel-rename-btn" data-old="' + escapeAttr(oldC) + '" title="Cancel" style="padding:2px 5px;"><span class="material-icons-round" style="font-size:13px;">close</span></button>';
+
+                var input = nameContainer.querySelector('.sa-class-rename-input');
+                if (input) {
+                    input.focus();
+                    input.select();
+
+                    input.addEventListener('keydown', async function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            var newC = input.value.trim();
+                            if (newC && newC !== oldC) {
+                                await executeSuperAdminClassRename(oldC, newC);
+                            } else {
+                                renderClassesSection();
+                            }
+                        } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            renderClassesSection();
+                        }
+                    });
+                }
+
+                var saveBtn = nameContainer.querySelector('.sa-class-save-rename-btn');
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', async function() {
+                        var newC = input ? input.value.trim() : '';
+                        if (newC && newC !== oldC) {
+                            await executeSuperAdminClassRename(oldC, newC);
+                        } else {
+                            renderClassesSection();
+                        }
+                    });
+                }
+
+                var cancelBtn = nameContainer.querySelector('.sa-class-cancel-rename-btn');
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', function() {
+                        renderClassesSection();
+                    });
+                }
+            });
+        });
+
+        // 4. Remove Section tag
         container.querySelectorAll('.remove-section-btn').forEach(function(el) {
             el.addEventListener('click', function(e) {
                 var cName = this.getAttribute('data-class');
@@ -1932,7 +2297,8 @@ const db = getFirestore(app);
                 }
             });
         });
-        
+
+        // 5. Add Section button
         container.querySelectorAll('.add-section-btn').forEach(function(el) {
             el.addEventListener('click', function(e) {
                 var cName = this.getAttribute('data-class');
@@ -1947,15 +2313,30 @@ const db = getFirestore(app);
                 }
             });
         });
-        
+
+        // 6. Delete Class with ENROLLED STUDENT SAFEGUARD (Hard block)
         container.querySelectorAll('.delete-class-btn').forEach(function(el) {
             el.addEventListener('click', function(e) {
                 var cName = this.getAttribute('data-class');
+
+                // Safeguard: Check if students are enrolled in this class
+                if (currentEditingTenantData && currentEditingTenantData.students) {
+                    var enrolled = currentEditingTenantData.students.filter(function(s) {
+                        return String(s.class || '').trim().toLowerCase() === String(cName).trim().toLowerCase();
+                    });
+                    if (enrolled.length > 0) {
+                        alert("Cannot delete class '" + cName + "': " + enrolled.length + " student(s) currently enrolled in this class.\n\nTo prevent ghost students, you must either reassign these students first or use the Edit button to rename the class.");
+                        showToast("Cannot delete: " + enrolled.length + " students enrolled in class " + cName, "error");
+                        return;
+                    }
+                }
+
                 formClasses = formClasses.filter(function(c) { return c !== cName; });
                 delete formSections[cName];
                 delete formFeeStructure[cName];
                 renderClassesSection();
                 renderFeesSection();
+                showToast("Class '" + cName + "' removed.", "info");
             });
         });
     }
@@ -2034,6 +2415,8 @@ const db = getFirestore(app);
     async function showSchoolModal(schoolId) {
         schoolForm.reset();
         document.getElementById('sf-school-id').value = '';
+        currentEditingSchoolId = schoolId || null;
+        currentEditingTenantData = null;
 
         // Reset states
         formClasses = [];
@@ -2043,9 +2426,9 @@ const db = getFirestore(app);
         formExtraCharges = [];
         currentAdminPasswordHash = '';
 
-        // Reset all feature checkboxes
+        // Reset all feature checkboxes - default to ALL CHECKED (New Business Rule: All features ON by default)
         var checkboxes = document.querySelectorAll('#sf-features-grid input[type="checkbox"]');
-        checkboxes.forEach(function (cb) { cb.checked = false; });
+        checkboxes.forEach(function (cb) { cb.checked = true; });
 
         document.getElementById('sf-admin-password').placeholder = '••••••••';
         document.getElementById('sf-admin-password').required = true;
@@ -2073,17 +2456,19 @@ const db = getFirestore(app);
             document.getElementById('sf-renewal').value   = school.renewal_date || '';
             document.getElementById('sf-logo-url').value  = school.logo_url || '';
 
-            // Check matching feature toggles
-            var features = school.allowed_features || [];
-            checkboxes.forEach(function (cb) {
-                if (cb.value === 'admin') {
-                    cb.checked = true;
-                } else if (cb.value === 'teacher-attendance') {
-                    cb.checked = features.indexOf('teachers') !== -1;
-                } else {
-                    cb.checked = features.indexOf(cb.value) !== -1;
-                }
-            });
+            // Check matching feature toggles if school already has explicit allowed_features
+            var features = school.allowed_features;
+            if (Array.isArray(features) && features.length > 0) {
+                checkboxes.forEach(function (cb) {
+                    if (cb.value === 'admin') {
+                        cb.checked = true;
+                    } else if (cb.value === 'teacher-attendance') {
+                        cb.checked = features.indexOf('teachers') !== -1;
+                    } else {
+                        cb.checked = features.indexOf(cb.value) !== -1;
+                    }
+                });
+            }
 
             // Show modal IMMEDIATELY so user never waits on blank screen
             modalOverlay.classList.add('active');
@@ -2120,6 +2505,7 @@ const db = getFirestore(app);
 
                     if (tenantSnap.exists()) {
                         var tenantData = tenantSnap.data();
+                        currentEditingTenantData = tenantData;
                         var s = tenantData.settings || {};
                         
                         document.getElementById('sf-affiliation').value = (s.schoolInfo && s.schoolInfo.affiliation) || '';
