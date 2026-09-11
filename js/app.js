@@ -488,102 +488,11 @@ window.SchoolApp = {
               }
             }
 
-            // Initialize fresh template for new school context if Firestore doc doesn't exist
+            // SAFEGUARD: Never auto-create or overwrite tenant document from a client onSnapshot event.
+            // If the document is not yet found or cache is empty, simply wait for the next snapshot from server.
             if (!docExists) {
-              console.log('Initializing fresh template for new school context: ' + activeSchoolId);
-              var schoolSettings = (matchedSchool && matchedSchool.settings) || {};
-              var schoolInfo = schoolSettings.schoolInfo || {};
-              
-              self.store = {
-                seederVersion: 2,
-                students: [],
-                teachers: [],
-                attendance: [],
-                trash: [],
-                feeHeads: [
-                  { id: 'fh_tuition', name: 'Tuition Fee' },
-                  { id: 'fh_transport', name: 'Transport Fee' },
-                  { id: 'fh_exam', name: 'Examination Fee' },
-                  { id: 'fh_fine', name: 'Late Fee / Fine' },
-                  { id: 'fh_annual', name: 'Annual Development Fee' }
-                ],
-                feeStructures: {},
-                fees: [],
-                exams: [],
-                subjectMapping: {},
-                timetable: {
-                  settings: {
-                    startTime: "08:00",
-                    endTime: "14:00",
-                    totalPeriods: 8,
-                    lunchAfterPeriod: 4,
-                    lunchDuration: 30,
-                    satStartTime: "08:00",
-                    satEndTime: "12:30",
-                    satTotalPeriods: 6,
-                    satLunchAfterPeriod: 0
-                  }
-                },
-                marks: [],
-                notices: [],
-                lastAutomatedFeeRun: '',
-                notifications: [],
-                schools: self.store.schools || [],
-                currentSchoolId: activeSchoolId,
-                settings: {
-                  schoolInfo: {
-                    name: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
-                    tagline: schoolInfo.tagline || (matchedSchool ? matchedSchool.tagline : '') || '',
-                    logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
-                    phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
-                    email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
-                    address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
-                    affiliation: schoolInfo.affiliation || ''
-                  },
-                  schoolName: schoolInfo.name || (matchedSchool ? matchedSchool.school_name : '') || '',
-                  phone: schoolInfo.phone || (matchedSchool ? matchedSchool.phone : '') || '',
-                  email: schoolInfo.email || (matchedSchool ? matchedSchool.email : '') || '',
-                  address: schoolInfo.address || (matchedSchool ? matchedSchool.address : '') || '',
-                  logoUrl: schoolInfo.logoUrl || (matchedSchool ? matchedSchool.logo_url : '') || '',
-                  adminUsername: schoolSettings.adminUsername || (matchedSchool ? matchedSchool.adminUsername : 'admin') || 'admin',
-                  adminPassword: schoolSettings.adminPassword || (matchedSchool ? matchedSchool.adminPassword : '') || '',
-                  adminEmail: schoolSettings.adminEmail || (matchedSchool ? matchedSchool.adminEmail : '') || '',
-                  classes: schoolSettings.classes || ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
-                  sections: schoolSettings.sections || {
-                    'Nursery': ['A'], 'LKG': ['A'], 'UKG': ['A'], '1': ['A'], '2': ['A'], '3': ['A'], '4': ['A'], '5': ['A'], '6': ['A'], '7': ['A'], '8': ['A'], '9': ['A'], '10': ['A']
-                  },
-                  feeStructure: schoolSettings.feeStructure || {},
-                  extraCharges: schoolSettings.extraCharges || [],
-                  setupCompletedBySuperAdmin: true,
-                  clientCanEdit: true,
-                  theme: schoolSettings.theme || 'dark',
-                  attendanceTime: schoolSettings.attendanceTime || '09:00',
-                  academicYear: schoolSettings.academicYear || '2025-2026'
-                }
-              };
-
-              // Populate legacy feeStructures for compatibility
-              var formFeeStructure = self.store.settings.feeStructure || {};
-              var legacyFeeStructures = {};
-              Object.keys(formFeeStructure).forEach(function(c) {
-                var clsFees = formFeeStructure[c] || {};
-                var legacyFees = {};
-                Object.keys(clsFees).forEach(function(k) {
-                  var legacyKey = k;
-                  if (k === 'tuition') legacyKey = 'fh_tuition';
-                  else if (k === 'transport') legacyKey = 'fh_transport';
-                  else if (k === 'exam') legacyKey = 'fh_exam';
-                  else if (k === 'fine') legacyKey = 'fh_fine';
-                  else if (k === 'annual') legacyKey = 'fh_annual';
-                  else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
-                  legacyFees[legacyKey] = clsFees[k];
-                });
-                legacyFeeStructures[c] = legacyFees;
-              });
-              self.store.feeStructures = legacyFeeStructures;
-
-              await self.save(true);
-              parsed = self.store;
+              console.warn('Document not found on snapshot for ' + activeSchoolId + ' — waiting for next snapshot, NOT auto-initializing.');
+              return;
             }
 
             if (parsed) {
