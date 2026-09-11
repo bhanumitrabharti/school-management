@@ -959,19 +959,35 @@
   function isDuplicateStudent(newStudent, existingStudents) {
     if (!existingStudents || !existingStudents.length) return false;
     return existingStudents.some(function(s) {
-      // Match on roll number + class (most reliable for schools)
-      if (newStudent.rollNumber && s.rollNumber &&
+      // Only use rollNumber+class+section match if rollNumber is a REAL assigned value
+      // (not 0, not blank, not undefined)
+      var hasRealRoll =
+        newStudent.rollNumber !== undefined &&
+        newStudent.rollNumber !== null &&
+        String(newStudent.rollNumber).trim() !== '' &&
+        String(newStudent.rollNumber).trim() !== '0';
+
+      var sHasRealRoll =
+        s.rollNumber !== undefined &&
+        s.rollNumber !== null &&
+        String(s.rollNumber).trim() !== '' &&
+        String(s.rollNumber).trim() !== '0';
+
+      if (hasRealRoll && sHasRealRoll &&
           String(s.rollNumber).trim() === String(newStudent.rollNumber).trim() &&
-          String(s.class || '').trim() === String(newStudent.class || '').trim()) {
+          String(s.class || '').trim() === String(newStudent.class || '').trim() &&
+          String(s.section || '').trim() === String(newStudent.section || '').trim()) {
         return true;
       }
-      // Fallback: name + parent phone
+
+      // Fallback: name + parent phone (works regardless of roll number)
       if (newStudent.name && newStudent.parentPhone &&
           s.name && s.parentPhone &&
           String(s.name).trim().toLowerCase() === String(newStudent.name).trim().toLowerCase() &&
           String(s.parentPhone).trim() === String(newStudent.parentPhone).trim()) {
         return true;
       }
+
       return false;
     });
   }
@@ -1059,7 +1075,8 @@
             rowNumber: index + 2,
             name: student.name,
             rollNumber: student.rollNumber || 'N/A',
-            class: student.class
+            class: student.class,
+            section: student.section || ''
           });
           return;
         }
@@ -1115,7 +1132,8 @@
         if (evalRes.duplicateList.length > 0) {
           html += '<div><span style="font-weight:700; color:#F59E0B;">Duplicates Skipped:</span>';
           evalRes.duplicateList.forEach(function(item) {
-            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.name || 'Unnamed') + ' (Class: ' + escapeHTML(item.class) + ', Roll: ' + escapeHTML(item.rollNumber) + ')</div>';
+            var classSec = item.class + (item.section ? '-' + item.section : '');
+            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.name || 'Unnamed') + ' (Class: ' + escapeHTML(classSec) + ', Roll: ' + escapeHTML(item.rollNumber) + ')</div>';
           });
           html += '</div>';
         }
