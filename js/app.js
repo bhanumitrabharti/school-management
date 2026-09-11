@@ -244,12 +244,28 @@ window.SchoolApp = {
       const payload = JSON.parse(JSON.stringify(this.store));
       if (!payload.settings) payload.settings = {};
       
-      // Sync logoUrl and schoolLogo
-      if (payload.settings.schoolLogo && !payload.settings.logoUrl) {
-        payload.settings.logoUrl = payload.settings.schoolLogo;
+      // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
+      var canonicalLogo = payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && payload.settings.schoolInfo.logoUrl) || '';
+      if (!canonicalLogo) {
+        try {
+          var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
+          if (cachedRaw) {
+            var cached = JSON.parse(cachedRaw);
+            if (cached && cached.settings) {
+              canonicalLogo = cached.settings.logoUrl || cached.settings.schoolLogo || (cached.settings.schoolInfo && cached.settings.schoolInfo.logoUrl) || '';
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to preserve logo from cache:', err);
+        }
       }
-      if (payload.settings.logoUrl && !payload.settings.schoolLogo) {
-        payload.settings.schoolLogo = payload.settings.logoUrl;
+      if (canonicalLogo) {
+        payload.settings.logoUrl = canonicalLogo;
+      }
+      delete payload.settings.schoolLogo;
+      if (payload.settings.schoolInfo) {
+        delete payload.settings.schoolInfo.schoolLogo;
+        delete payload.settings.schoolInfo.logoUrl;
       }
 
       // Storage Limit Safety Alert: Warn when approaching 900KB (85% of 1MB limit)
@@ -259,28 +275,6 @@ window.SchoolApp = {
       if (estimatedBytes >= 900000 || estimatedWireBytes >= 900000) {
         console.warn("[Storage Limit Alert] Tenant document size for " + currentSchoolId + " is approaching limit: ~" + Math.round(estimatedWireBytes / 1024) + " KB (" + Math.round((estimatedWireBytes / 1048576) * 100) + "% of 1MB limit).");
         this.showToast("Your school's data is approaching storage limits. Please contact support.", "warning");
-      }
-
-      // Explicitly preserve logo if new payload has no logo field
-      if (!payload.settings.schoolLogo) {
-        try {
-          var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
-          if (cachedRaw) {
-            var cached = JSON.parse(cachedRaw);
-            if (cached && cached.settings) {
-              var existingLogo = cached.settings.schoolLogo || cached.settings.logoUrl;
-              if (existingLogo) {
-                payload.settings.schoolLogo = existingLogo;
-                payload.settings.logoUrl = existingLogo;
-                if (payload.settings.schoolInfo) {
-                  payload.settings.schoolInfo.logoUrl = existingLogo;
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to preserve schoolLogo from cache:', err);
-        }
       }
       
       const saveFn = () => window.firestore.setDoc(docRef, payload, { merge: true });

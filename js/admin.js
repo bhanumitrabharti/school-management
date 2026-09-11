@@ -3574,15 +3574,15 @@
         // Sync settings to settings.schoolInfo
         var s = SchoolApp.store.settings;
         if (s.schoolLogo && !s.logoUrl) s.logoUrl = s.schoolLogo;
-        if (s.logoUrl && !s.schoolLogo) s.schoolLogo = s.logoUrl;
+        delete s.schoolLogo;
 
         if (!s.schoolInfo) s.schoolInfo = {};
         s.schoolInfo.name = s.schoolName || '';
         s.schoolInfo.tagline = s.tagline || '';
         s.schoolInfo.phone = s.phone || '';
         s.schoolInfo.email = s.email || '';
-        s.schoolInfo.logoUrl = s.logoUrl || '';
-        s.schoolInfo.schoolLogo = s.logoUrl || '';
+        delete s.schoolInfo.logoUrl;
+        delete s.schoolInfo.schoolLogo;
         s.schoolInfo.affiliation = s.affiliation || '';
         s.schoolInfo.address = s.address || '';
         s.schoolInfo.udiseCode = s.udiseCode || '';
