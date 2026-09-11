@@ -20,6 +20,14 @@
     }
   };
 
+  var archivedRecordsCache = null;
+  var archiveModalFilters = {
+    fromDate: '',
+    toDate: '',
+    classFilter: 'all',
+    sectionFilter: 'all'
+  };
+
   function escapeHTML(str) {
     if (!str) return '';
     return String(str)
@@ -318,7 +326,7 @@
     html += '<div class="card mt-2"><div class="card-header"><h3><span class="material-icons-round">history</span> Attendance History</h3></div><div class="card-body">';
 
     // Filters
-    html += '<div class="toolbar">';
+    html += '<div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">';
     html += '<div class="filter-group">';
     html += '<input type="date" class="form-input" id="history-from" value="' + (state.historyFilters.fromDate || '') + '" style="width:auto" placeholder="From Date">';
     html += '<input type="date" class="form-input" id="history-to" value="' + (state.historyFilters.toDate || '') + '" style="width:auto" placeholder="To Date">';
@@ -328,7 +336,22 @@
     html += '<select class="form-select" id="history-section"><option value="all">All Sections</option>';
     sections.forEach(function(s) { html += '<option value="' + s + '"' + (state.historyFilters.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
     html += '</select>';
-    html += '</div></div>';
+    html += '</div>';
+
+    // Archived attendance history button if archive exists
+    var archiveInfo = SchoolApp.store.settings && SchoolApp.store.settings.attendanceArchive;
+    if (archiveInfo && archiveInfo.documentId) {
+      var archivePeriod = archiveInfo.period || 'Past Sessions';
+      var archiveCount = archiveInfo.recordCount ? ' (' + archiveInfo.recordCount + ' records)' : '';
+      html += '<div>';
+      html += '<button type="button" class="btn btn-secondary btn-sm" id="btn-view-archive-att" title="View archived attendance records stored separately from active database">';
+      html += '<span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">inventory_2</span>';
+      html += 'View Archived History: ' + escapeHTML(archivePeriod) + archiveCount;
+      html += '</button>';
+      html += '</div>';
+    }
+
+    html += '</div>';
 
     // Filter attendance records
     var records = SchoolApp.store.attendance.slice();
@@ -544,6 +567,14 @@
         });
       });
     });
+
+    // View Archived Attendance History button
+    var viewArchiveBtn = document.getElementById('btn-view-archive-att');
+    if (viewArchiveBtn) {
+      viewArchiveBtn.addEventListener('click', function() {
+        openArchivedAttendanceModal();
+      });
+    }
   }
 
   function submitAttendance() {
@@ -615,8 +646,16 @@
     }
   }
 
-  function viewAttendanceDetail(id) {
-    var record = SchoolApp.store.attendance.find(function(a) { return a.id === id; });
+  function viewAttendanceDetail(recordOrId) {
+    var record = null;
+    if (typeof recordOrId === 'object' && recordOrId !== null) {
+      record = recordOrId;
+    } else {
+      record = SchoolApp.store.attendance.find(function(a) { return a.id === recordOrId; });
+      if (!record && archivedRecordsCache) {
+        record = archivedRecordsCache.find(function(a) { return a.id === recordOrId; });
+      }
+    }
     if (!record) return;
 
     if (SchoolApp.isTeacher()) {
@@ -691,6 +730,259 @@
         }
       });
     }
+  }
+
+  /* ============================================================
+     ARCHIVED ATTENDANCE HISTORY VIEWER (ON-DEMAND READ-ONLY)
+     ============================================================ */
+
+  async function openArchivedAttendanceModal() {
+    var archiveInfo = SchoolApp.store.settings && SchoolApp.store.settings.attendanceArchive;
+    if (!archiveInfo || !archiveInfo.documentId) {
+      SchoolApp.showToast('No archived attendance configuration found for this school.', 'info');
+      return;
+    }
+
+    var docId = archiveInfo.documentId;
+    var periodLabel = archiveInfo.period || 'June 2026 – August 2026';
+
+    // Show loading state modal
+    var loadingHTML = '<div class="text-center p-4"><span class="material-icons-round spinning" style="font-size:36px;color:var(--accent-primary);">sync</span><p class="mt-2" style="color:var(--text-secondary);">Loading archived attendance records from cold storage...</p></div>';
+    SchoolApp.showModal('Archived Attendance History — ' + escapeHTML(periodLabel), loadingHTML, '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>');
+
+    try {
+      if (!archivedRecordsCache) {
+        if (!window.firestore || !window.db) {
+          throw new Error('Firestore client is not available.');
+        }
+        var docRef = window.firestore.doc(window.db, 'tenant_data', docId);
+        var docSnap = await window.firestore.getDoc(docRef);
+
+        if (!docSnap.exists()) {
+          throw new Error('Archive document "' + docId + '" does not exist.');
+        }
+
+        var data = docSnap.data() || {};
+        archivedRecordsCache = Array.isArray(data.attendance) ? data.attendance : [];
+      }
+
+      // Reset filters when opening
+      archiveModalFilters = {
+        fromDate: '',
+        toDate: '',
+        classFilter: 'all',
+        sectionFilter: 'all'
+      };
+
+      renderArchivedModalContent(periodLabel);
+    } catch (err) {
+      console.error('Failed to load archived attendance:', err);
+      var errHTML = '<div class="empty-state"><span class="material-icons-round" style="color:var(--danger);font-size:40px;">error_outline</span><h3>Failed to Load Archive</h3><p>' + escapeHTML(err.message || 'An error occurred while fetching records.') + '</p></div>';
+      SchoolApp.showModal('Archived Attendance History', errHTML, '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>');
+    }
+  }
+
+  function renderArchivedModalContent(periodLabel) {
+    var totalRecords = archivedRecordsCache ? archivedRecordsCache.length : 0;
+
+    // Collect available classes and sections from the archived records
+    var classSet = new Set();
+    var sectionSet = new Set();
+    if (archivedRecordsCache) {
+      archivedRecordsCache.forEach(function(r) {
+        if (r.class) classSet.add(r.class);
+        if (r.section) sectionSet.add(r.section);
+      });
+    }
+    var classes = Array.from(classSet).sort(function(a, b) {
+      return String(a).localeCompare(String(b), undefined, { numeric: true });
+    });
+    var sections = Array.from(sectionSet).sort();
+
+    // Teacher class filter check
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      classes = classes.filter(function(c) {
+        return ct.some(function(item) { return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim(); });
+      });
+      sections = sections.filter(function(s) {
+        return ct.some(function(item) { return String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim(); });
+      });
+    }
+
+    var bodyHTML = '<div style="display:flex; flex-direction:column; gap:16px;">';
+
+    // Header notice banner
+    bodyHTML += '<div style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); border-radius:var(--radius-md); padding:10px 14px; font-size:13px; color:var(--text-secondary); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">';
+    bodyHTML += '<div><span class="material-icons-round" style="color:var(--accent-primary); font-size:16px; vertical-align:middle; margin-right:4px;">folder_special</span>';
+    bodyHTML += '<span>Archive Period: <strong>' + escapeHTML(periodLabel) + '</strong> | Total: <strong>' + totalRecords + ' records</strong></span></div>';
+    bodyHTML += '<span class="badge badge-info" style="font-size:11px;">Cold Storage • Read Only</span>';
+    bodyHTML += '</div>';
+
+    // Filter controls
+    bodyHTML += '<div class="toolbar" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">';
+    bodyHTML += '<div class="filter-group" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; width:100%;">';
+    bodyHTML += '<input type="date" class="form-input" id="arch-filter-from" value="' + (archiveModalFilters.fromDate || '') + '" style="width:auto; flex:1; min-width:130px;" placeholder="From Date" title="From Date">';
+    bodyHTML += '<input type="date" class="form-input" id="arch-filter-to" value="' + (archiveModalFilters.toDate || '') + '" style="width:auto; flex:1; min-width:130px;" placeholder="To Date" title="To Date">';
+    bodyHTML += '<select class="form-select" id="arch-filter-class" style="width:auto; flex:1; min-width:120px;"><option value="all">All Classes</option>';
+    classes.forEach(function(c) {
+      bodyHTML += '<option value="' + escapeHTML(c) + '"' + (archiveModalFilters.classFilter === c ? ' selected' : '') + '>Class ' + escapeHTML(c) + '</option>';
+    });
+    bodyHTML += '</select>';
+    bodyHTML += '<select class="form-select" id="arch-filter-section" style="width:auto; flex:1; min-width:120px;"><option value="all">All Sections</option>';
+    sections.forEach(function(s) {
+      bodyHTML += '<option value="' + escapeHTML(s) + '"' + (archiveModalFilters.sectionFilter === s ? ' selected' : '') + '>Section ' + escapeHTML(s) + '</option>';
+    });
+    bodyHTML += '</select>';
+    bodyHTML += '<button type="button" class="btn btn-secondary btn-sm" id="arch-filter-reset" title="Reset Filters" style="padding:6px 12px;">Reset</button>';
+    bodyHTML += '</div></div>';
+
+    // Container for table
+    bodyHTML += '<div id="arch-table-container"></div>';
+    bodyHTML += '</div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+
+    SchoolApp.showModal('Archived Attendance History — ' + escapeHTML(periodLabel), bodyHTML, footerHTML);
+
+    // Expand modal-container width for comfortable wide-table display
+    var container = document.getElementById('modal-container');
+    if (container) {
+      container.style.maxWidth = '900px';
+    }
+
+    // Attach filter listeners
+    var fromInput = document.getElementById('arch-filter-from');
+    var toInput = document.getElementById('arch-filter-to');
+    var classSelect = document.getElementById('arch-filter-class');
+    var secSelect = document.getElementById('arch-filter-section');
+    var resetBtn = document.getElementById('arch-filter-reset');
+
+    if (fromInput) {
+      fromInput.addEventListener('change', function() {
+        archiveModalFilters.fromDate = this.value;
+        renderArchiveTableBody();
+      });
+    }
+    if (toInput) {
+      toInput.addEventListener('change', function() {
+        archiveModalFilters.toDate = this.value;
+        renderArchiveTableBody();
+      });
+    }
+    if (classSelect) {
+      classSelect.addEventListener('change', function() {
+        archiveModalFilters.classFilter = this.value;
+        renderArchiveTableBody();
+      });
+    }
+    if (secSelect) {
+      secSelect.addEventListener('change', function() {
+        archiveModalFilters.sectionFilter = this.value;
+        renderArchiveTableBody();
+      });
+    }
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() {
+        archiveModalFilters = { fromDate: '', toDate: '', classFilter: 'all', sectionFilter: 'all' };
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+        if (classSelect) classSelect.value = 'all';
+        if (secSelect) secSelect.value = 'all';
+        renderArchiveTableBody();
+      });
+    }
+
+    renderArchiveTableBody();
+  }
+
+  function renderArchiveTableBody() {
+    var tableContainer = document.getElementById('arch-table-container');
+    if (!tableContainer) return;
+
+    var filtered = (archivedRecordsCache || []).slice();
+
+    // Teacher class filter check
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      filtered = filtered.filter(function(r) {
+        return ct.some(function(c) {
+          return normalizeClassName(c.class) === normalizeClassName(r.class) &&
+                 normalizeSectionName(c.section) === normalizeSectionName(r.section);
+        });
+      });
+    }
+
+    if (archiveModalFilters.fromDate) {
+      filtered = filtered.filter(function(r) { return r.date >= archiveModalFilters.fromDate; });
+    }
+    if (archiveModalFilters.toDate) {
+      filtered = filtered.filter(function(r) { return r.date <= archiveModalFilters.toDate; });
+    }
+    if (archiveModalFilters.classFilter !== 'all') {
+      filtered = filtered.filter(function(r) { return r.class === archiveModalFilters.classFilter; });
+    }
+    if (archiveModalFilters.sectionFilter !== 'all') {
+      filtered = filtered.filter(function(r) { return r.section === archiveModalFilters.sectionFilter; });
+    }
+
+    filtered.sort(function(a, b) { return b.date.localeCompare(a.date); });
+
+    var html = '';
+    html += '<div style="font-size:12px; color:var(--text-muted); margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">';
+    html += '<span>Showing <strong>' + filtered.length + '</strong> matching archived records</span>';
+    if (filtered.length > 0) {
+      html += '<span style="font-size:11px;">Sorted latest to oldest</span>';
+    }
+    html += '</div>';
+
+    if (filtered.length > 0) {
+      html += '<div class="table-container" style="max-height:480px; overflow-y:auto;"><table class="data-table"><thead><tr>';
+      html += '<th>Date</th><th>Class</th><th>Teacher</th><th>Present</th><th>Absent</th><th>Late</th><th>Attendance %</th><th>Action</th>';
+      html += '</tr></thead><tbody>';
+
+      filtered.forEach(function(r) {
+        var teacher = SchoolApp.store.teachers && SchoolApp.store.teachers.find(function(t) { return t.id === r.teacherId; });
+        var teacherName = teacher ? (teacher.firstName + ' ' + (teacher.lastName || '')).trim() : (r.teacherName || 'Unknown');
+        var recs = Array.isArray(r.records) ? r.records : [];
+        var present = recs.filter(function(rec) { return rec.status === 'present'; }).length;
+        var absent = recs.filter(function(rec) { return rec.status === 'absent'; }).length;
+        var late = recs.filter(function(rec) { return rec.status === 'late'; }).length;
+        var total = recs.length;
+        var perc = total > 0 ? Math.round(((present + late) / total) * 100) : 0;
+        var percClass = perc >= 90 ? 'badge-success' : perc >= 75 ? 'badge-warning' : 'badge-danger';
+
+        html += '<tr>';
+        html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
+        html += '<td><span class="badge badge-info">' + escapeHTML(r.class) + (r.section ? '-' + escapeHTML(r.section) : '') + '</span></td>';
+        html += '<td>' + escapeHTML(teacherName) + '</td>';
+        html += '<td><span style="color:var(--success);font-weight:600;">' + present + '</span></td>';
+        html += '<td><span style="color:var(--danger);font-weight:600;">' + absent + '</span></td>';
+        html += '<td><span style="color:var(--warning);font-weight:600;">' + late + '</span></td>';
+        html += '<td><span class="badge ' + percClass + '">' + perc + '%</span></td>';
+        html += '<td>';
+        html += '<button type="button" class="btn-icon arch-record-view-btn" data-id="' + escapeHTML(r.id) + '" title="View Attendance Roster"><span class="material-icons-round">visibility</span></button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div class="empty-state" style="padding:24px 16px;"><span class="material-icons-round" style="font-size:32px;color:var(--text-muted);">event_busy</span><h4 style="margin:8px 0 4px 0;">No Archived Records Found</h4><p style="font-size:13px;color:var(--text-muted);margin:0;">No records in this archive match your selected filter criteria.</p></div>';
+    }
+
+    tableContainer.innerHTML = html;
+
+    // Attach view roster click handlers
+    tableContainer.querySelectorAll('.arch-record-view-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var recordId = this.getAttribute('data-id');
+        var rec = archivedRecordsCache && archivedRecordsCache.find(function(a) { return a.id === recordId; });
+        if (rec) {
+          viewAttendanceDetail(rec);
+        }
+      });
+    });
   }
 
   /* ============================================================

@@ -1611,6 +1611,10 @@ window.SchoolApp = {
   closeModal: function() {
     document.getElementById('modal-overlay').classList.remove('active');
     document.body.style.overflow = '';
+    var container = document.getElementById('modal-container');
+    if (container) {
+      container.style.maxWidth = '';
+    }
   },
 
   showConfirm: function(message, onConfirm, title) {
