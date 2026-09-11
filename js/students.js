@@ -575,10 +575,28 @@
       updateSectionsDropdown(classSelect.value, student ? student.section : null);
     }
 
-    // Save handler
-    document.getElementById('student-save-btn').addEventListener('click', function() {
-      saveStudent(student);
-    });
+    // Save handler with in-flight guard
+    var isSaving = false;
+    var saveBtn = document.getElementById('student-save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        if (isSaving) return; // block duplicate clicks
+        isSaving = true;
+        var btn = this;
+        btn.disabled = true;
+        var originalHTML = btn.innerHTML;
+        btn.textContent = 'Saving...';
+
+        saveStudent(student)
+          .finally(function() {
+            isSaving = false;
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = originalHTML || '<span class="material-icons-round">save</span> ' + (isEdit ? 'Update' : 'Add') + ' Student';
+            }
+          });
+      });
+    }
   }
 
   async function saveStudent(existing) {
@@ -654,9 +672,11 @@
       SchoolApp.showToast('Student added successfully.', 'success');
     }
 
-    await SchoolApp.save();
-    SchoolApp.closeModal();
-    render();
+    var saveOk = await SchoolApp.save();
+    if (saveOk !== false) {
+      SchoolApp.closeModal();
+      render();
+    }
   }
 
   function viewStudent(id) {
