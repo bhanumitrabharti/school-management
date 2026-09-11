@@ -252,6 +252,15 @@ window.SchoolApp = {
         payload.settings.schoolLogo = payload.settings.logoUrl;
       }
 
+      // Storage Limit Safety Alert: Warn when approaching 900KB (85% of 1MB limit)
+      var payloadStr = JSON.stringify(payload);
+      var estimatedBytes = (typeof Blob !== 'undefined') ? new Blob([payloadStr]).size : payloadStr.length;
+      var estimatedWireBytes = Math.round(estimatedBytes * 1.12); // Accounts for Protobuf map framing overhead
+      if (estimatedBytes >= 900000 || estimatedWireBytes >= 900000) {
+        console.warn("[Storage Limit Alert] Tenant document size for " + currentSchoolId + " is approaching limit: ~" + Math.round(estimatedWireBytes / 1024) + " KB (" + Math.round((estimatedWireBytes / 1048576) * 100) + "% of 1MB limit).");
+        this.showToast("Your school's data is approaching storage limits. Please contact support.", "warning");
+      }
+
       // Explicitly preserve logo if new payload has no logo field
       if (!payload.settings.schoolLogo) {
         try {
