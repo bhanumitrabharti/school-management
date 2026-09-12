@@ -252,6 +252,31 @@ window.SchoolApp = {
       const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
       const payload = JSON.parse(JSON.stringify(this.store));
       if (!payload.settings) payload.settings = {};
+
+      // HARD FAILSAFE: Refuse to overwrite populated collections (students, fees, attendance, teachers)
+      // with empty arrays if the local cache previously had data.
+      var cachedRawForGuard = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
+      if (cachedRawForGuard) {
+        try {
+          var cachedDoc = JSON.parse(cachedRawForGuard);
+          if (cachedDoc) {
+            var checkWipe = function(field, label) {
+              if (Array.isArray(cachedDoc[field]) && cachedDoc[field].length > 0 && (!payload[field] || payload[field].length === 0)) {
+                console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe ' + label + ' (' + cachedDoc[field].length + ' items -> 0) on ' + currentSchoolId);
+                return true;
+              }
+              return false;
+            };
+            if (checkWipe('students', 'students') || checkWipe('fees', 'fees') || checkWipe('attendance', 'attendance') || checkWipe('teachers', 'teachers')) {
+              this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+              if (!bypassLoader) this.hideLoader();
+              return false;
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to verify wipe guard against cached data:', e);
+        }
+      }
       
       // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
       var canonicalLogo = payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && payload.settings.schoolInfo.logoUrl) || '';

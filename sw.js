@@ -4,11 +4,9 @@
  * ===================================================
  */
 
-// Bumped from v1 -> v2 to force every existing install to drop its old,
-// permanently-stale cache once. See the fetch handler below for the real fix:
-// JS/CSS were being served "Cache First" with no revalidation, so a deploy
-// never reached users until they manually cleared data or reinstalled the PWA.
-const CACHE_NAME = 'erp-cache-v2';
+// Bumped from v2 -> v3 to immediately evict old cached code and force all clients
+// to take over the latest safe code.
+const CACHE_NAME = 'erp-cache-v3';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
@@ -17,21 +15,21 @@ const ASSETS_TO_CACHE = [
   '/super-admin.html',
   '/landing.html',
   '/css/styles.css',
-  '/css/landing.css',
   '/js/app.js',
   '/js/admin.js',
   '/js/super-admin.js',
   '/js/students.js',
   '/js/teachers.js',
   '/js/attendance.js',
-  '/js/teacher-attendance.js',
   '/js/fees.js',
   '/js/exams.js',
   '/js/timetable.js',
   '/js/help.js',
+  '/js/auth-utils.js',
   '/js/chatbot.js',
+  '/js/notifications.js',
+  '/js/teacher-attendance.js',
   '/js/utils.js',
-  '/js/landing.js',
   '/ctrl-shift-logo.png',
   '/school-logo-updated.jpg',
   '/images/logo.png',
@@ -39,13 +37,7 @@ const ASSETS_TO_CACHE = [
   '/manifest.json'
 ];
 
-// Install Event — Pre-cache static UI shell assets.
-// NOTE: no self.skipWaiting() here anymore. A new service worker now installs
-// and WAITS while the old one keeps serving the current tab, instead of
-// immediately taking over mid-session (which could otherwise swap code out
-// from under a user halfway through, e.g. mid-Save). The page (index.html)
-// detects the waiting worker and shows an "Update Available" prompt; it only
-// takes over once the user clicks it (see the message listener below).
+// Install Event — Pre-cache static UI shell assets and immediately activate
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME)
@@ -53,6 +45,7 @@ self.addEventListener('install', (e) => {
         console.log('[Service Worker] Pre-caching offline assets...');
         return cache.addAll(ASSETS_TO_CACHE);
       })
+      .then(() => self.skipWaiting())
       .catch((err) => console.error('[Service Worker] Pre-cache failed:', err))
   );
 });
