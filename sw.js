@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v4 to evict cached app.js and take over latest fee reconciliation logic.
-const CACHE_NAME = 'erp-cache-v5';
+// Bumped to v6 to take over enhanced class normalization logic.
+const CACHE_NAME = 'erp-cache-v6';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

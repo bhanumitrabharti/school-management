@@ -993,26 +993,82 @@
 
     var strClasses = configuredClasses.map(function(c) { return String(c).trim(); });
 
-    // Try exact match first
-    if (strClasses.includes(clean)) {
-      return clean;
+    // 1. Exact match (case-insensitive)
+    var exactIdx = strClasses.findIndex(function(c) { return c.toLowerCase() === clean.toLowerCase(); });
+    if (exactIdx !== -1) {
+      return strClasses[exactIdx];
     }
 
-    // Try common variations
+    // 2. Try common prefix variations: Class, Std, Std., Grade
     var stripped = clean
       .replace(/^class\s*/i, '')
       .replace(/^std\.?\s*/i, '')
       .replace(/^grade\s*/i, '')
       .trim();
 
-    if (strClasses.includes(stripped)) {
-      return stripped;
+    var strippedMatch = strClasses.find(function(c) { return c.toLowerCase() === stripped.toLowerCase(); });
+    if (strippedMatch) {
+      return strippedMatch;
     }
 
-    // Try with "Class " prefix
+    // 3. Try with "Class " prefix
     var withPrefix = 'Class ' + stripped;
-    if (strClasses.includes(withPrefix)) {
-      return withPrefix;
+    var prefixMatch = strClasses.find(function(c) { return c.toLowerCase() === withPrefix.toLowerCase(); });
+    if (prefixMatch) {
+      return prefixMatch;
+    }
+
+    // 4. Roman Numeral Conversion (I–XII)
+    var ROMAN_TO_ARABIC = {
+      'i': '1',
+      'ii': '2',
+      'iii': '3',
+      'iv': '4',
+      'v': '5',
+      'vi': '6',
+      'vii': '7',
+      'viii': '8',
+      'ix': '9',
+      'x': '10',
+      'xi': '11',
+      'xii': '12'
+    };
+
+    var romanKey = stripped.toLowerCase();
+    if (ROMAN_TO_ARABIC[romanKey]) {
+      var arabicNum = ROMAN_TO_ARABIC[romanKey];
+      // Check for "Class N" (e.g. "Class 1")
+      var romanWithPrefixMatch = strClasses.find(function(c) {
+        return c.toLowerCase() === ('class ' + arabicNum).toLowerCase();
+      });
+      if (romanWithPrefixMatch) return romanWithPrefixMatch;
+
+      // Check for standalone arabic number (e.g. "1")
+      var romanArabicMatch = strClasses.find(function(c) {
+        return c.toLowerCase() === arabicNum;
+      });
+      if (romanArabicMatch) return romanArabicMatch;
+    }
+
+    // 5. Common Pre-primary aliases (NUR <-> Nursery, KG <-> K.G)
+    var PREPRIMARY_ALIASES = {
+      'nur': ['Nursery', 'NUR'],
+      'nursery': ['Nursery', 'NUR'],
+      'kg': ['K.G', 'KG', 'Kindergarten'],
+      'k.g': ['K.G', 'KG', 'Kindergarten'],
+      'lkg': ['LKG', 'L.K.G'],
+      'ukg': ['UKG', 'U.K.G']
+    };
+
+    var aliasKey = stripped.toLowerCase().replace(/\s+/g, '');
+    if (PREPRIMARY_ALIASES[aliasKey]) {
+      var candidates = PREPRIMARY_ALIASES[aliasKey];
+      for (var i = 0; i < candidates.length; i++) {
+        var candMatch = strClasses.find(function(c) {
+          return c.toLowerCase() === candidates[i].toLowerCase();
+        });
+        if (candMatch) return candMatch;
+      }
     }
 
     // No match found — flag for admin review, don't silently guess
