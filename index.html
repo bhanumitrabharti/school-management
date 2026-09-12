@@ -69,8 +69,14 @@
   <!-- PWA Support -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="apple-touch-icon" href="/images/logo.png">
-  <link rel="icon" type="image/png" href="/images/logo.png">
+  <!-- FIX: /images/logo.png is the full "CtrlShift Solutions" wordmark on a huge
+       mostly-blank canvas — used as a favicon it renders as an illegible speck
+       (or the browser's default globe placeholder). These are a tight, properly
+       sized crop of just the brand's hexagon "CS" mark, generated at the sizes
+       browsers/OSes actually request. -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon/apple-touch-icon.png">
   <link rel="stylesheet" href="css/styles.css">
   <script>
     (function() {

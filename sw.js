@@ -5,7 +5,7 @@
  */
 
 // Bumped to v4 to evict cached app.js and take over latest fee reconciliation logic.
-const CACHE_NAME = 'erp-cache-v4';
+const CACHE_NAME = 'erp-cache-v5';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
@@ -33,6 +33,13 @@ const ASSETS_TO_CACHE = [
   '/school-logo-updated.jpg',
   '/images/logo.png',
   '/images/dashboard-mockup.png',
+  '/favicon.ico',
+  '/images/favicon/favicon-16.png',
+  '/images/favicon/favicon-32.png',
+  '/images/favicon/favicon-48.png',
+  '/images/favicon/apple-touch-icon.png',
+  '/images/favicon/icon-192.png',
+  '/images/favicon/icon-512.png',
   '/manifest.json'
 ];
 
