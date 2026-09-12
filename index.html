@@ -462,13 +462,59 @@
   <script type="module" src="js/timetable.js"></script>
   <script type="module" src="js/help.js"></script>
   <script type="module" src="js/chatbot.js"></script>
-  <!-- Service Worker Registration -->
+  <!-- Service Worker Registration + Update Notification -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then((reg) => console.log('Service Worker registered successfully with scope:', reg.scope))
+          .then((reg) => {
+            console.log('Service Worker registered successfully with scope:', reg.scope);
+
+            function promptForUpdate(worker) {
+              if (document.getElementById('sw-update-banner')) return;
+              var banner = document.createElement('div');
+              banner.id = 'sw-update-banner';
+              banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#1d2f45;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 -2px 10px rgba(0,0,0,0.25);';
+              banner.innerHTML = '<span>A new version of Paathshala is available.</span>' +
+                '<button id="sw-update-btn" style="background:#4B9FD6;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;">Update Now</button>';
+              document.body.appendChild(banner);
+              document.getElementById('sw-update-btn').addEventListener('click', function() {
+                worker.postMessage('SKIP_WAITING');
+              });
+            }
+
+            // Case 1: an update was already installed and waiting before this
+            // page even loaded (e.g. the previous tab was closed mid-update).
+            if (reg.waiting) {
+              promptForUpdate(reg.waiting);
+            }
+
+            // Case 2: a new service worker starts installing while this page
+            // is open — watch it, and prompt once it finishes installing.
+            reg.addEventListener('updatefound', function() {
+              var newWorker = reg.installing;
+              if (!newWorker) return;
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  promptForUpdate(newWorker);
+                }
+              });
+            });
+
+            // Periodically check for a new deployment while the app stays open
+            // (schools often leave a tab open all day without reloading).
+            setInterval(function() { reg.update(); }, 15 * 60 * 1000);
+          })
           .catch((err) => console.error('Service Worker registration failed:', err));
+
+        // Once the new worker takes control, reload so the page runs on the
+        // fresh code/assets instead of a stale mix of old JS + new SW.
+        var reloadingAfterUpdate = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (reloadingAfterUpdate) return;
+          reloadingAfterUpdate = true;
+          window.location.reload();
+        });
       });
     }
   </script>

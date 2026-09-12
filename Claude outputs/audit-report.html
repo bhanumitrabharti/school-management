@@ -1,0 +1,799 @@
+<title>Paathshala ERP Audit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+  /* ── Tokens ── */
+  :root {
+    --bg:          #0E1C2B;
+    --surface:     #162235;
+    --surface-2:   #1D2F45;
+    --border:      #253A55;
+    --border-soft: #1E3050;
+    --text:        #D9E4F0;
+    --text-2:      #7A95B4;
+    --text-3:      #4F6A87;
+    --accent:      #4B9FD6;
+    --accent-dim:  rgba(75,159,214,.12);
+
+    --crit:        #D95C5C;
+    --crit-bg:     rgba(217,92,92,.1);
+    --high:        #E07C45;
+    --high-bg:     rgba(224,124,69,.1);
+    --med:         #C9A63A;
+    --med-bg:      rgba(201,166,58,.1);
+    --low:         #57A882;
+    --low-bg:      rgba(87,168,130,.1);
+
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
+    --r: 6px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:          #EFF3F8;
+      --surface:     #FFFFFF;
+      --surface-2:   #F5F8FC;
+      --border:      #D0DAE8;
+      --border-soft: #E2EAF3;
+      --text:        #0E1C2B;
+      --text-2:      #4A6280;
+      --text-3:      #8AA0BC;
+      --accent:      #2278B5;
+      --accent-dim:  rgba(34,120,181,.08);
+      --crit:        #C23B3B;
+      --crit-bg:     rgba(194,59,59,.08);
+      --high:        #C05C20;
+      --high-bg:     rgba(192,92,32,.08);
+      --med:         #9A7C1A;
+      --med-bg:      rgba(154,124,26,.08);
+      --low:         #3A8A65;
+      --low-bg:      rgba(58,138,101,.08);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:          #EFF3F8;
+    --surface:     #FFFFFF;
+    --surface-2:   #F5F8FC;
+    --border:      #D0DAE8;
+    --border-soft: #E2EAF3;
+    --text:        #0E1C2B;
+    --text-2:      #4A6280;
+    --text-3:      #8AA0BC;
+    --accent:      #2278B5;
+    --accent-dim:  rgba(34,120,181,.08);
+    --crit:        #C23B3B;
+    --crit-bg:     rgba(194,59,59,.08);
+    --high:        #C05C20;
+    --high-bg:     rgba(192,92,32,.08);
+    --med:         #9A7C1A;
+    --med-bg:      rgba(154,124,26,.08);
+    --low:         #3A8A65;
+    --low-bg:      rgba(58,138,101,.08);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    padding-inline: 20px;
+    padding-block: 0 60px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-soft);
+    padding-block: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .topbar-brand {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    margin-right: auto;
+  }
+  .sev-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 99px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity .15s;
+    white-space: nowrap;
+  }
+  .sev-pill:hover { opacity: .75; }
+  .sev-pill.crit { background: var(--crit-bg); color: var(--crit); border: 1px solid var(--crit); }
+  .sev-pill.high { background: var(--high-bg); color: var(--high); border: 1px solid var(--high); }
+  .sev-pill.med  { background: var(--med-bg);  color: var(--med);  border: 1px solid var(--med); }
+  .sev-pill.low  { background: var(--low-bg);  color: var(--low);  border: 1px solid var(--low); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+  /* ── Page wrapper ── */
+  .wrap { max-width: 820px; margin-inline: auto; }
+
+  /* ── Header ── */
+  .report-header {
+    padding-block: 48px 36px;
+    border-bottom: 1px solid var(--border);
+  }
+  .report-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(24px, 4vw, 36px);
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.2;
+    text-wrap: balance;
+    margin-bottom: 16px;
+  }
+  .report-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .meta-pair { display: flex; flex-direction: column; gap: 2px; }
+  .meta-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    font-weight: 500;
+  }
+  .meta-value {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-2);
+    font-weight: 400;
+  }
+
+  /* ── Summary tiles ── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin-block: 32px;
+  }
+  .summary-tile {
+    background: var(--surface);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .summary-tile .count {
+    font-family: var(--mono);
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-tile .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .summary-tile.crit .count { color: var(--crit); }
+  .summary-tile.crit .label { color: var(--crit); opacity: .7; }
+  .summary-tile.high .count { color: var(--high); }
+  .summary-tile.high .label { color: var(--high); opacity: .7; }
+  .summary-tile.med  .count { color: var(--med); }
+  .summary-tile.med  .label { color: var(--med); opacity: .7; }
+  .summary-tile.low  .count { color: var(--low); }
+  .summary-tile.low  .label { color: var(--low); opacity: .7; }
+
+  /* ── Section header ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-block: 40px 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .section-head h2 {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text-2);
+  }
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border-soft);
+  }
+
+  /* ── Finding card ── */
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r);
+    margin-bottom: 12px;
+    display: flex;
+    overflow: hidden;
+  }
+  .finding-stripe {
+    width: 4px;
+    flex-shrink: 0;
+  }
+  .finding.crit .finding-stripe { background: var(--crit); }
+  .finding.high .finding-stripe { background: var(--high); }
+  .finding.med  .finding-stripe { background: var(--med); }
+  .finding.low  .finding-stripe { background: var(--low); }
+  .finding-body { padding: 16px 18px; flex: 1; min-width: 0; }
+
+  .finding-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .finding-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .finding.crit .finding-badge { background: var(--crit-bg); color: var(--crit); }
+  .finding.high .finding-badge { background: var(--high-bg); color: var(--high); }
+  .finding.med  .finding-badge { background: var(--med-bg);  color: var(--med); }
+  .finding.low  .finding-badge { background: var(--low-bg);  color: var(--low); }
+
+  .finding-title {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+    flex: 1;
+    text-wrap: balance;
+  }
+
+  .finding-loc {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .loc-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    padding: 1px 7px;
+    border-radius: 4px;
+  }
+
+  .finding-body p {
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .finding-body p:last-child { margin-bottom: 0; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .impact-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    align-items: center;
+  }
+  .impact-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .portal-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    background: var(--surface-2);
+  }
+  .portal-tag.sa  { border-color: rgba(75,159,214,.4); color: var(--accent); }
+  .portal-tag.adm { border-color: rgba(201,166,58,.4); color: var(--med); }
+  .portal-tag.tch { border-color: rgba(87,168,130,.4); color: var(--low); }
+
+  /* ── Footer note ── */
+  .footer-note {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 13px;
+    color: var(--text-3);
+    font-family: var(--mono);
+    line-height: 1.6;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .report-meta { gap: 16px; }
+    .topbar { gap: 6px; }
+    .sev-pill { font-size: 10px; padding: 2px 7px; }
+  }
+  @media (max-width: 380px) {
+    .topbar-brand { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="topbar">
+  <span class="topbar-brand">Paathshala // Audit</span>
+  <a href="#critical" class="sev-pill crit"><span class="dot"></span>4 Critical</a>
+  <a href="#high" class="sev-pill high"><span class="dot"></span>5 High</a>
+  <a href="#medium" class="sev-pill med"><span class="dot"></span>5 Medium</a>
+  <a href="#low" class="sev-pill low"><span class="dot"></span>2 Low</a>
+</div>
+
+<div class="wrap">
+
+  <header class="report-header">
+    <p class="report-eyebrow">Technical Audit Report — Codebase Review</p>
+    <h1>Paathshala ERP<br>Architecture &amp; Security Audit</h1>
+    <p style="color:var(--text-2);font-size:14px;max-width:560px;">
+      16 findings across security, data architecture, reliability, and business logic.
+      Audit covers all three portals: Super Admin, School Admin, and Teacher.
+      No changes have been made to the codebase.
+    </p>
+    <div class="report-meta">
+      <div class="meta-pair">
+        <span class="meta-label">Date</span>
+        <span class="meta-value">11 September 2026</span>
+      </div>
+      <div class="meta-pair">
+        <span class="meta-label">Scope</span>
+        <span class="meta-value">js/, api/, Firebase schema</span>
+      </div>
+      <div class="meta-pair">
+        <span class="meta-label">Status</span>
+        <span class="meta-value">Audit Only — No Changes Made</span>
+      </div>
+      <div class="meta-pair">
+        <span class="meta-label">Portals Reviewed</span>
+        <span class="meta-value">Super Admin · School Admin · Teacher</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="summary-grid">
+    <div class="summary-tile crit"><span class="count">4</span><span class="label">Critical</span></div>
+    <div class="summary-tile high"><span class="count">5</span><span class="label">High</span></div>
+    <div class="summary-tile med"><span class="count">5</span><span class="label">Medium</span></div>
+    <div class="summary-tile low"><span class="count">2</span><span class="label">Low</span></div>
+  </div>
+
+
+  <!-- ══ CRITICAL ══ -->
+  <div class="section-head" id="critical">
+    <h2>Critical — Security</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="finding crit">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Critical</span>
+        <span class="finding-title">Super Admin credentials are hardcoded plaintext in JS source</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/super-admin.js · Line 39</span>
+      </div>
+      <p>The line <code>var CREDENTIALS = { username: 'superadmin', password: 'superadmin123' };</code> is shipped inside the publicly downloadable JS file. Anyone who opens browser DevTools → Sources can read these credentials without logging in. The Super Admin portal has full read/write access to all school tenants, all student data, and all fee records across every school.</p>
+      <p>There is no Firebase Authentication backing the Super Admin session — it is simply a <code>sessionStorage.setItem('sa_session', 'active')</code> flag set after string comparison. Clearing sessionStorage in the browser console, or setting it directly, gives Super Admin access with no credentials at all.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag sa">Super Admin</span>
+        <span class="portal-tag adm">All School Admins</span>
+        <span class="portal-tag tch">All Teachers</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding crit">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Critical</span>
+        <span class="finding-title">Dual-auth OR logic — Firebase failure does not block login</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · login() · ~Line 935</span>
+        <span class="loc-tag">js/auth-utils.js</span>
+      </div>
+      <p>The login function runs two independent auth checks: Firebase <code>signInWithEmailAndPassword</code> and a custom credential check against Firestore data (<code>AuthUtils.login</code>). The success condition is <code>if (firebaseResult && firebaseResult.user) || (customResult && customResult.success)</code>. Either one succeeding grants full login.</p>
+      <p>This means: if Firebase Auth is unreachable, misconfigured, or the Firebase Auth user does not exist, the custom check is the sole gatekeeper — and the custom check compares credentials against data stored in the same Firestore document the app already downloaded. The two systems are not redundant — they have different failure modes that together reduce security below either alone.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding crit">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Critical</span>
+        <span class="finding-title">All access control is frontend-only — no server-side enforcement</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · renderSidebarNav() · navigate()</span>
+        <span class="loc-tag">Firestore Security Rules</span>
+      </div>
+      <p>Teacher access restrictions work by removing sidebar nav items and redirecting certain routes. The documented Firestore security rules require <code>request.auth.token.role == 'super-admin'</code> or a matching <code>school_id</code> claim — but neither custom teachers nor custom admins generate Firebase Auth tokens with these claims. The custom auth system (AuthUtils) never issues Firebase Auth credentials.</p>
+      <p>In practice, the Firestore rules cannot enforce role-based access. A teacher who opens the browser console and calls <code>SchoolApp.store.fees.push({...}); SchoolApp.save()</code> can write fee records. Nothing on the server blocks this.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding crit">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Critical</span>
+        <span class="finding-title">Teacher passwords stored inside the main tenant data document</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">Firestore: tenant_data/{schoolId}.teachers[].password</span>
+        <span class="loc-tag">js/auth-utils.js · hashPassword()</span>
+      </div>
+      <p>All teacher passwords live in the <code>teachers</code> array inside <code>tenant_data/{schoolId}</code> — the same document that holds every student name, parent phone number, attendance record, and fee transaction. The admin credential (<code>adminPassword</code>) is also in the same document under <code>settings</code>.</p>
+      <p>Bcrypt migration is implemented and partially correct, but: any admin who reads the Firestore document sees the password field for all teachers. More importantly, old plain-text passwords are only migrated at login time — teachers who haven't logged in since the feature was added still have plain-text passwords sitting in production data.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══ HIGH ══ -->
+  <div class="section-head" id="high">
+    <h2>High — Data Architecture &amp; Reliability</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">High</span>
+        <span class="finding-title">Entire school data in one Firestore document — 1 MB hard limit will be hit</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">Firestore: tenant_data/{schoolId}</span>
+        <span class="loc-tag">js/app.js · save() · ~Line 272</span>
+      </div>
+      <p>Every piece of school data — students, teachers, attendance records, all fee transactions, all marks, notices, timetable — is stored in a single Firestore document per school. Firestore's hard document size limit is 1 MB. The code already warns about this at 900 KB with a toast message.</p>
+      <p>Shishu Vikash Mandir has 289 students. The auto-fee engine adds at minimum 289 fee records per month. After 12 months that is 3,468+ fee records, plus attendance, marks, and every other array. At current growth, this document will exceed the limit within one to two academic years, after which no save operation will succeed and the school will lose write access to their entire ERP.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">High</span>
+        <span class="finding-title">Two independent auto-fee engines exist — risk of double-charging students</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · runAutoFeeReconciliation()</span>
+        <span class="loc-tag">js/fees.js · checkAndRunAutoCharge()</span>
+      </div>
+      <p>There are two entirely separate auto-fee systems. <code>runAutoFeeReconciliation()</code> in <code>app.js</code> runs on every page load and generates tuition dues for all missed months. <code>checkAndRunAutoCharge()</code> in <code>fees.js</code> runs when fees.js initializes and generates charges based on a separate <code>autoChargeEnabled</code> setting and <code>autoChargeLastRun</code> key.</p>
+      <p>These two systems use different trigger keys, different guard conditions, and different fee amounts. If both fire in the same month, a student receives two sets of dues. There is no deduplication check between them.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">High</span>
+        <span class="finding-title">Restore points are stored in localStorage — not a real backup</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · createRestorePoint()</span>
+        <span class="loc-tag">localStorage key: shishuvikash_restore_points</span>
+      </div>
+      <p>The "System Restore Point" feature stores snapshots in browser localStorage, limited to 5 points. localStorage is browser-specific, device-specific, and routinely cleared by browsers in private/incognito mode, when users clear site data, or when storage pressure is high. If the admin logs in from a different browser or device — or even the same browser after a history clear — all restore points are gone.</p>
+      <p>The auto-fee engine calls <code>createRestorePoint()</code> before bulk operations, so users are given the impression that their data is backed up before a major change. It is not. If the fee engine misfires, recovery is not possible from these points on any device other than the one that created them.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">High</span>
+        <span class="finding-title">Firebase app initialized twice — one project, two initializeApp() calls</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · Line 13</span>
+        <span class="loc-tag">js/super-admin.js · Line 19</span>
+      </div>
+      <p>Both <code>app.js</code> and <code>super-admin.js</code> call <code>initializeApp(firebaseConfig)</code> with the identical config object. The Firebase SDK throws a warning — and in some versions an error — when the default app is initialized more than once. The two files each create independent Firestore instances pointing at the same project, with no shared state between them.</p>
+      <p>This is currently contained because the two portals run in separate HTML pages. However, if any shared module ever imports from both, initialization will fail unless handled with <code>getApps()</code>. It also means the Firebase API key, project ID, and app ID are duplicated in two places, creating a maintenance risk.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag sa">Super Admin</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">High</span>
+        <span class="finding-title">getInitialStore() default data is SVM-specific — new tenants inherit Bhanu's email and SVM's name</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · getInitialStore() · store · Lines 86–142</span>
+      </div>
+      <p>The <code>getInitialStore()</code> function — used to initialize both the in-memory store and as the reset baseline — contains hardcoded SVM-specific values: <code>schoolName: 'Shishu Vikash Mandir'</code>, <code>email: 'bhanu.bharti@ctrlshifts.in'</code>, <code>adminUsername: 'admin'</code>, <code>adminPassword: 'admin123'</code>, and <code>lastAutomatedFeeRun: '2026-04'</code>.</p>
+      <p>When a new school is onboarded and their Firestore document is initialized from this baseline, they will start with SVM's name, Bhanu's personal email, default credentials of <code>admin/admin123</code> (a known-weak credential), and a lastAutomatedFeeRun date in the past — which will immediately trigger the auto-fee catchup engine and generate months of backdated dues on their first login.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag sa">Super Admin</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══ MEDIUM ══ -->
+  <div class="section-head" id="medium">
+    <h2>Medium — Data Consistency &amp; Architecture</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="finding med">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Medium</span>
+        <span class="finding-title">Fee data has two sources of truth with different key formats</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">store.feeHeads</span>
+        <span class="loc-tag">store.settings.feeHeads</span>
+        <span class="loc-tag">store.feeStructures</span>
+        <span class="loc-tag">store.settings.feeStructure</span>
+      </div>
+      <p>Fee heads exist at both <code>store.feeHeads</code> and <code>store.settings.feeHeads</code>. Fee structures exist at both <code>store.feeStructures</code> (keyed as <code>fh_tuition</code>) and <code>store.settings.feeStructure</code> (keyed as <code>tuition</code>, stripping the <code>fh_</code> prefix). A migration block in <code>load()</code> tries to keep these in sync, but it runs silently on every load and maps different key formats.</p>
+      <p>The auto-fee engine reads from <code>settings.feeStructure[class].tuition</code> first, then falls back to <code>feeStructures[class].fh_tuition</code>. Any inconsistency between these two stores results in wrong fee amounts being charged without any visible error to the admin.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding med">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Medium</span>
+        <span class="finding-title">Student name exists in two schemas — migration runs silently on every load</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/students.js · migrateStudentNames()</span>
+      </div>
+      <p>Student records have both a <code>name</code> field (full name) and <code>firstName</code> + <code>lastName</code> fields. The <code>migrateStudentNames()</code> function runs on every module load to derive one from the other. If derivation produces a different split than the original data — for example, "Rani Laxmi Bai" splits firstName="Rani", lastName="Laxmi Bai" — the migration overwrites the existing fields and silently calls <code>SchoolApp.save()</code>.</p>
+      <p>There is no canonical field declaration in the schema. New students added from the admission form may use firstName+lastName; imported Excel students may use name. Different modules read different fields, creating inconsistency in search, attendance, and report cards.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding med">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Medium</span>
+        <span class="finding-title">SA Recovery Center is disconnected from tenant deletes</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">Firestore: sa_data/recovery_trash</span>
+        <span class="loc-tag">Firestore: tenant_data/{schoolId}.trash</span>
+      </div>
+      <p>There are two completely separate trash systems. When a tenant admin deletes a student or teacher, the record goes to <code>tenant_data/{schoolId}.trash</code>. The Super Admin Recovery Center reads from a separate <code>sa_data/recovery_trash</code> document. These two stores are never synchronized — a tenant delete does not write to the SA trash collection.</p>
+      <p>The SA Recovery Center currently shows only the seeded demo data (<code>defaultRecoveryTrash</code>) that was auto-initialized when the collection was first created. The Super Admin cannot actually restore deleted records from real schools using this interface.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag sa">Super Admin</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding med">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Medium</span>
+        <span class="finding-title">Super Admin default seed data auto-creates fake schools in Firestore</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/super-admin.js · ensureDataLoaded() · Line 139–144</span>
+      </div>
+      <p>Inside <code>ensureDataLoaded()</code>, if the <code>schools</code> Firestore collection comes back empty, the code immediately auto-seeds it with <code>defaultSchools</code> — which includes "DAV Public School (Ranchi)" and "DPS Dhanbad" as fully-formed school records with IDs, subdomains, and contact details.</p>
+      <p>These are not demo records that stay local — they are written to the production Firestore via <code>setDoc</code>. Any future school directory listing, billing report, or data export will include these ghost schools unless they are manually deleted. The same pattern applies to <code>sa_data/recovery_trash</code> and <code>sa_data/audit_logs</code>.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag sa">Super Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding med">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Medium</span>
+        <span class="finding-title">assertSchoolIsolation() is defined but never called to block any operation</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · assertSchoolIsolation() · Line 148</span>
+      </div>
+      <p>The function <code>assertSchoolIsolation(data, schoolId)</code> exists and correctly checks whether data items belong to the active school. However, it is never invoked before any read or write. It returns a boolean but no caller acts on that boolean to block data operations. Multi-tenant isolation in data reads and writes is not enforced — it relies solely on the Firestore document structure (one document per school) and the <code>currentSchoolId</code> variable set in memory.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag sa">Super Admin</span>
+        <span class="portal-tag adm">School Admin</span>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══ LOW ══ -->
+  <div class="section-head" id="low">
+    <h2>Low — Scalability &amp; Performance</h2>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="finding low">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Low</span>
+        <span class="finding-title">save() sends the entire store on every change — no delta writes</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · save() · Line 244</span>
+      </div>
+      <p>Every call to <code>save()</code> does a deep clone of the entire <code>store</code> and calls <code>setDoc(docRef, payload, { merge: true })</code> with all data. Adding a single student, marking attendance, or updating a notice all result in the full 100KB+ document being serialized and written. The only exception is <code>saveMarks()</code>, which correctly uses a targeted <code>updateDoc</code> with a field path.</p>
+      <p>As the document grows toward the 1 MB limit, this pattern will become progressively slower and more bandwidth-intensive. The correct pattern — using targeted <code>updateDoc</code> with specific field paths — is already demonstrated in <code>saveMarks()</code> and should be the template for all saves.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="finding low">
+    <div class="finding-stripe"></div>
+    <div class="finding-body">
+      <div class="finding-top">
+        <span class="finding-badge">Low</span>
+        <span class="finding-title">onSnapshot triggers full module re-render for most pages</span>
+      </div>
+      <div class="finding-loc">
+        <span class="loc-tag">js/app.js · load() · onSnapshot callback · ~Line 581</span>
+      </div>
+      <p>The Firestore <code>onSnapshot</code> listener fires whenever the tenant document changes. For the active page, this calls <code>self.modules[self.currentPage].render()</code> — a full re-render of the module. Only the exams page has throttling logic (5-second debounce). All other pages re-render completely on every snapshot event.</p>
+      <p>In a multi-user school where teachers are simultaneously marking attendance and the admin is viewing the fee ledger, this means the fee ledger re-renders every few seconds. With the full-document save pattern above, every write also triggers an onSnapshot, causing a render loop. This will cause visible flicker and UI state loss (open modals, partially-filled forms) for concurrent users.</p>
+      <div class="impact-row">
+        <span class="impact-label">Affects</span>
+        <span class="portal-tag adm">School Admin</span>
+        <span class="portal-tag tch">Teacher Portal</span>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="footer-note">
+    Audit by: Claude (Senior Architect role) · September 11, 2026<br>
+    16 findings identified. No code was modified during this audit.<br>
+    Next step: Review findings → approve priority order → implementation brief prepared for Antigravity 2.0.
+  </div>
+
+</div>

@@ -647,35 +647,43 @@
 
     const photoFile = document.getElementById("student-photo-input")?.files[0];
     if (photoFile) {
-      try {
-        const compressed = await StorageUtils.compressImage(photoFile, 300, 0.75);
-        const uploadedUrl = await StorageUtils.uploadStudentPhoto(compressed, SchoolApp.store.currentSchoolId, studentId);
-        if (uploadedUrl) {
-          fields.photoUrl = uploadedUrl;
-        }
-      } catch (err) {
-        console.warn("Photo upload failed:", err.message);
-      }
+      // Photo uploads are not enabled yet — StorageUtils.uploadStudentPhoto is
+      // currently a stub that never stores anything. Tell the admin plainly
+      // instead of silently discarding the photo they picked.
+      SchoolApp.showToast('Photo uploads are not available yet on your plan. Contact support to enable this.', 'warning');
     }
+
+    var rollbackFn = null;
+    var successMessage = existing ? 'Student updated successfully.' : 'Student added successfully.';
 
     if (existing) {
       // Update
       var idx = SchoolApp.store.students.findIndex(function(s) { return s.id === existing.id; });
       if (idx !== -1) {
         if (!fields.photoUrl) fields.photoUrl = existing.photoUrl;
+        var previousSnapshot = Object.assign({}, SchoolApp.store.students[idx]);
         Object.assign(SchoolApp.store.students[idx], fields);
-        SchoolApp.showToast('Student updated successfully.', 'success');
+        rollbackFn = function() { SchoolApp.store.students[idx] = previousSnapshot; };
       }
     } else {
       // Create
       SchoolApp.store.students.push(fields);
-      SchoolApp.showToast('Student added successfully.', 'success');
+      var newIdx = SchoolApp.store.students.length - 1;
+      rollbackFn = function() { SchoolApp.store.students.splice(newIdx, 1); };
     }
 
     var saveOk = await SchoolApp.save();
     if (saveOk !== false) {
+      // Only confirm success — and only close the modal / re-render — once the
+      // write has actually persisted to Firestore.
+      SchoolApp.showToast(successMessage, 'success');
       SchoolApp.closeModal();
       render();
+    } else {
+      // Save failed (SchoolApp.save() already showed a specific error toast).
+      // Roll back the local in-memory change so a retry doesn't create a
+      // duplicate record and doesn't push an already-oversized document further.
+      if (rollbackFn) rollbackFn();
     }
   }
 
@@ -747,45 +755,39 @@
     });
   }
 
+  // ─── Unified Student Column Format ───
+  // Download Template and Export used to disclose two DIFFERENT column sets
+  // (Template had 11 columns, Export had 15 including a confusing Full Name /
+  // First Name / Last Name split). Schools that filled the Template were more
+  // likely to leave required-looking fields blank than schools re-editing an
+  // Export (which already had real, complete data in every column). Both now
+  // share this exact single definition, in the same order, with the same
+  // "*"/"(Optional)" convention already used on the manual Add Student form —
+  // so whichever one a school learns from, the other behaves identically.
+  var STUDENT_SHEET_COLUMNS = [
+    { header: 'Student Name *', key: 'name', transform: function(v, row) { return getStudentFullName(row); } },
+    { header: 'Class *', key: 'class' },
+    { header: 'Section *', key: 'section' },
+    { header: 'Roll Number *', key: 'rollNumber' },
+    { header: 'Date of Birth *', key: 'dateOfBirth' },
+    { header: 'Gender *', key: 'gender' },
+    { header: 'Parent/Guardian Name *', key: 'parentName' },
+    { header: 'Parent Phone *', key: 'parentPhone' },
+    { header: 'Parent Email (Optional)', key: 'parentEmail' },
+    { header: 'Aadhaar Number (Optional)', key: 'aadhaarNumber' },
+    { header: 'Address (Optional)', key: 'address' },
+    { header: 'Admission Date (Optional)', key: 'admissionDate' },
+    { header: 'Status (Optional)', key: 'status' }
+  ];
+
   function exportStudents(students) {
-    var columns = [
-      { header: 'Full Name', key: 'name', transform: function(v, row) { return getStudentFullName(row); } },
-      { header: 'First Name', key: 'firstName' },
-      { header: 'Last Name', key: 'lastName' },
-      { header: 'Class', key: 'class' },
-      { header: 'Section', key: 'section' },
-      { header: 'Roll Number', key: 'rollNumber' },
-      { header: 'Date of Birth', key: 'dateOfBirth' },
-      { header: 'Gender', key: 'gender' },
-      { header: 'Aadhaar Number', key: 'aadhaarNumber' },
-      { header: 'Address', key: 'address' },
-      { header: 'Parent Name', key: 'parentName' },
-      { header: 'Parent Phone', key: 'parentPhone' },
-      { header: 'Parent Email', key: 'parentEmail' },
-      { header: 'Admission Date', key: 'admissionDate' },
-      { header: 'Status', key: 'status' }
-    ];
     var dateStr = new Date().toISOString().split('T')[0];
-    SchoolApp.utils.exportToExcel(students, columns, 'students_export_' + dateStr + '.xlsx');
+    SchoolApp.utils.exportToExcel(students, STUDENT_SHEET_COLUMNS, 'students_export_' + dateStr + '.xlsx');
   }
 
   // ─── Phase 1B: Template Download ───
 
   function downloadStudentTemplate() {
-    var columns = [
-      { header: 'Student Name', key: 'name' },
-      { header: 'Class', key: 'class' },
-      { header: 'Section', key: 'section' },
-      { header: 'Roll Number', key: 'rollNumber' },
-      { header: 'Date of Birth', key: 'dateOfBirth' },
-      { header: 'Gender', key: 'gender' },
-      { header: 'Parent Name', key: 'parentName' },
-      { header: 'Parent Phone', key: 'parentPhone' },
-      { header: 'Parent Email', key: 'parentEmail' },
-      { header: 'Address', key: 'address' },
-      { header: 'Admission Date', key: 'admissionDate' }
-    ];
-
     var sampleRows = [
       {
         name: 'Aarav Kumar',
@@ -797,8 +799,10 @@
         parentName: 'Rajesh Kumar',
         parentPhone: '9876543210',
         parentEmail: 'rajesh@example.com',
+        aadhaarNumber: '',
         address: 'Bokaro Steel City, Jharkhand',
-        admissionDate: '2024-04-01'
+        admissionDate: '2024-04-01',
+        status: 'Active'
       },
       {
         name: 'Priya Sharma',
@@ -810,18 +814,23 @@
         parentName: 'Sunil Sharma',
         parentPhone: '9876543211',
         parentEmail: 'sunil@example.com',
+        aadhaarNumber: '',
         address: 'Sector 4, Bokaro, Jharkhand',
-        admissionDate: '2024-04-01'
+        admissionDate: '2024-04-01',
+        status: 'Active'
       }
     ];
 
-    SchoolApp.utils.exportToExcel(sampleRows, columns, 'student_import_template.xlsx');
+    SchoolApp.utils.exportToExcel(sampleRows, STUDENT_SHEET_COLUMNS, 'student_import_template.xlsx');
   }
 
   // ─── Import Helpers (Phase 1A + 1B) ───
 
   var HEADER_MAPPING_DICTIONARY = {
     'full name': 'name', 'fullname': 'name', 'name': 'name', 'student name': 'name',
+    // firstName/lastName kept here for backward compatibility with files exported
+    // under the old 3-column name format — new Template/Export no longer generate
+    // these columns, but a school's already-saved older export must still import fine.
     'first name': 'firstName', 'firstname': 'firstName',
     'last name': 'lastName', 'lastname': 'lastName',
     'class': 'class',
@@ -831,7 +840,7 @@
     'gender': 'gender',
     'aadhaar number': 'aadhaarNumber', 'aadhaar': 'aadhaarNumber',
     'address': 'address',
-    'parent name': 'parentName',
+    'parent name': 'parentName', 'parent/guardian name': 'parentName', 'parent guardian name': 'parentName',
     'parent phone': 'parentPhone',
     'parent email': 'parentEmail',
     'admission date': 'admissionDate',
@@ -847,7 +856,7 @@
     'rollNumber': ['roll number', 'roll no', 'rollno', 'roll', 'serial no'],
     'dateOfBirth': ['date of birth', 'dob', 'birth date', 'birthdate'],
     'gender': ['gender', 'sex'],
-    'parentName': ['parent name', 'father name', "father's name", 'guardian', 'guardian name'],
+    'parentName': ['parent name', 'parent/guardian name', 'parent guardian name', 'father name', "father's name", 'guardian', 'guardian name'],
     'parentPhone': ['parent phone', 'mobile', 'phone', 'contact', 'contact no', 'whatsapp', 'ph no', 'parent mobile'],
     'parentEmail': ['parent email', 'email', 'email id'],
     'aadhaarNumber': ['aadhaar', 'aadhaar number', 'adhar'],
@@ -892,7 +901,15 @@
     return String(header)
       .trim()
       .toLowerCase()
-      .replace(/\s+/g, ' ');
+      // Strip the "*" (mandatory) and "(Optional)"/"(Required)"/"(Mandatory)"
+      // markers now shown in the Template/Export headers, so "Student Name *"
+      // and "Parent Phone (Optional)" still map exactly like their bare form.
+      .replace(/\(optional\)/g, '')
+      .replace(/\(required\)/g, '')
+      .replace(/\(mandatory\)/g, '')
+      .replace(/\*/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function detectColumnMapping(header) {
@@ -997,12 +1014,57 @@
   function showImportPreviewModal(fileName, data, rawHeaders, initialMapping, mappingConfidence) {
     var currentMapping = Object.assign({}, initialMapping);
 
+    // Classes/sections the admin has chosen to create (via the "+ Create" buttons
+    // below), applied to the real store only when the import is confirmed.
+    var pendingNewClasses = [];
+    var pendingNewSections = {}; // { className: [sectionName, ...] }
+
+    function getEffectiveClasses() {
+      var base = (SchoolApp.store.settings && SchoolApp.store.settings.classes) || [];
+      return base.concat(pendingNewClasses.filter(function(c) { return base.indexOf(c) === -1; }));
+    }
+
+    function getEffectiveSections() {
+      var base = (SchoolApp.store.settings && SchoolApp.store.settings.sections) || {};
+      var merged = {};
+      Object.keys(base).forEach(function(c) { merged[c] = (base[c] || []).slice(); });
+      pendingNewClasses.forEach(function(c) {
+        if (!merged[c]) merged[c] = ['A']; // a newly-created class gets a default "A" section
+      });
+      Object.keys(pendingNewSections).forEach(function(c) {
+        if (!merged[c]) merged[c] = [];
+        pendingNewSections[c].forEach(function(s) {
+          if (merged[c].indexOf(s) === -1) merged[c].push(s);
+        });
+      });
+      return merged;
+    }
+
     function evaluateCurrentData() {
-      var configuredClasses = (SchoolApp.store.settings && SchoolApp.store.settings.classes) || [];
+      var configuredClasses = getEffectiveClasses();
+      var configuredSections = getEffectiveSections();
       var readyStudents = [];
       var classMismatchList = [];
+      var sectionMismatchList = [];
       var duplicateList = [];
       var skippedRows = [];
+      var incompleteList = [];
+
+      // Fields the manual "Add Student" form treats as mandatory, beyond the
+      // bare minimum (Name + Class) that bulk import blocks on below. A row
+      // missing these still imports (so existing import habits never suddenly
+      // break), but is now surfaced as a warning instead of silently going
+      // through incomplete — this was the actual root cause of "Template
+      // imports have mistakes, Export re-imports come out cleaner": the
+      // Template gave no signal about which columns actually mattered.
+      var RECOMMENDED_FIELDS = [
+        { key: 'section', label: 'Section' },
+        { key: 'rollNumber', label: 'Roll Number' },
+        { key: 'dateOfBirth', label: 'Date of Birth' },
+        { key: 'gender', label: 'Gender' },
+        { key: 'parentName', label: 'Parent/Guardian Name' },
+        { key: 'parentPhone', label: 'Parent Phone' }
+      ];
 
       data.forEach(function(row, index) {
         var student = { id: SchoolApp.generateId(), status: 'Active' };
@@ -1054,19 +1116,35 @@
           return;
         }
 
-        // Class normalization
+        // Class normalization — a class that doesn't exist in Paathshala yet is
+        // held OUT of the import (not silently written with a bad value) until
+        // the admin either creates it here or fixes the source file.
         var rawClass = student.class;
         var normalizedClass = normalizeImportedClass(rawClass, configuredClasses);
-        if (normalizedClass) {
-          student.class = normalizedClass;
-        } else {
-          student._classMismatch = true;
-          student.class = rawClass;
+        if (!normalizedClass) {
           classMismatchList.push({
             rowNumber: index + 2,
             name: student.name,
             rawClass: rawClass
           });
+          return;
+        }
+        student.class = normalizedClass;
+
+        // Section normalization — only meaningful once the class itself resolved,
+        // and only when that class actually has a defined section list to check against.
+        var rawSection = student.section && String(student.section).trim();
+        if (rawSection) {
+          var validSections = configuredSections[student.class];
+          if (Array.isArray(validSections) && validSections.length > 0 && validSections.indexOf(rawSection) === -1) {
+            sectionMismatchList.push({
+              rowNumber: index + 2,
+              name: student.name,
+              class: student.class,
+              rawSection: rawSection
+            });
+            return;
+          }
         }
 
         // Duplicate check (against existing students and already ready students in this batch)
@@ -1081,14 +1159,28 @@
           return;
         }
 
+        var missingRecommended = [];
+        RECOMMENDED_FIELDS.forEach(function(f) {
+          if (!student[f.key] || !String(student[f.key]).trim()) missingRecommended.push(f.label);
+        });
+        if (missingRecommended.length > 0) {
+          incompleteList.push({
+            rowNumber: index + 2,
+            name: student.name,
+            missingFields: missingRecommended
+          });
+        }
+
         readyStudents.push(student);
       });
 
       return {
         readyStudents: readyStudents,
         classMismatchList: classMismatchList,
+        sectionMismatchList: sectionMismatchList,
         duplicateList: duplicateList,
-        skippedRows: skippedRows
+        skippedRows: skippedRows,
+        incompleteList: incompleteList
       };
     }
 
@@ -1100,7 +1192,11 @@
       html += '<div style="color:#10B981; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">check_circle</span> ' + evalRes.readyStudents.length + ' students ready to import</div>';
 
       if (evalRes.classMismatchList.length > 0) {
-        html += '<div style="color:#F59E0B; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> ' + evalRes.classMismatchList.length + ' need class review (unrecognized class value)</div>';
+        html += '<div style="color:#EF4444; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> ' + evalRes.classMismatchList.length + ' NOT imported — class does not exist yet</div>';
+      }
+
+      if (evalRes.sectionMismatchList.length > 0) {
+        html += '<div style="color:#EF4444; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> ' + evalRes.sectionMismatchList.length + ' NOT imported — section does not exist yet</div>';
       }
 
       if (evalRes.duplicateList.length > 0) {
@@ -1112,19 +1208,59 @@
         if (evalRes.skippedRows.length > 5) rowNums += ', +' + (evalRes.skippedRows.length - 5) + ' more';
         html += '<div style="color:#EF4444; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">cancel</span> ' + evalRes.skippedRows.length + ' rows skipped (missing required fields) — ' + rowNums + '</div>';
       }
+
+      if (evalRes.incompleteList.length > 0) {
+        var incRowNums = evalRes.incompleteList.slice(0, 5).map(function(r) { return 'Row ' + r.rowNumber; }).join(', ');
+        if (evalRes.incompleteList.length > 5) incRowNums += ', +' + (evalRes.incompleteList.length - 5) + ' more';
+        html += '<div style="color:#F59E0B; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">info</span> ' + evalRes.incompleteList.length + ' will import but are missing recommended fields — ' + incRowNums + '</div>';
+      }
       html += '</div>';
 
       // View Details Collapsible
-      var hasIssues = evalRes.classMismatchList.length > 0 || evalRes.duplicateList.length > 0 || evalRes.skippedRows.length > 0;
+      var hasIssues = evalRes.classMismatchList.length > 0 || evalRes.sectionMismatchList.length > 0 || evalRes.duplicateList.length > 0 || evalRes.skippedRows.length > 0 || evalRes.incompleteList.length > 0;
       if (hasIssues) {
-        html += '<details style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:8px;">';
+        html += '<details open style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:8px;">';
         html += '<summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--primary); user-select:none;">View Details (Expand to see rows)</summary>';
-        html += '<div style="display:flex; flex-direction:column; gap:8px; margin-top:8px; font-size:11px; max-height:160px; overflow-y:auto;">';
+        html += '<div style="display:flex; flex-direction:column; gap:10px; margin-top:8px; font-size:11px; max-height:220px; overflow-y:auto;">';
 
         if (evalRes.classMismatchList.length > 0) {
-          html += '<div><span style="font-weight:700; color:#F59E0B;">Unrecognized Classes:</span>';
+          // Group rows by the unique raw class value so we offer ONE "Create Class" button per value
+          var uniqueClasses = {};
           evalRes.classMismatchList.forEach(function(item) {
-            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.name || 'Unnamed') + ' (Value: "' + escapeHTML(item.rawClass) + '")</div>';
+            var key = item.rawClass;
+            if (!uniqueClasses[key]) uniqueClasses[key] = [];
+            uniqueClasses[key].push(item);
+          });
+          html += '<div><span style="font-weight:700; color:#EF4444;">Class does not exist in Paathshala:</span>';
+          Object.keys(uniqueClasses).forEach(function(rawClass) {
+            var items = uniqueClasses[rawClass];
+            html += '<div style="margin:4px 0 6px 8px; padding:6px 8px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2); border-radius:6px;">';
+            html += '  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">';
+            html += '    <span>Class "<strong>' + escapeHTML(rawClass) + '</strong>" — ' + items.length + ' student(s), e.g. Row ' + items[0].rowNumber + ' (' + escapeHTML(items[0].name || 'Unnamed') + ')</span>';
+            html += '    <button type="button" class="btn btn-secondary btn-sm import-create-class-btn" data-class="' + escapeAttr(rawClass) + '" style="font-size:11px; padding:4px 8px; white-space:nowrap;">+ Create Class "' + escapeHTML(rawClass) + '"</button>';
+            html += '  </div>';
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+
+        if (evalRes.sectionMismatchList.length > 0) {
+          // Group by class + section pair
+          var uniqueSections = {};
+          evalRes.sectionMismatchList.forEach(function(item) {
+            var key = item.class + '␟' + item.rawSection;
+            if (!uniqueSections[key]) uniqueSections[key] = { class: item.class, section: item.rawSection, items: [] };
+            uniqueSections[key].items.push(item);
+          });
+          html += '<div><span style="font-weight:700; color:#EF4444;">Section does not exist under its class:</span>';
+          Object.keys(uniqueSections).forEach(function(key) {
+            var grp = uniqueSections[key];
+            html += '<div style="margin:4px 0 6px 8px; padding:6px 8px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2); border-radius:6px;">';
+            html += '  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">';
+            html += '    <span>Section "<strong>' + escapeHTML(grp.section) + '</strong>" under Class "<strong>' + escapeHTML(grp.class) + '</strong>" — ' + grp.items.length + ' student(s), e.g. Row ' + grp.items[0].rowNumber + ' (' + escapeHTML(grp.items[0].name || 'Unnamed') + ')</span>';
+            html += '    <button type="button" class="btn btn-secondary btn-sm import-create-section-btn" data-class="' + escapeAttr(grp.class) + '" data-section="' + escapeAttr(grp.section) + '" style="font-size:11px; padding:4px 8px; white-space:nowrap;">+ Create Section "' + escapeHTML(grp.section) + '"</button>';
+            html += '  </div>';
+            html += '</div>';
           });
           html += '</div>';
         }
@@ -1142,6 +1278,14 @@
           html += '<div><span style="font-weight:700; color:#EF4444;">Missing Required Fields:</span>';
           evalRes.skippedRows.forEach(function(item) {
             html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ': ' + escapeHTML(item.reason) + '</div>';
+          });
+          html += '</div>';
+        }
+
+        if (evalRes.incompleteList.length > 0) {
+          html += '<div><span style="font-weight:700; color:#F59E0B;">Missing Recommended Fields (will still import):</span>';
+          evalRes.incompleteList.forEach(function(item) {
+            html += '<div style="color:var(--text-secondary); margin-left:8px;">• Row ' + item.rowNumber + ' (' + escapeHTML(item.name || 'Unnamed') + '): missing ' + escapeHTML(item.missingFields.join(', ')) + '</div>';
           });
           html += '</div>';
         }
@@ -1226,6 +1370,25 @@
     var confirmBtn = document.getElementById('import-preview-confirm-btn');
     if (confirmBtn) {
       confirmBtn.addEventListener('click', function() {
+        // Commit any classes/sections the admin chose to create during this
+        // preview into the real store BEFORE the final evaluation, so those
+        // students land as normal "ready" imports rather than mismatches.
+        if (pendingNewClasses.length > 0 || Object.keys(pendingNewSections).length > 0) {
+          if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+          if (!SchoolApp.store.settings.classes) SchoolApp.store.settings.classes = [];
+          if (!SchoolApp.store.settings.sections) SchoolApp.store.settings.sections = {};
+          pendingNewClasses.forEach(function(c) {
+            if (SchoolApp.store.settings.classes.indexOf(c) === -1) SchoolApp.store.settings.classes.push(c);
+            if (!SchoolApp.store.settings.sections[c]) SchoolApp.store.settings.sections[c] = ['A'];
+          });
+          Object.keys(pendingNewSections).forEach(function(c) {
+            if (!SchoolApp.store.settings.sections[c]) SchoolApp.store.settings.sections[c] = [];
+            pendingNewSections[c].forEach(function(s) {
+              if (SchoolApp.store.settings.sections[c].indexOf(s) === -1) SchoolApp.store.settings.sections[c].push(s);
+            });
+          });
+        }
+
         var currentEval = evaluateCurrentData();
         SchoolApp.closeModal();
 
@@ -1234,7 +1397,6 @@
           currentEval.readyStudents.forEach(function(s) {
             SchoolApp.store.students.push(s);
           });
-          SchoolApp.save();
         }
 
         // Summary feedback reporting
@@ -1243,7 +1405,13 @@
           summaryParts.push(currentEval.duplicateList.length + ' skipped as duplicates');
         }
         if (currentEval.classMismatchList.length > 0) {
-          summaryParts.push(currentEval.classMismatchList.length + ' need class review');
+          summaryParts.push(currentEval.classMismatchList.length + ' NOT imported (unknown class)');
+        }
+        if (currentEval.sectionMismatchList.length > 0) {
+          summaryParts.push(currentEval.sectionMismatchList.length + ' NOT imported (unknown section)');
+        }
+        if (currentEval.incompleteList.length > 0) {
+          summaryParts.push(currentEval.incompleteList.length + ' imported with missing recommended fields');
         }
 
         var summaryMsg = summaryParts.join(', ');
@@ -1259,18 +1427,73 @@
           summaryMsg += '.';
         }
 
-        var toastType = (currentEval.classMismatchList.length > 0 || currentEval.skippedRows.length > 0) ? 'warning' : 'success';
-        SchoolApp.showToast(summaryMsg, toastType);
+        var hasUnresolved = currentEval.classMismatchList.length > 0 || currentEval.sectionMismatchList.length > 0 || currentEval.skippedRows.length > 0;
+        var toastType = (hasUnresolved || currentEval.incompleteList.length > 0) ? 'warning' : 'success';
 
-        if (currentEval.classMismatchList.length > 0) {
-          setTimeout(function() {
-            SchoolApp.showToast(currentEval.classMismatchList.length + ' students imported with unrecognized class values — please review and fix manually in Student Management.', 'warning');
-          }, 1200);
-        }
-
-        render();
+        // Persist once, after both the settings changes (new classes/sections)
+        // and the student additions are applied, then update the UI.
+        SchoolApp.save().then(function() {
+          SchoolApp.showToast(summaryMsg, toastType);
+          if (currentEval.classMismatchList.length > 0 || currentEval.sectionMismatchList.length > 0) {
+            setTimeout(function() {
+              SchoolApp.showToast('Some rows were not imported — fix the class/section in your file (or in Settings) and re-import just those rows.', 'warning');
+            }, 1200);
+          }
+          render();
+        });
       });
     }
+
+    // Re-render the summary panel + confirm button count + re-wire its buttons.
+    // Shared by both the column-mapping override and the "+ Create" actions.
+    function refreshPreviewUI() {
+      var updatedEval = evaluateCurrentData();
+
+      var summaryContainer = document.getElementById('import-preview-summary-container');
+      if (summaryContainer) {
+        summaryContainer.innerHTML = buildSummaryCardsHTML(updatedEval);
+      }
+
+      var confirmBtnLive = document.getElementById('import-preview-confirm-btn');
+      if (confirmBtnLive) {
+        confirmBtnLive.disabled = updatedEval.readyStudents.length === 0;
+        confirmBtnLive.innerHTML = '<span class="material-icons-round" style="font-size:16px;">check_circle</span> Confirm Import — ' + updatedEval.readyStudents.length + ' students';
+      }
+
+      attachSummaryActionListeners();
+    }
+
+    // "+ Create Class" / "+ Create Section" buttons inside the summary panel.
+    // These only stage the change locally (pendingNewClasses/pendingNewSections);
+    // nothing is written to Firestore until "Confirm Import" is clicked.
+    function attachSummaryActionListeners() {
+      document.querySelectorAll('.import-create-class-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var cls = this.getAttribute('data-class');
+          if (cls && pendingNewClasses.indexOf(cls) === -1) {
+            pendingNewClasses.push(cls);
+            SchoolApp.showToast('Class "' + cls + '" will be created when you confirm the import.', 'info');
+            refreshPreviewUI();
+          }
+        });
+      });
+      document.querySelectorAll('.import-create-section-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var cls = this.getAttribute('data-class');
+          var sec = this.getAttribute('data-section');
+          if (cls && sec) {
+            if (!pendingNewSections[cls]) pendingNewSections[cls] = [];
+            if (pendingNewSections[cls].indexOf(sec) === -1) {
+              pendingNewSections[cls].push(sec);
+              SchoolApp.showToast('Section "' + sec + '" under Class "' + cls + '" will be created when you confirm the import.', 'info');
+              refreshPreviewUI();
+            }
+          }
+        });
+      });
+    }
+
+    attachSummaryActionListeners();
 
     // Dynamic Override Listeners
     var selects = document.querySelectorAll('.import-col-map-select');
@@ -1278,20 +1501,7 @@
       sel.addEventListener('change', function() {
         var h = this.getAttribute('data-header');
         currentMapping[h] = this.value;
-
-        // Re-evaluate in real time
-        var updatedEval = evaluateCurrentData();
-
-        var summaryContainer = document.getElementById('import-preview-summary-container');
-        if (summaryContainer) {
-          summaryContainer.innerHTML = buildSummaryCardsHTML(updatedEval);
-        }
-
-        var confirmBtnLive = document.getElementById('import-preview-confirm-btn');
-        if (confirmBtnLive) {
-          confirmBtnLive.disabled = updatedEval.readyStudents.length === 0;
-          confirmBtnLive.innerHTML = '<span class="material-icons-round" style="font-size:16px;">check_circle</span> Confirm Import — ' + updatedEval.readyStudents.length + ' students';
-        }
+        refreshPreviewUI();
       });
     });
   }

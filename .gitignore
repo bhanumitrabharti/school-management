@@ -2,3 +2,9 @@
 node_modules/
 .env
 .env*
+
+# Firebase Admin SDK service account keys — full admin access to live Firestore.
+# Must NEVER be committed. Covers both the standard name and the raw filename
+# Firebase Console generates (e.g. ctrl-shift-solutions-firebase-adminsdk-*.json).
+service-account-key.json
+*firebase-adminsdk*.json
