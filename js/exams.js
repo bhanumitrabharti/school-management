@@ -1405,7 +1405,7 @@
     var designCfg = reportCardConfig.design || {};
 
     var primaryColor = designCfg.primaryColor || layoutCfg.primaryColor || '#1E3A8A';
-    var schoolName = settings.name || settings.schoolName || schoolInfo.name || 'SHISHU VIKASH MANDIR';
+    var schoolName = settings.name || settings.schoolName || schoolInfo.name || '';
     var tagline = settings.tagline || settings.schoolTagline || schoolInfo.tagline || '';
     var address = settings.address || settings.schoolAddress || schoolInfo.address || '';
     var phone = settings.phone || settings.schoolPhone || schoolInfo.phone || '';
@@ -1765,7 +1765,7 @@
     html += '}';
     html += '</style></head><body>';
 
-    var schoolName = info.name || settings.schoolName || 'Shishu Vikash Mandir';
+    var schoolName = info.name || settings.schoolName || '';
     var tagline = info.tagline || '';
     var address = info.address || settings.address || '';
     var phone = info.phone || settings.phone || '';

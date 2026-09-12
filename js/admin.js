@@ -2289,7 +2289,7 @@
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">info</span> System Information</h3></div><div class="card-body">';
 
     var info = [
-      { label: 'Application', value: 'Shishu Vikash Mandir v1.0.0' },
+      { label: 'Application', value: 'Paathshala ERP v1.0.0' },
       { label: 'Build Date', value: SchoolApp.formatDate(new Date().toISOString().split('T')[0]) },
       { label: 'Browser', value: navigator.userAgent.split('(')[0].trim() },
       { label: 'Screen Resolution', value: screen.width + ' × ' + screen.height },
@@ -2587,7 +2587,7 @@
     }
     
     var settings = SchoolApp.store.settings || {};
-    var schoolName = settings.schoolName || "Shishu Vikash Mandir";
+    var schoolName = settings.schoolName || "";
     var schoolPhone = settings.phone || "";
     var schoolEmail = settings.email || "";
     
@@ -3629,12 +3629,12 @@
       resetSettingsBtn.addEventListener('click', function() {
         SchoolApp.showConfirm('Reset all settings to defaults?', function() {
           SchoolApp.store.settings = {
-            schoolName: 'Shishu Vikash Mandir',
+            schoolName: '',
             academicYear: '2025-2026',
-            address: '123 Education Lane, Knowledge City, Karnataka 560001',
-            phone: '+91 98765 43210',
-            email: 'bhanu.bharti@ctrlshifts.in',
-            classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+            address: '',
+            phone: '',
+            email: '',
+            classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
             sections: ['A','B','C'],
             attendanceTime: '09:00',
             theme: 'dark',

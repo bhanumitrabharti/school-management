@@ -1058,7 +1058,7 @@
     html += '<div class="header-left">';
     html += '<img src="' + logoUrl + '" class="logo">';
     html += '<div>';
-    html += '<h1 class="school-title">' + (settings.schoolName || 'Shishu Vikash Mandir') + '</h1>';
+    html += '<h1 class="school-title">' + (settings.schoolName || '') + '</h1>';
     if (info.tagline) html += '<p style="margin: 3px 0 0 0; font-size: 11px; color: #666;">' + info.tagline + '</p>';
     html += '</div></div>';
     html += '<h2 class="report-title">Fee Activity Report</h2>';
@@ -1615,8 +1615,8 @@
     var settings = SchoolApp.store.settings || {};
     var schoolInfo = settings.schoolInfo || {};
 
-    var schoolName = settings.schoolName || schoolInfo.name || 'Shishu Vikash Mandir';
-    var schoolAddress = settings.address || schoolInfo.address || 'Bokaro Steel City, Jharkhand';
+    var schoolName = settings.schoolName || schoolInfo.name || '';
+    var schoolAddress = settings.address || schoolInfo.address || '';
     var schoolPhone = settings.phone || schoolInfo.phone || '';
     var schoolEmail = settings.email || schoolInfo.email || '';
     var logoUrl = settings.schoolLogo || settings.logoUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo || '';
@@ -1818,7 +1818,7 @@
     var student = SchoolApp.store.students.find(function(s) { return s.id === studentId; });
     var settings = SchoolApp.store.settings || {};
     var schoolInfo = settings.schoolInfo || {};
-    var schoolName = settings.name || settings.schoolName || schoolInfo.name || 'Shishu Vikash Mandir';
+    var schoolName = settings.name || settings.schoolName || schoolInfo.name || '';
 
     if (!student) {
       SchoolApp.showToast('Student record not found.', 'error');
