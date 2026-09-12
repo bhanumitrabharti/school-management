@@ -1938,11 +1938,16 @@
         var txnId = this.getAttribute('data-id');
         var sId = this.getAttribute('data-student-id');
         
-        SchoolApp.showConfirm('Delete this transaction from the ledger? This will permanently recalculate outstanding balance.', function() {
-          var idx = (SchoolApp.store.fees || []).findIndex(function(f) { return f.id === txnId; });
-          if (idx !== -1) {
-            SchoolApp.store.fees.splice(idx, 1);
-            SchoolApp.save();
+        SchoolApp.showConfirm('Delete this transaction from the ledger? This will permanently recalculate outstanding balance.', async function() {
+          var txn = (SchoolApp.store.fees || []).find(function(f) { return f.id === txnId; });
+          if (txn) {
+            if (typeof SchoolApp.deleteFeeTransaction === 'function') {
+              await SchoolApp.deleteFeeTransaction(txnId, txn.date);
+            } else {
+              var idx = (SchoolApp.store.fees || []).findIndex(function(f) { return f.id === txnId; });
+              if (idx !== -1) SchoolApp.store.fees.splice(idx, 1);
+              SchoolApp.save();
+            }
             SchoolApp.closeModal();
             SchoolApp.showToast('Transaction removed successfully!', 'success');
             setTimeout(function() { showLedgerModal(sId); }, 200);
@@ -2027,7 +2032,12 @@
           saveBtn.disabled = true;
           saveBtn.textContent = 'Processing...';
           
-          var success = await SchoolApp.save(true);
+          var success = false;
+          if (typeof SchoolApp.saveFeeTransaction === 'function') {
+            success = await SchoolApp.saveFeeTransaction(newTxn);
+          } else {
+            success = await SchoolApp.save(true);
+          }
           
           SchoolApp.hideLoader();
           saveBtn.disabled = false;
@@ -2153,7 +2163,7 @@
         var fh = getActiveFeeHeads().find(function(x) { return x.id === headId; });
         var feeHeadName = fh ? fh.name : (headId === 'custom' || !headId ? 'Custom Non-Categorized' : headId);
 
-        SchoolApp.store.fees.push({
+        var dueTxn = {
           id: SchoolApp.generateId(),
           studentId: studentId,
           schoolId: SchoolApp.currentSchoolId,
@@ -2162,7 +2172,8 @@
           amount: amt,
           date: date,
           description: desc
-        });
+        };
+        SchoolApp.store.fees.push(dueTxn);
 
         SchoolApp.store.feeActivityLog.push({
           id: SchoolApp.generateId(),
@@ -2178,7 +2189,12 @@
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
-        var success = await SchoolApp.save();
+        var success = false;
+        if (typeof SchoolApp.saveFeeTransaction === 'function') {
+          success = await SchoolApp.saveFeeTransaction(dueTxn);
+        } else {
+          success = await SchoolApp.save();
+        }
         saveBtn.disabled = false;
         saveBtn.textContent = 'Add Charge';
 
@@ -2302,11 +2318,12 @@
 
         SchoolApp.createRestorePoint('Auto-Backup before Bulk Fee Generation for Class ' + cls);
 
+        var generatedTxns = [];
         students.forEach(function(s) {
           var defaultAmt = getFeeAmount(s.class, headId);
           
           if (defaultAmt > 0) {
-            SchoolApp.store.fees.push({
+            var newTxn = {
               id: SchoolApp.generateId(),
               studentId: s.id,
               schoolId: SchoolApp.currentSchoolId,
@@ -2315,7 +2332,9 @@
               amount: defaultAmt,
               date: date,
               description: desc
-            });
+            };
+            SchoolApp.store.fees.push(newTxn);
+            generatedTxns.push(newTxn);
 
             SchoolApp.store.feeActivityLog.push({
               id: SchoolApp.generateId(),
@@ -2336,7 +2355,12 @@
         if (chargedCount > 0) {
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving...';
-          var success = await SchoolApp.save();
+          var success = false;
+          if (typeof SchoolApp.saveFeeTransactions === 'function') {
+            success = await SchoolApp.saveFeeTransactions(generatedTxns);
+          } else {
+            success = await SchoolApp.save();
+          }
           saveBtn.disabled = false;
           saveBtn.textContent = 'Generate Dues';
 
@@ -2488,9 +2512,13 @@
     // History Start Date
     var historyStart = document.getElementById('fees-history-start-date');
     if (historyStart) {
-      historyStart.addEventListener('input', function() {
+      historyStart.addEventListener('input', async function() {
         state.historyStartDate = this.value;
         state.historyCurrentPage = 1;
+        var yr = (this.value || '').slice(0, 4);
+        if (yr && typeof SchoolApp.loadFeesYear === 'function') {
+          await SchoolApp.loadFeesYear(yr);
+        }
         render();
       });
     }
@@ -2498,9 +2526,13 @@
     // History End Date
     var historyEnd = document.getElementById('fees-history-end-date');
     if (historyEnd) {
-      historyEnd.addEventListener('input', function() {
+      historyEnd.addEventListener('input', async function() {
         state.historyEndDate = this.value;
         state.historyCurrentPage = 1;
+        var yr = (this.value || '').slice(0, 4);
+        if (yr && typeof SchoolApp.loadFeesYear === 'function') {
+          await SchoolApp.loadFeesYear(yr);
+        }
         render();
       });
     }

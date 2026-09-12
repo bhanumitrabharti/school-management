@@ -435,7 +435,16 @@
 
     // Date
     var dateInput = document.getElementById('attendance-date');
-    if (dateInput) dateInput.addEventListener('change', function() { state.selectedDate = this.value; render(); });
+    if (dateInput) {
+      dateInput.addEventListener('change', async function() {
+        state.selectedDate = this.value;
+        var ym = (this.value || '').slice(0, 7);
+        if (ym && typeof SchoolApp.loadAttendanceMonth === 'function') {
+          await SchoolApp.loadAttendanceMonth(ym);
+        }
+        render();
+      });
+    }
 
     // Class selection
     var classSelect = document.getElementById('att-class-select');
@@ -457,11 +466,16 @@
                    normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
                    normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
           });
-          if (existing) {
-            existing.records.forEach(function(rec) {
-              state.attendanceStatus[rec.studentId] = rec.status;
-            });
-          }
+          state.attendanceStatus = {};
+          var students = getStudentsForClass(state.selectedClass, state.selectedSection);
+          students.forEach(function(s) {
+            if (existing) {
+              var rec = existing.records.find(function(r) { return r.studentId === s.id; });
+              state.attendanceStatus[s.id] = rec ? rec.status : 'present';
+            } else {
+              state.attendanceStatus[s.id] = 'present';
+            }
+          });
         } else {
           state.selectedClass = '';
           state.selectedSection = '';
@@ -471,29 +485,37 @@
       });
     }
 
-    // Status buttons
+    // Status toggle buttons
     document.querySelectorAll('.status-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var studentId = this.getAttribute('data-student');
         var status = this.getAttribute('data-status');
         state.attendanceStatus[studentId] = status;
-        render();
+
+        // Update UI without full re-render
+        var card = this.closest('.attendance-card');
+        if (card) {
+          card.className = 'attendance-card ' + status;
+          card.querySelectorAll('.status-btn').forEach(function(b) { b.classList.remove('active'); });
+          this.classList.add('active');
+        }
+        updateSummaryStats();
       });
     });
 
     // Mark all present
-    var markAllPresent = document.getElementById('mark-all-present');
-    if (markAllPresent) {
-      markAllPresent.addEventListener('click', function() {
+    var allPresentBtn = document.getElementById('mark-all-present');
+    if (allPresentBtn) {
+      allPresentBtn.addEventListener('click', function() {
         Object.keys(state.attendanceStatus).forEach(function(id) { state.attendanceStatus[id] = 'present'; });
         render();
       });
     }
 
     // Mark all absent
-    var markAllAbsent = document.getElementById('mark-all-absent');
-    if (markAllAbsent) {
-      markAllAbsent.addEventListener('click', function() {
+    var allAbsentBtn = document.getElementById('mark-all-absent');
+    if (allAbsentBtn) {
+      allAbsentBtn.addEventListener('click', function() {
         Object.keys(state.attendanceStatus).forEach(function(id) { state.attendanceStatus[id] = 'absent'; });
         render();
       });
@@ -518,10 +540,28 @@
 
     // History filters
     var historyFrom = document.getElementById('history-from');
-    if (historyFrom) historyFrom.addEventListener('change', function() { state.historyFilters.fromDate = this.value; render(); });
+    if (historyFrom) {
+      historyFrom.addEventListener('change', async function() {
+        state.historyFilters.fromDate = this.value;
+        var ym = (this.value || '').slice(0, 7);
+        if (ym && typeof SchoolApp.loadAttendanceMonth === 'function') {
+          await SchoolApp.loadAttendanceMonth(ym);
+        }
+        render();
+      });
+    }
 
     var historyTo = document.getElementById('history-to');
-    if (historyTo) historyTo.addEventListener('change', function() { state.historyFilters.toDate = this.value; render(); });
+    if (historyTo) {
+      historyTo.addEventListener('change', async function() {
+        state.historyFilters.toDate = this.value;
+        var ym = (this.value || '').slice(0, 7);
+        if (ym && typeof SchoolApp.loadAttendanceMonth === 'function') {
+          await SchoolApp.loadAttendanceMonth(ym);
+        }
+        render();
+      });
+    }
 
     var historyClass = document.getElementById('history-class');
     if (historyClass) historyClass.addEventListener('change', function() { state.historyFilters.classFilter = this.value; render(); });
@@ -558,10 +598,14 @@
         var id = this.getAttribute('data-id');
         var att = SchoolApp.store.attendance.find(function(a) { return a.id === id; });
         if (!att) return;
-        SchoolApp.showConfirm('Delete this attendance record? It can be recovered from the Recycle Bin.', function() {
-          SchoolApp.moveToTrash('attendance', att.id, 'Attendance: Class ' + att.class + '-' + att.section, SchoolApp.formatDate(att.date), att);
-          SchoolApp.store.attendance = SchoolApp.store.attendance.filter(function(a) { return a.id !== id; });
-          SchoolApp.save();
+        SchoolApp.showConfirm('Delete this attendance record? It can be recovered from the Recycle Bin.', async function() {
+          if (typeof SchoolApp.deleteAttendanceRecord === 'function') {
+            await SchoolApp.deleteAttendanceRecord(att);
+          } else {
+            SchoolApp.moveToTrash('attendance', att.id, 'Attendance: Class ' + att.class + '-' + att.section, SchoolApp.formatDate(att.date), att);
+            SchoolApp.store.attendance = SchoolApp.store.attendance.filter(function(a) { return a.id !== id; });
+            SchoolApp.save();
+          }
           SchoolApp.showToast('Attendance record moved to Recycle Bin.', 'success');
           render();
         });
@@ -577,7 +621,7 @@
     }
   }
 
-  function submitAttendance() {
+  async function submitAttendance() {
     if (!state.selectedClass || !state.selectedSection) {
       SchoolApp.showToast('Please select a class first.', 'warning');
       return;
@@ -607,16 +651,18 @@
     });
 
     var teacherId = SchoolApp.currentUser.id;
+    var attendanceRecord;
 
     if (existingIdx !== -1) {
       // Update existing
       SchoolApp.store.attendance[existingIdx].records = records;
       SchoolApp.store.attendance[existingIdx].teacherId = teacherId;
       SchoolApp.store.attendance[existingIdx].timestamp = new Date().toISOString();
+      attendanceRecord = SchoolApp.store.attendance[existingIdx];
       SchoolApp.showToast('Attendance updated for Class ' + state.selectedClass + '-' + state.selectedSection + '.', 'success');
     } else {
       // Create new
-      SchoolApp.store.attendance.push({
+      attendanceRecord = {
         id: SchoolApp.generateId(),
         date: state.selectedDate,
         class: state.selectedClass,
@@ -624,11 +670,16 @@
         teacherId: teacherId,
         records: records,
         timestamp: new Date().toISOString()
-      });
+      };
+      SchoolApp.store.attendance.push(attendanceRecord);
       SchoolApp.showToast('Attendance submitted for Class ' + state.selectedClass + '-' + state.selectedSection + '!', 'success');
     }
 
-    SchoolApp.save();
+    if (typeof SchoolApp.saveAttendanceRecord === 'function') {
+      await SchoolApp.saveAttendanceRecord(attendanceRecord);
+    } else {
+      SchoolApp.save();
+    }
     render();
 
     // Auto-trigger Absent Student Parent Intimation modal if absent students exist

@@ -805,7 +805,6 @@
         parentPhone: '9876543210',
         parentEmail: 'rajesh@example.com',
         aadhaarNumber: '',
-        address: 'Bokaro Steel City, Jharkhand',
         admissionDate: '01-04-2024',
         status: 'Active'
       },

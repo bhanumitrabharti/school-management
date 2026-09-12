@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -17,7 +17,7 @@ export const auth = getAuth(app);
 // Expose Firestore and Auth globally for any non-module components
 window.db = db;
 window.auth = auth;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot };
 window.openStudentProfile = function(studentId) {
   if (window.SchoolApp && typeof window.SchoolApp.openStudentProfile === 'function') {
     window.SchoolApp.openStudentProfile(studentId);
@@ -221,18 +221,32 @@ window.SchoolApp = {
   },
 
   saveWithRetry: async function(fn, attempts = 3) {
+    // Errors that will NEVER succeed on retry (document too large, permission
+    // denied, etc). Retrying these just burns ~6 extra seconds while the
+    // "Saving..." UI sits stuck on a request that was always going to fail.
+    var nonRetryableCodes = ['invalid-argument', 'resource-exhausted', 'permission-denied', 'unauthenticated', 'failed-precondition'];
     for (let i = 0; i < attempts; i++) {
       try {
         await fn();
         return true;
       } catch(e) {
+        var code = e && e.code;
+        if (nonRetryableCodes.indexOf(code) !== -1) {
+          console.error('[Save] Non-retryable Firestore error:', code, e && e.message);
+          if (code === 'invalid-argument' || code === 'resource-exhausted') {
+            this.showToast('❌ Your school\'s data has reached its storage limit. This change was NOT saved — please contact support.', 'error');
+          } else {
+            this.showToast('❌ Save failed: ' + (e && e.message ? e.message : 'permission error') + '.', 'error');
+          }
+          return false;
+        }
         if (i === attempts - 1) {
           this.showToast(
             '❌ Save failed. Check connection.',
             'error');
           return false;
         }
-        await new Promise(r => 
+        await new Promise(r =>
           setTimeout(r, 1000 * (i + 1)));
       }
     }
@@ -302,15 +316,35 @@ window.SchoolApp = {
         delete payload.settings.schoolInfo.logoUrl;
       }
 
+      // RESTORE ARCHITECTURE: If tenant is restructured, prune unbounded fields
+      // from main tenant doc payload so they are NEVER re-written or merged into
+      // tenant_data/{schoolId}. Their single source of truth is their subcollections.
+      if (this.isRestructured(currentSchoolId)) {
+        delete payload.attendance;
+        delete payload.fees;
+        delete payload.examMarks;
+      }
+
       // Storage Limit Safety Alert: Warn when approaching 900KB (85% of 1MB limit)
       var payloadStr = JSON.stringify(payload);
       var estimatedBytes = (typeof Blob !== 'undefined') ? new Blob([payloadStr]).size : payloadStr.length;
       var estimatedWireBytes = Math.round(estimatedBytes * 1.12); // Accounts for Protobuf map framing overhead
+
+      // HARD STOP: Firestore's document limit is 1,048,576 bytes. Attempting the
+      // write anyway just wastes 3 retries (~6s of "Saving..." stuck on screen)
+      // on a request that is guaranteed to fail. Fail fast instead.
+      if (estimatedWireBytes >= 1000000) {
+        console.error("[Storage Limit Alert] BLOCKED save for " + currentSchoolId + " — estimated ~" + Math.round(estimatedWireBytes / 1024) + " KB, at/over the safe threshold.");
+        this.showToast("❌ Your school's data has reached its storage limit. This change was NOT saved — please contact support immediately.", "error");
+        if (!bypassLoader) this.hideLoader();
+        return false;
+      }
+
       if (estimatedBytes >= 900000 || estimatedWireBytes >= 900000) {
         console.warn("[Storage Limit Alert] Tenant document size for " + currentSchoolId + " is approaching limit: ~" + Math.round(estimatedWireBytes / 1024) + " KB (" + Math.round((estimatedWireBytes / 1048576) * 100) + "% of 1MB limit).");
         this.showToast("Your school's data is approaching storage limits. Please contact support.", "warning");
       }
-      
+
       const saveFn = () => window.firestore.setDoc(docRef, payload, { merge: true });
       const success = await this.saveWithRetry(saveFn);
       if (!success) {
@@ -348,6 +382,570 @@ window.SchoolApp = {
     }
   },
 
+  // ---------- Subcollection Compatibility Layer (Dual-Read / Single-Write) ----------
+  _attendanceMonths: {},
+  _attendanceListeners: {},
+  _feesYears: {},
+  _feesListeners: {},
+
+  isRestructured: function(schoolId) {
+    var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id');
+    if (this.store && this.store.settings && this.store.settings.restructured === true) {
+      return true;
+    }
+    if (this.store && this.store.restructured === true) {
+      return true;
+    }
+    return false;
+  },
+
+  /* ===== ATTENDANCE DUAL-READ / SINGLE-WRITE ===== */
+  loadAttendanceMonth: async function(yearMonth) {
+    if (!yearMonth) {
+      yearMonth = new Date().toISOString().slice(0, 7);
+    }
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+
+    // 1. If in local memory cache, return it
+    if (this._attendanceMonths[yearMonth]) {
+      return this._attendanceMonths[yearMonth];
+    }
+
+    // 2. Dual-read: try reading from subcollection: tenant_data/{schoolId}/attendance_months/{yearMonth}/classes
+    try {
+      if (window.firestore && window.db) {
+        var classesColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'attendance_months', yearMonth, 'classes');
+        var snap = await window.firestore.getDocs(classesColl);
+        if (snap && !snap.empty) {
+          var records = [];
+          snap.forEach(function(docSnap) {
+            var data = docSnap.data() || {};
+            if (Array.isArray(data.records)) {
+              records = records.concat(data.records);
+            }
+          });
+          this._attendanceMonths[yearMonth] = records;
+          this._mergeAttendanceRecordsIntoStore(yearMonth, records);
+          return records;
+        }
+
+        // Backward compatibility: check if un-sharded month document exists
+        var legacyDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'attendance_months', yearMonth);
+        var legacySnap = await window.firestore.getDoc(legacyDocRef);
+        if (legacySnap && legacySnap.exists()) {
+          var legData = legacySnap.data() || {};
+          var legRecords = Array.isArray(legData.records) ? legData.records : [];
+          this._attendanceMonths[yearMonth] = legRecords;
+          this._mergeAttendanceRecordsIntoStore(yearMonth, legRecords);
+          return legRecords;
+        }
+      }
+    } catch (err) {
+      console.warn('[Attendance] Error fetching attendance_months/' + yearMonth + '/classes:', err);
+    }
+
+    // 3. Fallback: check cold storage archive if configured and within date range
+    if (this.store && this.store.settings && this.store.settings.attendanceArchive && this.store.settings.attendanceArchive.documentId) {
+      try {
+        if (window.firestore && window.db) {
+          var archDocRef = window.firestore.doc(window.db, 'tenant_data', this.store.settings.attendanceArchive.documentId);
+          var archSnap = await window.firestore.getDoc(archDocRef);
+          if (archSnap && archSnap.exists()) {
+            var archData = archSnap.data() || {};
+            var archAtt = Array.isArray(archData.attendance) ? archData.attendance : [];
+            var matchedArch = archAtt.filter(function(a) { return a.date && a.date.startsWith(yearMonth); });
+            if (matchedArch.length > 0) {
+              this._attendanceMonths[yearMonth] = matchedArch;
+              this._mergeAttendanceRecordsIntoStore(yearMonth, matchedArch);
+              return matchedArch;
+            }
+          }
+        }
+      } catch (archErr) {
+        console.warn('[Attendance] Error checking archive document:', archErr);
+      }
+    }
+
+    // 4. Fallback: if not in subcollection or tenant not restructured, fall back to legacy array
+    var legacy = (this.store && this.store.attendance) || [];
+    var matched = legacy.filter(function(a) { return a.date && a.date.startsWith(yearMonth); });
+    this._attendanceMonths[yearMonth] = matched;
+    return matched;
+  },
+
+  _mergeAttendanceRecordsIntoStore: function(yearMonth, records) {
+    if (!this.store) return;
+    if (!this.store.attendance) this.store.attendance = [];
+    this.store.attendance = this.store.attendance.filter(function(a) {
+      return !(a.date && a.date.startsWith(yearMonth));
+    });
+    for (var i = 0; i < records.length; i++) {
+      this.store.attendance.push(records[i]);
+    }
+  },
+
+  listenToAttendanceMonth: function(yearMonth) {
+    if (!yearMonth) yearMonth = new Date().toISOString().slice(0, 7);
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    if (!this.isRestructured(currentSchoolId)) return;
+    if (this._attendanceListeners[yearMonth]) return;
+
+    if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
+      var self = this;
+      var classesColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'attendance_months', yearMonth, 'classes');
+      var unsub = window.firestore.onSnapshot(classesColl, function(snap) {
+        if (snap && !snap.empty) {
+          var records = [];
+          snap.forEach(function(docSnap) {
+            var data = docSnap.data() || {};
+            if (Array.isArray(data.records)) {
+              records = records.concat(data.records);
+            }
+          });
+          self._attendanceMonths[yearMonth] = records;
+          self._mergeAttendanceRecordsIntoStore(yearMonth, records);
+          if (self.currentPage === 'attendance' && window.AttendanceModule && typeof window.AttendanceModule.render === 'function') {
+            window.AttendanceModule.render();
+          } else if (self.currentPage === 'dashboard') {
+            self.renderDashboard();
+          }
+        }
+      }, function(err) {
+        console.warn('[Attendance Listener] error on ' + yearMonth + ':', err);
+      });
+      this._attendanceListeners[yearMonth] = unsub;
+    }
+  },
+
+  saveAttendanceRecord: async function(record) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var ym = (record && record.date ? record.date : new Date().toISOString().split('T')[0]).slice(0, 7);
+
+    // Update in-memory store
+    if (!this.store.attendance) this.store.attendance = [];
+    var idx = this.store.attendance.findIndex(function(a) {
+      return a.id === record.id || (a.date === record.date &&
+        String(a.class).toLowerCase().trim() === String(record.class).toLowerCase().trim() &&
+        String(a.section).toLowerCase().trim() === String(record.section).toLowerCase().trim());
+    });
+    if (idx !== -1) {
+      this.store.attendance[idx] = record;
+    } else {
+      this.store.attendance.push(record);
+    }
+
+    // Update in-memory month cache
+    if (!this._attendanceMonths[ym]) {
+      this._attendanceMonths[ym] = this.store.attendance.filter(function(a) { return a.date && a.date.startsWith(ym); });
+    } else {
+      var mIdx = this._attendanceMonths[ym].findIndex(function(a) {
+        return a.id === record.id || (a.date === record.date &&
+          String(a.class).toLowerCase().trim() === String(record.class).toLowerCase().trim() &&
+          String(a.section).toLowerCase().trim() === String(record.section).toLowerCase().trim());
+      });
+      if (mIdx !== -1) {
+        this._attendanceMonths[ym][mIdx] = record;
+      } else {
+        this._attendanceMonths[ym].push(record);
+      }
+    }
+
+    // Single-write: If restructured, write targeted document to attendance_months/{ym}/classes/{classId}
+    if (this.isRestructured(currentSchoolId)) {
+      try {
+        var classId = String(record.class);
+        var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'attendance_months', ym, 'classes', classId);
+        var classRecords = (this._attendanceMonths[ym] || []).filter(function(a) {
+          return String(a.class) === String(record.class);
+        });
+        var saveFn = () => window.firestore.setDoc(docRef, { records: classRecords });
+        var success = await this.saveWithRetry(saveFn);
+        if (success) {
+          console.log('[Attendance] Successfully saved class ' + classId + ' attendance to attendance_months/' + ym + '/classes/' + classId);
+          return true;
+        }
+        return false;
+      } catch (err) {
+        console.error('[Attendance] Save failed:', err);
+        this.showToast('Save failed: ' + (err.message || 'Check connection'), 'error');
+        return false;
+      }
+    }
+
+    // Fallback: If not restructured, use legacy full document save
+    return await this.save();
+  },
+
+  deleteAttendanceRecord: async function(recordOrId) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var record = typeof recordOrId === 'object' && recordOrId !== null ? recordOrId :
+      (this.store.attendance || []).find(function(a) { return a.id === recordOrId; });
+    if (!record) return false;
+
+    var id = record.id;
+    var ym = (record.date || '').slice(0, 7);
+
+    // Move to trash
+    this.moveToTrash('attendance', id, 'Attendance: Class ' + record.class + '-' + record.section, this.formatDate(record.date), record);
+
+    // Remove from in-memory store
+    this.store.attendance = (this.store.attendance || []).filter(function(a) { return a.id !== id; });
+
+    // Remove from in-memory month cache
+    if (ym && this._attendanceMonths[ym]) {
+      this._attendanceMonths[ym] = this._attendanceMonths[ym].filter(function(a) { return a.id !== id; });
+    }
+
+    // Single-write: If restructured, update attendance_months/{ym}/classes/{classId} AND save trash to tenant doc
+    if (this.isRestructured(currentSchoolId)) {
+      try {
+        if (ym && record.class) {
+          var classId = String(record.class);
+          var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'attendance_months', ym, 'classes', classId);
+          var classRecords = (this._attendanceMonths[ym] || []).filter(function(a) {
+            return String(a.class) === String(record.class);
+          });
+          await window.firestore.setDoc(docRef, { records: classRecords });
+        }
+        await this.save(true);
+        return true;
+      } catch (err) {
+        console.error('[Attendance] Delete failed:', err);
+        return false;
+      }
+    }
+
+    return await this.save();
+  },
+
+  /* ===== FEES DUAL-READ / SINGLE-WRITE ===== */
+  loadFeesYear: async function(year) {
+    if (!year) {
+      year = String(new Date().getFullYear());
+    }
+    year = String(year);
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+
+    if (this._feesYears[year]) {
+      return this._feesYears[year];
+    }
+
+    // Dual-read: try reading from subcollection: tenant_data/{schoolId}/fees_years/{year}
+    // Dual-read: try reading from subcollection: tenant_data/{schoolId}/fees_years/{year}/months
+    try {
+      if (window.firestore && window.db) {
+        var monthsColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'fees_years', year, 'months');
+        var snap = await window.firestore.getDocs(monthsColl);
+        if (snap && !snap.empty) {
+          var transactions = [];
+          snap.forEach(function(docSnap) {
+            var data = docSnap.data() || {};
+            if (Array.isArray(data.transactions)) {
+              transactions = transactions.concat(data.transactions);
+            }
+          });
+          this._feesYears[year] = transactions;
+          this._mergeFeesIntoStore(year, transactions);
+          return transactions;
+        }
+
+        // Backward compatibility: check if un-sharded year document exists
+        var legacyDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', year);
+        var legacySnap = await window.firestore.getDoc(legacyDocRef);
+        if (legacySnap && legacySnap.exists()) {
+          var legData = legacySnap.data() || {};
+          var legTxns = Array.isArray(legData.transactions) ? legData.transactions : [];
+          this._feesYears[year] = legTxns;
+          this._mergeFeesIntoStore(year, legTxns);
+          return legTxns;
+        }
+      }
+    } catch (err) {
+      console.warn('[Fees] Error fetching fees_years/' + year + '/months:', err);
+    }
+
+    // Fallback: legacy array
+    var legacy = (this.store && this.store.fees) || [];
+    var matched = legacy.filter(function(f) { return f.date && String(f.date).startsWith(year); });
+    this._feesYears[year] = matched;
+    return matched;
+  },
+
+  _mergeFeesIntoStore: function(year, transactions) {
+    if (!this.store) return;
+    if (!this.store.fees) this.store.fees = [];
+    this.store.fees = this.store.fees.filter(function(f) {
+      return !(f.date && String(f.date).startsWith(year));
+    });
+    for (var i = 0; i < transactions.length; i++) {
+      this.store.fees.push(transactions[i]);
+    }
+  },
+
+  listenToFeesYear: function(year) {
+    if (!year) year = String(new Date().getFullYear());
+    year = String(year);
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    if (!this.isRestructured(currentSchoolId)) return;
+    if (this._feesListeners[year]) return;
+
+    if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
+      var self = this;
+      var monthsColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'fees_years', year, 'months');
+      var unsub = window.firestore.onSnapshot(monthsColl, function(snap) {
+        if (snap && !snap.empty) {
+          var transactions = [];
+          snap.forEach(function(docSnap) {
+            var data = docSnap.data() || {};
+            if (Array.isArray(data.transactions)) {
+              transactions = transactions.concat(data.transactions);
+            }
+          });
+          self._feesYears[year] = transactions;
+          self._mergeFeesIntoStore(year, transactions);
+          if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
+            window.FeesModule.render();
+          } else if (self.currentPage === 'dashboard') {
+            self.renderDashboard();
+          }
+        }
+      }, function(err) {
+        console.warn('[Fees Listener] error on ' + year + ':', err);
+      });
+      this._feesListeners[year] = unsub;
+    }
+  },
+
+  saveFeeTransaction: async function(txn) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var yr = String((txn && txn.date ? txn.date : new Date().toISOString()).slice(0, 4));
+    var mo = String((txn && txn.date ? txn.date : new Date().toISOString()).slice(5, 7)) || 'unknown';
+
+    if (!this.store.fees) this.store.fees = [];
+    var idx = this.store.fees.findIndex(function(f) { return f.id === txn.id; });
+    if (idx !== -1) {
+      this.store.fees[idx] = txn;
+    } else {
+      this.store.fees.push(txn);
+    }
+
+    if (!this._feesYears[yr]) {
+      this._feesYears[yr] = this.store.fees.filter(function(f) { return f.date && String(f.date).startsWith(yr); });
+    } else {
+      var yIdx = this._feesYears[yr].findIndex(function(f) { return f.id === txn.id; });
+      if (yIdx !== -1) {
+        this._feesYears[yr][yIdx] = txn;
+      } else {
+        this._feesYears[yr].push(txn);
+      }
+    }
+
+    // Single-write: If restructured, write targeted doc to fees_years/{yr}/months/{mo}
+    if (this.isRestructured(currentSchoolId)) {
+      try {
+        var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yr, 'months', mo);
+        var ymPrefix = yr + '-' + mo;
+        var monthTxns = (this._feesYears[yr] || []).filter(function(f) {
+          return f.date && String(f.date).startsWith(ymPrefix);
+        });
+        var saveFn = () => window.firestore.setDoc(docRef, { transactions: monthTxns });
+        var success = await this.saveWithRetry(saveFn);
+        if (success) {
+          console.log('[Fees] Successfully saved transaction to fees_years/' + yr + '/months/' + mo);
+          if (this.store.feeActivityLog) {
+            await this.save(true);
+          }
+          return true;
+        }
+        return false;
+      } catch (err) {
+        console.error('[Fees] Save failed:', err);
+        this.showToast('Save failed: ' + (err.message || 'Check connection'), 'error');
+        return false;
+      }
+    }
+
+    return await this.save(true);
+  },
+
+  saveFeeTransactions: async function(txns) {
+    if (!Array.isArray(txns) || txns.length === 0) return true;
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var self = this;
+
+    if (!this.store.fees) this.store.fees = [];
+
+    // Group by yr and mo
+    var byYearMonth = {};
+    for (var i = 0; i < txns.length; i++) {
+      var txn = txns[i];
+      var yr = String((txn && txn.date ? txn.date : new Date().toISOString()).slice(0, 4));
+      var mo = String((txn && txn.date ? txn.date : new Date().toISOString()).slice(5, 7)) || 'unknown';
+      if (!byYearMonth[yr]) byYearMonth[yr] = {};
+      if (!byYearMonth[yr][mo]) byYearMonth[yr][mo] = [];
+      byYearMonth[yr][mo].push(txn);
+    }
+
+    if (this.isRestructured(currentSchoolId)) {
+      try {
+        var yearKeys = Object.keys(byYearMonth);
+        for (var y = 0; y < yearKeys.length; y++) {
+          var yKey = yearKeys[y];
+          if (!self._feesYears[yKey]) {
+            self._feesYears[yKey] = self.store.fees.filter(function(f) { return f.date && String(f.date).startsWith(yKey); });
+          }
+          var monthKeys = Object.keys(byYearMonth[yKey]);
+          for (var m = 0; m < monthKeys.length; m++) {
+            var mKey = monthKeys[m];
+            var newItems = byYearMonth[yKey][mKey];
+            for (var k = 0; k < newItems.length; k++) {
+              var foundIdx = self._feesYears[yKey].findIndex(function(f) { return f.id === newItems[k].id; });
+              if (foundIdx !== -1) {
+                self._feesYears[yKey][foundIdx] = newItems[k];
+              } else {
+                self._feesYears[yKey].push(newItems[k]);
+              }
+            }
+            var ymPrefix = yKey + '-' + mKey;
+            var monthTxns = self._feesYears[yKey].filter(function(f) {
+              return f.date && String(f.date).startsWith(ymPrefix);
+            });
+            var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yKey, 'months', mKey);
+            await window.firestore.setDoc(docRef, { transactions: monthTxns });
+          }
+        }
+        console.log('[Fees] Bulk saved ' + txns.length + ' transactions across months.');
+        if (self.store.feeActivityLog) {
+          await self.save(true);
+        }
+        return true;
+      } catch (err) {
+        console.error('[Fees] Bulk save failed:', err);
+        return false;
+      }
+    }
+
+    return await this.save();
+  },
+
+  deleteFeeTransaction: async function(txnId, txnDate) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var yr = txnDate ? String(txnDate).slice(0, 4) : '';
+    var mo = txnDate ? String(txnDate).slice(5, 7) : 'unknown';
+
+    this.store.fees = (this.store.fees || []).filter(function(f) {
+      if (f.id === txnId) {
+        if (!yr && f.date) yr = String(f.date).slice(0, 4);
+        if (mo === 'unknown' && f.date) mo = String(f.date).slice(5, 7) || 'unknown';
+        return false;
+      }
+      return true;
+    });
+
+    if (yr && this._feesYears[yr]) {
+      this._feesYears[yr] = this._feesYears[yr].filter(function(f) { return f.id !== txnId; });
+    }
+
+    if (this.isRestructured(currentSchoolId)) {
+      try {
+        if (yr) {
+          var ymPrefix = yr + '-' + mo;
+          var monthTxns = (this._feesYears[yr] || []).filter(function(f) {
+            return f.date && String(f.date).startsWith(ymPrefix);
+          });
+          var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yr, 'months', mo);
+          await window.firestore.setDoc(docRef, { transactions: monthTxns });
+        }
+        return true;
+      } catch (err) {
+        console.error('[Fees] Delete failed:', err);
+        return false;
+      }
+    }
+
+    return await this.save();
+  },
+
+  /* ===== EXAM MARKS DUAL-READ / SINGLE-WRITE ===== */
+  loadExamMarksTerm: async function(termId) {
+    if (!termId) return {};
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+
+    if (this.store.examMarks && this.store.examMarks[termId] && Object.keys(this.store.examMarks[termId]).length > 0) {
+      return this.store.examMarks[termId];
+    }
+
+    // Dual-read: try reading from subcollection: tenant_data/{schoolId}/exam_marks/{termId}
+    try {
+      if (window.firestore && window.db) {
+        var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
+        var snap = await window.firestore.getDoc(docRef);
+        if (snap && snap.exists()) {
+          var termData = snap.data() || {};
+          if (!this.store.examMarks) this.store.examMarks = {};
+          this.store.examMarks[termId] = termData;
+          return termData;
+        }
+      }
+    } catch (err) {
+      console.warn('[Exam Marks] Error fetching exam_marks/' + termId + ':', err);
+    }
+
+    // Fallback: legacy examMarks object on store
+    if (!this.store.examMarks) this.store.examMarks = {};
+    return this.store.examMarks[termId] || {};
+  },
+
+  deleteExamMarksTerm: async function(termId) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+
+    if (this.store.examMarks && this.store.examMarks[termId]) {
+      delete this.store.examMarks[termId];
+    }
+
+    if (this.isRestructured(currentSchoolId)) {
+      try {
+        if (window.firestore && window.firestore.deleteDoc) {
+          var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
+          await window.firestore.deleteDoc(docRef);
+          console.log('[Exam Marks] Successfully deleted term doc: exam_marks/' + termId);
+        }
+        await this.save(true);
+        return true;
+      } catch (err) {
+        console.error('[Exam Marks] Delete term failed:', err);
+        return false;
+      }
+    }
+
+    return await this.save();
+  },
+
   saveMarks: async function(termId, classId, sectionId, studentId, markEntry) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
@@ -356,18 +954,45 @@ window.SchoolApp = {
     }
     try {
       var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+
+      // Update in-memory store
+      if (!this.store.examMarks) this.store.examMarks = {};
+      if (!this.store.examMarks[termId]) this.store.examMarks[termId] = {};
+      if (!this.store.examMarks[termId][classId]) this.store.examMarks[termId][classId] = {};
+      if (!this.store.examMarks[termId][classId][sectionId]) this.store.examMarks[termId][classId][sectionId] = {};
+      this.store.examMarks[termId][classId][sectionId][studentId] = markEntry;
+
+      // Restructured write path -> tenant_data/{schoolId}/exam_marks/{termId}
+      if (this.isRestructured(currentSchoolId)) {
+        const termDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
+        const markSubPath = classId + '.' + sectionId + '.' + studentId;
+        console.log('[saveMarks:subcollection] path:', 'exam_marks/' + termId + ' -> ' + markSubPath);
+        try {
+          await window.firestore.updateDoc(termDocRef, { [markSubPath]: markEntry });
+          console.log('[saveMarks:subcollection] updateDoc SUCCESS');
+        } catch (updateErr) {
+          console.warn('[saveMarks:subcollection] updateDoc failed, retrying setDoc merge...');
+          var nested = {};
+          nested[classId] = {};
+          nested[classId][sectionId] = {};
+          nested[classId][sectionId][studentId] = markEntry;
+          await window.firestore.setDoc(termDocRef, nested, { merge: true });
+          console.log('[saveMarks:subcollection] setDoc merge SUCCESS');
+        }
+        return true;
+      }
+
+      // Legacy write path -> tenant_data/{schoolId}
       const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
       const markPath = 'examMarks.' + termId + '.' + classId + '.' + sectionId + '.' + studentId;
 
-      console.log('[saveMarks] path:', markPath);
+      console.log('[saveMarks:legacy] path:', markPath);
 
       try {
-        // Attempt 1: targeted updateDoc (fastest path)
         await window.firestore.updateDoc(docRef, { [markPath]: markEntry });
-        console.log('[saveMarks] updateDoc SUCCESS');
+        console.log('[saveMarks:legacy] updateDoc SUCCESS');
       } catch (updateErr) {
-        console.warn('[saveMarks] updateDoc failed (' + (updateErr.code || updateErr.message) + '), retrying with setDoc merge...');
-        // Attempt 2: setDoc with merge (works even if sub-path doesn't exist yet)
+        console.warn('[saveMarks:legacy] updateDoc failed (' + (updateErr.code || updateErr.message) + '), retrying with setDoc merge...');
         var nested = {};
         nested['examMarks'] = {};
         nested['examMarks'][termId] = {};
@@ -375,10 +1000,9 @@ window.SchoolApp = {
         nested['examMarks'][termId][classId][sectionId] = {};
         nested['examMarks'][termId][classId][sectionId][studentId] = markEntry;
         await window.firestore.setDoc(docRef, nested, { merge: true });
-        console.log('[saveMarks] setDoc merge SUCCESS');
+        console.log('[saveMarks:legacy] setDoc merge SUCCESS');
       }
 
-      // Update localStorage cache
       try {
         const payload = JSON.parse(JSON.stringify(this.store));
         localStorage.setItem('cached_tenant_data_' + currentSchoolId, JSON.stringify(payload));
@@ -634,6 +1258,18 @@ window.SchoolApp = {
               if (!s.logoUrl && si.logoUrl) s.logoUrl = si.logoUrl;
             })();
 
+            // RESTORE ARCHITECTURE: If tenant is restructured, automatically load & listen
+            // to the current month's attendance and current year's fees
+            if (self.isRestructured(activeSchoolId)) {
+              var currentYM = new Date().toISOString().slice(0, 7);
+              var currentYr = String(new Date().getFullYear());
+              self.loadAttendanceMonth(currentYM).then(function() {
+                self.listenToAttendanceMonth(currentYM);
+              });
+              self.loadFeesYear(currentYr).then(function() {
+                self.listenToFeesYear(currentYr);
+              });
+            }
             if (self.currentPage && firstResolveCalled) {
               console.log("Auto-refreshing active page: " + self.currentPage);
               if (self.currentPage === 'dashboard') {

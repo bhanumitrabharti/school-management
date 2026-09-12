@@ -1914,7 +1914,13 @@
     // Filter selectors
     var setupTerm = document.getElementById('setup-filter-term');
     if (setupTerm) {
-      setupTerm.addEventListener('change', function() { state.examTerm = this.value; render(); });
+      setupTerm.addEventListener('change', async function() {
+        state.examTerm = this.value;
+        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
+          await SchoolApp.loadExamMarksTerm(this.value);
+        }
+        render();
+      });
     }
     var setupClass = document.getElementById('setup-filter-class');
     if (setupClass) {
@@ -1923,7 +1929,13 @@
 
     var marksTerm = document.getElementById('marks-filter-term');
     if (marksTerm) {
-      marksTerm.addEventListener('change', function() { state.examTerm = this.value; render(); });
+      marksTerm.addEventListener('change', async function() {
+        state.examTerm = this.value;
+        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
+          await SchoolApp.loadExamMarksTerm(this.value);
+        }
+        render();
+      });
     }
     var marksClass = document.getElementById('marks-filter-class');
     if (marksClass) {
@@ -1940,7 +1952,13 @@
 
     var resultsTerm = document.getElementById('results-filter-term');
     if (resultsTerm) {
-      resultsTerm.addEventListener('change', function() { state.examTerm = this.value; render(); });
+      resultsTerm.addEventListener('change', async function() {
+        state.examTerm = this.value;
+        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
+          await SchoolApp.loadExamMarksTerm(this.value);
+        }
+        render();
+      });
     }
     var resultsClass = document.getElementById('results-filter-class');
     if (resultsClass) {
@@ -1953,7 +1971,13 @@
 
     var reportsTerm = document.getElementById('reports-filter-term');
     if (reportsTerm) {
-      reportsTerm.addEventListener('change', function() { state.examTerm = this.value; render(); });
+      reportsTerm.addEventListener('change', async function() {
+        state.examTerm = this.value;
+        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
+          await SchoolApp.loadExamMarksTerm(this.value);
+        }
+        render();
+      });
     }
     var reportsClass = document.getElementById('reports-filter-class');
     if (reportsClass) {
@@ -2183,7 +2207,9 @@
               delete SchoolApp.store.examSubjects[id];
             }
             // Purge marks
-            if (SchoolApp.store.examMarks) {
+            if (typeof SchoolApp.deleteExamMarksTerm === 'function') {
+              await SchoolApp.deleteExamMarksTerm(id);
+            } else if (SchoolApp.store.examMarks) {
               delete SchoolApp.store.examMarks[id];
             }
 

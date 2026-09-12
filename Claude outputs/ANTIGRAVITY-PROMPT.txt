@@ -1,0 +1,25 @@
+Read ANTIGRAVITY-TASKS/FIRESTORE-RESTRUCTURE-BRIEF.md in this project folder in full before doing anything else. It was written by Claude (the project's architect/auditor) and contains the complete design, schema, safety rules, and rollout sequence for a Firestore restructuring task. Follow it exactly — do not redesign the schema or invent a different approach.
+
+Before writing any code, first tell me: what were you last working on / assigned in this project (school-management)? I need to know this to make sure your existing work and this new task don't overlap or conflict. List it out, then wait for my confirmation before proceeding if there's any overlap with the Firestore restructuring work described in the brief. If there's no overlap, proceed directly.
+
+Task summary (full detail is in the brief file — this is just the headline):
+- Three fields inside tenant_data/{schoolId} — `attendance`, `fees`, `examMarks` — grow unboundedly and are pushing schools toward Firestore's 1MB document limit, and are also why every save feels slow (the whole document gets rewritten on every small edit).
+- Move these three into sub-collections: attendance_months/{YYYY-MM}, fees_years/{YYYY}, exam_marks/{termId}. Everything else (students, teachers, settings, config) stays exactly where it is — out of scope.
+- A ready-to-run, additive-only migration script is already provided: ANTIGRAVITY-TASKS/migrate-tenant-to-subcollections.js. It never modifies or deletes the original tenant document — it only copies data into new sub-collection docs and verifies the counts match. Read it, don't rewrite the migration approach.
+- The app code changes needed (dual-read with fallback to the old flat fields, single-write to the new sub-collection going forward) are specified in section 5 of the brief, with exact file names and touchpoint counts: js/attendance.js, js/fees.js, js/exams.js, js/teachers.js, js/app.js.
+
+Non-negotiable safety rules (from the project owner, zero exceptions):
+1. Do ALL development and testing against school_id `svm_bokaro_001` (the demo tenant at svm-bokaro.ctrlshifts.in) ONLY. It is confirmed safe to break/reset.
+2. Do NOT run the migration script, or deploy any code that writes to the new schema, against any of the 3 live schools — kkgs.ctrlshifts.in, svm.ctrlshifts.in (note: different from svm-bokaro), or ips.ctrlshifts.in — until I (Bhanu) explicitly say go, one school at a time, with a fresh backup taken immediately before each one.
+3. Never delete or modify the legacy `attendance` / `fees` / `examMarks` fields on any tenant document as part of this work — the migration is additive-only, old fields stay in place for now.
+4. If anything about the data shape doesn't match what the brief describes, or you're unsure about an edge case, stop and flag it to me rather than guessing.
+
+What to do, in order:
+1. Answer the overlap question above first.
+2. Set up the migration script (npm install firebase-admin, and tell me exactly how to generate/where to place the Firebase service account key — that's the one step only I can do since it needs my Google login).
+3. Implement the dual-read/single-write compatibility layer for attendance first, test it end-to-end in the browser against svm_bokaro_001 (mark attendance today, reload, confirm; check a past month still displays correctly).
+4. Do the same for fees, then exam marks, then teacher attendance — same order as section 5 of the brief.
+5. Run the migration script against svm_bokaro_001, verify it reports all counts matching.
+6. Give me a summary: what you implemented, what you tested and the results, any issues or edge cases you hit, and confirmation that nothing was touched on kkgs/svm(live)/ips. I'll take that summary back to Claude to review before we touch any live school.
+
+Do not work on anything outside this scope (no touching Super Admin credentials, access control, or any other part of the app) unless I ask separately.
