@@ -74,7 +74,12 @@
             }
 
             var data = new Uint8Array(e.target.result);
-            var workbook = XLSX.read(data, { type: 'array' });
+            // cellDates:true — if a school's spreadsheet app auto-converted a
+            // typed date (e.g. Date of Birth) into an actual Excel date cell,
+            // this returns it as a JS Date object instead of a raw numeric
+            // serial (e.g. 43235), which importer code can then normalize
+            // properly instead of storing the meaningless number as text.
+            var workbook = XLSX.read(data, { type: 'array', cellDates: true });
             var sheetName = workbook.SheetNames[0];
             var sheet = workbook.Sheets[sheetName];
             var jsonData = XLSX.utils.sheet_to_json(sheet, { defval: '' });

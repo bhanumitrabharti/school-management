@@ -8,3 +8,6 @@ node_modules/
 # Firebase Console generates (e.g. ctrl-shift-solutions-firebase-adminsdk-*.json).
 service-account-key.json
 *firebase-adminsdk*.json
+
+# Local backup dumps
+backups/
