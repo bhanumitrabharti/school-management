@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v6 to take over enhanced class normalization logic.
-const CACHE_NAME = 'erp-cache-v6';
+// Bumped to v7 to take over Pro paywall pause (all features unlocked by default).
+const CACHE_NAME = 'erp-cache-v7';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

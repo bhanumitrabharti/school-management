@@ -1635,6 +1635,13 @@ window.SchoolApp = {
   },
 
   checkFeatureAccess: function(page) {
+    // PAUSED (2026-09-12): Per-school Pro/locked-feature paywall is switched
+    // off for now — every school gets every feature by default until this is
+    // explicitly turned back on. The original allowed_features check is kept
+    // below, unreachable, so re-enabling later is a one-line revert (delete
+    // this early return) rather than rebuilding the gating logic from scratch.
+    return true;
+
     if (page === 'admin') return true;
     if (page === 'teacher-attendance') {
       return true;
