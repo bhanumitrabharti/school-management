@@ -3,7 +3,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function notWiping(fieldName) {
-      return !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
+      return (request.resource.data.settings != null && request.resource.data.settings.restructured == true) ||
+             !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
     match /tenant_data/{schoolId} {
