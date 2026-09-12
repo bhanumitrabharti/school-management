@@ -762,6 +762,30 @@
     return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // FIX: older/most schools still store settings.sections as ONE flat array
+  // shared by every class (e.g. ['A','B','C']) — that's what getInitialStore()
+  // and Reset Settings both still create. The Add/Remove Section and Add/
+  // Delete Class handlers below were written assuming a per-class map
+  // ({ class: [...] }) instead, without ever migrating existing schools —
+  // so on a flat-array school, Remove Section could crash for a numeric
+  // class name (e.g. settings.sections["1"] resolves to the string 'B', and
+  // .filter() on a string throws), and Add Section / Add Class silently
+  // replaced the whole shared list with an empty per-class map, wiping every
+  // other class's sections. This converts a flat array into an equivalent
+  // per-class map ONE TIME, in place, giving every existing class the exact
+  // same sections it already had — nothing changes for the school until they
+  // actually edit something after this.
+  function normalizeSectionsToMap(settings) {
+    if (Array.isArray(settings.sections)) {
+      var shared = settings.sections;
+      var map = {};
+      (settings.classes || []).forEach(function(c) { map[c] = shared.slice(); });
+      settings.sections = map;
+    } else if (!settings.sections || typeof settings.sections !== 'object') {
+      settings.sections = {};
+    }
+  }
+
   function renderSettingsClasses() {
     var container = document.getElementById('settings-classes-container');
     if (!container) return;
@@ -919,11 +943,10 @@
         }
         var c = this.getAttribute('data-class');
         var sec = this.getAttribute('data-section');
-        
+
         SchoolApp.createRestorePoint('Backup before removing section ' + sec + ' from class ' + c);
-        if (typeof settings.sections === 'object') {
-          settings.sections[c] = (settings.sections[c] || []).filter(function(s) { return s !== sec; });
-        }
+        normalizeSectionsToMap(settings);
+        settings.sections[c] = (settings.sections[c] || []).filter(function(s) { return s !== sec; });
         
         SchoolApp.showLoader('Removing section...');
         var success = await SchoolApp.save(true);
@@ -946,9 +969,7 @@
         var sec = prompt("Enter section name (e.g. A, B, C):");
         if (sec) {
           sec = sec.trim().toUpperCase();
-          if (typeof settings.sections !== 'object' || Array.isArray(settings.sections)) {
-            settings.sections = {};
-          }
+          normalizeSectionsToMap(settings);
           if (!settings.sections[c]) settings.sections[c] = [];
           if (settings.sections[c].indexOf(sec) !== -1) {
             SchoolApp.showToast('Section already exists.', 'error');
@@ -987,9 +1008,8 @@
 
         SchoolApp.createRestorePoint('Backup before deleting class ' + c);
         settings.classes = (settings.classes || []).filter(function(cls) { return cls !== c; });
-        if (typeof settings.sections === 'object') {
-          delete settings.sections[c];
-        }
+        normalizeSectionsToMap(settings);
+        delete settings.sections[c];
         if (settings.feeStructure) {
           delete settings.feeStructure[c];
         }
@@ -2289,7 +2309,7 @@
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">info</span> System Information</h3></div><div class="card-body">';
 
     var info = [
-      { label: 'Application', value: 'Shishu Vikash Mandir v1.0.0' },
+      { label: 'Application', value: 'Paathshala ERP v1.0.0' },
       { label: 'Build Date', value: SchoolApp.formatDate(new Date().toISOString().split('T')[0]) },
       { label: 'Browser', value: navigator.userAgent.split('(')[0].trim() },
       { label: 'Screen Resolution', value: screen.width + ' × ' + screen.height },
@@ -2587,7 +2607,7 @@
     }
     
     var settings = SchoolApp.store.settings || {};
-    var schoolName = settings.schoolName || "Shishu Vikash Mandir";
+    var schoolName = settings.schoolName || "";
     var schoolPhone = settings.phone || "";
     var schoolEmail = settings.email || "";
     
@@ -3191,9 +3211,7 @@
         
         SchoolApp.createRestorePoint('Backup before adding class ' + c);
         settings.classes.push(c);
-        if (typeof settings.sections !== 'object' || Array.isArray(settings.sections)) {
-          settings.sections = {};
-        }
+        normalizeSectionsToMap(settings);
         settings.sections[c] = ["A"]; // default A
         
         if (!settings.feeStructure) settings.feeStructure = {};
@@ -3629,12 +3647,12 @@
       resetSettingsBtn.addEventListener('click', function() {
         SchoolApp.showConfirm('Reset all settings to defaults?', function() {
           SchoolApp.store.settings = {
-            schoolName: 'Shishu Vikash Mandir',
+            schoolName: '',
             academicYear: '2025-2026',
-            address: '123 Education Lane, Knowledge City, Karnataka 560001',
-            phone: '+91 98765 43210',
-            email: 'bhanu.bharti@ctrlshifts.in',
-            classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+            address: '',
+            phone: '',
+            email: '',
+            classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
             sections: ['A','B','C'],
             attendanceTime: '09:00',
             theme: 'dark',

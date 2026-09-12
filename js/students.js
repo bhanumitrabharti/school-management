@@ -794,14 +794,18 @@
         class: '1',
         section: 'A',
         rollNumber: '1',
-        dateOfBirth: '2018-05-15',
+        // Shown as DD-MM-YYYY — the format Indian schools commonly write dates
+        // in by hand. Import parsing (parseFlexibleDate below) accepts this,
+        // plain YYYY-MM-DD (e.g. from a re-imported Export), and Excel's own
+        // date cells, so either convention works regardless of which one a
+        // school actually types into the sheet.
+        dateOfBirth: '15-05-2018',
         gender: 'Male',
         parentName: 'Rajesh Kumar',
         parentPhone: '9876543210',
         parentEmail: 'rajesh@example.com',
         aadhaarNumber: '',
-        address: 'Bokaro Steel City, Jharkhand',
-        admissionDate: '2024-04-01',
+        admissionDate: '01-04-2024',
         status: 'Active'
       },
       {
@@ -809,14 +813,14 @@
         class: '1',
         section: 'A',
         rollNumber: '2',
-        dateOfBirth: '2018-08-20',
+        dateOfBirth: '20-08-2018',
         gender: 'Female',
         parentName: 'Sunil Sharma',
         parentPhone: '9876543211',
         parentEmail: 'sunil@example.com',
         aadhaarNumber: '',
         address: 'Sector 4, Bokaro, Jharkhand',
-        admissionDate: '2024-04-01',
+        admissionDate: '01-04-2024',
         status: 'Active'
       }
     ];
@@ -895,6 +899,47 @@
 
   function escapeAttr(str) {
     return escapeHTML(str);
+  }
+
+  // Normalizes a Date-of-Birth / Admission Date value from an imported sheet
+  // into the app's internal YYYY-MM-DD storage format (required by the
+  // <input type="date"> fields on the Add/Edit Student form — anything else
+  // in that value would silently show blank there). Handles:
+  //  - an actual JS Date object (Excel cell typed as a date, read with
+  //    cellDates:true)
+  //  - a raw Excel serial-date number (safety net if cellDates wasn't applied)
+  //  - "DD-MM-YYYY" / "DD/MM/YYYY" — the format Indian schools commonly write
+  //    by hand (what the Template's sample rows now use)
+  //  - "YYYY-MM-DD" / "YYYY/MM/DD" — already-internal format (e.g. a
+  //    re-imported Export)
+  // Anything else is returned unchanged rather than dropped, so an unusual
+  // format doesn't silently erase data — it just won't auto-normalize.
+  function parseFlexibleDate(val) {
+    if (val === undefined || val === null || val === '') return '';
+
+    function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
+    function toISO(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      return toISO(val);
+    }
+
+    if (typeof val === 'number' && isFinite(val) && val > 20000 && val < 60000) {
+      // Excel's date epoch is 1899-12-30 (accounts for its leap-year quirk)
+      var fromSerial = new Date(Date.UTC(1899, 11, 30) + val * 86400000);
+      return toISO(fromSerial);
+    }
+
+    var str = String(val).trim();
+    if (!str) return '';
+
+    var iso = str.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+    if (iso) return iso[1] + '-' + pad2(iso[2]) + '-' + pad2(iso[3]);
+
+    var dmy = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+    if (dmy) return dmy[3] + '-' + pad2(dmy[2]) + '-' + pad2(dmy[1]);
+
+    return str;
   }
 
   function sanitizeHeader(header) {
@@ -1084,7 +1129,9 @@
             }
           }
           if (val !== undefined && val !== null) {
-            var strVal = String(val).trim();
+            var strVal = (targetField === 'dateOfBirth' || targetField === 'admissionDate')
+              ? parseFlexibleDate(val)
+              : String(val).trim();
             if (strVal !== '') student[targetField] = strVal;
           }
         });

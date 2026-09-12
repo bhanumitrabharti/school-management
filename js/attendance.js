@@ -1086,7 +1086,7 @@
       return;
     }
 
-    var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'Shishu Vikash Mandir';
+    var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || '';
     var message = buildAbsenceMessage(student, className, sectionName, date, schoolName);
 
     var sent = SchoolApp.shareOnWhatsApp(parentMobile, message);

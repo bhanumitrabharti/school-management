@@ -59,11 +59,18 @@ window.SchoolApp = {
     schools: [],
     currentSchoolId: '',
     settings: {
-      schoolName: 'Shishu Vikash Mandir',
+      // FIX: these 4 fields used to default to Bhanu's own real school's name,
+      // address, phone AND personal email. Any brand-new tenant that hadn't
+      // yet filled in Settings — or any load that hit this placeholder before
+      // real Firestore data arrived — could show another real customer's
+      // identity, or Bhanu's own personal email, as "their" school's contact
+      // info. Blank is the only safe default; the UI already treats these as
+      // not-yet-configured rather than showing a placeholder value.
+      schoolName: '',
       academicYear: '2025-2026',
-      address: '123 Education Lane, Knowledge City, Karnataka 560001',
-      phone: '+91 98765 43210',
-      email: 'bhanu.bharti@ctrlshifts.in',
+      address: '',
+      phone: '',
+      email: '',
       classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
       sections: ['A','B','C'],
       attendanceTime: '09:00',
@@ -116,11 +123,13 @@ window.SchoolApp = {
       schools: [],
       currentSchoolId: '',
       settings: {
-        schoolName: 'Shishu Vikash Mandir',
+        // FIX: same identity-leak default as SchoolApp.store above — blank is
+        // the only safe fallback here too.
+        schoolName: '',
         academicYear: '2025-2026',
-        address: '123 Education Lane, Knowledge City, Karnataka 560001',
-        phone: '+91 98765 43210',
-        email: 'bhanu.bharti@ctrlshifts.in',
+        address: '',
+        phone: '',
+        email: '',
         classes: ['Nursery', 'LKG', 'UKG', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'],
         sections: ['A','B','C'],
         attendanceTime: '09:00',
@@ -1236,7 +1245,6 @@ window.SchoolApp = {
                 self.listenToFeesYear(currentYr);
               });
             }
-
             if (self.currentPage && firstResolveCalled) {
               console.log("Auto-refreshing active page: " + self.currentPage);
               if (self.currentPage === 'dashboard') {
@@ -1302,10 +1310,16 @@ window.SchoolApp = {
   updateBrandUI: function() {
     var settings = this.store.settings || {};
     var info = settings.schoolInfo || {};
-    var schoolName = info.name || settings.schoolName || 'Shishu Vikash Mandir';
+    // FIX: this used to fall back to the literal name of one specific real
+    // customer ("Shishu Vikash Mandir") whenever a tenant's name hadn't
+    // resolved yet — meaning every OTHER school could end up with that
+    // school's name shown in their own tab title. Fall back to nothing
+    // (product name only) instead, never another customer's identity.
+    var schoolName = info.name || settings.schoolName || '';
 
-    // Update title
-    document.title = schoolName + " - School Management System";
+    // Update title — "Paathshala ERP | <School Name>", or just "Paathshala ERP"
+    // before the school name has loaded.
+    document.title = schoolName ? ("Paathshala ERP | " + schoolName) : "Paathshala ERP";
 
     // Update text names
     document.querySelectorAll('.login-title').forEach(function(el) {
@@ -1575,7 +1589,7 @@ window.SchoolApp = {
     // unpredictable stretch. Force one direct, uncached server read of the
     // tenant document specifically for the auth check, so login always
     // validates against the true current password.
-    if (schoolData && schoolData.currentSchoolId && window.firestore.getDocFromServer) {
+    if (schoolData && schoolData.currentSchoolId && window.firestore && window.firestore.getDocFromServer) {
       try {
         var freshSnap = await window.firestore.getDocFromServer(window.firestore.doc(window.db, 'tenant_data', schoolData.currentSchoolId));
         if (freshSnap.exists()) {

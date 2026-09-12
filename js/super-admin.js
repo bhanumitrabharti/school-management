@@ -1978,7 +1978,12 @@ const db = getFirestore(app);
                 }
 
                 // 2. settings.sections
-                if (tenantData.settings && tenantData.settings.sections && tenantData.settings.sections[oldClass]) {
+                // Skip when sections is still the legacy flat shared array (not a
+                // per-class map) — renaming a class doesn't need to touch it (the
+                // same shared list still applies to the renamed class), and
+                // indexing/deleting into it by class name could corrupt the array
+                // if the class name happens to look like a numeric index.
+                if (tenantData.settings && tenantData.settings.sections && !Array.isArray(tenantData.settings.sections) && tenantData.settings.sections[oldClass]) {
                     tenantData.settings.sections[cleanNew] = tenantData.settings.sections[oldClass];
                     delete tenantData.settings.sections[oldClass];
                 }
@@ -2519,6 +2524,22 @@ const db = getFirestore(app);
                         
                         formClasses = s.classes || [];
                         formSections = s.sections || {};
+                        // FIX: most live schools still store settings.sections as ONE
+                        // flat array shared by every class (e.g. ['A','B','C']) — the
+                        // Class Structure editor below (renderClassesSection) assumes a
+                        // per-class map ({ class: [...] }) and never handled the flat
+                        // array, so opening this modal for such a school crashed with
+                        // "sections.forEach is not a function" (e.g. for a class named
+                        // "1", formSections["1"] resolved to the array's index-1 element
+                        // — a single letter string — and .forEach() on a string throws).
+                        // Converting once here gives every existing class the exact same
+                        // sections it already had; nothing changes for the school unless
+                        // this modal is actually saved.
+                        if (Array.isArray(formSections)) {
+                            var sharedSections = formSections;
+                            formSections = {};
+                            formClasses.forEach(function(c) { formSections[c] = sharedSections.slice(); });
+                        }
                         formFeeStructure = s.feeStructure || {};
                         formExtraCharges = s.extraCharges || [];
                         
