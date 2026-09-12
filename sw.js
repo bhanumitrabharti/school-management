@@ -4,9 +4,8 @@
  * ===================================================
  */
 
-// Bumped from v2 -> v3 to immediately evict old cached code and force all clients
-// to take over the latest safe code.
-const CACHE_NAME = 'erp-cache-v3';
+// Bumped to v4 to evict cached app.js and take over latest fee reconciliation logic.
+const CACHE_NAME = 'erp-cache-v4';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

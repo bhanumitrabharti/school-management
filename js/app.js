@@ -54,7 +54,7 @@ window.SchoolApp = {
     },
     marks: [],
     notices: [],
-    lastAutomatedFeeRun: '2026-04',
+    lastAutomatedFeeRun: '',
     notifications: [],
     schools: [],
     currentSchoolId: '',
@@ -118,7 +118,7 @@ window.SchoolApp = {
       },
       marks: [],
       notices: [],
-      lastAutomatedFeeRun: '2026-04',
+      lastAutomatedFeeRun: '',
       notifications: [],
       schools: [],
       currentSchoolId: '',
@@ -2583,7 +2583,7 @@ window.SchoolApp = {
         status: 'published'
       }
     ];
-    this.store.lastAutomatedFeeRun = '2026-04';
+    this.store.lastAutomatedFeeRun = '';
   },
 
   // ---------- Dashboard ----------
