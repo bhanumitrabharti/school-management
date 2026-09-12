@@ -2132,7 +2132,7 @@
     // Export section
     html += '<div><h4 style="margin-bottom:12px;color:var(--accent-primary-light)"><span class="material-icons-round" style="font-size:18px;vertical-align:middle">download</span> Export Data</h4>';
     html += '<div style="display:flex;flex-direction:column;gap:8px">';
-    html += '<button class="btn btn-secondary w-full" id="export-json-btn"><span class="material-icons-round">code</span> Export Full Backup (JSON)</button>';
+    html += '<button class="btn btn-secondary w-full" id="export-json-btn"><span class="material-icons-round">code</span> Export Complete Backup (Students, Fees, Exams, Attendance — everything)</button>';
     html += '<button class="btn btn-secondary w-full" id="export-students-btn"><span class="material-icons-round">groups</span> Export Students (Excel)</button>';
     html += '<button class="btn btn-secondary w-full" id="export-teachers-btn"><span class="material-icons-round">person</span> Export Teachers (Excel)</button>';
     html += '<button class="btn btn-secondary w-full" id="export-attendance-btn"><span class="material-icons-round">fact_check</span> Export Attendance (Excel)</button>';
@@ -3737,8 +3737,14 @@
     if (exportJsonBtn) {
       exportJsonBtn.addEventListener('click', function() {
         var dateStr = new Date().toISOString().split('T')[0];
-        SchoolApp.utils.downloadJSON(SchoolApp.store, 'shishuvikash_backup_' + dateStr + '.json');
-        SchoolApp.showToast('Full backup exported.', 'success');
+        // Was hardcoded to "shishuvikash_backup_..." for every school — every
+        // other school's export carried SVM's name in the filename. Derive it
+        // from the actual current school instead.
+        var settings = (SchoolApp.store && SchoolApp.store.settings) || {};
+        var schoolLabel = (settings.schoolInfo && settings.schoolInfo.name) || settings.schoolName || SchoolApp.store.currentSchoolId || 'school';
+        var safeLabel = String(schoolLabel).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'school';
+        SchoolApp.utils.downloadJSON(SchoolApp.store, safeLabel + '_backup_' + dateStr + '.json');
+        SchoolApp.showToast('Complete backup exported — includes students, fees, exams, marks and attendance.', 'success');
       });
     }
 

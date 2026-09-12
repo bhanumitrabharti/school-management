@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -17,7 +17,7 @@ export const auth = getAuth(app);
 // Expose Firestore and Auth globally for any non-module components
 window.db = db;
 window.auth = auth;
-window.firestore = { doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, collection, getDocs, onSnapshot };
 window.openStudentProfile = function(studentId) {
   if (window.SchoolApp && typeof window.SchoolApp.openStudentProfile === 'function') {
     window.SchoolApp.openStudentProfile(studentId);
@@ -578,6 +578,28 @@ window.SchoolApp = {
               self.store.settings.schoolInfo.udiseCode = '';
             }
 
+            // SYNC FIX: Super Admin onboarding/edit writes settings.schoolInfo.*
+            // (nested). The School Admin Settings form reads/writes the FLAT
+            // fields (settings.schoolName, settings.phone, etc). Without this,
+            // a school onboarded (or last edited) from Super Admin shows a
+            // BLANK Settings form until the admin manually retypes everything
+            // that was already entered during onboarding. Backfill any missing
+            // flat field from schoolInfo — never overwrite a flat value the
+            // admin already set themselves.
+            (function syncFlatSettingsFromSchoolInfo() {
+              var si = self.store.settings.schoolInfo;
+              if (!si) return;
+              var s = self.store.settings;
+              if (!s.schoolName && si.name) s.schoolName = si.name;
+              if (!s.tagline && si.tagline) s.tagline = si.tagline;
+              if (!s.phone && si.phone) s.phone = si.phone;
+              if (!s.email && si.email) s.email = si.email;
+              if (!s.address && si.address) s.address = si.address;
+              if (!s.affiliation && si.affiliation) s.affiliation = si.affiliation;
+              if (!s.udiseCode && si.udiseCode) s.udiseCode = si.udiseCode;
+              if (!s.logoUrl && si.logoUrl) s.logoUrl = si.logoUrl;
+            })();
+
             if (self.currentPage && firstResolveCalled) {
               console.log("Auto-refreshing active page: " + self.currentPage);
               if (self.currentPage === 'dashboard') {
@@ -904,7 +926,28 @@ window.SchoolApp = {
     this.showLoader('Loading...');
     // ALWAYS load fresh from Firestore first as source of truth
     await this.load(true);
-    const schoolData = this.store;
+    var schoolData = this.store;
+
+    // CREDENTIAL-CHECK FRESHNESS FIX: this.load() resolves on the first
+    // onSnapshot event for the tenant document, which can — after a very
+    // recent password change from Super Admin — briefly replay a cached
+    // version from the Firestore client SDK's own internal watch cache
+    // (a page-lifetime singleton) before the live update reconciles. That
+    // is fine for normal app usage, but for a LOGIN it means the OLD
+    // password can keep "working" (and the new one keep failing) for an
+    // unpredictable stretch. Force one direct, uncached server read of the
+    // tenant document specifically for the auth check, so login always
+    // validates against the true current password.
+    if (schoolData && schoolData.currentSchoolId && window.firestore && window.firestore.getDocFromServer) {
+      try {
+        var freshSnap = await window.firestore.getDocFromServer(window.firestore.doc(window.db, 'tenant_data', schoolData.currentSchoolId));
+        if (freshSnap.exists()) {
+          schoolData = Object.assign({}, schoolData, freshSnap.data());
+        }
+      } catch (freshErr) {
+        console.warn('Could not force a fresh server read for login (likely offline) — falling back to cached data:', freshErr && freshErr.code);
+      }
+    }
 
     let firebaseResult = null;
     let firebaseError = null;

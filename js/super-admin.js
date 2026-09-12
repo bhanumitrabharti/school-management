@@ -2751,6 +2751,18 @@ const db = getFirestore(app);
             data.schools[idx].allowed_features   = selectedFeatures;
             data.schools[idx].settings           = {
                 schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                // Also write the FLAT fields — the School Admin Settings page
+                // (admin.js) reads/writes settings.schoolName / .phone / etc
+                // directly, not settings.schoolInfo.*. Without these, a newly
+                // onboarded school's Settings form shows blank until the admin
+                // manually retypes everything already entered here.
+                schoolName: name,
+                tagline: tagline,
+                phone: phone,
+                email: email,
+                address: address,
+                affiliation: affiliation,
+                udiseCode: udiseCode,
                 adminUsername: adminUsername,
                 adminPassword: adminPasswordHashed,
                 adminEmail: adminEmail,
@@ -2792,7 +2804,11 @@ const db = getFirestore(app);
                     timetable: { settings: { startTime: "08:00", endTime: "14:00", totalPeriods: 8, lunchAfterPeriod: 4, lunchDuration: 30, satStartTime: "08:00", satEndTime: "12:30", satTotalPeriods: 6, satLunchAfterPeriod: 0 } },
                     marks: [],
                     notices: [],
-                    lastAutomatedFeeRun: '2026-04',
+                    // Was hardcoded to a fixed past month ('2026-04'), which made the
+                    // auto-fee engine think months had been missed and immediately
+                    // generate backdated dues the first time this fallback ever ran.
+                    // Use the real current month instead.
+                    lastAutomatedFeeRun: (function() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); })(),
                     notifications: [],
                     currentSchoolId: schoolId
                 };
@@ -2800,6 +2816,18 @@ const db = getFirestore(app);
                 // Merge settings
                 tenantData.settings = {
                     schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                // Also write the FLAT fields — the School Admin Settings page
+                // (admin.js) reads/writes settings.schoolName / .phone / etc
+                // directly, not settings.schoolInfo.*. Without these, a newly
+                // onboarded school's Settings form shows blank until the admin
+                // manually retypes everything already entered here.
+                schoolName: name,
+                tagline: tagline,
+                phone: phone,
+                email: email,
+                address: address,
+                affiliation: affiliation,
+                udiseCode: udiseCode,
                     adminUsername: adminUsername,
                     adminPassword: adminPasswordHashed,
                     adminEmail: adminEmail,
@@ -2853,6 +2881,18 @@ const db = getFirestore(app);
                 allowed_features: selectedFeatures,
                 settings: {
                     schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                // Also write the FLAT fields — the School Admin Settings page
+                // (admin.js) reads/writes settings.schoolName / .phone / etc
+                // directly, not settings.schoolInfo.*. Without these, a newly
+                // onboarded school's Settings form shows blank until the admin
+                // manually retypes everything already entered here.
+                schoolName: name,
+                tagline: tagline,
+                phone: phone,
+                email: email,
+                address: address,
+                affiliation: affiliation,
+                udiseCode: udiseCode,
                     adminUsername: adminUsername,
                     adminPassword: adminPasswordHashed,
                     adminEmail: adminEmail,
@@ -2897,6 +2937,18 @@ const db = getFirestore(app);
                 var tenantData = {
                     settings: {
                         schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                // Also write the FLAT fields — the School Admin Settings page
+                // (admin.js) reads/writes settings.schoolName / .phone / etc
+                // directly, not settings.schoolInfo.*. Without these, a newly
+                // onboarded school's Settings form shows blank until the admin
+                // manually retypes everything already entered here.
+                schoolName: name,
+                tagline: tagline,
+                phone: phone,
+                email: email,
+                address: address,
+                affiliation: affiliation,
+                udiseCode: udiseCode,
                         adminUsername: adminUsername,
                         adminPassword: adminPasswordHashed,
                         adminEmail: adminEmail,
