@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v7 to take over Pro paywall pause (all features unlocked by default).
-const CACHE_NAME = 'erp-cache-v7';
+// Bumped to v8 for timetable subjects dynamic fallback to settings.subjects.
+const CACHE_NAME = 'erp-cache-v8';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
