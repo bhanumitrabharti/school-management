@@ -2861,8 +2861,12 @@ const db = getFirestore(app);
                     // Keep compatibility settings
                     theme: (tenantData.settings && tenantData.settings.theme) || 'dark',
                     attendanceTime: (tenantData.settings && tenantData.settings.attendanceTime) || '09:00',
-                    academicYear: (tenantData.settings && tenantData.settings.academicYear) || '2025-2026'
+                    academicYear: (tenantData.settings && tenantData.settings.academicYear) || '2025-2026',
+                    restructured: (tenantData.settings && tenantData.settings.restructured !== undefined) ? tenantData.settings.restructured : true
                 };
+                if (tenantData.settings && tenantData.settings.restructured) {
+                    tenantData.restructured = true;
+                }
 
                 await setDoc(doc(db, 'tenant_data', schoolId), tenantData);
 
@@ -2925,8 +2929,10 @@ const db = getFirestore(app);
                     clientCanEdit: true,
                     theme: 'dark',
                     attendanceTime: '09:00',
-                    academicYear: '2025-2026'
-                }
+                    academicYear: '2025-2026',
+                    restructured: true
+                },
+                restructured: true
             };
 
             data.schools.push(newSchool);
@@ -2981,8 +2987,10 @@ const db = getFirestore(app);
                         clientCanEdit: true,
                         theme: 'dark',
                         attendanceTime: '09:00',
-                        academicYear: '2025-2026'
+                        academicYear: '2025-2026',
+                        restructured: true
                     },
+                    restructured: true,
                     students: [],
                     teachers: [],
                     attendance: [],
