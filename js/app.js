@@ -1500,34 +1500,55 @@ window.SchoolApp = {
     }
   },
 
-  runAutoFeeReconciliation: async function() {
-    try {
-      // Prevent running if database sync is not completed yet or if store is uninitialized
-      if (!this.store || !this.store.students || this.store.students.length === 0) return;
+  evaluateAutoFeeDues: function(options) {
+    options = options || {};
+    var evalDate = options.simulateDate ? new Date(options.simulateDate) : new Date();
+    if (isNaN(evalDate.getTime())) evalDate = new Date();
 
-      var today = new Date();
-      var currentYear = today.getFullYear();
-      var currentMonth = today.getMonth() + 1; // 1-indexed (1 to 12)
-      var currentPeriod = currentYear + '-' + (currentMonth < 10 ? '0' + currentMonth : currentMonth); // YYYY-MM
+    var evalYear = evalDate.getFullYear();
+    var evalMonth = evalDate.getMonth() + 1; // 1-12
+    var evalDay = evalDate.getDate();
+    var currentPeriod = evalYear + '-' + (evalMonth < 10 ? '0' + evalMonth : evalMonth); // YYYY-MM
+    var evalDateStr = evalYear + '-' + (evalMonth < 10 ? '0' + evalMonth : evalMonth) + '-' + (evalDay < 10 ? '0' + evalDay : evalDay);
 
-      if (!this.store.settings) this.store.settings = {};
-      var settings = this.store.settings;
-
-      // Consolidated tracking key: settings.autoChargeLastRun (with fallback to legacy store.lastAutomatedFeeRun)
-      var lastRun = settings.autoChargeLastRun || this.store.lastAutomatedFeeRun || '';
-      
-      // If last run is empty, set it to the current month and do not generate historical catchup
-      if (!lastRun) {
-        settings.autoChargeLastRun = currentPeriod;
-        this.store.lastAutomatedFeeRun = currentPeriod;
-        await this.save(true);
-        return;
+    var result = {
+      simulatedDate: evalDateStr,
+      currentPeriod: currentPeriod,
+      tuitionDues: [],
+      extraChargeDues: [],
+      lateFeeDues: [],
+      allProjected: [],
+      backfillWarnings: [],
+      updatedExtraChargesState: [],
+      summary: {
+        totalStudentsEvaluated: 0,
+        tuitionCount: 0,
+        tuitionTotal: 0,
+        extraChargesCount: 0,
+        extraChargesTotal: 0,
+        lateFeesCount: 0,
+        lateFeesTotal: 0,
+        grandTotalCount: 0,
+        grandTotalAmount: 0
       }
+    };
 
-      // If current month matches or is older than last run, we are already up to date
-      if (currentPeriod <= lastRun) return;
+    if (!this.store || !this.store.students || this.store.students.length === 0) {
+      return result;
+    }
 
-      // Parse lastRun YYYY-MM
+    var activeStudents = this.store.students.filter(function(s) { return s.status === 'Active'; });
+    result.summary.totalStudentsEvaluated = activeStudents.length;
+
+    var settings = this.store.settings || {};
+    var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    var self = this;
+
+    // =========================================================================
+    // 1. EVALUATE TUITION DUES
+    // =========================================================================
+    var lastRun = settings.autoChargeLastRun || this.store.lastAutomatedFeeRun || '';
+    if (lastRun && currentPeriod > lastRun) {
       var parts = lastRun.split('-');
       var lastYear = parseInt(parts[0], 10);
       var lastMonth = parseInt(parts[1], 10);
@@ -1536,53 +1557,38 @@ window.SchoolApp = {
       var year = lastYear;
       var month = lastMonth + 1;
 
-      // Calculate all missed periods strictly between lastRun and currentPeriod
       while (true) {
         if (month > 12) {
           month = 1;
           year++;
         }
-        
         var period = year + '-' + (month < 10 ? '0' + month : month);
         if (period > currentPeriod) break;
-        
-        missedMonths.push({
-          period: period,
-          year: year,
-          month: month
-        });
-        
+        missedMonths.push({ period: period, year: year, month: month });
         month++;
       }
 
-      if (missedMonths.length === 0) return;
-
-      var self = this;
-      var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      
-      // Backup before bulk operation
-      this.createRestorePoint('Auto-Backup before Auto-Fee Catch-Up Reconciliation');
-
-      var newDueTxns = [];
-
-      // Loop through every missed month and generate charges for active students
       missedMonths.forEach(function(m) {
         var monthName = monthNames[m.month - 1];
         var desc = 'Monthly Tuition Fee - ' + monthName + ' ' + m.year;
-        var chargeDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-05'; // Charge on the 5th of the month
+        var chargeDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-05';
 
-        self.store.students.forEach(function(s) {
-          if (s.status !== 'Active') return;
+        activeStudents.forEach(function(s) {
+          var alreadyBilled = (self.store.fees || []).some(function(f) {
+            return f.studentId === s.id && f.type === 'due' && f.feeHeadId === 'fh_tuition' &&
+              (f.billingPeriod === m.period || (f.date && f.date.startsWith(m.period)));
+          });
+          if (alreadyBilled) return;
 
           var tuitionAmt = 1000;
-          if (self.store.settings && self.store.settings.feeStructure && self.store.settings.feeStructure[s.class]) {
-            tuitionAmt = parseFloat(self.store.settings.feeStructure[s.class].tuition || 0);
+          if (settings.feeStructure && settings.feeStructure[s.class]) {
+            tuitionAmt = parseFloat(settings.feeStructure[s.class].tuition || 0);
           } else {
             var classStruct = (self.store.feeStructures || {})[s.class] || {};
             tuitionAmt = parseFloat(classStruct.fh_tuition || 1000);
           }
 
-          var dueTxn = {
+          result.tuitionDues.push({
             id: self.generateId(),
             studentId: s.id,
             schoolId: self.currentSchoolId,
@@ -1591,40 +1597,481 @@ window.SchoolApp = {
             amount: tuitionAmt,
             date: chargeDate,
             description: desc,
+            billingPeriod: m.period,
             timestamp: new Date().toISOString()
-          };
-          newDueTxns.push(dueTxn);
+          });
         });
       });
+    }
 
-      if (newDueTxns.length > 0) {
-        if (!self.store.fees) self.store.fees = [];
-        for (var i = 0; i < newDueTxns.length; i++) {
-          self.store.fees.push(newDueTxns[i]);
+    // =========================================================================
+    // 2. EVALUATE FLEXIBLE EXTRA CHARGES (Part A)
+    // =========================================================================
+    var extraCharges = settings.extraCharges || [];
+    var currentQuarterNum = Math.floor((evalMonth - 1) / 3) + 1;
+    var currentQuarterPeriod = evalYear + '-Q' + currentQuarterNum;
+
+    extraCharges.forEach(function(ec) {
+      if (!ec.id || !ec.amount || parseFloat(ec.amount) <= 0) return;
+      var interval = ec.interval || ec.type || 'one-time';
+      if (interval === 'annual') interval = 'custom';
+      var amt = parseFloat(ec.amount);
+      var feeHeadId = ec.feeHeadId || 'fh_extra';
+      var dueDay = parseInt(ec.dueDay, 10) || 5;
+      if (dueDay < 1) dueDay = 1;
+      if (dueDay > 28) dueDay = 28;
+
+      var targetedStudents = activeStudents.filter(function(s) {
+        if (!ec.targetClasses || ec.targetClasses === 'all' || ec.targetClasses.length === 0) return true;
+        if (Array.isArray(ec.targetClasses)) return ec.targetClasses.indexOf(s.class) !== -1;
+        return ec.targetClasses === s.class;
+      });
+      if (targetedStudents.length === 0) return;
+
+      if (interval === 'one-time') {
+        if (ec.lastBilledPeriod === 'billed') return;
+        var startD = ec.startDate || '1970-01-01';
+        if (evalDateStr >= startD) {
+          targetedStudents.forEach(function(s) {
+            var alreadyBilled = (self.store.fees || []).some(function(f) {
+              return f.studentId === s.id && f.extraChargeId === ec.id;
+            });
+            if (alreadyBilled) return;
+
+            result.extraChargeDues.push({
+              id: self.generateId(),
+              studentId: s.id,
+              schoolId: self.currentSchoolId,
+              type: 'due',
+              feeHeadId: feeHeadId,
+              amount: amt,
+              date: ec.startDate || evalDateStr,
+              description: ec.name + ' (One-time)',
+              extraChargeId: ec.id,
+              billingPeriod: 'one-time',
+              timestamp: new Date().toISOString()
+            });
+          });
+          result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: 'billed' });
+        }
+      } else if (interval === 'custom') {
+        if (ec.lastBilledPeriod === 'billed') return;
+        var startD = ec.startDate || '1970-01-01';
+        if (evalDateStr >= startD) {
+          targetedStudents.forEach(function(s) {
+            var alreadyBilled = (self.store.fees || []).some(function(f) {
+              return f.studentId === s.id && f.extraChargeId === ec.id;
+            });
+            if (alreadyBilled) return;
+
+            result.extraChargeDues.push({
+              id: self.generateId(),
+              studentId: s.id,
+              schoolId: self.currentSchoolId,
+              type: 'due',
+              feeHeadId: feeHeadId,
+              amount: amt,
+              date: ec.startDate || evalDateStr,
+              description: ec.name,
+              extraChargeId: ec.id,
+              billingPeriod: ec.startDate || 'custom',
+              timestamp: new Date().toISOString()
+            });
+          });
+          result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: 'billed' });
+        }
+      } else if (interval === 'monthly') {
+        var startPeriod = ec.startDate ? ec.startDate.substring(0, 7) : currentPeriod;
+        var lastBilled = ec.lastBilledPeriod;
+        var missed = [];
+
+        if (!lastBilled) {
+          if (!ec.allowBackfill) {
+            // DEFAULT: Start billing from NEXT cycle!
+            result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: currentPeriod });
+          } else {
+            // Explicit opt-in: Backfill missed periods capped at max 3
+            var sParts = startPeriod.split('-');
+            var sY = parseInt(sParts[0], 10);
+            var sM = parseInt(sParts[1], 10);
+            var candidateMonths = [];
+            var loopY = sY;
+            var loopM = sM;
+            while (true) {
+              var p = loopY + '-' + (loopM < 10 ? '0' + loopM : loopM);
+              if (p > currentPeriod) break;
+              candidateMonths.push({ period: p, year: loopY, month: loopM });
+              loopM++;
+              if (loopM > 12) { loopM = 1; loopY++; }
+            }
+            var rawCount = candidateMonths.length;
+            if (rawCount > 3) {
+              candidateMonths = candidateMonths.slice(-3);
+              result.backfillWarnings.push({
+                chargeId: ec.id,
+                name: ec.name,
+                missedCount: 3,
+                rawCount: rawCount,
+                capped: true,
+                message: 'Backfill capped at max 3 periods for ' + ec.name + ' (' + rawCount + ' elapsed periods detected).'
+              });
+            } else if (rawCount > 0) {
+              result.backfillWarnings.push({
+                chargeId: ec.id,
+                name: ec.name,
+                missedCount: rawCount,
+                rawCount: rawCount,
+                capped: false,
+                message: 'Backfill active: ' + rawCount + ' missed period(s) for ' + ec.name + '.'
+              });
+            }
+            missed = candidateMonths;
+            result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: currentPeriod });
+          }
+        } else if (currentPeriod > lastBilled) {
+          var lbParts = lastBilled.split('-');
+          var lbY = parseInt(lbParts[0], 10);
+          var lbM = parseInt(lbParts[1], 10);
+          var curMloop = lbM + 1;
+          var curYloop = lbY;
+          var runningCandidates = [];
+          while (true) {
+            if (curMloop > 12) { curMloop = 1; curYloop++; }
+            var p = curYloop + '-' + (curMloop < 10 ? '0' + curMloop : curMloop);
+            if (p > currentPeriod) break;
+            runningCandidates.push({ period: p, year: curYloop, month: curMloop });
+            curMloop++;
+          }
+          if (ec.allowBackfill && runningCandidates.length > 3) {
+            var rawLen = runningCandidates.length;
+            runningCandidates = runningCandidates.slice(-3);
+            result.backfillWarnings.push({
+              chargeId: ec.id,
+              name: ec.name,
+              missedCount: 3,
+              rawCount: rawLen,
+              capped: true,
+              message: 'Backfill capped at max 3 periods for ' + ec.name + '.'
+            });
+          }
+          missed = runningCandidates;
+          result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: currentPeriod });
         }
 
-        // Restructured-aware persistence: save to subcollections in restructured mode, flat doc in legacy mode
-        if (typeof self.saveFeeTransactions === 'function') {
-          await self.saveFeeTransactions(newDueTxns, true);
-        } else {
-          await self.save(true);
+        missed.forEach(function(m) {
+          var mName = monthNames[m.month - 1];
+          var chargeDayStr = dueDay < 10 ? '0' + dueDay : '' + dueDay;
+          var cDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-' + chargeDayStr;
+          var desc = ec.name + ' - ' + mName + ' ' + m.year;
+
+          targetedStudents.forEach(function(s) {
+            var alreadyBilled = (self.store.fees || []).some(function(f) {
+              return f.studentId === s.id && f.extraChargeId === ec.id && f.billingPeriod === m.period;
+            });
+            if (alreadyBilled) return;
+
+            result.extraChargeDues.push({
+              id: self.generateId(),
+              studentId: s.id,
+              schoolId: self.currentSchoolId,
+              type: 'due',
+              feeHeadId: feeHeadId,
+              amount: amt,
+              date: cDate,
+              description: desc,
+              extraChargeId: ec.id,
+              billingPeriod: m.period,
+              timestamp: new Date().toISOString()
+            });
+          });
+        });
+      } else if (interval === 'quarterly') {
+        var lastBilledQ = ec.lastBilledPeriod;
+        var missedQ = [];
+        if (!lastBilledQ) {
+          if (!ec.allowBackfill) {
+            result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: currentQuarterPeriod });
+          } else {
+            var startD = ec.startDate || evalDateStr;
+            var sYear = parseInt(startD.substring(0, 4), 10);
+            var sMonth = parseInt(startD.substring(5, 7), 10);
+            var sQ = Math.floor((sMonth - 1) / 3) + 1;
+
+            var qCandidates = [];
+            var yLoop = sYear;
+            var qLoop = sQ;
+            while (true) {
+              var qStr = yLoop + '-Q' + qLoop;
+              if (qStr > currentQuarterPeriod) break;
+              qCandidates.push({ period: qStr, year: yLoop, quarter: qLoop });
+              qLoop++;
+              if (qLoop > 4) { qLoop = 1; yLoop++; }
+            }
+            if (qCandidates.length > 3) {
+              var rawQLen = qCandidates.length;
+              qCandidates = qCandidates.slice(-3);
+              result.backfillWarnings.push({
+                chargeId: ec.id,
+                name: ec.name,
+                missedCount: 3,
+                rawCount: rawQLen,
+                capped: true,
+                message: 'Quarterly backfill capped at max 3 quarters for ' + ec.name + '.'
+              });
+            } else if (qCandidates.length > 0) {
+              result.backfillWarnings.push({
+                chargeId: ec.id,
+                name: ec.name,
+                missedCount: qCandidates.length,
+                rawCount: qCandidates.length,
+                capped: false,
+                message: 'Quarterly backfill active: ' + qCandidates.length + ' quarter(s) for ' + ec.name + '.'
+              });
+            }
+            missedQ = qCandidates;
+            result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: currentQuarterPeriod });
+          }
+        } else if (currentQuarterPeriod > lastBilledQ) {
+          var lbQParts = lastBilledQ.split('-Q');
+          var lQy = parseInt(lbQParts[0], 10);
+          var lQq = parseInt(lbQParts[1], 10);
+          var qRun = lQq + 1;
+          var yRun = lQy;
+          var runningQ = [];
+          while (true) {
+            if (qRun > 4) { qRun = 1; yRun++; }
+            var qStr = yRun + '-Q' + qRun;
+            if (qStr > currentQuarterPeriod) break;
+            runningQ.push({ period: qStr, year: yRun, quarter: qRun });
+            qRun++;
+          }
+          if (ec.allowBackfill && runningQ.length > 3) {
+            var rawQLen2 = runningQ.length;
+            runningQ = runningQ.slice(-3);
+            result.backfillWarnings.push({
+              chargeId: ec.id,
+              name: ec.name,
+              missedCount: 3,
+              rawCount: rawQLen2,
+              capped: true,
+              message: 'Quarterly backfill capped at max 3 quarters for ' + ec.name + '.'
+            });
+          }
+          missedQ = runningQ;
+          result.updatedExtraChargesState.push({ id: ec.id, lastBilledPeriod: currentQuarterPeriod });
+        }
+
+        missedQ.forEach(function(qObj) {
+          var qMonths = { 1: 'Jan-Mar', 2: 'Apr-Jun', 3: 'Jul-Sep', 4: 'Oct-Dec' };
+          var desc = ec.name + ' - Q' + qObj.quarter + ' (' + (qMonths[qObj.quarter] || '') + ' ' + qObj.year + ')';
+          var startMonthOfQ = (qObj.quarter - 1) * 3 + 1;
+          var chargeDayStr = dueDay < 10 ? '0' + dueDay : '' + dueDay;
+          var cDate = qObj.year + '-' + (startMonthOfQ < 10 ? '0' + startMonthOfQ : startMonthOfQ) + '-' + chargeDayStr;
+
+          targetedStudents.forEach(function(s) {
+            var alreadyBilled = (self.store.fees || []).some(function(f) {
+              return f.studentId === s.id && f.extraChargeId === ec.id && f.billingPeriod === qObj.period;
+            });
+            if (alreadyBilled) return;
+
+            result.extraChargeDues.push({
+              id: self.generateId(),
+              studentId: s.id,
+              schoolId: self.currentSchoolId,
+              type: 'due',
+              feeHeadId: feeHeadId,
+              amount: amt,
+              date: cDate,
+              description: desc,
+              extraChargeId: ec.id,
+              billingPeriod: qObj.period,
+              timestamp: new Date().toISOString()
+            });
+          });
+        });
+      }
+    });
+
+    // =========================================================================
+    // 3. EVALUATE AUTOMATIC LATE FEES (Part B - Strictly One-Shot per Due)
+    // =========================================================================
+    var lateConfig = settings.lateFeeConfig || {};
+    if (lateConfig.enabled === true) {
+      var fineHeadId = lateConfig.feeHeadId || 'fh_fine';
+      var graceDays = parseInt(lateConfig.gracePeriodDays, 10);
+      if (isNaN(graceDays) || graceDays < 0) graceDays = 10;
+      var fineType = lateConfig.type === 'percentage' ? 'percentage' : 'flat';
+      var fineVal = parseFloat(lateConfig.value) || 0;
+      var maxCap = parseFloat(lateConfig.maxCap) || 0;
+
+      if (fineVal > 0) {
+        var fees = this.store.fees || [];
+        var finedDueIds = new Set();
+        fees.forEach(function(f) {
+          if (f.originatingDueId) finedDueIds.add(f.originatingDueId);
+        });
+
+        var allocationsByDue = {};
+        var studentTotalPaid = {};
+        var studentTotalDues = {};
+
+        fees.forEach(function(f) {
+          if (f.type === 'due') {
+            studentTotalDues[f.studentId] = (studentTotalDues[f.studentId] || 0) + (parseFloat(f.amount) || 0);
+          } else if (f.type === 'payment') {
+            var grossSettled = (parseFloat(f.amount) || 0) + (parseFloat(f.discountAmount) || 0);
+            studentTotalPaid[f.studentId] = (studentTotalPaid[f.studentId] || 0) + grossSettled;
+            if (Array.isArray(f.allocations)) {
+              f.allocations.forEach(function(a) {
+                if (a.dueId) {
+                  allocationsByDue[a.dueId] = (allocationsByDue[a.dueId] || 0) + (parseFloat(a.amount) || 0);
+                }
+              });
+            }
+          }
+        });
+
+        var activeStudentMap = {};
+        activeStudents.forEach(function(s) { activeStudentMap[s.id] = s; });
+
+        fees.forEach(function(due) {
+          if (due.type !== 'due') return;
+          if (!activeStudentMap[due.studentId]) return;
+          if (due.feeHeadId === fineHeadId) return; // Do not fine a fine!
+          if (due.originatingDueId) return; // Do not fine a fine transaction!
+          if (finedDueIds.has(due.id)) return; // ONE-SHOT GUARANTEE: Already fined!
+
+          var dueTime = new Date(due.date).getTime();
+          if (isNaN(dueTime)) return;
+
+          var overdueDeadline = dueTime + (graceDays * 86400000);
+          if (evalDate.getTime() <= overdueDeadline) return; // Grace period active
+
+          var studentDues = studentTotalDues[due.studentId] || 0;
+          var studentPaid = studentTotalPaid[due.studentId] || 0;
+          var netBalance = studentDues - studentPaid;
+          if (netBalance <= 0) return; // Student owes 0 balance overall!
+
+          var allocated = allocationsByDue[due.id] || 0;
+          var dueAmt = parseFloat(due.amount) || 0;
+          var dueUnpaid = Math.max(0, dueAmt - allocated);
+          var effectiveUnpaid = Math.min(dueUnpaid, netBalance);
+          if (effectiveUnpaid <= 0) return; // Fully settled
+
+          var fine = 0;
+          if (fineType === 'percentage') {
+            fine = Math.round((effectiveUnpaid * fineVal) / 100);
+          } else {
+            fine = fineVal;
+          }
+          if (maxCap > 0 && fine > maxCap) fine = maxCap;
+          if (fine <= 0) return;
+
+          var fineTxn = {
+            id: self.generateId(),
+            studentId: due.studentId,
+            schoolId: self.currentSchoolId,
+            type: 'due',
+            feeHeadId: fineHeadId,
+            amount: fine,
+            date: evalDateStr,
+            description: 'Late Fee (' + (fineType === 'percentage' ? fineVal + '%' : '₹' + fineVal) + ') for ' + (due.description || 'Due (' + due.date + ')'),
+            originatingDueId: due.id, // STRICT ONE-SHOT LINK
+            timestamp: new Date().toISOString()
+          };
+
+          result.lateFeeDues.push(fineTxn);
+          finedDueIds.add(due.id);
+        });
+      }
+    }
+
+    // =========================================================================
+    // 4. AGGREGATE SUMMARY
+    // =========================================================================
+    result.allProjected = result.tuitionDues.concat(result.extraChargeDues).concat(result.lateFeeDues);
+    result.summary.tuitionCount = result.tuitionDues.length;
+    result.summary.tuitionTotal = result.tuitionDues.reduce(function(sum, d) { return sum + d.amount; }, 0);
+    result.summary.extraChargesCount = result.extraChargeDues.length;
+    result.summary.extraChargesTotal = result.extraChargeDues.reduce(function(sum, d) { return sum + d.amount; }, 0);
+    result.summary.lateFeesCount = result.lateFeeDues.length;
+    result.summary.lateFeesTotal = result.lateFeeDues.reduce(function(sum, d) { return sum + d.amount; }, 0);
+    result.summary.grandTotalCount = result.allProjected.length;
+    result.summary.grandTotalAmount = result.summary.tuitionTotal + result.summary.extraChargesTotal + result.summary.lateFeesTotal;
+
+    return result;
+  },
+
+  // Dry-Run Preview: Pure read-only simulation, no writes or mutations
+  previewAutoFeeReconciliation: async function(options) {
+    return this.evaluateAutoFeeDues(options || {});
+  },
+
+  // Consolidated Auto-Fee Execution Engine
+  runAutoFeeReconciliation: async function(options) {
+    try {
+      if (!this.store || !this.store.students || this.store.students.length === 0) return;
+
+      var evalResult = this.evaluateAutoFeeDues(options || {});
+      var newDueTxns = evalResult.allProjected;
+      var currentPeriod = evalResult.currentPeriod;
+
+      if (!this.store.settings) this.store.settings = {};
+      var settings = this.store.settings;
+
+      // Baseline initialization if tracking key is empty
+      var isFirstInitialization = !settings.autoChargeLastRun && !this.store.lastAutomatedFeeRun;
+      if (isFirstInitialization) {
+        settings.autoChargeLastRun = currentPeriod;
+        this.store.lastAutomatedFeeRun = currentPeriod;
+        if (newDueTxns.length === 0) {
+          await this.save(true);
+          return;
         }
       }
 
-      // Update consolidated tracking keys (primary: settings.autoChargeLastRun, legacy sync: store.lastAutomatedFeeRun)
+      if (newDueTxns.length === 0) return;
+
+      // Create backup before bulk creation
+      this.createRestorePoint('Auto-Backup before Auto-Fee Reconciliation');
+
+      // Update in-memory fee list
+      if (!this.store.fees) this.store.fees = [];
+      for (var i = 0; i < newDueTxns.length; i++) {
+        this.store.fees.push(newDueTxns[i]);
+      }
+
+      // Restructured-aware persistence
+      if (typeof this.saveFeeTransactions === 'function') {
+        await this.saveFeeTransactions(newDueTxns, true);
+      } else {
+        await this.save(true);
+      }
+
+      // Update tracking keys
       settings.autoChargeLastRun = currentPeriod;
       this.store.lastAutomatedFeeRun = currentPeriod;
+
+      // Update extra charges state
+      if (evalResult.updatedExtraChargesState && evalResult.updatedExtraChargesState.length > 0) {
+        var extraCharges = settings.extraCharges || [];
+        evalResult.updatedExtraChargesState.forEach(function(up) {
+          var found = extraCharges.find(function(ec) { return ec.id === up.id; });
+          if (found) found.lastBilledPeriod = up.lastBilledPeriod;
+        });
+      }
+
       await this.save(true);
 
-      // Admin Feedback: Defer success toast so it is only triggered when Admin Dashboard loads
-      var missedMonthsText = missedMonths.map(function(m) {
-        return monthNames[m.month - 1] + ' ' + m.year;
-      }).join(', ');
+      var parts = [];
+      if (evalResult.summary.tuitionCount > 0) parts.push(evalResult.summary.tuitionCount + ' Tuition dues (₹' + evalResult.summary.tuitionTotal + ')');
+      if (evalResult.summary.extraChargesCount > 0) parts.push(evalResult.summary.extraChargesCount + ' Extra Charges (₹' + evalResult.summary.extraChargesTotal + ')');
+      if (evalResult.summary.lateFeesCount > 0) parts.push(evalResult.summary.lateFeesCount + ' Late Fees (₹' + evalResult.summary.lateFeesTotal + ')');
 
-      this.feesGeneratedMsg = 'Automated System: Missing fees for ' + missedMonthsText + ' successfully applied to all students.';
+      this.feesGeneratedMsg = 'Automated Billing Engine: Generated ' + parts.join(', ') + ' successfully.';
 
     } catch (e) {
-      console.error('Error running Auto-Fee Catch-Up Engine:', e);
+      console.error('Error running Auto-Fee Engine:', e);
     }
   },
 

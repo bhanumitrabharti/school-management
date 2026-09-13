@@ -894,24 +894,100 @@
 
   function renderFeesCharges() {
     var container = document.getElementById('setup-charges-list-container');
+    var settings = SchoolApp.store.settings || {};
+    var feeHeads = SchoolApp.store.feeHeads || settings.feeHeads || [];
+
+    // Populate feehead dropdown for extra charges
+    var fhSelect = document.getElementById('setup-charge-feehead');
+    if (fhSelect && fhSelect.options.length === 0) {
+      feeHeads.forEach(function(fh) {
+        var opt = document.createElement('option');
+        opt.value = fh.id;
+        opt.textContent = fh.name;
+        fhSelect.appendChild(opt);
+      });
+    }
+
+    // Populate target classes dropdown
+    var clsSelect = document.getElementById('setup-charge-target-class');
+    if (clsSelect && clsSelect.options.length <= 1) {
+      clsSelect.innerHTML = '<option value="all">All Classes</option>';
+      var classes = settings.classes || [];
+      classes.forEach(function(c) {
+        var cName = typeof c === 'string' ? c : (c.name || c.className || '');
+        if (cName) {
+          var opt = document.createElement('option');
+          opt.value = cName;
+          opt.textContent = cName;
+          clsSelect.appendChild(opt);
+        }
+      });
+    }
+
+    // Populate feehead dropdown for Late Fee
+    var lateFhSelect = document.getElementById('setup-latefee-feehead');
+    if (lateFhSelect && lateFhSelect.options.length === 0) {
+      var hasFineHead = false;
+      feeHeads.forEach(function(fh) {
+        var opt = document.createElement('option');
+        opt.value = fh.id;
+        opt.textContent = fh.name;
+        if (fh.id === 'fh_fine' || (fh.name && (fh.name.toLowerCase().includes('fine') || fh.name.toLowerCase().includes('late')))) {
+          opt.selected = true;
+          hasFineHead = true;
+        }
+        lateFhSelect.appendChild(opt);
+      });
+      if (!hasFineHead) {
+        var defaultOpt = document.createElement('option');
+        defaultOpt.value = 'fh_fine';
+        defaultOpt.textContent = 'Late Fee / Fine (Auto-creates fee head)';
+        defaultOpt.selected = true;
+        lateFhSelect.appendChild(defaultOpt);
+      }
+    }
+
     if (!container) return;
 
-    var settings = SchoolApp.store.settings || {};
     var charges = settings.extraCharges || [];
-
     var html = '';
+
     charges.forEach(function(item) {
-      html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px;">';
-      html += '  <div><strong style="color:var(--text-primary);">' + escapeHTML(item.name) + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + escapeHTML(item.type) + ')</span></div>';
-      html += '  <div style="display:flex; align-items:center; gap:12px;">';
-      html += '    <strong style="color:#60a5fa;">₹' + item.amount + '</strong>';
-      html += '    <span class="fees-remove-charge" data-id="' + escapeAttr(item.id) + '" style="cursor:pointer; font-size:18px; color:#f87171; font-weight:bold;">&times;</span>';
+      var interval = item.interval || item.type || 'one-time';
+      var intervalLabel = interval.charAt(0).toUpperCase() + interval.slice(1);
+      var fh = feeHeads.find(function(h) { return h.id === item.feeHeadId; });
+      var fhName = fh ? fh.name : (item.feeHeadId || 'General');
+
+      var targetCls = 'All Classes';
+      if (item.targetClasses && item.targetClasses !== 'all' && item.targetClasses.length > 0) {
+        targetCls = Array.isArray(item.targetClasses) ? item.targetClasses.join(', ') : item.targetClasses;
+      }
+
+      var statusText = item.lastBilledPeriod ? ('Last billed: ' + escapeHTML(item.lastBilledPeriod)) : 'Starts next cycle';
+      if (interval === 'one-time' && item.lastBilledPeriod === 'billed') statusText = 'Already Billed';
+
+      html += '<div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px; gap:12px; flex-wrap:wrap;">';
+      html += '  <div style="display:flex; flex-direction:column; gap:4px;">';
+      html += '    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+      html += '      <strong style="color:var(--text-primary); font-size:14px;">' + escapeHTML(item.name) + '</strong>';
+      html += '      <span class="badge badge-info" style="font-size:11px; padding:2px 8px;">' + escapeHTML(intervalLabel) + '</span>';
+      html += '      <span class="badge badge-secondary" style="font-size:11px; padding:2px 8px;">' + escapeHTML(fhName) + '</span>';
+      html += '      <span class="badge badge-warning" style="font-size:11px; padding:2px 8px;">' + escapeHTML(targetCls) + '</span>';
+      if (item.allowBackfill) {
+        html += '    <span class="badge badge-danger" style="font-size:10px; padding:2px 6px;">⚠️ Backfill enabled (max 3)</span>';
+      }
+      html += '    </div>';
+      html += '    <div style="font-size:11px; color:var(--text-muted);">' + statusText + (item.startDate ? ' &bull; Start: ' + escapeHTML(item.startDate) : '') + (item.dueDay ? ' &bull; Due Day: ' + item.dueDay : '') + '</div>';
+      html += '  </div>';
+      html += '  <div style="display:flex; align-items:center; gap:14px;">';
+      html += '    <strong style="color:#60a5fa; font-size:15px;">₹' + (parseFloat(item.amount) || 0).toLocaleString('en-IN') + '</strong>';
+      html += '    <button type="button" class="fees-remove-charge btn-icon" data-id="' + escapeAttr(item.id) + '" title="Remove Charge" style="cursor:pointer; color:#f87171; border:none; background:transparent;"><span class="material-icons-round" style="font-size:18px;">delete</span></button>';
       html += '  </div>';
       html += '</div>';
     });
 
     if (charges.length === 0) {
-      html = '<span style="color:var(--text-secondary); font-size:12px;">No extra charges added.</span>';
+      html = '<span style="color:var(--text-secondary); font-size:12px;">No extra charges configured yet. Add charges above.</span>';
     }
 
     container.innerHTML = html;
@@ -925,6 +1001,7 @@
         var id = this.getAttribute('data-id');
         settings.extraCharges = (settings.extraCharges || []).filter(function(x) { return x.id !== id; });
         renderFeesCharges();
+        SchoolApp.showToast("Charge removed from list. Click 'Save Extra Charges' to persist.", "info");
       });
     });
   }
@@ -1906,20 +1983,80 @@
     html += '    </div>';
     html += '  </div>';
 
-    // Card 3: Extra Charges
+    // Card 3: Flexible Extra Charges
     html += '  <div class="card fee-setup-card">';
-    html += '    <div class="card-header fee-setup-header"><h3><span class="material-icons-round">receipt</span> Extra Charges</h3></div>';
+    html += '    <div class="card-header fee-setup-header"><h3><span class="material-icons-round">receipt_long</span> Flexible Extra Charges</h3></div>';
     html += '    <div class="card-body">';
-    html += '      <div class="admin-form-grid fee-setup-form-grid fee-setup-form" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px; align-items:flex-end;">';
-    html += '        <div class="form-group"><label class="form-label">Charge Name</label><input type="text" class="form-input" id="setup-charge-name" placeholder="e.g. Admission Fee"></div>';
-    html += '        <div class="form-group"><label class="form-label">Amount (₹)</label><input type="number" class="form-input" id="setup-charge-amount" placeholder="e.g. 5000" min="0"></div>';
-    html += '        <div class="form-group"><label class="form-label">Billing Type</label><select class="form-select" id="setup-charge-type"><option value="one-time">One-time</option><option value="annual">Annual</option><option value="monthly">Monthly</option></select></div>';
-    html += '        <div class="form-group fee-setup-add-btn-group" style="grid-column: span 3; display:flex; justify-content:flex-end;"><button type="button" class="btn btn-primary" id="setup-add-charge-btn" style="height:38px; padding:0 24px;">Add Charge</button></div>';
+    html += '      <div class="admin-form-grid fee-setup-form-grid fee-setup-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:20px; align-items:flex-end;">';
+    html += '        <div class="form-group"><label class="form-label">Charge Name *</label><input type="text" class="form-input" id="setup-charge-name" placeholder="e.g. Computer Lab Fee"></div>';
+    html += '        <div class="form-group"><label class="form-label">Fee Head</label><select class="form-select" id="setup-charge-feehead"></select></div>';
+    html += '        <div class="form-group"><label class="form-label">Billing Interval</label><select class="form-select" id="setup-charge-interval"><option value="one-time">One-time</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="custom">Custom Date</option></select></div>';
+    html += '        <div class="form-group"><label class="form-label">Amount (₹) *</label><input type="number" class="form-input" id="setup-charge-amount" placeholder="e.g. 500" min="1"></div>';
+    html += '        <div class="form-group"><label class="form-label">Target Class</label><select class="form-select" id="setup-charge-target-class"><option value="all">All Classes</option></select></div>';
+    html += '        <div class="form-group"><label class="form-label">Start Date</label><input type="date" class="form-input" id="setup-charge-startdate"></div>';
+    html += '        <div class="form-group"><label class="form-label">Due Day of Month</label><input type="number" class="form-input" id="setup-charge-dueday" value="5" min="1" max="28" placeholder="5"></div>';
+    html += '        <div class="form-group" style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; padding:6px 0;">';
+    html += '          <input type="checkbox" id="setup-charge-backfill" style="width:16px; height:16px; cursor:pointer;">';
+    html += '          <label for="setup-charge-backfill" style="cursor:pointer; font-size:13px; color:var(--text-secondary); margin:0;">Backfill missed cycles since start date (Capped at max 3 cycles). <em>Unchecked starts billing next cycle.</em></label>';
+    html += '        </div>';
+    html += '        <div class="form-group fee-setup-add-btn-group" style="grid-column: 1 / -1; display:flex; justify-content:flex-end;"><button type="button" class="btn btn-primary" id="setup-add-charge-btn" style="height:38px; padding:0 24px;"><span class="material-icons-round">add</span> Add Extra Charge</button></div>';
     html += '      </div>';
-    html += '      <div id="setup-charges-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>';
+    html += '      <div id="setup-charges-list-container" style="display:flex; flex-direction:column; gap:10px;"></div>';
     html += '    </div>';
     html += '    <div class="card-footer fee-setup-actions" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
-    html += '      <button type="button" class="btn btn-primary" id="setup-save-charges-btn"><span class="material-icons-round">save</span> Save Charges</button>';
+    html += '      <button type="button" class="btn btn-primary" id="setup-save-charges-btn"><span class="material-icons-round">save</span> Save Extra Charges</button>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 4: Automatic Late Fee (Tenure-based Fine)
+    var lateConfig = settings.lateFeeConfig || {};
+    var isLateFeeEnabled = !!lateConfig.enabled;
+    html += '  <div class="card fee-setup-card">';
+    html += '    <div class="card-header fee-setup-header" style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '      <h3><span class="material-icons-round">alarm_on</span> Automatic Late Fee</h3>';
+    html += '      <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:14px; color:var(--text-primary);">';
+    html += '        <input type="checkbox" id="setup-latefee-enable" ' + (isLateFeeEnabled ? 'checked' : '') + ' style="width:18px; height:18px; cursor:pointer;"> Enable Late Fee';
+    html += '      </label>';
+    html += '    </div>';
+    html += '    <div class="card-body">';
+    html += '      <div id="latefee-config-fields" style="' + (isLateFeeEnabled ? '' : 'opacity:0.6; pointer-events:none;') + '">';
+    html += '        <div class="admin-form-grid fee-setup-form-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:16px;">';
+    html += '          <div class="form-group"><label class="form-label">Fee Head for Fine</label><select class="form-select" id="setup-latefee-feehead"></select></div>';
+    html += '          <div class="form-group"><label class="form-label">Grace Period (Days)</label><input type="number" class="form-input" id="setup-latefee-grace" value="' + (lateConfig.gracePeriodDays !== undefined ? lateConfig.gracePeriodDays : 10) + '" min="0" max="90" placeholder="10"></div>';
+    html += '          <div class="form-group"><label class="form-label">Fine Calculation Mode</label><select class="form-select" id="setup-latefee-type"><option value="flat"' + (lateConfig.type !== 'percentage' ? ' selected' : '') + '>Flat Amount (₹)</option><option value="percentage"' + (lateConfig.type === 'percentage' ? ' selected' : '') + '>Percentage of Unpaid Due (%)</option></select></div>';
+    html += '          <div class="form-group"><label class="form-label">Fine Value (₹ or %)</label><input type="number" class="form-input" id="setup-latefee-value" value="' + (lateConfig.value !== undefined ? lateConfig.value : 50) + '" min="1" placeholder="e.g. 50"></div>';
+    html += '          <div class="form-group"><label class="form-label">Maximum Fine Cap (₹)</label><input type="number" class="form-input" id="setup-latefee-cap" value="' + (lateConfig.maxCap !== undefined ? lateConfig.maxCap : 200) + '" min="0" placeholder="0 = No Cap"></div>';
+    html += '        </div>';
+    html += '        <div style="background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.25); border-radius:8px; padding:12px 16px; font-size:13px; color:var(--text-secondary); line-height:1.5;">';
+    html += '          <span class="material-icons-round" style="font-size:16px; color:#60a5fa; vertical-align:text-bottom;">verified_user</span> <strong>Confirmed Guarantee:</strong> Late fees are dynamically evaluated strictly on overdue unpaid dues for active students after grace period expiry. Every assessed fine carries an immutable originating due link and is <strong>strictly one-shot per due</strong> (never recurring, compounding, or escalating).';
+    html += '        </div>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '    <div class="card-footer fee-setup-actions" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '      <button type="button" class="btn btn-primary" id="setup-save-latefee-btn"><span class="material-icons-round">save</span> Save Late Fee Settings</button>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 5: Auto-Fee Billing Engine Status & Dry-Run Preview
+    var lastRunPeriod = settings.autoChargeLastRun || SchoolApp.store.lastAutomatedFeeRun || 'Not run yet';
+    html += '  <div class="card fee-setup-card">';
+    html += '    <div class="card-header fee-setup-header"><h3><span class="material-icons-round">play_circle</span> Billing Engine Status & Dry-Run Preview</h3></div>';
+    html += '    <div class="card-body">';
+    html += '      <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; margin-bottom:16px;">';
+    html += '        <div>';
+    html += '          <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Last Automated Billing Run</div>';
+    html += '          <div style="font-size:18px; font-weight:700; color:var(--text-primary); margin-top:4px;">' + escapeHTML(lastRunPeriod) + '</div>';
+    html += '        </div>';
+    html += '        <div>';
+    html += '          <div style="font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Engine Status</div>';
+    html += '          <div style="font-size:14px; font-weight:600; color:#10b981; margin-top:4px;"><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; margin-right:6px;"></span>Consolidated & Restructured-Aware</div>';
+    html += '        </div>';
+    html += '        <div style="display:flex; gap:10px; flex-wrap:wrap;">';
+    html += '          <button type="button" class="btn btn-secondary" id="setup-preview-autofee-btn"><span class="material-icons-round">visibility</span> Preview Next Billing Run (Dry Run)</button>';
+    html += '          <button type="button" class="btn btn-primary" id="setup-run-autofee-btn"><span class="material-icons-round">bolt</span> Run Billing Now</button>';
+    html += '        </div>';
+    html += '      </div>';
+    html += '      <p style="font-size:12px; color:var(--text-secondary); margin:0;">Dry-run preview performs a 100% read-only calculation of projected tuition dues, flexible extra charges, and late fees without writing to Firestore or mutating student accounts.</p>';
     html += '    </div>';
     html += '  </div>';
 
@@ -3120,6 +3257,150 @@
     });
   }
 
+  async function openAutoFeePreviewModal(simDate) {
+    SchoolApp.showLoader('Calculating dry-run billing projection...');
+    try {
+      var preview = await SchoolApp.previewAutoFeeReconciliation({ simulateDate: simDate });
+      SchoolApp.hideLoader();
+
+      var container = document.getElementById('modal-container');
+      if (container) container.style.maxWidth = '850px';
+
+      var title = 'Dry-Run Billing Engine Preview';
+      var bodyHTML = '';
+
+      // Top control bar
+      bodyHTML += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px; padding:12px 16px; background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px;">';
+      bodyHTML += '  <div style="display:flex; align-items:center; gap:8px;">';
+      bodyHTML += '    <label style="font-size:13px; font-weight:600; color:var(--text-primary); margin:0;">Simulated Run Date:</label>';
+      bodyHTML += '    <input type="date" id="dryrun-sim-date" value="' + preview.simulatedDate + '" class="form-input" style="width:auto; padding:4px 10px; font-size:13px;">';
+      bodyHTML += '    <button type="button" class="btn btn-secondary btn-sm" id="dryrun-recalc-btn"><span class="material-icons-round" style="font-size:16px;">refresh</span> Recalculate</button>';
+      bodyHTML += '  </div>';
+      bodyHTML += '  <div style="font-size:12px; color:var(--text-muted);"><span class="material-icons-round" style="font-size:14px; color:#10b981; vertical-align:middle;">shield</span> 100% Read-Only Simulation (Zero Writes)</div>';
+      bodyHTML += '</div>';
+
+      // Summary Metric Cards
+      bodyHTML += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:16px;">';
+      bodyHTML += '  <div style="background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px; padding:12px; text-align:center;">';
+      bodyHTML += '    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Tuition Dues</div>';
+      bodyHTML += '    <div style="font-size:18px; font-weight:700; color:#60a5fa; margin:4px 0;">' + preview.summary.tuitionCount + ' <span style="font-size:12px; font-weight:400; color:var(--text-muted);">dues</span></div>';
+      bodyHTML += '    <div style="font-size:13px; font-weight:600; color:var(--text-primary);">₹' + preview.summary.tuitionTotal.toLocaleString('en-IN') + '</div>';
+      bodyHTML += '  </div>';
+
+      bodyHTML += '  <div style="background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px; padding:12px; text-align:center;">';
+      bodyHTML += '    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Extra Charges</div>';
+      bodyHTML += '    <div style="font-size:18px; font-weight:700; color:#a78bfa; margin:4px 0;">' + preview.summary.extraChargesCount + ' <span style="font-size:12px; font-weight:400; color:var(--text-muted);">dues</span></div>';
+      bodyHTML += '    <div style="font-size:13px; font-weight:600; color:var(--text-primary);">₹' + preview.summary.extraChargesTotal.toLocaleString('en-IN') + '</div>';
+      bodyHTML += '  </div>';
+
+      bodyHTML += '  <div style="background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px; padding:12px; text-align:center;">';
+      bodyHTML += '    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Late Fees / Fines</div>';
+      bodyHTML += '    <div style="font-size:18px; font-weight:700; color:#f87171; margin:4px 0;">' + preview.summary.lateFeesCount + ' <span style="font-size:12px; font-weight:400; color:var(--text-muted);">dues</span></div>';
+      bodyHTML += '    <div style="font-size:13px; font-weight:600; color:var(--text-primary);">₹' + preview.summary.lateFeesTotal.toLocaleString('en-IN') + '</div>';
+      bodyHTML += '  </div>';
+
+      bodyHTML += '  <div style="background:var(--bg-glass); border:1px solid var(--border-color); border-radius:8px; padding:12px; text-align:center;">';
+      bodyHTML += '    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Grand Total Projected</div>';
+      bodyHTML += '    <div style="font-size:18px; font-weight:700; color:#10b981; margin:4px 0;">' + preview.summary.grandTotalCount + ' <span style="font-size:12px; font-weight:400; color:var(--text-muted);">dues</span></div>';
+      bodyHTML += '    <div style="font-size:13px; font-weight:600; color:var(--text-primary);">₹' + preview.summary.grandTotalAmount.toLocaleString('en-IN') + '</div>';
+      bodyHTML += '  </div>';
+      bodyHTML += '</div>';
+
+      // Backfill Warnings Callout
+      if (preview.backfillWarnings && preview.backfillWarnings.length > 0) {
+        bodyHTML += '<div style="margin-bottom:16px; display:flex; flex-direction:column; gap:8px;">';
+        preview.backfillWarnings.forEach(function(w) {
+          bodyHTML += '<div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); border-radius:8px; padding:10px 14px; font-size:13px; color:#f59e0b; display:flex; align-items:center; gap:8px;">';
+          bodyHTML += '  <span class="material-icons-round" style="font-size:18px;">warning</span>';
+          bodyHTML += '  <span><strong>' + escapeHTML(w.name) + ':</strong> ' + escapeHTML(w.message) + '</span>';
+          bodyHTML += '</div>';
+        });
+        bodyHTML += '</div>';
+      }
+
+      // Projected Transactions Table
+      bodyHTML += '<div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:8px;">Projected Dues Breakdown (' + preview.allProjected.length + ' records)</div>';
+      if (preview.allProjected.length > 0) {
+        var studentMap = {};
+        (SchoolApp.store.students || []).forEach(function(s) { studentMap[s.id] = s; });
+
+        bodyHTML += '<div style="max-height:280px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px;">';
+        bodyHTML += '  <table class="data-table" style="width:100%; margin:0; font-size:12px;">';
+        bodyHTML += '    <thead><tr><th>Student</th><th>Class</th><th>Type / Head</th><th>Cycle/Period</th><th>Amount</th><th>Description</th></tr></thead>';
+        bodyHTML += '    <tbody>';
+        preview.allProjected.forEach(function(d) {
+          var s = studentMap[d.studentId] || {};
+          var sName = s.name ? (s.name) : ('Student #' + d.studentId);
+          var sCls = s.class || '-';
+          var isLate = !!d.originatingDueId;
+          var isExtra = !!d.extraChargeId;
+          var typeBadge = isLate ? '<span class="badge badge-danger">Late Fee (1-Shot)</span>' : (isExtra ? '<span class="badge badge-warning">Extra Charge</span>' : '<span class="badge badge-info">Tuition</span>');
+
+          bodyHTML += '<tr>';
+          bodyHTML += '  <td><strong>' + escapeHTML(sName) + '</strong></td>';
+          bodyHTML += '  <td>' + escapeHTML(sCls) + '</td>';
+          bodyHTML += '  <td>' + typeBadge + '</td>';
+          bodyHTML += '  <td>' + escapeHTML(d.billingPeriod || d.date) + '</td>';
+          bodyHTML += '  <td><strong style="color:var(--text-primary);">₹' + (parseFloat(d.amount) || 0).toLocaleString('en-IN') + '</strong></td>';
+          bodyHTML += '  <td style="color:var(--text-secondary); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + escapeAttr(d.description || '') + '">' + escapeHTML(d.description || '-') + '</td>';
+          bodyHTML += '</tr>';
+        });
+        bodyHTML += '    </tbody>';
+        bodyHTML += '  </table>';
+        bodyHTML += '</div>';
+      } else {
+        bodyHTML += '<div style="padding:24px; text-align:center; background:var(--bg-glass); border:1px dashed var(--border-color); border-radius:8px; color:var(--text-secondary);">';
+        bodyHTML += '  <span class="material-icons-round" style="font-size:32px; color:#10b981; display:block; margin-bottom:8px;">check_circle</span>';
+        bodyHTML += '  <strong>All accounts are up to date!</strong><p style="margin:4px 0 0 0; font-size:12px;">No new tuition dues, extra charges, or late fees are pending for this period.</p>';
+        bodyHTML += '</div>';
+      }
+
+      var footerHTML = '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+      if (preview.allProjected.length > 0) {
+        footerHTML += '<button type="button" class="btn btn-primary" id="dryrun-execute-now-btn" style="margin-left:8px;"><span class="material-icons-round">bolt</span> Execute Billing Run Now (' + preview.allProjected.length + ' Dues)</button>';
+      }
+
+      SchoolApp.showModal(title, bodyHTML, footerHTML);
+
+      // Attach modal event listeners
+      var recalcBtn = document.getElementById('dryrun-recalc-btn');
+      if (recalcBtn) {
+        recalcBtn.addEventListener('click', function() {
+          var dateInput = document.getElementById('dryrun-sim-date');
+          var chosenDate = dateInput ? dateInput.value : '';
+          openAutoFeePreviewModal(chosenDate);
+        });
+      }
+
+      var execBtn = document.getElementById('dryrun-execute-now-btn');
+      if (execBtn) {
+        execBtn.addEventListener('click', async function() {
+          if (sessionStorage.getItem("isImpersonating") === "true") {
+            SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+            return;
+          }
+          if (!confirm('Are you sure you want to execute billing now? This will generate ' + preview.allProjected.length + ' due transaction(s) totaling ₹' + preview.summary.grandTotalAmount.toLocaleString('en-IN') + ' and persist them to Firestore.')) {
+            return;
+          }
+
+          SchoolApp.closeModal();
+          SchoolApp.showLoader('Generating billing transactions...');
+          var dateInput = document.getElementById('dryrun-sim-date');
+          var simD = dateInput ? dateInput.value : undefined;
+          await SchoolApp.runAutoFeeReconciliation({ simulateDate: simD });
+          SchoolApp.hideLoader();
+          SchoolApp.showToast(SchoolApp.feesGeneratedMsg || 'Billing transactions generated successfully!', 'success');
+          SchoolApp.feesGeneratedMsg = null;
+          renderAdminPanel();
+        });
+      }
+    } catch (err) {
+      SchoolApp.hideLoader();
+      console.error('Error opening AutoFee Preview modal:', err);
+      SchoolApp.showToast('Failed to calculate preview: ' + err.message, 'error');
+    }
+  }
+
   function attachEvents() {
     // Tab switching
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
@@ -3341,7 +3622,7 @@
       });
     }
  
-    // Add Charge
+    // Add Extra Charge
     var setupAddChargeBtn = document.getElementById('setup-add-charge-btn');
     if (setupAddChargeBtn) {
       setupAddChargeBtn.addEventListener('click', function() {
@@ -3349,15 +3630,25 @@
           SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
           return;
         }
-        
+
         var nameInput = document.getElementById('setup-charge-name');
         var amtInput = document.getElementById('setup-charge-amount');
-        var typeSelect = document.getElementById('setup-charge-type');
-        
+        var intervalSelect = document.getElementById('setup-charge-interval');
+        var fhSelect = document.getElementById('setup-charge-feehead');
+        var clsSelect = document.getElementById('setup-charge-target-class');
+        var startInput = document.getElementById('setup-charge-startdate');
+        var dueDayInput = document.getElementById('setup-charge-dueday');
+        var backfillCheck = document.getElementById('setup-charge-backfill');
+
         var name = nameInput ? nameInput.value.trim() : '';
         var amount = amtInput ? parseFloat(amtInput.value) : 0;
-        var type = typeSelect ? typeSelect.value : 'one-time';
-        
+        var interval = intervalSelect ? intervalSelect.value : 'one-time';
+        var feeHeadId = fhSelect ? fhSelect.value : 'fh_extra';
+        var targetCls = clsSelect ? clsSelect.value : 'all';
+        var startDate = startInput ? startInput.value : '';
+        var dueDay = dueDayInput ? (parseInt(dueDayInput.value, 10) || 5) : 5;
+        var allowBackfill = backfillCheck ? backfillCheck.checked : false;
+
         if (!name) {
           SchoolApp.showToast("Charge Name is required.", "error");
           return;
@@ -3366,25 +3657,47 @@
           SchoolApp.showToast("Amount must be a positive number.", "error");
           return;
         }
-        
-        var settings = SchoolApp.store.settings;
+
+        var settings = SchoolApp.store.settings || {};
         if (!settings.extraCharges) settings.extraCharges = [];
-        
+
+        var today = new Date();
+        var curY = today.getFullYear();
+        var curM = today.getMonth() + 1;
+        var curPeriod = curY + '-' + (curM < 10 ? '0' + curM : curM);
+        var curQ = curY + '-Q' + (Math.floor((curM - 1) / 3) + 1);
+
+        // Backfill safety: Starts NEXT cycle by default if backfill is NOT opted into
+        var initialLastBilled = '';
+        if (!allowBackfill) {
+          if (interval === 'monthly') initialLastBilled = curPeriod;
+          else if (interval === 'quarterly') initialLastBilled = curQ;
+        }
+
         settings.extraCharges.push({
           id: 'charge_' + Date.now(),
           name: name,
+          feeHeadId: feeHeadId,
+          interval: interval,
+          type: interval, // backward compatibility
           amount: amount,
-          type: type
+          targetClasses: targetCls === 'all' ? 'all' : [targetCls],
+          startDate: startDate || (today.toISOString().split('T')[0]),
+          dueDay: dueDay,
+          allowBackfill: allowBackfill,
+          lastBilledPeriod: initialLastBilled,
+          createdAt: new Date().toISOString()
         });
-        
+
         if (nameInput) nameInput.value = '';
         if (amtInput) amtInput.value = '';
-        
+        if (backfillCheck) backfillCheck.checked = false;
+
         renderFeesCharges();
-        SchoolApp.showToast("Extra charge added.", "success");
+        SchoolApp.showToast("Extra charge added. Click 'Save Extra Charges' to persist.", "success");
       });
     }
- 
+
     // Save Charges List
     var setupSaveChargesBtn = document.getElementById('setup-save-charges-btn');
     if (setupSaveChargesBtn) {
@@ -3393,19 +3706,129 @@
           SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
           return;
         }
-        
+
         setupSaveChargesBtn.disabled = true;
         var originalHTML = setupSaveChargesBtn.innerHTML;
         setupSaveChargesBtn.innerHTML = '<span class="material-icons-round">sync</span> Saving...';
-        
+
         var success = await SchoolApp.save();
-        
+
         setupSaveChargesBtn.disabled = false;
         setupSaveChargesBtn.innerHTML = originalHTML;
-        
+
         if (success) {
           SchoolApp.showToast("Extra Charges saved successfully!", "success");
         }
+      });
+    }
+
+    // Late Fee Enable Toggle Listener
+    var lateEnableCheck = document.getElementById('setup-latefee-enable');
+    if (lateEnableCheck) {
+      lateEnableCheck.addEventListener('change', function() {
+        var fields = document.getElementById('latefee-config-fields');
+        if (fields) {
+          fields.style.opacity = this.checked ? '1' : '0.6';
+          fields.style.pointerEvents = this.checked ? 'auto' : 'none';
+        }
+      });
+    }
+
+    // Save Late Fee Settings Listener
+    var saveLateFeeBtn = document.getElementById('setup-save-latefee-btn');
+    if (saveLateFeeBtn) {
+      saveLateFeeBtn.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+
+        var isEnabled = document.getElementById('setup-latefee-enable') ? document.getElementById('setup-latefee-enable').checked : false;
+        var feeHeadSelect = document.getElementById('setup-latefee-feehead');
+        var feeHeadId = feeHeadSelect ? feeHeadSelect.value : 'fh_fine';
+        var graceInput = document.getElementById('setup-latefee-grace');
+        var graceDays = graceInput ? (parseInt(graceInput.value, 10) || 0) : 10;
+        var typeSelect = document.getElementById('setup-latefee-type');
+        var type = typeSelect ? typeSelect.value : 'flat';
+        var valInput = document.getElementById('setup-latefee-value');
+        var val = valInput ? (parseFloat(valInput.value) || 0) : 0;
+        var capInput = document.getElementById('setup-latefee-cap');
+        var maxCap = capInput ? (parseFloat(capInput.value) || 0) : 0;
+
+        if (isEnabled && val <= 0) {
+          SchoolApp.showToast("Fine value must be greater than 0.", "error");
+          return;
+        }
+
+        var settings = SchoolApp.store.settings || {};
+        if (!settings.feeHeads) settings.feeHeads = [];
+
+        // Fee Head Existence Guarantee: Ensure fee head exists in settings.feeHeads
+        var exists = settings.feeHeads.some(function(fh) { return fh.id === feeHeadId; });
+        if (!exists) {
+          var newHead = { id: feeHeadId, name: 'Late Fee / Fine', defaultAmount: 0 };
+          settings.feeHeads.push(newHead);
+          SchoolApp.store.feeHeads = settings.feeHeads;
+        }
+
+        settings.lateFeeConfig = {
+          enabled: isEnabled,
+          feeHeadId: feeHeadId,
+          gracePeriodDays: graceDays,
+          type: type,
+          value: val,
+          maxCap: maxCap
+        };
+
+        saveLateFeeBtn.disabled = true;
+        var origHTML = saveLateFeeBtn.innerHTML;
+        saveLateFeeBtn.innerHTML = '<span class="material-icons-round">sync</span> Saving...';
+
+        var success = await SchoolApp.save();
+
+        saveLateFeeBtn.disabled = false;
+        saveLateFeeBtn.innerHTML = origHTML;
+
+        if (success) {
+          SchoolApp.showToast("Automatic Late Fee settings saved successfully!", "success");
+        }
+      });
+    }
+
+    // Auto-Fee Billing Dry-Run Preview Button
+    var previewAutoFeeBtn = document.getElementById('setup-preview-autofee-btn');
+    if (previewAutoFeeBtn) {
+      previewAutoFeeBtn.addEventListener('click', function() {
+        openAutoFeePreviewModal();
+      });
+    }
+
+    // Auto-Fee Billing Live Run Button
+    var runAutoFeeBtn = document.getElementById('setup-run-autofee-btn');
+    if (runAutoFeeBtn) {
+      runAutoFeeBtn.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+        if (!confirm("Run Automated Billing Engine now?\n\nThis will evaluate pending tuition dues, flexible extra charges, and late fees according to your current configurations and save them to the ledger.")) {
+          return;
+        }
+
+        runAutoFeeBtn.disabled = true;
+        var origHTML = runAutoFeeBtn.innerHTML;
+        runAutoFeeBtn.innerHTML = '<span class="material-icons-round">sync</span> Running...';
+        SchoolApp.showLoader('Running Billing Engine...');
+
+        await SchoolApp.runAutoFeeReconciliation();
+
+        SchoolApp.hideLoader();
+        runAutoFeeBtn.disabled = false;
+        runAutoFeeBtn.innerHTML = origHTML;
+
+        SchoolApp.showToast(SchoolApp.feesGeneratedMsg || 'Billing engine completed. All accounts are up to date.', 'success');
+        SchoolApp.feesGeneratedMsg = null;
+        renderAdminPanel();
       });
     }
 

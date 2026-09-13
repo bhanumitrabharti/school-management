@@ -6061,3 +6061,22 @@ body.light-theme #pay-allocation-rows-container::-webkit-scrollbar-thumb {
     gap: 6px;
   }
 }
+
+/* ==================== SECTION: PHASE 3 AUTO-FEE & LATE FEE UPGRADE ==================== */
+.fee-setup-card #latefee-config-fields {
+  transition: opacity 0.2s ease;
+}
+
+body.light-theme #dryrun-sim-date {
+  background: #ffffff;
+  color: #1e293b;
+  border-color: #cbd5e1;
+}
+
+@media (max-width: 640px) {
+  #dryrun-recalc-btn {
+    width: 100%;
+    margin-top: 8px;
+  }
+}
+
