@@ -299,7 +299,8 @@
 
     var totalCharged = dues.reduce(function(sum, d) { return sum + (Number(d.amount) || 0); }, 0);
     var totalPaid = payments.reduce(function(sum, p) { return sum + (Number(p.amount) || 0); }, 0);
-    var netDue = totalCharged - totalPaid;
+    var totalDiscount = payments.reduce(function(sum, p) { return sum + (Number(p.discount) || 0); }, 0);
+    var netDue = totalCharged - (totalPaid + totalDiscount);
 
     // Current month charges (itemized by fee head)
     var today = new Date();
@@ -322,7 +323,7 @@
 
     // Tuition month(s) covered — derive from tuition due record dates
     var tuitionCharges = dues.filter(function(d) { return d.feeHeadId === 'fh_tuition'; });
-    var tuitionMonths = getUncoveredTuitionMonths(tuitionCharges, payments, totalPaid, totalCharged);
+    var tuitionMonths = getUncoveredTuitionMonths(tuitionCharges, payments, totalPaid + totalDiscount, totalCharged);
 
     // Last payment date
     var sortedPayments = payments.slice().sort(function(a, b) {
@@ -342,6 +343,7 @@
       totalCharged: totalCharged,
       totalDues: totalCharged,
       totalPaid: totalPaid,
+      totalDiscount: totalDiscount,
       netDue: netDue,
       outstanding: netDue,
       lastPaymentDate: lastPaymentDate,
@@ -353,11 +355,12 @@
   function getStudentFeeStats(studentId) {
     var stmt = generateFeeStatement(studentId);
     if (!stmt) {
-      return { totalDues: 0, totalPaid: 0, outstanding: 0 };
+      return { totalDues: 0, totalPaid: 0, totalDiscount: 0, outstanding: 0 };
     }
     return {
       totalDues: stmt.totalCharged,
       totalPaid: stmt.totalPaid,
+      totalDiscount: stmt.totalDiscount || 0,
       outstanding: stmt.netDue
     };
   }
@@ -1519,10 +1522,12 @@
 
     var runningBalance = 0;
     var transactions = studentFees.map(function(t) {
+      var amt = parseFloat(t.amount || 0);
+      var disc = parseFloat(t.discount || 0);
       if (t.type === 'due') {
-        runningBalance += parseFloat(t.amount || 0);
+        runningBalance += amt;
       } else {
-        runningBalance -= parseFloat(t.amount || 0);
+        runningBalance -= (amt + disc);
       }
 
       var headName = '';
@@ -1531,12 +1536,36 @@
         headName = fh ? fh.name : 'Custom Charge';
       }
 
+      var desc = t.description;
+      if (!desc) {
+        if (t.type === 'due') {
+          desc = headName;
+        } else {
+          var pDesc = 'Payment (' + (t.mode || 'Cash') + ')';
+          if (disc > 0) {
+            pDesc += ' [₹' + disc.toLocaleString('en-IN') + ' disc]';
+          }
+          if (Array.isArray(t.allocations) && t.allocations.length > 0) {
+            var allocStr = t.allocations.map(function(a) {
+              return (a.feeHeadName || a.feeHeadId) + ': ₹' + Number(a.amount).toLocaleString('en-IN');
+            }).join(', ');
+            pDesc += ' (' + allocStr + ')';
+          }
+          desc = pDesc;
+        }
+      }
+
       return {
         id: t.id,
         date: t.date,
         type: t.type,
-        amount: parseFloat(t.amount || 0),
-        description: t.description || (t.type === 'due' ? headName : 'Payment (' + t.mode + ')'),
+        amount: amt,
+        discount: disc,
+        discountType: t.discountType || null,
+        discountValue: t.discountValue || 0,
+        grossAmount: parseFloat(t.grossAmount || (amt + disc)),
+        allocations: t.allocations || null,
+        description: desc,
         mode: t.mode,
         remarks: t.remarks,
         balance: runningBalance
@@ -1549,6 +1578,7 @@
       transactions: transactions,
       totalDues: stats.totalDues,
       totalPaid: stats.totalPaid,
+      totalDiscount: stats.totalDiscount || 0,
       outstanding: stats.outstanding
     };
   }
@@ -1633,15 +1663,49 @@
     html += '      <tr style="background:' + primaryColor + '; color:#ffffff;">';
     html += '        <th style="padding:8px 12px; text-align:left; font-weight:600; border-top-left-radius:6px;">Particulars / Description</th>';
     html += '        <th style="padding:8px 12px; text-align:left; font-weight:600;">Remarks</th>';
-    html += '        <th style="padding:8px 12px; text-align:right; font-weight:600; border-top-right-radius:6px;">Amount Paid (₹)</th>';
+    html += '        <th style="padding:8px 12px; text-align:right; font-weight:600; border-top-right-radius:6px;">Amount (₹)</th>';
     html += '      </tr>';
     html += '    </thead>';
     html += '    <tbody>';
-    html += '      <tr style="border-bottom:1px solid #e2e8f0;">';
-    html += '        <td style="padding:10px 12px; font-weight:500;">School Fee Payment</td>';
-    html += '        <td style="padding:10px 12px; color:#64748b;">' + escapeHTML(remarks) + '</td>';
-    html += '        <td style="padding:10px 12px; text-align:right; font-weight:700; color:#0f172a;">₹' + amount.toLocaleString('en-IN') + '.00</td>';
-    html += '      </tr>';
+
+    var discountAmt = Number(txn.discount || 0);
+    var hasAllocations = Array.isArray(txn.allocations) && txn.allocations.length > 0;
+
+    if (hasAllocations) {
+      txn.allocations.forEach(function(a) {
+        html += '      <tr style="border-bottom:1px solid #e2e8f0;">';
+        html += '        <td style="padding:8px 12px; font-weight:500;">' + escapeHTML(a.feeHeadName || a.feeHeadId || 'Fee Head') + '</td>';
+        html += '        <td style="padding:8px 12px; color:#64748b;">' + escapeHTML(remarks) + '</td>';
+        html += '        <td style="padding:8px 12px; text-align:right; font-weight:600; color:#0f172a;">₹' + Number(a.amount || 0).toLocaleString('en-IN') + '.00</td>';
+        html += '      </tr>';
+      });
+    } else {
+      var displayGross = discountAmt > 0 ? (amount + discountAmt) : amount;
+      html += '      <tr style="border-bottom:1px solid #e2e8f0;">';
+      html += '        <td style="padding:10px 12px; font-weight:500;">School Fee Payment</td>';
+      html += '        <td style="padding:10px 12px; color:#64748b;">' + escapeHTML(remarks) + '</td>';
+      html += '        <td style="padding:10px 12px; text-align:right; font-weight:700; color:#0f172a;">₹' + displayGross.toLocaleString('en-IN') + '.00</td>';
+      html += '      </tr>';
+    }
+
+    if (discountAmt > 0) {
+      var grossAmt = Number(txn.grossAmount || (amount + discountAmt));
+      if (hasAllocations) {
+        html += '      <tr style="background:#fafafa; font-size:12px; border-bottom:1px solid #e2e8f0;">';
+        html += '        <td colspan="2" style="padding:6px 12px; text-align:right; color:#64748b; font-weight:600;">Gross Due Settled:</td>';
+        html += '        <td style="padding:6px 12px; text-align:right; font-weight:600; color:#334155;">₹' + grossAmt.toLocaleString('en-IN') + '.00</td>';
+        html += '      </tr>';
+      }
+      var discLabel = 'Discount / Concession';
+      if (txn.discountType === 'percentage' && txn.discountValue) {
+        discLabel += ' (' + txn.discountValue + '%)';
+      }
+      html += '      <tr style="background:#fff1f2; font-size:12px; border-bottom:1px solid #e2e8f0; color:#e11d48;">';
+      html += '        <td colspan="2" style="padding:6px 12px; text-align:right; font-weight:600;">' + discLabel + ':</td>';
+      html += '        <td style="padding:6px 12px; text-align:right; font-weight:700;">-₹' + discountAmt.toLocaleString('en-IN') + '.00</td>';
+      html += '      </tr>';
+    }
+
     html += '      <tr style="background:#f1f5f9; font-weight:700;">';
     html += '        <td colspan="2" style="padding:10px 12px; text-align:right; font-size:13px; color:#334155;">TOTAL RECEIVED:</td>';
     html += '        <td style="padding:10px 12px; text-align:right; font-size:14px; color:' + primaryColor + ';">₹' + amount.toLocaleString('en-IN') + '.00</td>';
@@ -1751,12 +1815,12 @@
     var waBtn = document.getElementById('post-pay-whatsapp-btn');
     if (waBtn) {
       waBtn.addEventListener('click', function() {
-        sendWhatsAppReceipt(studentId, txn.amount, txn.mode);
+        sendWhatsAppReceipt(studentId, txn.amount, txn.mode, txn);
       });
     }
   }
 
-  function sendWhatsAppReceipt(studentId, amount, mode) {
+  function sendWhatsAppReceipt(studentId, amount, mode, txnRef) {
     var student = SchoolApp.store.students.find(function(s) { return s.id === studentId; });
     var settings = SchoolApp.store.settings || {};
     var schoolInfo = settings.schoolInfo || {};
@@ -1773,18 +1837,40 @@
       return;
     }
 
+    var txn = typeof txnRef === 'object' ? txnRef : null;
+    if (!txn && typeof txnRef === 'string') {
+      txn = (SchoolApp.store.fees || []).find(function(f) { return f.id === txnRef; });
+    }
+
     var studentName = ((student.firstName || '') + ' ' + (student.lastName || '')).trim();
     var classSec = 'Class ' + (student.class || '') + (student.section ? ' - ' + student.section : '');
-    var receiptNo = SchoolApp.lastReceiptNo || ('RCP-SVM-' + Date.now().toString().slice(-5));
+    var receiptNo = (txn && txn.receiptNo) || SchoolApp.lastReceiptNo || ('RCP-SVM-' + Date.now().toString().slice(-5));
     var totalBalance = typeof SchoolApp.getStudentBalance === 'function' ? SchoolApp.getStudentBalance(studentId) : 0;
-    var dateStr = new Date().toLocaleDateString('en-IN');
+    var dateStr = (txn && txn.date) || new Date().toLocaleDateString('en-IN');
 
     var message = 
       'Namaste! 🙏\n' +
       'Payment of ₹' + Number(amount).toLocaleString('en-IN') + ' received for ' + studentName + ' (' + classSec + ').\n\n' +
       'Receipt No: ' + receiptNo + '\n' +
       'Payment Mode: ' + (mode || 'Cash') + '\n' +
-      'Date: ' + dateStr + '\n' +
+      'Date: ' + dateStr + '\n';
+
+    if (txn && txn.discount > 0) {
+      var discText = '₹' + Number(txn.discount).toLocaleString('en-IN');
+      if (txn.discountType === 'percentage' && txn.discountValue) {
+        discText += ' (' + txn.discountValue + '%)';
+      }
+      message += 'Discount / Concession: ' + discText + '\n';
+    }
+
+    if (txn && Array.isArray(txn.allocations) && txn.allocations.length > 0) {
+      var allocList = txn.allocations.map(function(a) {
+        return (a.feeHeadName || a.feeHeadId) + ': ₹' + Number(a.amount).toLocaleString('en-IN');
+      }).join(', ');
+      message += 'Fee Allocation: ' + allocList + '\n';
+    }
+
+    message +=
       'Remaining Dues: ₹' + Number(totalBalance).toLocaleString('en-IN') + '\n\n' +
       'Thank you,\n' +
       schoolName;
@@ -1833,7 +1919,7 @@
         bodyHTML += '<td><div class="table-actions" style="display:flex; gap:4px; align-items:center;">';
         if (t.type === 'payment') {
           bodyHTML += '<button class="btn-icon fees-print-receipt-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" title="Print Fee Receipt PDF" style="color:var(--accent-secondary); min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">description</span></button>';
-          bodyHTML += '<button class="btn-icon fees-whatsapp-btn" data-student-id="' + studentId + '" data-amount="' + t.amount + '" data-mode="' + (t.mode || 'Cash') + '" title="Send WhatsApp Receipt" style="color:#25D366; min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">send</span></button>';
+          bodyHTML += '<button class="btn-icon fees-whatsapp-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" data-amount="' + t.amount + '" data-mode="' + (t.mode || 'Cash') + '" title="Send WhatsApp Receipt" style="color:#25D366; min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">send</span></button>';
         }
         if (isAdmin) {
           bodyHTML += '<button class="btn-icon delete-ledger-txn-btn" data-id="' + t.id + '" data-student-id="' + studentId + '" style="color:var(--danger); min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:16px">delete</span></button>';
@@ -1888,7 +1974,8 @@
         var sId = this.getAttribute('data-student-id');
         var amount = parseFloat(this.getAttribute('data-amount') || 0);
         var mode = this.getAttribute('data-mode') || 'Cash';
-        sendWhatsAppReceipt(sId, amount, mode);
+        var txnId = this.getAttribute('data-txn-id');
+        sendWhatsAppReceipt(sId, amount, mode, txnId);
       });
     });
 
@@ -1918,33 +2005,221 @@
     });
   }
 
+  function getStudentPendingDuesByHead(studentId) {
+    var allTxns = (SchoolApp.store.fees || []).filter(function(f) {
+      return f.studentId === studentId;
+    });
+
+    // Sort chronologically
+    allTxns.sort(function(a, b) {
+      return new Date(a.date) - new Date(b.date);
+    });
+
+    var headMap = {};
+    var feeHeadsList = getActiveFeeHeads();
+
+    var dues = [];
+    var payments = [];
+
+    allTxns.forEach(function(t) {
+      if (t.type === 'due') {
+        var hid = t.feeHeadId || 'custom';
+        var fh = feeHeadsList.find(function(h) { return h.id === hid; });
+        var hname = fh ? fh.name : (t.description || (hid === 'custom' ? 'Custom Charge' : hid));
+        if (!headMap[hid]) {
+          headMap[hid] = {
+            id: hid,
+            name: hname,
+            totalCharged: 0,
+            totalAllocated: 0,
+            pending: 0
+          };
+        }
+        headMap[hid].totalCharged += Number(t.amount || 0);
+        dues.push({
+          id: t.id,
+          feeHeadId: hid,
+          amount: Number(t.amount || 0),
+          date: t.date,
+          remaining: Number(t.amount || 0)
+        });
+      } else if (t.type === 'payment') {
+        payments.push(t);
+      }
+    });
+
+    // Process payments against dues
+    payments.forEach(function(p) {
+      if (Array.isArray(p.allocations) && p.allocations.length > 0) {
+        p.allocations.forEach(function(alloc) {
+          var hid = alloc.feeHeadId || 'custom';
+          var amt = Number(alloc.amount || 0);
+          if (headMap[hid]) {
+            headMap[hid].totalAllocated += amt;
+          }
+          for (var i = 0; i < dues.length; i++) {
+            if (amt <= 0) break;
+            if (dues[i].feeHeadId === hid && dues[i].remaining > 0) {
+              var deduct = Math.min(dues[i].remaining, amt);
+              dues[i].remaining -= deduct;
+              amt -= deduct;
+            }
+          }
+        });
+      } else {
+        var unallocatedAmt = Number(p.amount || 0) + Number(p.discount || 0);
+        for (var i = 0; i < dues.length; i++) {
+          if (unallocatedAmt <= 0) break;
+          if (dues[i].remaining > 0) {
+            var deduct = Math.min(dues[i].remaining, unallocatedAmt);
+            dues[i].remaining -= deduct;
+            if (headMap[dues[i].feeHeadId]) {
+              headMap[dues[i].feeHeadId].totalAllocated += deduct;
+            }
+            unallocatedAmt -= deduct;
+          }
+        }
+      }
+    });
+
+    Object.keys(headMap).forEach(function(hid) {
+      headMap[hid].pending = Math.max(0, headMap[hid].totalCharged - headMap[hid].totalAllocated);
+    });
+
+    feeHeadsList.forEach(function(fh) {
+      if (!headMap[fh.id]) {
+        headMap[fh.id] = {
+          id: fh.id,
+          name: fh.name,
+          totalCharged: 0,
+          totalAllocated: 0,
+          pending: 0
+        };
+      }
+    });
+
+    return headMap;
+  }
+
   function showPaymentModal(studentId) {
     var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
     if (!s) return;
 
     var stats = getStudentFeeStats(studentId);
+    var pendingMap = getStudentPendingDuesByHead(studentId);
+    var defaultGross = stats.outstanding > 0 ? stats.outstanding : 0;
+    var todayStr = new Date().toISOString().split('T')[0];
 
     var bodyHTML = '<form id="collect-payment-form" class="form-grid">';
     
-    // Amount to pay
-    bodyHTML += '<div class="form-group"><label class="form-label">Payment Amount (₹) *</label>';
-    bodyHTML += '<input type="number" id="pay-amount" class="form-input" value="' + stats.outstanding + '" min="1" step="1" max="' + stats.outstanding + '" required>';
+    // Gross Due Settled (Amount of dues cleared)
+    bodyHTML += '<div class="form-group full-width">';
+    bodyHTML += '  <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">';
+    bodyHTML += '    <span>Payment / Due Settlement Amount (₹) *</span>';
+    bodyHTML += '    <span style="font-size:11px; color:var(--text-muted); font-weight:normal;">Total Outstanding: ₹' + stats.outstanding.toLocaleString('en-IN') + '</span>';
+    bodyHTML += '  </label>';
+    bodyHTML += '  <input type="number" id="pay-gross-amount" class="form-input" value="' + defaultGross + '" min="1" step="1" required placeholder="Enter amount">';
+    bodyHTML += '</div>';
+
+    // Discount Section (Optional)
+    bodyHTML += '<div class="form-group full-width">';
+    bodyHTML += '  <div class="pay-discount-card">';
+    bodyHTML += '    <div style="display:flex; justify-content:space-between; align-items:center;">';
+    bodyHTML += '      <label class="pay-toggle-label">';
+    bodyHTML += '        <input type="checkbox" id="pay-discount-toggle">';
+    bodyHTML += '        <span class="material-icons-round" style="font-size:18px; color:var(--accent-primary, #6366f1);">local_offer</span>';
+    bodyHTML += '        <span>Apply Discount / Concession</span>';
+    bodyHTML += '      </label>';
+    bodyHTML += '      <div id="pay-discount-mode-wrapper" class="pay-mode-btn-group" style="display:none;">';
+    bodyHTML += '        <button type="button" class="pay-mode-btn active" id="pay-discount-mode-amt">₹ Amount</button>';
+    bodyHTML += '        <button type="button" class="pay-mode-btn" id="pay-discount-mode-pct">% Percentage</button>';
+    bodyHTML += '      </div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div id="pay-discount-inputs-container" style="display:none; margin-top:12px;">';
+    bodyHTML += '      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">';
+    bodyHTML += '        <div class="form-group">';
+    bodyHTML += '          <label class="form-label" style="font-size:12px;">Discount (₹ Amount)</label>';
+    bodyHTML += '          <input type="number" id="pay-discount-amount" class="form-input" min="0" step="1" value="0" placeholder="e.g. 500">';
+    bodyHTML += '        </div>';
+    bodyHTML += '        <div class="form-group">';
+    bodyHTML += '          <label class="form-label" style="font-size:12px;">Discount (% Percentage)</label>';
+    bodyHTML += '          <input type="number" id="pay-discount-percent" class="form-input" min="0" max="100" step="0.1" value="0" placeholder="e.g. 10">';
+    bodyHTML += '        </div>';
+    bodyHTML += '      </div>';
+    bodyHTML += '      <div id="pay-discount-summary-bar" class="pay-live-summary-bar">';
+    bodyHTML += '        <div class="pay-live-summary-item"><span>Due Settled:</span> <strong id="pay-summary-gross">₹' + defaultGross.toLocaleString('en-IN') + '</strong></div>';
+    bodyHTML += '        <div class="pay-live-summary-item" style="color:#ef4444;"><span>Discount:</span> <strong id="pay-summary-discount">-₹0 (0%)</strong></div>';
+    bodyHTML += '        <div class="pay-live-summary-item"><span>Net Cash Collected:</span> <span id="pay-summary-net" class="pay-live-net-badge">₹' + defaultGross.toLocaleString('en-IN') + '</span></div>';
+    bodyHTML += '      </div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
+    // Optional Payment Allocation Section (Collapsible Accordion)
+    bodyHTML += '<div class="form-group full-width">';
+    bodyHTML += '  <div class="pay-allocation-section">';
+    bodyHTML += '    <div class="pay-allocation-header" id="pay-allocation-toggle">';
+    bodyHTML += '      <div style="display:flex; align-items:center; gap:8px;">';
+    bodyHTML += '        <span class="material-icons-round" id="pay-allocation-chevron" style="transition: transform 0.2s;">chevron_right</span>';
+    bodyHTML += '        <span class="material-icons-round" style="font-size:18px; color:var(--accent-secondary, #06b6d4);">call_split</span>';
+    bodyHTML += '        <strong>Split payment across fee heads (Optional)</strong>';
+    bodyHTML += '      </div>';
+    bodyHTML += '      <span class="badge badge-success" id="pay-allocation-status-badge" style="font-size:11px; display:none;">Active</span>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="pay-allocation-body" id="pay-allocation-body" style="display:none;">';
+    bodyHTML += '      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
+    bodyHTML += '        <span style="font-size:11px; color:var(--text-muted);">Allocate gross settlement amount to specific fee heads:</span>';
+    bodyHTML += '        <button type="button" class="btn btn-sm btn-secondary" id="pay-allocation-autofill-btn" style="padding:4px 10px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">';
+    bodyHTML += '          <span class="material-icons-round" style="font-size:14px;">auto_fix_high</span> Auto-Fill from Pending';
+    bodyHTML += '        </button>';
+    bodyHTML += '      </div>';
+    bodyHTML += '      <div id="pay-allocation-rows-container">';
+
+    // Render heads: prioritize heads with pending > 0, then others
+    var sortedHeadKeys = Object.keys(pendingMap).sort(function(a, b) {
+      return (pendingMap[b].pending || 0) - (pendingMap[a].pending || 0);
+    });
+
+    sortedHeadKeys.forEach(function(hid) {
+      var h = pendingMap[hid];
+      bodyHTML += '      <div class="pay-allocation-row">';
+      bodyHTML += '        <div class="pay-allocation-head-info">';
+      bodyHTML += '          <div class="pay-allocation-head-title">' + escapeHTML(h.name) + '</div>';
+      bodyHTML += '          <div class="pay-allocation-head-pending">Pending: ₹' + Number(h.pending || 0).toLocaleString('en-IN') + '</div>';
+      bodyHTML += '        </div>';
+      bodyHTML += '        <div><span style="font-size:12px; color:var(--text-muted);">₹</span></div>';
+      bodyHTML += '        <div>';
+      bodyHTML += '          <input type="number" class="form-input allocation-head-input" data-head-id="' + escapeHTML(h.id) + '" data-head-name="' + escapeHTML(h.name) + '" value="0" min="0" step="1" style="padding:6px 10px; text-align:right;">';
+      bodyHTML += '        </div>';
+      bodyHTML += '      </div>';
+    });
+
+    bodyHTML += '      </div>'; // end pay-allocation-rows-container
+    bodyHTML += '      <div id="pay-allocation-counter-bar" class="pay-allocation-counter-bar valid">';
+    bodyHTML += '        <span id="pay-allocation-counter-text">Allocated: ₹0 / ₹' + defaultGross.toLocaleString('en-IN') + '</span>';
+    bodyHTML += '        <span id="pay-allocation-diff-text">✓ Exact match</span>';
+    bodyHTML += '      </div>';
+    bodyHTML += '      <div id="pay-allocation-error-msg" style="display:none; color:#ef4444; font-size:12px; margin-top:6px; font-weight:600;"></div>';
+    bodyHTML += '    </div>'; // end pay-allocation-body
+    bodyHTML += '  </div>'; // end pay-allocation-section
     bodyHTML += '</div>';
 
     // Payment Mode
-    bodyHTML += '<div class="form-group"><label class="form-label">Payment Mode *</label>';
-    bodyHTML += '<select id="pay-mode" class="form-select" required><option value="Cash">Cash</option><option value="UPI">UPI</option><option value="Bank Transfer">Bank Transfer</option></select>';
+    bodyHTML += '<div class="form-group">';
+    bodyHTML += '  <label class="form-label">Payment Mode *</label>';
+    bodyHTML += '  <select id="pay-mode" class="form-select" required><option value="Cash">Cash</option><option value="UPI">UPI</option><option value="Bank Transfer">Bank Transfer</option></select>';
     bodyHTML += '</div>';
 
     // Payment Date
-    var todayStr = new Date().toISOString().split('T')[0];
-    bodyHTML += '<div class="form-group"><label class="form-label">Date *</label>';
-    bodyHTML += '<input type="date" id="pay-date" class="form-input" value="' + todayStr + '" required>';
+    bodyHTML += '<div class="form-group">';
+    bodyHTML += '  <label class="form-label">Date *</label>';
+    bodyHTML += '  <input type="date" id="pay-date" class="form-input" value="' + todayStr + '" required>';
     bodyHTML += '</div>';
 
     // Remarks
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Remarks / Notes</label>';
-    bodyHTML += '<input type="text" id="pay-remarks" class="form-input" placeholder="e.g. Receipt #1234 or UPI Txn ref">';
+    bodyHTML += '<div class="form-group full-width">';
+    bodyHTML += '  <label class="form-label">Remarks / Notes</label>';
+    bodyHTML += '  <input type="text" id="pay-remarks" class="form-input" placeholder="e.g. Receipt #1234 or UPI Txn ref">';
     bodyHTML += '</div>';
 
     bodyHTML += '</form>';
@@ -1955,21 +2230,274 @@
     SchoolApp.showModal('Record Payment - ' + SchoolApp.getStudentFullName(s), bodyHTML, footerHTML);
 
     var saveBtn = document.getElementById('collect-payment-save-btn');
-    var saveBtn = document.getElementById('collect-payment-save-btn');
+    var grossInput = document.getElementById('pay-gross-amount');
+    var discountToggle = document.getElementById('pay-discount-toggle');
+    var discountModeWrapper = document.getElementById('pay-discount-mode-wrapper');
+    var discountInputsContainer = document.getElementById('pay-discount-inputs-container');
+    var discountAmtInput = document.getElementById('pay-discount-amount');
+    var discountPctInput = document.getElementById('pay-discount-percent');
+    var btnModeAmt = document.getElementById('pay-discount-mode-amt');
+    var btnModePct = document.getElementById('pay-discount-mode-pct');
+    var paySummaryGross = document.getElementById('pay-summary-gross');
+    var paySummaryDiscount = document.getElementById('pay-summary-discount');
+    var paySummaryNet = document.getElementById('pay-summary-net');
+
+    var allocationToggle = document.getElementById('pay-allocation-toggle');
+    var allocationChevron = document.getElementById('pay-allocation-chevron');
+    var allocationBody = document.getElementById('pay-allocation-body');
+    var allocationStatusBadge = document.getElementById('pay-allocation-status-badge');
+    var allocationAutofillBtn = document.getElementById('pay-allocation-autofill-btn');
+    var allocationCounterBar = document.getElementById('pay-allocation-counter-bar');
+    var allocationCounterText = document.getElementById('pay-allocation-counter-text');
+    var allocationDiffText = document.getElementById('pay-allocation-diff-text');
+    var allocationErrorMsg = document.getElementById('pay-allocation-error-msg');
+
+    var discountMode = 'amount'; // 'amount' | 'percentage'
+    var isAllocationOpen = false;
+
+    // --- DISCOUNT LIVE SYNC LOGIC ---
+    function syncDiscount(fromMode) {
+      var gross = parseFloat(grossInput.value) || 0;
+      if (gross < 0) { gross = 0; grossInput.value = 0; }
+
+      var discAmt = parseFloat(discountAmtInput.value) || 0;
+      var discPct = parseFloat(discountPctInput.value) || 0;
+
+      if (fromMode === 'percentage') {
+        if (discPct < 0) { discPct = 0; discountPctInput.value = 0; }
+        if (discPct > 100) { discPct = 100; discountPctInput.value = 100; }
+        discAmt = Math.round(gross * (discPct / 100));
+        discountAmtInput.value = discAmt;
+      } else if (fromMode === 'amount') {
+        if (discAmt < 0) { discAmt = 0; discountAmtInput.value = 0; }
+        discPct = gross > 0 ? (Math.round((discAmt / gross) * 10000) / 100) : 0;
+        discountPctInput.value = discPct;
+      }
+
+      var net = Math.max(0, gross - discAmt);
+
+      paySummaryGross.textContent = '₹' + gross.toLocaleString('en-IN');
+      paySummaryDiscount.textContent = '-₹' + discAmt.toLocaleString('en-IN') + ' (' + discPct + '%)';
+      paySummaryNet.textContent = '₹' + net.toLocaleString('en-IN');
+
+      validateAllocation();
+    }
+
+    if (discountToggle) {
+      discountToggle.addEventListener('change', function() {
+        if (this.checked) {
+          discountModeWrapper.style.display = 'inline-flex';
+          discountInputsContainer.style.display = 'block';
+          syncDiscount(discountMode);
+        } else {
+          discountModeWrapper.style.display = 'none';
+          discountInputsContainer.style.display = 'none';
+          discountAmtInput.value = 0;
+          discountPctInput.value = 0;
+          validateAllocation();
+        }
+      });
+    }
+
+    if (btnModeAmt) {
+      btnModeAmt.addEventListener('click', function() {
+        discountMode = 'amount';
+        btnModeAmt.classList.add('active');
+        btnModePct.classList.remove('active');
+        discountAmtInput.focus();
+      });
+    }
+
+    if (btnModePct) {
+      btnModePct.addEventListener('click', function() {
+        discountMode = 'percentage';
+        btnModePct.classList.add('active');
+        btnModeAmt.classList.remove('active');
+        discountPctInput.focus();
+      });
+    }
+
+    if (discountAmtInput) {
+      discountAmtInput.addEventListener('input', function() {
+        syncDiscount('amount');
+      });
+    }
+
+    if (discountPctInput) {
+      discountPctInput.addEventListener('input', function() {
+        syncDiscount('percentage');
+      });
+    }
+
+    if (grossInput) {
+      grossInput.addEventListener('input', function() {
+        if (discountToggle && discountToggle.checked) {
+          syncDiscount(discountMode);
+        } else {
+          validateAllocation();
+        }
+      });
+    }
+
+    // --- ALLOCATION LOGIC & HARD BLOCK ---
+    function validateAllocation() {
+      if (!isAllocationOpen) {
+        if (saveBtn) saveBtn.disabled = false;
+        if (allocationErrorMsg) allocationErrorMsg.style.display = 'none';
+        return true;
+      }
+
+      var allocSum = 0;
+      document.querySelectorAll('.allocation-head-input').forEach(function(inp) {
+        allocSum += (parseFloat(inp.value) || 0);
+      });
+
+      var targetGross = parseFloat(grossInput.value) || 0;
+      var isDiscActive = discountToggle && discountToggle.checked && (parseFloat(discountAmtInput.value) || 0) > 0;
+      var labelSuffix = isDiscActive ? ' (Gross Due Settled)' : '';
+
+      allocationCounterText.textContent = 'Allocated: ₹' + allocSum.toLocaleString('en-IN') + ' / ₹' + targetGross.toLocaleString('en-IN') + labelSuffix;
+
+      if (Math.round(allocSum) === Math.round(targetGross) && targetGross > 0) {
+        allocationCounterBar.className = 'pay-allocation-counter-bar valid';
+        allocationDiffText.textContent = '✓ Exact match';
+        allocationErrorMsg.style.display = 'none';
+        if (saveBtn) saveBtn.disabled = false;
+        return true;
+      } else {
+        allocationCounterBar.className = 'pay-allocation-counter-bar invalid';
+        var diff = targetGross - allocSum;
+        allocationDiffText.textContent = diff > 0 ? ('Remaining: ₹' + diff.toLocaleString('en-IN')) : ('Excess: ₹' + Math.abs(diff).toLocaleString('en-IN'));
+        allocationErrorMsg.textContent = 'Allocated ₹' + allocSum.toLocaleString('en-IN') + ' of ₹' + targetGross.toLocaleString('en-IN') + ' — adjust to continue';
+        allocationErrorMsg.style.display = 'block';
+        if (saveBtn) saveBtn.disabled = true;
+        return false;
+      }
+    }
+
+    function autoFillAllocation() {
+      var targetGross = parseFloat(grossInput.value) || 0;
+      var remainingToAlloc = targetGross;
+      var inputs = document.querySelectorAll('.allocation-head-input');
+
+      inputs.forEach(function(inp) {
+        var hid = inp.getAttribute('data-head-id');
+        var pending = (pendingMap[hid] && pendingMap[hid].pending) || 0;
+        var alloc = Math.min(pending, remainingToAlloc);
+        inp.value = alloc;
+        remainingToAlloc -= alloc;
+      });
+
+      // If any remaining (e.g. advance payment exceeding current dues), place on first head
+      if (remainingToAlloc > 0 && inputs.length > 0) {
+        var currentFirst = parseFloat(inputs[0].value) || 0;
+        inputs[0].value = currentFirst + remainingToAlloc;
+      }
+
+      validateAllocation();
+    }
+
+    if (allocationToggle) {
+      allocationToggle.addEventListener('click', function() {
+        isAllocationOpen = !isAllocationOpen;
+        if (isAllocationOpen) {
+          allocationBody.style.display = 'block';
+          allocationChevron.style.transform = 'rotate(90deg)';
+          allocationStatusBadge.style.display = 'inline-block';
+          // If all inputs are 0, run auto-fill to help user immediately
+          var currentSum = 0;
+          document.querySelectorAll('.allocation-head-input').forEach(function(i) { currentSum += (parseFloat(i.value) || 0); });
+          if (currentSum === 0) {
+            autoFillAllocation();
+          } else {
+            validateAllocation();
+          }
+        } else {
+          allocationBody.style.display = 'none';
+          allocationChevron.style.transform = 'rotate(0deg)';
+          allocationStatusBadge.style.display = 'none';
+          if (saveBtn) saveBtn.disabled = false;
+          if (allocationErrorMsg) allocationErrorMsg.style.display = 'none';
+        }
+      });
+    }
+
+    if (allocationAutofillBtn) {
+      allocationAutofillBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        autoFillAllocation();
+      });
+    }
+
+    document.querySelectorAll('.allocation-head-input').forEach(function(inp) {
+      inp.addEventListener('input', function() {
+        if (parseFloat(this.value) < 0) this.value = 0;
+        validateAllocation();
+      });
+    });
+
+    // --- SAVE SUBMISSION HANDLER ---
     if (saveBtn) {
       saveBtn.addEventListener('click', async function() {
-        var amt = parseFloat(document.getElementById('pay-amount').value);
+        var grossAmt = parseFloat(grossInput.value);
         var mode = document.getElementById('pay-mode').value;
         var date = document.getElementById('pay-date').value;
         var remarks = document.getElementById('pay-remarks').value.trim();
 
-        if (isNaN(amt) || amt <= 0) {
+        if (isNaN(grossAmt) || grossAmt <= 0) {
           SchoolApp.showToast('Please enter a valid payment amount.', 'error');
           return;
         }
         if (!date) {
           SchoolApp.showToast('Please select a payment date.', 'error');
           return;
+        }
+
+        // Discount validation
+        var isDiscountChecked = discountToggle && discountToggle.checked;
+        var discountAmt = 0;
+        var discountVal = 0;
+        if (isDiscountChecked) {
+          discountAmt = parseFloat(discountAmtInput.value) || 0;
+          discountVal = discountMode === 'percentage' ? (parseFloat(discountPctInput.value) || 0) : discountAmt;
+
+          // TEST 7 GUARD: Discount cannot exceed gross settlement
+          if (discountAmt > grossAmt) {
+            SchoolApp.showToast('Discount cannot exceed gross amount.', 'error');
+            return;
+          }
+          if (discountAmt < 0) {
+            SchoolApp.showToast('Discount cannot be negative.', 'error');
+            return;
+          }
+        }
+
+        var netAmt = Math.max(0, grossAmt - discountAmt);
+
+        // Allocation validation (HARD BLOCK)
+        var allocations = null;
+        if (isAllocationOpen) {
+          var isAllocValid = validateAllocation();
+          var allocSum = 0;
+          document.querySelectorAll('.allocation-head-input').forEach(function(inp) {
+            allocSum += (parseFloat(inp.value) || 0);
+          });
+          if (!isAllocValid || Math.round(allocSum) !== Math.round(grossAmt)) {
+            SchoolApp.showToast('Allocated ₹' + allocSum.toLocaleString('en-IN') + ' of ₹' + grossAmt.toLocaleString('en-IN') + ' — adjust to continue', 'error');
+            return;
+          }
+
+          allocations = [];
+          document.querySelectorAll('.allocation-head-input').forEach(function(inp) {
+            var val = parseFloat(inp.value) || 0;
+            if (val > 0) {
+              allocations.push({
+                feeHeadId: inp.getAttribute('data-head-id'),
+                feeHeadName: inp.getAttribute('data-head-name') || inp.getAttribute('data-head-id'),
+                amount: val
+              });
+            }
+          });
         }
 
         var doSave = async function() {
@@ -1980,10 +2508,15 @@
             studentId: studentId,
             schoolId: SchoolApp.currentSchoolId,
             type: 'payment',
-            amount: amt,
+            amount: netAmt,
+            discount: discountAmt,
+            discountType: isDiscountChecked ? discountMode : null,
+            discountValue: isDiscountChecked ? discountVal : 0,
+            grossAmount: grossAmt,
             date: date,
             mode: mode,
             remarks: remarks,
+            allocations: isAllocationOpen ? allocations : null,
             timestamp: new Date().toISOString()
           };
           SchoolApp.store.fees.push(newTxn);
@@ -2001,11 +2534,15 @@
           
           SchoolApp.hideLoader();
           saveBtn.disabled = false;
-          saveBtn.textContent = 'Collect Payment';
+          saveBtn.textContent = 'Record Payment';
 
           if (success) {
             SchoolApp.closeModal();
-            SchoolApp.showToast('Payment of ₹' + amt.toLocaleString('en-IN') + ' recorded successfully!', 'success');
+            var successMsg = 'Payment of ₹' + netAmt.toLocaleString('en-IN') + ' recorded successfully!';
+            if (discountAmt > 0) {
+              successMsg = 'Payment of ₹' + netAmt.toLocaleString('en-IN') + ' recorded (₹' + discountAmt.toLocaleString('en-IN') + ' discount applied)!';
+            }
+            SchoolApp.showToast(successMsg, 'success');
             render();
 
             // Show Post-Payment Options Modal (Print PDF, WhatsApp, Skip)
@@ -2018,8 +2555,8 @@
         var ledger = getStudentLedger(studentId);
         if (ledger.outstanding <= 0) {
           var promptMsg = ledger.outstanding < 0
-            ? 'This student already has an advance balance of ₹' + Math.abs(ledger.outstanding).toLocaleString('en-IN') + '. Record an additional payment of ₹' + amt.toLocaleString('en-IN') + '?'
-            : 'This student has ₹0 outstanding dues. Are you sure you want to record an advance payment of ₹' + amt.toLocaleString('en-IN') + '?';
+            ? 'This student already has an advance balance of ₹' + Math.abs(ledger.outstanding).toLocaleString('en-IN') + '. Record an additional payment of ₹' + netAmt.toLocaleString('en-IN') + '?'
+            : 'This student has ₹0 outstanding dues. Are you sure you want to record an advance payment of ₹' + netAmt.toLocaleString('en-IN') + '?';
 
           SchoolApp.showConfirm(promptMsg, function() {
             doSave();
@@ -2602,12 +3139,20 @@
   window.logFeeReminder = logFeeReminder;
   window.showFeeReminderPreviewModal = showFeeReminderPreviewModal;
   window.showBulkFeeRemindersModal = showBulkFeeRemindersModal;
+  window.showPaymentModal = showPaymentModal;
+  window.generateFeeReceiptHTML = generateFeeReceiptHTML;
+  window.sendWhatsAppReceipt = sendWhatsAppReceipt;
+  window.getStudentPendingDuesByHead = getStudentPendingDuesByHead;
 
   SchoolApp.generateFeeStatement = generateFeeStatement;
   SchoolApp.buildFeeReminderMessage = buildFeeReminderMessage;
   SchoolApp.buildFeeReminderSMS = buildFeeReminderSMS;
   SchoolApp.showFeeReminderPreviewModal = showFeeReminderPreviewModal;
   SchoolApp.showBulkFeeRemindersModal = showBulkFeeRemindersModal;
+  SchoolApp.showPaymentModal = showPaymentModal;
+  SchoolApp.generateFeeReceiptHTML = generateFeeReceiptHTML;
+  SchoolApp.sendWhatsAppReceipt = sendWhatsAppReceipt;
+  SchoolApp.getStudentPendingDuesByHead = getStudentPendingDuesByHead;
 
   // Register Module
   SchoolApp.registerModule('fees', {
@@ -2617,6 +3162,10 @@
     render: function(c) {
       render(c);
     },
+    showPaymentModal: showPaymentModal,
+    generateFeeReceiptHTML: generateFeeReceiptHTML,
+    sendWhatsAppReceipt: sendWhatsAppReceipt,
+    getStudentPendingDuesByHead: getStudentPendingDuesByHead,
     cleanup: function() {
       console.log("Fees module unmounted/cleaned up.");
     }

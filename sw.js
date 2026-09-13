@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v8 for timetable subjects dynamic fallback to settings.subjects.
-const CACHE_NAME = 'erp-cache-v8';
+// Bumped to v9 for Phase 2 Fee Payment Flow upgrade (discounts, optional allocations, responsive layout).
+const CACHE_NAME = 'erp-cache-v9';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

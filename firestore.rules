@@ -2,15 +2,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function notWiping(fieldName) {
+    // HARD GUARD for students and teachers:
+    // Even if restructured is true, students and teachers must NEVER be wiped to []
+    // unless an explicit server-level override flag allowCollectionWipe == true is present.
+    function notWipingRoster(fieldName) {
+      return (request.resource.data.get('allowCollectionWipe', false) == true) ||
+             !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
+    }
+
+    // Guard for fees and attendance:
+    // Allowed to become empty ONLY IF restructured == true (migrated to subcollections)
+    // or explicit override flag is present.
+    function notWipingLedger(fieldName) {
       return (request.resource.data.settings != null && request.resource.data.settings.restructured == true) ||
+             (request.resource.data.get('allowCollectionWipe', false) == true) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
     match /tenant_data/{schoolId} {
       allow read: if true;
       allow create: if true;
-      allow update: if notWiping('students') && notWiping('fees') && notWiping('attendance') && notWiping('teachers');
+      allow update: if notWipingRoster('students') &&
+                       notWipingRoster('teachers') &&
+                       notWipingLedger('fees') &&
+                       notWipingLedger('attendance');
       allow delete: if false;
     }
 
