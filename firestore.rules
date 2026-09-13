@@ -25,7 +25,8 @@ service cloud.firestore {
       allow update: if notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
                        notWipingLedger('fees') &&
-                       notWipingLedger('attendance');
+                       notWipingLedger('attendance') &&
+                       notWipingLedger('examMarks');
       allow delete: if false;
     }
 
