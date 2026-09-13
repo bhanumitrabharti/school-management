@@ -517,7 +517,7 @@ window.SchoolApp = {
     }
   },
 
-  saveAttendanceRecord: async function(record) {
+  saveAttendanceRecord: async function(record, bypassLoader) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
@@ -557,6 +557,7 @@ window.SchoolApp = {
 
     // Single-write: If restructured, write targeted document to attendance_months/{ym}/classes/{classId}
     if (this.isRestructured(currentSchoolId)) {
+      if (!bypassLoader) this.showLoader('Saving attendance...');
       try {
         var classId = String(record.class);
         var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'attendance_months', ym, 'classes', classId);
@@ -574,14 +575,16 @@ window.SchoolApp = {
         console.error('[Attendance] Save failed:', err);
         this.showToast('Save failed: ' + (err.message || 'Check connection'), 'error');
         return false;
+      } finally {
+        if (!bypassLoader) this.hideLoader();
       }
     }
 
     // Fallback: If not restructured, use legacy full document save
-    return await this.save();
+    return await this.save(bypassLoader);
   },
 
-  deleteAttendanceRecord: async function(recordOrId) {
+  deleteAttendanceRecord: async function(recordOrId, bypassLoader) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
@@ -606,6 +609,7 @@ window.SchoolApp = {
       this._attendanceMonths[ym] = this._attendanceMonths[ym].filter(function(a) { return a.id !== id; });
     }
 
+    if (!bypassLoader) this.showLoader('Deleting attendance record...');
     // Single-write: If restructured, update attendance_months/{ym}/classes/{classId} AND save trash to tenant doc
     if (this.isRestructured(currentSchoolId)) {
       try {
@@ -622,10 +626,16 @@ window.SchoolApp = {
       } catch (err) {
         console.error('[Attendance] Delete failed:', err);
         return false;
+      } finally {
+        if (!bypassLoader) this.hideLoader();
       }
     }
 
-    return await this.save();
+    try {
+      return await this.save(true);
+    } finally {
+      if (!bypassLoader) this.hideLoader();
+    }
   },
 
   /* ===== FEES DUAL-READ / SINGLE-WRITE ===== */
@@ -726,7 +736,7 @@ window.SchoolApp = {
     }
   },
 
-  saveFeeTransaction: async function(txn) {
+  saveFeeTransaction: async function(txn, bypassLoader) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
@@ -757,6 +767,7 @@ window.SchoolApp = {
 
     // Single-write: If restructured, write targeted doc to fees_years/{yr}/months/{mo}
     if (this.isRestructured(currentSchoolId)) {
+      if (!bypassLoader) this.showLoader('Recording fee transaction...');
       try {
         var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yr, 'months', mo);
         var ymPrefix = yr + '-' + mo;
@@ -777,13 +788,15 @@ window.SchoolApp = {
         console.error('[Fees] Save failed:', err);
         this.showToast('Save failed: ' + (err.message || 'Check connection'), 'error');
         return false;
+      } finally {
+        if (!bypassLoader) this.hideLoader();
       }
     }
 
-    return await this.save(true);
+    return await this.save(bypassLoader);
   },
 
-  saveFeeTransactions: async function(txns) {
+  saveFeeTransactions: async function(txns, bypassLoader) {
     if (!Array.isArray(txns) || txns.length === 0) return true;
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
     var self = this;
@@ -802,6 +815,7 @@ window.SchoolApp = {
     }
 
     if (this.isRestructured(currentSchoolId)) {
+      if (!bypassLoader) this.showLoader('Saving ' + txns.length + ' fee transactions...');
       try {
         var yearKeys = Object.keys(byYearMonth);
         for (var y = 0; y < yearKeys.length; y++) {
@@ -837,13 +851,15 @@ window.SchoolApp = {
       } catch (err) {
         console.error('[Fees] Bulk save failed:', err);
         return false;
+      } finally {
+        if (!bypassLoader) this.hideLoader();
       }
     }
 
-    return await this.save();
+    return await this.save(bypassLoader);
   },
 
-  deleteFeeTransaction: async function(txnId, txnDate) {
+  deleteFeeTransaction: async function(txnId, txnDate, bypassLoader) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
@@ -866,6 +882,7 @@ window.SchoolApp = {
       this._feesYears[yr] = this._feesYears[yr].filter(function(f) { return f.id !== txnId; });
     }
 
+    if (!bypassLoader) this.showLoader('Deleting fee transaction...');
     if (this.isRestructured(currentSchoolId)) {
       try {
         if (yr) {
@@ -880,10 +897,16 @@ window.SchoolApp = {
       } catch (err) {
         console.error('[Fees] Delete failed:', err);
         return false;
+      } finally {
+        if (!bypassLoader) this.hideLoader();
       }
     }
 
-    return await this.save();
+    try {
+      return await this.save(true);
+    } finally {
+      if (!bypassLoader) this.hideLoader();
+    }
   },
 
   /* ===== EXAM MARKS DUAL-READ / SINGLE-WRITE ===== */

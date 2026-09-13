@@ -2189,14 +2189,19 @@
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
+        SchoolApp.showLoader('Recording fee charge...');
         var success = false;
-        if (typeof SchoolApp.saveFeeTransaction === 'function') {
-          success = await SchoolApp.saveFeeTransaction(dueTxn);
-        } else {
-          success = await SchoolApp.save();
+        try {
+          if (typeof SchoolApp.saveFeeTransaction === 'function') {
+            success = await SchoolApp.saveFeeTransaction(dueTxn, true);
+          } else {
+            success = await SchoolApp.save(true);
+          }
+        } finally {
+          SchoolApp.hideLoader();
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Add Charge';
         }
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Add Charge';
 
         if (success) {
           SchoolApp.closeModal();
@@ -2355,14 +2360,19 @@
         if (chargedCount > 0) {
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving...';
+          SchoolApp.showLoader('Generating fee dues (' + chargedCount + ' students)...');
           var success = false;
-          if (typeof SchoolApp.saveFeeTransactions === 'function') {
-            success = await SchoolApp.saveFeeTransactions(generatedTxns);
-          } else {
-            success = await SchoolApp.save();
+          try {
+            if (typeof SchoolApp.saveFeeTransactions === 'function') {
+              success = await SchoolApp.saveFeeTransactions(generatedTxns, true);
+            } else {
+              success = await SchoolApp.save(true);
+            }
+          } finally {
+            SchoolApp.hideLoader();
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Generate Dues';
           }
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Generate Dues';
 
           if (success) {
             SchoolApp.closeModal();
@@ -2372,9 +2382,14 @@
         } else {
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving Settings...';
-          await SchoolApp.save();
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Generate Dues';
+          SchoolApp.showLoader('Saving settings...');
+          try {
+            await SchoolApp.save(true);
+          } finally {
+            SchoolApp.hideLoader();
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Generate Dues';
+          }
           SchoolApp.closeModal();
           SchoolApp.showToast('Auto-charge settings saved.', 'info');
         }

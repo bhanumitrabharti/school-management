@@ -599,15 +599,20 @@
         var att = SchoolApp.store.attendance.find(function(a) { return a.id === id; });
         if (!att) return;
         SchoolApp.showConfirm('Delete this attendance record? It can be recovered from the Recycle Bin.', async function() {
-          if (typeof SchoolApp.deleteAttendanceRecord === 'function') {
-            await SchoolApp.deleteAttendanceRecord(att);
-          } else {
-            SchoolApp.moveToTrash('attendance', att.id, 'Attendance: Class ' + att.class + '-' + att.section, SchoolApp.formatDate(att.date), att);
-            SchoolApp.store.attendance = SchoolApp.store.attendance.filter(function(a) { return a.id !== id; });
-            SchoolApp.save();
+          SchoolApp.showLoader('Deleting attendance record...');
+          try {
+            if (typeof SchoolApp.deleteAttendanceRecord === 'function') {
+              await SchoolApp.deleteAttendanceRecord(att, true);
+            } else {
+              SchoolApp.moveToTrash('attendance', att.id, 'Attendance: Class ' + att.class + '-' + att.section, SchoolApp.formatDate(att.date), att);
+              SchoolApp.store.attendance = SchoolApp.store.attendance.filter(function(a) { return a.id !== id; });
+              await SchoolApp.save(true);
+            }
+            SchoolApp.showToast('Attendance record moved to Recycle Bin.', 'success');
+            render();
+          } finally {
+            SchoolApp.hideLoader();
           }
-          SchoolApp.showToast('Attendance record moved to Recycle Bin.', 'success');
-          render();
         });
       });
     });
@@ -639,60 +644,82 @@
       }
     }
 
-    // Check for existing record
-    var existingIdx = SchoolApp.store.attendance.findIndex(function(a) {
-      return a.date === state.selectedDate &&
-             normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
-             normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
-    });
-
-    var records = Object.keys(state.attendanceStatus).map(function(studentId) {
-      return { studentId: studentId, status: state.attendanceStatus[studentId] };
-    });
-
-    var teacherId = SchoolApp.currentUser.id;
-    var attendanceRecord;
-
-    if (existingIdx !== -1) {
-      // Update existing
-      SchoolApp.store.attendance[existingIdx].records = records;
-      SchoolApp.store.attendance[existingIdx].teacherId = teacherId;
-      SchoolApp.store.attendance[existingIdx].timestamp = new Date().toISOString();
-      attendanceRecord = SchoolApp.store.attendance[existingIdx];
-      SchoolApp.showToast('Attendance updated for Class ' + state.selectedClass + '-' + state.selectedSection + '.', 'success');
-    } else {
-      // Create new
-      attendanceRecord = {
-        id: SchoolApp.generateId(),
-        date: state.selectedDate,
-        class: state.selectedClass,
-        section: state.selectedSection,
-        teacherId: teacherId,
-        records: records,
-        timestamp: new Date().toISOString()
-      };
-      SchoolApp.store.attendance.push(attendanceRecord);
-      SchoolApp.showToast('Attendance submitted for Class ' + state.selectedClass + '-' + state.selectedSection + '!', 'success');
+    var submitBtn = document.getElementById('submit-attendance');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="material-icons-round" style="animation: app-spin 0.85s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px;">sync</span> Saving...';
     }
+    SchoolApp.showLoader('Saving attendance...');
 
-    if (typeof SchoolApp.saveAttendanceRecord === 'function') {
-      await SchoolApp.saveAttendanceRecord(attendanceRecord);
-    } else {
-      SchoolApp.save();
-    }
-    render();
+    try {
+      // Check for existing record
+      var existingIdx = SchoolApp.store.attendance.findIndex(function(a) {
+        return a.date === state.selectedDate &&
+               normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+               normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
+      });
 
-    // Auto-trigger Absent Student Parent Intimation modal if absent students exist
-    var absentStudentRecords = records.filter(function(r) { return r.status === 'absent'; });
-    if (absentStudentRecords.length > 0) {
-      var absentStudents = absentStudentRecords.map(function(r) {
-        return SchoolApp.store.students.find(function(s) { return s.id === r.studentId; });
-      }).filter(Boolean);
+      var records = Object.keys(state.attendanceStatus).map(function(studentId) {
+        return { studentId: studentId, status: state.attendanceStatus[studentId] };
+      });
 
-      if (absentStudents.length > 0) {
-        setTimeout(function() {
-          showAbsentIntimationModal(absentStudents, state.selectedClass, state.selectedSection, state.selectedDate);
-        }, 300);
+      var teacherId = SchoolApp.currentUser.id;
+      var attendanceRecord;
+
+      if (existingIdx !== -1) {
+        // Update existing
+        SchoolApp.store.attendance[existingIdx].records = records;
+        SchoolApp.store.attendance[existingIdx].teacherId = teacherId;
+        SchoolApp.store.attendance[existingIdx].timestamp = new Date().toISOString();
+        attendanceRecord = SchoolApp.store.attendance[existingIdx];
+      } else {
+        // Create new
+        attendanceRecord = {
+          id: SchoolApp.generateId(),
+          date: state.selectedDate,
+          class: state.selectedClass,
+          section: state.selectedSection,
+          teacherId: teacherId,
+          records: records,
+          timestamp: new Date().toISOString()
+        };
+        SchoolApp.store.attendance.push(attendanceRecord);
+      }
+
+      var saveSuccess = false;
+      if (typeof SchoolApp.saveAttendanceRecord === 'function') {
+        saveSuccess = await SchoolApp.saveAttendanceRecord(attendanceRecord, true);
+      } else {
+        saveSuccess = await SchoolApp.save(true);
+      }
+
+      if (saveSuccess !== false) {
+        if (existingIdx !== -1) {
+          SchoolApp.showToast('Attendance updated for Class ' + state.selectedClass + '-' + state.selectedSection + '.', 'success');
+        } else {
+          SchoolApp.showToast('Attendance submitted for Class ' + state.selectedClass + '-' + state.selectedSection + '!', 'success');
+        }
+      }
+      render();
+
+      // Auto-trigger Absent Student Parent Intimation modal if absent students exist
+      var absentStudentRecords = records.filter(function(r) { return r.status === 'absent'; });
+      if (absentStudentRecords.length > 0) {
+        var absentStudents = absentStudentRecords.map(function(r) {
+          return SchoolApp.store.students.find(function(s) { return s.id === r.studentId; });
+        }).filter(Boolean);
+
+        if (absentStudents.length > 0) {
+          setTimeout(function() {
+            showAbsentIntimationModal(absentStudents, state.selectedClass, state.selectedSection, state.selectedDate);
+          }, 300);
+        }
+      }
+    } finally {
+      SchoolApp.hideLoader();
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span class="material-icons-round">save</span> Submit Attendance';
       }
     }
   }
