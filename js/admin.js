@@ -880,7 +880,7 @@
       bodyHtml += '  <td style="font-weight:600;">' + escapeHTML(c) + '</td>';
       heads.forEach(function(h) {
         var amt = (feeStructure[c] && feeStructure[c][h.id]) || 0;
-        bodyHtml += '  <td><input type="number" class="fees-class-fee-input form-input" data-class="' + escapeAttr(c) + '" data-head="' + escapeAttr(h.id) + '" value="' + amt + '" style="padding:6px; width:90px; font-size:12px;" min="0"></td>';
+        bodyHtml += '  <td><input type="number" class="fees-class-fee-input form-input" data-class="' + escapeAttr(c) + '" data-head="' + escapeAttr(h.id) + '" value="' + amt + '" min="0"></td>';
       });
       bodyHtml += '</tr>';
     });
@@ -1890,9 +1890,9 @@
     html += '      <h3><span class="material-icons-round">grid_on</span> Fee Structure Matrix</h3>';
     html += '    </div>';
     html += '    <div class="fee-setup-matrix-wrapper">';
-    html += '      <div class="fee-matrix-scroll-hint" style="display:none; font-size:12px; color:var(--text-muted); padding:8px 12px; background:var(--bg-glass); border-bottom:1px solid var(--border-color); text-align:center;">← Swipe to see more →</div>';
-    html += '      <div class="card-body fee-matrix-body" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">';
-    html += '        <table class="data-table fee-matrix-table" style="min-width:600px;">';
+    html += '      <div class="fee-matrix-scroll-hint"><span class="material-icons-round" style="font-size:15px;">swap_horiz</span> Scroll horizontally to view all fee heads</div>';
+    html += '      <div class="card-body fee-matrix-body">';
+    html += '        <table class="data-table fee-matrix-table">';
     html += '          <thead>';
     html += '            <tr id="setup-feehead-row"><th>Class</th><th>Tuition</th><th>Transport</th><th>Exam</th></tr>';
     html += '          </thead>';
