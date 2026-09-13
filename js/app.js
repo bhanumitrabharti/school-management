@@ -4373,21 +4373,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
 
-  var isSVM = SchoolApp.store.currentSchoolId === 'svm_bokaro_001';
-  if (isSVM && (!hasData || !SchoolApp.store.students || SchoolApp.store.students.length === 0)) {
-    console.log('Database is empty. Seeding for new 120 students mobile-first setup...');
-    SchoolApp.store.students = [];
-    SchoolApp.store.teachers = [];
-    SchoolApp.store.attendance = [];
-    SchoolApp.store.trash = [];
-    SchoolApp.store.fees = [];
-    SchoolApp.store.exams = [];
-    SchoolApp.store.subjectMapping = {};
-    SchoolApp.store.marks = [];
-    SchoolApp.store.notices = [];
-    SchoolApp.generateDemoData();
-    SchoolApp.save();
-  }
+  // SAFEGUARD: Auto-client seeding of svm_bokaro_001 disabled to prevent accidental wipes.
+  // Greenwood Public School now has its dedicated professional dataset.
 
   // Setup event listeners
   SchoolApp.setupEventListeners();
