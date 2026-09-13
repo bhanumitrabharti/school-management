@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v10 for Phase 3 Fee Engine upgrade (Flexible Extra Charges, Automatic Late Fee, Dry-Run Engine).
-const CACHE_NAME = 'erp-cache-v10';
+// Bumped to v11 for Phase 3 Fee Engine upgrade + data loading failsafes.
+const CACHE_NAME = 'erp-cache-v11';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

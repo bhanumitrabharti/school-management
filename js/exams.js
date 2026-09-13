@@ -217,6 +217,11 @@
     if (!SchoolApp.store) return;
     if (SchoolApp.store.examConfig) return; // already migrated
 
+    // SAFEGUARD: Never run migration or trigger auto-saves before tenant data has actually loaded from server
+    if (!SchoolApp.tenantInitialized || !SchoolApp.store.currentSchoolId || !SchoolApp.store.students || SchoolApp.store.students.length === 0) {
+      return;
+    }
+
     console.log('[Migration] Migrating old exams schema to Paathshala Redesign schema...');
     
     SchoolApp.store.examConfig = {
@@ -356,7 +361,7 @@
       };
     });
 
-    SchoolApp.save(true);
+    // In-memory migration complete; persisted on intentional user action
     console.log('[Migration] Exams schema migration complete.');
   }
 

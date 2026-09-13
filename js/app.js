@@ -267,7 +267,28 @@ window.SchoolApp = {
       const payload = JSON.parse(JSON.stringify(this.store));
       if (!payload.settings) payload.settings = {};
 
-      // HARD FAILSAFE: Refuse to overwrite populated collections (students, fees, attendance, teachers)
+      // HARD FAILSAFE 1: Refuse to save if tenant data has not finished loading from Firestore
+      if (!this.tenantInitialized) {
+        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to save before tenant data has loaded on ' + currentSchoolId);
+        if (!bypassLoader) this.hideLoader();
+        return false;
+      }
+
+      // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from server baseline
+      if (this.initialServerStudentCount > 0 && (!payload.students || payload.students.length === 0)) {
+        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + this.initialServerStudentCount + ' items -> 0) on ' + currentSchoolId);
+        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+        if (!bypassLoader) this.hideLoader();
+        return false;
+      }
+      if (this.initialServerTeacherCount > 0 && (!payload.teachers || payload.teachers.length === 0)) {
+        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + this.initialServerTeacherCount + ' items -> 0) on ' + currentSchoolId);
+        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+        if (!bypassLoader) this.hideLoader();
+        return false;
+      }
+
+      // HARD FAILSAFE 3: Refuse to overwrite populated collections (students, fees, attendance, teachers)
       // with empty arrays if the local cache previously had data.
       var cachedRawForGuard = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
       if (cachedRawForGuard) {
@@ -1183,6 +1204,9 @@ window.SchoolApp = {
                 self.store = Object.assign({}, self.store, parsed);
                 self.store.currentSchoolId = activeSchoolId;
               }
+              self.initialServerStudentCount = (parsed.students || []).length;
+              self.initialServerTeacherCount = (parsed.teachers || []).length;
+              self.tenantInitialized = true;
             }
 
             // Populate default arrays/objects if missing

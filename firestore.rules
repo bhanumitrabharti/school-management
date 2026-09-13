@@ -7,6 +7,7 @@ service cloud.firestore {
     // unless an explicit server-level override flag allowCollectionWipe == true is present.
     function notWipingRoster(fieldName) {
       return (request.resource.data.get('allowCollectionWipe', false) == true) ||
+             (resource == null || resource.data == null) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
@@ -16,12 +17,14 @@ service cloud.firestore {
     function notWipingLedger(fieldName) {
       return (request.resource.data.settings != null && request.resource.data.settings.restructured == true) ||
              (request.resource.data.get('allowCollectionWipe', false) == true) ||
+             (resource == null || resource.data == null) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
     match /tenant_data/{schoolId} {
       allow read: if true;
-      allow create: if true;
+      allow create: if notWipingRoster('students') &&
+                       notWipingRoster('teachers');
       allow update: if notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
                        notWipingLedger('fees') &&
