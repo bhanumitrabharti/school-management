@@ -65,69 +65,11 @@
     };
   }
 
+  // CONSOLIDATED & DEPRECATED:
+  // Auto-fee reconciliation is now handled centrally and reliably by SchoolApp.runAutoFeeReconciliation() in js/app.js.
+  // Disabled here to eliminate dual-engine execution and guarantee zero double-charge risk.
   async function checkAndRunAutoCharge() {
-    var settings = SchoolApp.store.settings || {};
-    if (!settings.autoChargeEnabled) return;
-
-    var triggerDay = parseInt(settings.autoChargeTriggerDate || 1, 10);
-    var now = new Date();
-    var currentDay = now.getDate();
-    var currentMonthKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-
-    if (currentDay >= triggerDay && settings.autoChargeLastRun !== currentMonthKey) {
-      var students = SchoolApp.store.students || [];
-      if (!students.length) return;
-
-      if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
-      if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
-
-      var chargedCount = 0;
-      var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      var billingPeriod = "Auto Monthly Tuition - " + monthNames[now.getMonth()] + " " + now.getFullYear();
-      var todayStr = now.toISOString().split('T')[0];
-
-      var feeHeads = getActiveFeeHeads();
-      var tuitionHead = null;
-
-      if (settings.autoChargeFeeHeadId) {
-        tuitionHead = feeHeads.find(function(fh) { return fh.id === settings.autoChargeFeeHeadId; });
-      }
-
-      if (!tuitionHead) {
-        tuitionHead = feeHeads.find(function(fh) {
-          return fh.name.toLowerCase().indexOf('tuition') !== -1 || fh.name.toLowerCase().indexOf('monthly') !== -1;
-        });
-      }
-
-      if (!tuitionHead) {
-        console.warn('Auto Charge skipped: No tuition or monthly fee head configured.');
-        return;
-      }
-
-      students.forEach(function(s) {
-        var amt = getFeeAmount(s.class, tuitionHead.id);
-        if (amt > 0) {
-          SchoolApp.store.fees.push({
-            id: SchoolApp.generateId(),
-            studentId: s.id,
-            schoolId: SchoolApp.currentSchoolId,
-            type: 'due',
-            feeHeadId: tuitionHead.id,
-            amount: amt,
-            date: todayStr,
-            description: billingPeriod
-          });
-          chargedCount++;
-        }
-      });
-
-      if (chargedCount > 0) {
-        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
-        SchoolApp.store.settings.autoChargeLastRun = currentMonthKey;
-        await SchoolApp.save();
-        SchoolApp.showToast('Automated monthly fee generated for ' + chargedCount + ' students.', 'info');
-      }
-    }
+    return;
   }
 
   function renderLedgerTab(dataContainer) {
@@ -1932,6 +1874,24 @@
       });
     }
 
+    // Ledger receipt print & whatsapp click handlers inside modal
+    document.querySelectorAll('.fees-print-receipt-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var sId = this.getAttribute('data-student-id');
+        var txnId = this.getAttribute('data-txn-id');
+        printFeeReceipt(txnId, sId);
+      });
+    });
+
+    document.querySelectorAll('.fees-whatsapp-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var sId = this.getAttribute('data-student-id');
+        var amount = parseFloat(this.getAttribute('data-amount') || 0);
+        var mode = this.getAttribute('data-mode') || 'Cash';
+        sendWhatsAppReceipt(sId, amount, mode);
+      });
+    });
+
     // Ledger deletion click handlers
     document.querySelectorAll('.delete-ledger-txn-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -2652,10 +2612,9 @@
   // Register Module
   SchoolApp.registerModule('fees', {
     init: function() {
-      checkAndRunAutoCharge();
+      // Auto-charge handled centrally by SchoolApp.runAutoFeeReconciliation() in js/app.js
     },
     render: function(c) {
-      checkAndRunAutoCharge();
       render(c);
     },
     cleanup: function() {

@@ -1500,7 +1500,7 @@ window.SchoolApp = {
     }
   },
 
-  runAutoFeeReconciliation: function() {
+  runAutoFeeReconciliation: async function() {
     try {
       // Prevent running if database sync is not completed yet or if store is uninitialized
       if (!this.store || !this.store.students || this.store.students.length === 0) return;
@@ -1510,12 +1510,17 @@ window.SchoolApp = {
       var currentMonth = today.getMonth() + 1; // 1-indexed (1 to 12)
       var currentPeriod = currentYear + '-' + (currentMonth < 10 ? '0' + currentMonth : currentMonth); // YYYY-MM
 
-      var lastRun = this.store.lastAutomatedFeeRun || '';
+      if (!this.store.settings) this.store.settings = {};
+      var settings = this.store.settings;
+
+      // Consolidated tracking key: settings.autoChargeLastRun (with fallback to legacy store.lastAutomatedFeeRun)
+      var lastRun = settings.autoChargeLastRun || this.store.lastAutomatedFeeRun || '';
       
-      // If lastAutomatedFeeRun is empty, set it to the current month and do not generate historical catchup
+      // If last run is empty, set it to the current month and do not generate historical catchup
       if (!lastRun) {
+        settings.autoChargeLastRun = currentPeriod;
         this.store.lastAutomatedFeeRun = currentPeriod;
-        this.save(true);
+        await this.save(true);
         return;
       }
 
@@ -1524,8 +1529,8 @@ window.SchoolApp = {
 
       // Parse lastRun YYYY-MM
       var parts = lastRun.split('-');
-      var lastYear = parseInt(parts[0]);
-      var lastMonth = parseInt(parts[1]);
+      var lastYear = parseInt(parts[0], 10);
+      var lastMonth = parseInt(parts[1], 10);
 
       var missedMonths = [];
       var year = lastYear;
@@ -1553,13 +1558,12 @@ window.SchoolApp = {
       if (missedMonths.length === 0) return;
 
       var self = this;
-      var totalInjected = 0;
       var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
       
       // Backup before bulk operation
       this.createRestorePoint('Auto-Backup before Auto-Fee Catch-Up Reconciliation');
 
-      if (!this.store.fees) this.store.fees = [];
+      var newDueTxns = [];
 
       // Loop through every missed month and generate charges for active students
       missedMonths.forEach(function(m) {
@@ -1578,7 +1582,7 @@ window.SchoolApp = {
             tuitionAmt = parseFloat(classStruct.fh_tuition || 1000);
           }
 
-          self.store.fees.push({
+          var dueTxn = {
             id: self.generateId(),
             studentId: s.id,
             schoolId: self.currentSchoolId,
@@ -1586,15 +1590,31 @@ window.SchoolApp = {
             feeHeadId: 'fh_tuition',
             amount: tuitionAmt,
             date: chargeDate,
-            description: desc
-          });
-          totalInjected++;
+            description: desc,
+            timestamp: new Date().toISOString()
+          };
+          newDueTxns.push(dueTxn);
         });
       });
 
-      // Update lastAutomatedFeeRun to the current month to prevent duplicate runs
+      if (newDueTxns.length > 0) {
+        if (!self.store.fees) self.store.fees = [];
+        for (var i = 0; i < newDueTxns.length; i++) {
+          self.store.fees.push(newDueTxns[i]);
+        }
+
+        // Restructured-aware persistence: save to subcollections in restructured mode, flat doc in legacy mode
+        if (typeof self.saveFeeTransactions === 'function') {
+          await self.saveFeeTransactions(newDueTxns, true);
+        } else {
+          await self.save(true);
+        }
+      }
+
+      // Update consolidated tracking keys (primary: settings.autoChargeLastRun, legacy sync: store.lastAutomatedFeeRun)
+      settings.autoChargeLastRun = currentPeriod;
       this.store.lastAutomatedFeeRun = currentPeriod;
-      this.save(true);
+      await this.save(true);
 
       // Admin Feedback: Defer success toast so it is only triggered when Admin Dashboard loads
       var missedMonthsText = missedMonths.map(function(m) {
@@ -3275,15 +3295,18 @@ window.SchoolApp = {
 
     // Securely run auto-fee reconciliation and display toast feedback to Admin on Dashboard load
     if (this.isAdmin()) {
-      this.runAutoFeeReconciliation();
-      if (this.feesGeneratedMsg) {
-        var msg = this.feesGeneratedMsg;
-        this.feesGeneratedMsg = null; // Clear immediately to prevent multiple popups
-        var self = this;
-        setTimeout(function() {
-          self.showToast(msg, 'success');
-        }, 1000);
-      }
+      var self = this;
+      this.runAutoFeeReconciliation().then(function() {
+        if (self.feesGeneratedMsg) {
+          var msg = self.feesGeneratedMsg;
+          self.feesGeneratedMsg = null; // Clear immediately to prevent multiple popups
+          setTimeout(function() {
+            self.showToast(msg, 'success');
+          }, 1000);
+        }
+      }).catch(function(err) {
+        console.error('runAutoFeeReconciliation error:', err);
+      });
     }
 
     var totalStudents = (this.store.students || []).length;
