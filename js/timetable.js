@@ -40,6 +40,9 @@
         }
       }
     }
+    if (SchoolApp.store && SchoolApp.store.settings && Array.isArray(SchoolApp.store.settings.subjects) && SchoolApp.store.settings.subjects.length > 0) {
+      return SchoolApp.store.settings.subjects;
+    }
     return ['Mathematics', 'Science', 'English', 'Social Studies', 'Hindi', 'Computer Science', 'Physical Education', 'Art'];
   }
 
