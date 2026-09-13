@@ -564,7 +564,7 @@ window.SchoolApp = {
         var classRecords = (this._attendanceMonths[ym] || []).filter(function(a) {
           return String(a.class) === String(record.class);
         });
-        var saveFn = () => window.firestore.setDoc(docRef, { records: classRecords });
+        var saveFn = () => window.firestore.setDoc(docRef, { records: JSON.parse(JSON.stringify(classRecords)) });
         var success = await this.saveWithRetry(saveFn);
         if (success) {
           console.log('[Attendance] Successfully saved class ' + classId + ' attendance to attendance_months/' + ym + '/classes/' + classId);
@@ -619,7 +619,7 @@ window.SchoolApp = {
           var classRecords = (this._attendanceMonths[ym] || []).filter(function(a) {
             return String(a.class) === String(record.class);
           });
-          await window.firestore.setDoc(docRef, { records: classRecords });
+          await window.firestore.setDoc(docRef, { records: JSON.parse(JSON.stringify(classRecords)) });
         }
         await this.save(true);
         return true;
@@ -774,7 +774,7 @@ window.SchoolApp = {
         var monthTxns = (this._feesYears[yr] || []).filter(function(f) {
           return f.date && String(f.date).startsWith(ymPrefix);
         });
-        var saveFn = () => window.firestore.setDoc(docRef, { transactions: monthTxns });
+        var saveFn = () => window.firestore.setDoc(docRef, { transactions: JSON.parse(JSON.stringify(monthTxns)) });
         var success = await this.saveWithRetry(saveFn);
         if (success) {
           console.log('[Fees] Successfully saved transaction to fees_years/' + yr + '/months/' + mo);
@@ -840,7 +840,7 @@ window.SchoolApp = {
               return f.date && String(f.date).startsWith(ymPrefix);
             });
             var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yKey, 'months', mKey);
-            await window.firestore.setDoc(docRef, { transactions: monthTxns });
+            await window.firestore.setDoc(docRef, { transactions: JSON.parse(JSON.stringify(monthTxns)) });
           }
         }
         console.log('[Fees] Bulk saved ' + txns.length + ' transactions across months.');

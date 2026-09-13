@@ -663,7 +663,7 @@
         return { studentId: studentId, status: state.attendanceStatus[studentId] };
       });
 
-      var teacherId = SchoolApp.currentUser.id;
+      var teacherId = (SchoolApp.currentUser && (SchoolApp.currentUser.id || SchoolApp.currentUser.username)) || 'admin';
       var attendanceRecord;
 
       if (existingIdx !== -1) {
