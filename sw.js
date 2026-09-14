@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v15 for AuthUtils universal admin login alias support.
-const CACHE_NAME = 'erp-cache-v15';
+// Bumped to v16 for login form submit reload fix and Greenwood restoration.
+const CACHE_NAME = 'erp-cache-v16';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
