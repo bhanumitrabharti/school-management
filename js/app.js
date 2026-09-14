@@ -1264,18 +1264,16 @@ window.SchoolApp = {
         }
 
         if (activeSchoolId) {
+          var firstResolveCalled = false;
+
           // If already listening to this exact school and initialized, do not tear down or re-attach
           if (self.tenantListenerUnsubscribe && previousSchoolId === activeSchoolId && self.tenantInitialized) {
-            if (!firstResolveCalled) {
-              firstResolveCalled = true;
-              if (!bypassLoader) self.hideLoader();
-              resolve(true);
-            }
+            if (!bypassLoader) self.hideLoader();
+            resolve(true);
             return;
           }
 
           const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
-          let firstResolveCalled = false;
 
           // ISSUE 2 FIX: Declare render guard OUTSIDE onSnapshot callback so it persists
           var _examsRenderLock = false;
