@@ -72,8 +72,17 @@
         const bcrypt = getBcrypt();
 
         if (role === 'admin') {
-            const adminUser = schoolData.settings.adminUsername || 'admin';
-            const adminPassStored = schoolData.settings.adminPassword || 'admin123';
+            const adminUser = schoolData.settings.adminUsername;
+            const adminPassStored = schoolData.settings.adminPassword;
+
+            if (!adminPassStored || typeof adminPassStored !== 'string' || adminPassStored.trim() === '') {
+                console.error('[Auth Security] Login rejected: school credentials are not configured or not loaded.');
+                return { success: false, message: 'School credentials not loaded. Please wait a moment and try again.' };
+            }
+            if (!adminUser || typeof adminUser !== 'string' || adminUser.trim() === '') {
+                console.error('[Auth Security] Login rejected: school admin username is not configured or not loaded.');
+                return { success: false, message: 'School credentials not loaded. Please wait a moment and try again.' };
+            }
 
             if (usernameOrEmail !== adminUser && usernameOrEmail !== 'admin') {
                 return { success: false, message: 'Invalid admin username.' };
@@ -101,18 +110,22 @@
                 return { success: false, message: 'Invalid admin password.' };
             }
 
-            // Auto-migrate to secure hash if plain text matched
+            // Auto-migrate to secure hash if plain text matched (ONLY if tenant is confirmed initialized)
             if (needsMigration) {
-                try {
-                    console.log('Migrating admin password to secure bcrypt hash...');
-                    const hashedPass = await AuthUtils.hashPassword(password);
-                    if (window.SchoolApp && window.SchoolApp.store) {
-                        window.SchoolApp.store.settings.adminPassword = hashedPass;
-                        await window.SchoolApp.save();
-                        console.log('Admin password migration complete.');
+                if (!window.SchoolApp || !window.SchoolApp.tenantInitialized || !window.SchoolApp.store || !window.SchoolApp.store.currentSchoolId) {
+                    console.warn('[Auth Security] Auto-migration blocked: tenant is not confirmed initialized.');
+                } else {
+                    try {
+                        console.log('Migrating admin password to secure bcrypt hash...');
+                        const hashedPass = await AuthUtils.hashPassword(password);
+                        if (window.SchoolApp && window.SchoolApp.store && window.SchoolApp.store.settings) {
+                            window.SchoolApp.store.settings.adminPassword = hashedPass;
+                            await window.SchoolApp.save();
+                            console.log('Admin password migration complete.');
+                        }
+                    } catch (e) {
+                        console.error('Failed to auto-migrate admin password:', e);
                     }
-                } catch (e) {
-                    console.error('Failed to auto-migrate admin password:', e);
                 }
             }
 

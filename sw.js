@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v20 for school details anti-wipe protection and reactive brand UI.
-const CACHE_NAME = 'erp-cache-v20';
+// Bumped to v21 for auth bypass fix and default credential elimination.
+const CACHE_NAME = 'erp-cache-v21';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

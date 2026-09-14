@@ -81,8 +81,8 @@ window.SchoolApp = {
       sections: ['A','B','C'],
       attendanceTime: '09:00',
       theme: 'dark',
-      adminUsername: 'admin',
-      adminPassword: 'admin123',
+      adminUsername: '',
+      adminPassword: '',
       enableCloudSync: false,
       firebaseConfig: '',
       feeHeads: [
@@ -140,8 +140,8 @@ window.SchoolApp = {
         sections: ['A','B','C'],
         attendanceTime: '09:00',
         theme: 'dark',
-        adminUsername: 'admin',
-        adminPassword: 'admin123',
+        adminUsername: '',
+        adminPassword: '',
         enableCloudSync: false,
         firebaseConfig: '',
         feeHeads: [
@@ -1308,6 +1308,7 @@ window.SchoolApp = {
               self.liveServerStudentCount = (parsed.students || []).length;
               self.liveServerTeacherCount = (parsed.teachers || []).length;
               self.tenantInitialized = true;
+              self.enableLoginButton();
             }
 
             // Populate default arrays/objects if missing
@@ -1473,11 +1474,13 @@ window.SchoolApp = {
           });
         } else {
           if (!bypassLoader) self.hideLoader();
+          self.setupLoginButtonGate();
           resolve(false);
         }
       }, (error) => {
         console.error('Failed to sync schools in real-time:', error);
         if (!bypassLoader) self.hideLoader();
+        self.setupLoginButtonGate();
         resolve(false);
       });
     });
@@ -2216,6 +2219,23 @@ window.SchoolApp = {
       console.error("Firebase Auth module not initialized!");
     }
 
+    // HARD SECURITY GATE: Refuse authentication if tenant is not loaded or currentSchoolId is missing
+    if (!this.tenantInitialized || !this.store || !this.store.currentSchoolId) {
+      console.warn('[Auth Security] Login attempted before tenant data finished loading. Waiting for sync...');
+      this.showLoader('Connecting to school...');
+      var loadSuccess = await Promise.race([
+        this.load(true),
+        new Promise(function(resolve) { setTimeout(function() { resolve(false); }, 7000); })
+      ]);
+      if (!loadSuccess || !this.tenantInitialized || !this.store || !this.store.currentSchoolId) {
+        this.hideLoader();
+        this.enableLoginButton();
+        var btnTxt = document.getElementById('login-btn-text');
+        if (btnTxt) btnTxt.textContent = 'Retry Sign In';
+        throw new Error('School system could not connect. Please check your internet connection and try again.');
+      }
+    }
+
     this.showLoader('Loading...');
     // ALWAYS load fresh from Firestore first as source of truth
     await this.load(true);
@@ -2257,6 +2277,14 @@ window.SchoolApp = {
     } catch (err) {
       firebaseError = err;
       console.log("Success/Error: " + (err.code || err.message || err));
+    }
+
+    if (!schoolData || !schoolData.currentSchoolId || !this.tenantInitialized) {
+      this.hideLoader();
+      this.enableLoginButton();
+      var btnTxtPost = document.getElementById('login-btn-text');
+      if (btnTxtPost) btnTxtPost.textContent = 'Retry Sign In';
+      throw new Error('School system could not connect. Please check your internet connection and try again.');
     }
 
     let customResult = null;
@@ -4342,9 +4370,46 @@ window.SchoolApp = {
   },
 
   // ---------- UI Setup ----------
+  enableLoginButton: function() {
+    if (this._loginButtonTimeout) {
+      clearTimeout(this._loginButtonTimeout);
+      this._loginButtonTimeout = null;
+    }
+    var btn = document.getElementById('login-submit-btn');
+    var txt = document.getElementById('login-btn-text');
+    if (btn) btn.disabled = false;
+    if (txt) txt.textContent = 'Sign In';
+  },
+
+  setupLoginButtonGate: function() {
+    var self = this;
+    var btn = document.getElementById('login-submit-btn');
+    var txt = document.getElementById('login-btn-text');
+    var err = document.getElementById('login-error-msg');
+    if (this.tenantInitialized) {
+      this.enableLoginButton();
+      return;
+    }
+    if (btn) btn.disabled = true;
+    if (txt) txt.textContent = 'Connecting...';
+
+    if (this._loginButtonTimeout) clearTimeout(this._loginButtonTimeout);
+    this._loginButtonTimeout = setTimeout(function() {
+      if (!self.tenantInitialized) {
+        if (btn) btn.disabled = false;
+        if (txt) txt.textContent = 'Retry Sign In';
+        if (err) {
+          err.style.display = 'block';
+          err.textContent = 'Connecting is taking longer than usual. Tap Retry Sign In to connect.';
+        }
+      }
+    }, 6000);
+  },
+
   showLoginPage: function() {
     document.getElementById('login-page').classList.remove('hidden');
     document.getElementById('app-layout').classList.add('hidden');
+    this.setupLoginButtonGate();
   },
 
   showApp: function() {
