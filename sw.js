@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v19 for login auto-reload suppression and safe tenant session preservation.
-const CACHE_NAME = 'erp-cache-v19';
+// Bumped to v20 for school details anti-wipe protection and reactive brand UI.
+const CACHE_NAME = 'erp-cache-v20';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

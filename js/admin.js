@@ -1754,6 +1754,9 @@
     
     html += '<form id="settings-form" style="display:flex; flex-direction:column; gap:20px;">';
 
+    var currentSchoolId = SchoolApp.store.currentSchoolId;
+    var ms = (SchoolApp.store.schools || []).find(function(sch) { return sch.school_id === currentSchoolId; }) || SchoolApp.matchedSchool;
+    var schoolName = s.schoolName || (s.schoolInfo && s.schoolInfo.name) || (ms && ms.school_name) || '';
     var tagline = s.tagline || (s.schoolInfo && s.schoolInfo.tagline) || '';
     var affiliation = s.affiliation || (s.schoolInfo && s.schoolInfo.affiliation) || '';
     var udiseCode = s.udiseCode || (s.schoolInfo && s.schoolInfo.udiseCode) || '';
@@ -1766,7 +1769,7 @@
     html += '    <div class="card-header"><h3><span class="material-icons-round">info</span> Basic Information</h3></div>';
     html += '    <div class="card-body">';
     html += '      <div class="admin-form-grid">';
-    html += '        <div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + escapeAttr(s.schoolName || '') + '"></div>';
+    html += '        <div class="form-group"><label class="form-label">School Name</label><input type="text" class="form-input" name="schoolName" value="' + escapeAttr(schoolName) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Tagline</label><input type="text" class="form-input" name="tagline" value="' + escapeAttr(tagline) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Affiliation / Board</label><input type="text" class="form-input" name="affiliation" value="' + escapeAttr(affiliation) + '"></div>';
     html += '        <div class="form-group"><label class="form-label">UDISE Code (11 digits)</label><input type="text" class="form-input" name="udiseCode" value="' + escapeAttr(udiseCode) + '" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>';
@@ -4017,8 +4020,28 @@
         if (s.schoolLogo && !s.logoUrl) s.logoUrl = s.schoolLogo;
         delete s.schoolLogo;
 
+        var currentSchoolId = SchoolApp.store.currentSchoolId;
+        var ms = (SchoolApp.store.schools || []).find(function(sch) { return sch.school_id === currentSchoolId; }) || SchoolApp.matchedSchool;
+
+        // Anti-wipe defensive guard:
+        // Never allow schoolName or core details to be wiped out if valid values exist in schoolInfo or matchedSchool.
+        if (!s.schoolName) {
+          s.schoolName = (s.schoolInfo && s.schoolInfo.name) || (ms && ms.school_name) || '';
+        }
+
         if (!s.schoolInfo) s.schoolInfo = {};
-        s.schoolInfo.name = s.schoolName || '';
+        if (!s.schoolInfo.name) {
+          s.schoolInfo.name = s.schoolName || (ms && ms.school_name) || '';
+        } else if (s.schoolName) {
+          s.schoolInfo.name = s.schoolName;
+        }
+
+        if (!s.phone && s.schoolInfo.phone) s.phone = s.schoolInfo.phone;
+        if (!s.email && s.schoolInfo.email) s.email = s.schoolInfo.email;
+        if (!s.address && s.schoolInfo.address) s.address = s.schoolInfo.address;
+        if (!s.affiliation && s.schoolInfo.affiliation) s.affiliation = s.schoolInfo.affiliation;
+        if (!s.udiseCode && s.schoolInfo.udiseCode) s.udiseCode = s.schoolInfo.udiseCode;
+
         s.schoolInfo.tagline = s.tagline || '';
         s.schoolInfo.phone = s.phone || '';
         s.schoolInfo.email = s.email || '';
@@ -4060,6 +4083,7 @@
 
         if (success) {
           SchoolApp.showToast('Settings saved successfully!', 'success');
+          SchoolApp.updateBrandUI();
         }
       });
     }

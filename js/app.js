@@ -1394,17 +1394,33 @@ window.SchoolApp = {
             // admin already set themselves.
             (function syncFlatSettingsFromSchoolInfo() {
               var si = self.store.settings.schoolInfo;
-              if (!si) return;
               var s = self.store.settings;
-              if (!s.schoolName && si.name) s.schoolName = si.name;
-              if (!s.tagline && si.tagline) s.tagline = si.tagline;
-              if (!s.phone && si.phone) s.phone = si.phone;
-              if (!s.email && si.email) s.email = si.email;
-              if (!s.address && si.address) s.address = si.address;
-              if (!s.affiliation && si.affiliation) s.affiliation = si.affiliation;
-              if (!s.udiseCode && si.udiseCode) s.udiseCode = si.udiseCode;
-              if (!s.logoUrl && si.logoUrl) s.logoUrl = si.logoUrl;
+              var ms = matchedSchool || (self.store.schools || []).find(function(sch) { return sch.school_id === activeSchoolId; });
+
+              // Authoritative fallback chain for schoolName:
+              // settings.schoolName -> settings.schoolInfo.name -> matchedSchool.school_name
+              if (!s.schoolName) {
+                if (si && si.name) s.schoolName = si.name;
+                else if (ms && ms.school_name) s.schoolName = ms.school_name;
+              }
+              if (si) {
+                if (!si.name && s.schoolName) si.name = s.schoolName;
+                else if (!si.name && ms && ms.school_name) si.name = ms.school_name;
+              }
+
+              if (si) {
+                if (!s.tagline && si.tagline) s.tagline = si.tagline;
+                if (!s.phone && si.phone) s.phone = si.phone;
+                if (!s.email && si.email) s.email = si.email;
+                if (!s.address && si.address) s.address = si.address;
+                if (!s.affiliation && si.affiliation) s.affiliation = si.affiliation;
+                if (!s.udiseCode && si.udiseCode) s.udiseCode = si.udiseCode;
+                if (!s.logoUrl && si.logoUrl) s.logoUrl = si.logoUrl;
+              }
             })();
+
+            // Reactively update brand UI whenever tenant settings load or change
+            self.updateBrandUI();
 
             // RESTORE ARCHITECTURE: If tenant is restructured, automatically load & listen
             // to the current month's attendance and current year's fees
@@ -1472,12 +1488,9 @@ window.SchoolApp = {
   updateBrandUI: function() {
     var settings = this.store.settings || {};
     var info = settings.schoolInfo || {};
-    // FIX: this used to fall back to the literal name of one specific real
-    // customer ("Shishu Vikash Mandir") whenever a tenant's name hadn't
-    // resolved yet — meaning every OTHER school could end up with that
-    // school's name shown in their own tab title. Fall back to nothing
-    // (product name only) instead, never another customer's identity.
-    var schoolName = info.name || settings.schoolName || '';
+    var currentSchoolId = this.store.currentSchoolId;
+    var ms = this.matchedSchool || (this.store.schools || []).find(function(sch) { return sch.school_id === currentSchoolId; });
+    var schoolName = settings.schoolName || info.name || (ms && ms.school_name) || '';
 
     // Update title — "Paathshala ERP | <School Name>", or just "Paathshala ERP"
     // before the school name has loaded.
@@ -1492,7 +1505,7 @@ window.SchoolApp = {
     });
 
     // On login page & sidebar → if logoUrl exists show it, else show nothing (no placeholder, no SVM logo)
-    var logoUrl = (settings.logoUrl && settings.logoUrl.trim() !== "") ? settings.logoUrl : ((info.logoUrl && info.logoUrl.trim() !== "") ? info.logoUrl : "");
+    var logoUrl = (settings.logoUrl && settings.logoUrl.trim() !== "") ? settings.logoUrl : ((info.logoUrl && info.logoUrl.trim() !== "") ? info.logoUrl : ((ms && ms.logo_url && ms.logo_url.trim() !== "") ? ms.logo_url : ""));
     if (logoUrl && logoUrl.trim() !== "") {
       document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
         img.src = logoUrl.trim();
@@ -2616,6 +2629,7 @@ window.SchoolApp = {
       pageTitle = 'Marks Entry';
     }
     this.updateHeader(pageTitle);
+    this.updateBrandUI();
 
     // Toggle floating Contact Admin button visibility (only on unified help page)
     var contactBtn = document.getElementById('contact-admin-btn');
@@ -4336,6 +4350,8 @@ window.SchoolApp = {
   showApp: function() {
     document.getElementById('login-page').classList.add('hidden');
     document.getElementById('app-layout').classList.remove('hidden');
+
+    this.updateBrandUI();
 
     // Update user info in sidebar
     if (this.currentUser) {
