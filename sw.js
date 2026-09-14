@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v14 for Super Admin .set() overwrite safety guards and Dashboard attendance format crash fix.
-const CACHE_NAME = 'erp-cache-v14';
+// Bumped to v15 for AuthUtils universal admin login alias support.
+const CACHE_NAME = 'erp-cache-v15';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

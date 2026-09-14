@@ -75,7 +75,7 @@
             const adminUser = schoolData.settings.adminUsername || 'admin';
             const adminPassStored = schoolData.settings.adminPassword || 'admin123';
 
-            if (usernameOrEmail !== adminUser) {
+            if (usernameOrEmail !== adminUser && usernameOrEmail !== 'admin') {
                 return { success: false, message: 'Invalid admin username.' };
             }
 
