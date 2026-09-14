@@ -36,7 +36,7 @@ const db = getFirestore(app);
     // ─── Constants ──────────────────────────────────────
     var STORAGE_KEY = 'shishuvikash_data';
     var SESSION_KEY = 'sa_session';
-    var CREDENTIALS = { username: 'superadmin', password: 'superadmin123' };
+    var CREDENTIALS = { username: 'superadmin', password: '(tiYwJ+MQP5$Ta^QiGVRTys7CZLW' };
 
     // Expose cache and functions on window
     window.saCache = {
@@ -1940,10 +1940,12 @@ const db = getFirestore(app);
             showToast("Creating restore point and cascading class rename...", "info");
 
             try {
-                // Load fresh tenant_data from Firestore
                 var tenantRef = doc(db, 'tenant_data', schoolId);
                 var tenantSnap = await getDoc(tenantRef);
-                var tenantData = tenantSnap.exists() ? tenantSnap.data() : (currentEditingTenantData || {});
+                if (!tenantSnap.exists()) {
+                    throw new Error('Cannot migrate class: Tenant document for school "' + schoolId + '" not found in Firestore.');
+                }
+                var tenantData = tenantSnap.data();
 
                 // Create Restore Point BEFORE cascade executes
                 if (!tenantData.trash) tenantData.trash = [];
@@ -2110,8 +2112,13 @@ const db = getFirestore(app);
                     });
                 }
 
-                // Persist migrated tenantData to Firestore
-                await setDoc(tenantRef, tenantData);
+                // Pre-save sanity check: Ensure student roster was not wiped or corrupted
+                if (studentCount > 0 && (!tenantData.students || tenantData.students.length === 0)) {
+                    throw new Error('Pre-save sanity check failed: Expected ' + studentCount + ' enrolled students, but student array is empty. Aborting write to prevent data loss.');
+                }
+
+                // Persist migrated tenantData to Firestore with merge: true
+                await setDoc(tenantRef, tenantData, { merge: true });
 
                 // Update school metadata in schools/{schoolId}
                 if (school) {
@@ -2803,52 +2810,29 @@ const db = getFirestore(app);
                 // Save to metadata collection
                 await setDoc(doc(db, 'schools', schoolId), data.schools[idx]);
                 
-                // Fetch existing tenant data or set defaults
-                const tenantSnap = await getDoc(doc(db, 'tenant_data', schoolId));
-                var tenantData = tenantSnap.exists() ? tenantSnap.data() : {
-                    seederVersion: 2,
-                    students: [],
-                    teachers: [],
-                    attendance: [],
-                    trash: [],
-                    feeHeads: [
-                        { id: 'fh_tuition', name: 'Tuition Fee' },
-                        { id: 'fh_transport', name: 'Transport Fee' },
-                        { id: 'fh_exam', name: 'Examination Fee' },
-                        { id: 'fh_fine', name: 'Late Fee / Fine' },
-                        { id: 'fh_annual', name: 'Annual Development Fee' }
-                    ],
-                    feeStructures: {},
-                    fees: [],
-                    exams: [],
-                    subjectMapping: {},
-                    timetable: { settings: { startTime: "08:00", endTime: "14:00", totalPeriods: 8, lunchAfterPeriod: 4, lunchDuration: 30, satStartTime: "08:00", satEndTime: "12:30", satTotalPeriods: 6, satLunchAfterPeriod: 0 } },
-                    marks: [],
-                    notices: [],
-                    // Was hardcoded to a fixed past month ('2026-04'), which made the
-                    // auto-fee engine think months had been missed and immediately
-                    // generate backdated dues the first time this fallback ever ran.
-                    // Use the real current month instead.
-                    lastAutomatedFeeRun: (function() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); })(),
-                    notifications: [],
-                    currentSchoolId: schoolId
-                };
+                // Fetch existing tenant data
+                const tenantRef = doc(db, 'tenant_data', schoolId);
+                const tenantSnap = await getDoc(tenantRef);
+                if (!tenantSnap.exists()) {
+                    throw new Error('Integrity check failed: Tenant document for "' + schoolId + '" does not exist in Firestore. Aborting update to prevent accidental data loss.');
+                }
+                var existingTenantData = tenantSnap.data();
 
-                // Merge settings
-                tenantData.settings = {
+                // Merge settings cleanly — never touch rosters or subcollections
+                var updatedSettings = {
                     schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
-                // Also write the FLAT fields — the School Admin Settings page
-                // (admin.js) reads/writes settings.schoolName / .phone / etc
-                // directly, not settings.schoolInfo.*. Without these, a newly
-                // onboarded school's Settings form shows blank until the admin
-                // manually retypes everything already entered here.
-                schoolName: name,
-                tagline: tagline,
-                phone: phone,
-                email: email,
-                address: address,
-                affiliation: affiliation,
-                udiseCode: udiseCode,
+                    // Also write the FLAT fields — the School Admin Settings page
+                    // (admin.js) reads/writes settings.schoolName / .phone / etc
+                    // directly, not settings.schoolInfo.*. Without these, a newly
+                    // onboarded school's Settings form shows blank until the admin
+                    // manually retypes everything already entered here.
+                    schoolName: name,
+                    tagline: tagline,
+                    phone: phone,
+                    email: email,
+                    address: address,
+                    affiliation: affiliation,
+                    udiseCode: udiseCode,
                     adminUsername: adminUsername,
                     adminPassword: adminPasswordHashed,
                     adminEmail: adminEmail,
@@ -2859,16 +2843,20 @@ const db = getFirestore(app);
                     setupCompletedBySuperAdmin: true,
                     clientCanEdit: true,
                     // Keep compatibility settings
-                    theme: (tenantData.settings && tenantData.settings.theme) || 'dark',
-                    attendanceTime: (tenantData.settings && tenantData.settings.attendanceTime) || '09:00',
-                    academicYear: (tenantData.settings && tenantData.settings.academicYear) || '2025-2026',
-                    restructured: (tenantData.settings && tenantData.settings.restructured !== undefined) ? tenantData.settings.restructured : true
+                    theme: (existingTenantData.settings && existingTenantData.settings.theme) || 'dark',
+                    attendanceTime: (existingTenantData.settings && existingTenantData.settings.attendanceTime) || '09:00',
+                    academicYear: (existingTenantData.settings && existingTenantData.settings.academicYear) || '2025-2026',
+                    restructured: (existingTenantData.settings && existingTenantData.settings.restructured !== undefined) ? existingTenantData.settings.restructured : true
                 };
-                if (tenantData.settings && tenantData.settings.restructured) {
-                    tenantData.restructured = true;
+
+                var updatePayload = {
+                    settings: updatedSettings
+                };
+                if (updatedSettings.restructured) {
+                    updatePayload.restructured = true;
                 }
 
-                await setDoc(doc(db, 'tenant_data', schoolId), tenantData);
+                await updateDoc(tenantRef, updatePayload);
 
             } catch(e) {
                 console.error('Failed to update school/tenant settings in Firestore:', e);
@@ -2938,6 +2926,12 @@ const db = getFirestore(app);
             data.schools.push(newSchool);
             saveData(data);
             try {
+                // Pre-onboarding collision check: Ensure newSchoolId does not already exist in Firestore
+                const existingTenantCheck = await getDoc(doc(db, 'tenant_data', newSchoolId));
+                if (existingTenantCheck.exists()) {
+                    throw new Error('Safety collision check failed: School ID "' + newSchoolId + '" already exists in Firestore! Cannot overwrite an existing school.');
+                }
+
                 // Save metadata
                 await setDoc(doc(db, 'schools', newSchoolId), newSchool);
                 
@@ -3012,10 +3006,12 @@ const db = getFirestore(app);
                     trash: [],
                     lastAutomatedFeeRun: ""
                 };
-                await setDoc(doc(db, 'tenant_data', newSchoolId), tenantData, { merge: false });
+                await setDoc(doc(db, 'tenant_data', newSchoolId), tenantData);
 
             } catch(e) {
                 console.error('Failed to save new school/tenant to Firestore:', e);
+                showToast('Failed to onboard school to Firestore: ' + (e.message || e), 'error');
+                return;
             }
             closeModal();
             renderDashboard();

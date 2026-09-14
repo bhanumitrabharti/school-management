@@ -3043,6 +3043,27 @@ window.SchoolApp = {
     return seconds + ' sec ago';
   },
 
+  normalizeAttendanceRecords: function(records) {
+    if (Array.isArray(records)) return records;
+    if (records && typeof records === 'object') {
+      return Object.keys(records).map(function(k) {
+        var val = records[k];
+        var status = 'absent';
+        if (typeof val === 'string') {
+          var vLower = val.toLowerCase().trim();
+          if (vLower === 'p' || vLower === 'present') status = 'present';
+          else if (vLower === 'l' || vLower === 'late') status = 'late';
+          else if (vLower === 'a' || vLower === 'absent') status = 'absent';
+          else status = val;
+        } else if (val && typeof val === 'object' && val.status) {
+          status = val.status;
+        }
+        return { studentId: k, status: status };
+      });
+    }
+    return [];
+  },
+
   formatDate: function(dateStr) {
     if (!dateStr) return '—';
     var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -3823,8 +3844,10 @@ window.SchoolApp = {
     var todayStr = new Date().toISOString().split('T')[0];
     var todayRecords = (this.store.attendance || []).filter(function(a) { return a.date === todayStr; });
     var todayPresent = 0, todayTotal = 0;
+    var self = this;
     todayRecords.forEach(function(r) {
-      (r.records || []).forEach(function(rec) {
+      var recList = self.normalizeAttendanceRecords(r.records);
+      recList.forEach(function(rec) {
         todayTotal++;
         if (rec.status === 'present' || rec.status === 'late') todayPresent++;
       });
@@ -3833,10 +3856,11 @@ window.SchoolApp = {
 
     // Attendance chart data (last 7 entries)
     var attData = (this.store.attendance || []).slice(-7).map(function(a) {
-      var present = (a.records || []).filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
-      var total = (a.records || []).length;
+      var recList = self.normalizeAttendanceRecords(a.records);
+      var present = recList.filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
+      var total = recList.length;
       return {
-        label: a.date.substr(5),
+        label: a.date ? a.date.substr(5) : '',
         value: total > 0 ? Math.round((present / total) * 100) : 0
       };
     });
@@ -3958,8 +3982,9 @@ window.SchoolApp = {
       recentAtt.forEach(function(a) {
         var teacher = teachers.find(function(t) { return t.id === a.teacherId; });
         var teacherName = teacher ? teacher.firstName + ' ' + teacher.lastName : 'Unknown';
-        var presentCount = a.records.filter(function(r) { return r.status === 'present'; }).length;
-        html += '<div class="activity-item"><div class="activity-icon green"><span class="material-icons-round">fact_check</span></div><div class="activity-text"><strong>' + teacherName + '</strong> marked attendance for Class ' + a.class + '-' + a.section + '<br><span class="activity-time">' + self.formatDate(a.date) + ' · ' + presentCount + '/' + a.records.length + ' present</span></div></div>';
+        var recList = self.normalizeAttendanceRecords(a.records);
+        var presentCount = recList.filter(function(r) { return r.status === 'present'; }).length;
+        html += '<div class="activity-item"><div class="activity-icon green"><span class="material-icons-round">fact_check</span></div><div class="activity-text"><strong>' + teacherName + '</strong> marked attendance for Class ' + a.class + '-' + a.section + '<br><span class="activity-time">' + self.formatDate(a.date) + ' · ' + presentCount + '/' + recList.length + ' present</span></div></div>';
       });
     } else {
       html += '<div class="empty-state"><span class="material-icons-round">history</span><p>No recent activity</p></div>';
@@ -4035,7 +4060,8 @@ window.SchoolApp = {
     });
     var ctPresent = 0, ctTotal = 0;
     ctAttendanceRecords.forEach(function(r) {
-      r.records.forEach(function(rec) {
+      var recList = self.normalizeAttendanceRecords(r.records);
+      recList.forEach(function(rec) {
         ctTotal++;
         if (rec.status === 'present' || rec.status === 'late') ctPresent++;
       });

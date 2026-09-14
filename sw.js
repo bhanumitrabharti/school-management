@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v13 for Phase 4: Student Financial Profile (Bahi Khata) & Void/Reversal Audit Engine.
-const CACHE_NAME = 'erp-cache-v13';
+// Bumped to v14 for Super Admin .set() overwrite safety guards and Dashboard attendance format crash fix.
+const CACHE_NAME = 'erp-cache-v14';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
