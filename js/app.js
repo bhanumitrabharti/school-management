@@ -252,7 +252,7 @@ window.SchoolApp = {
     }
   },
 
-  save: async function(bypassLoader) {
+  save: async function(bypassLoader, options) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
@@ -274,42 +274,54 @@ window.SchoolApp = {
         return false;
       }
 
-      // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from server baseline
-      if (this.initialServerStudentCount > 0 && (!payload.students || payload.students.length === 0)) {
-        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + this.initialServerStudentCount + ' items -> 0) on ' + currentSchoolId);
-        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-        if (!bypassLoader) this.hideLoader();
-        return false;
-      }
-      if (this.initialServerTeacherCount > 0 && (!payload.teachers || payload.teachers.length === 0)) {
-        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + this.initialServerTeacherCount + ' items -> 0) on ' + currentSchoolId);
-        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-        if (!bypassLoader) this.hideLoader();
-        return false;
+      // DELIBERATE OVERRIDE ESCAPE HATCH:
+      // Genuine administrative resets (e.g. academic session rollover / roster re-import)
+      // can pass options.allowCollectionWipe == true or set store.allowCollectionWipe == true.
+      // This is forwarded in payload to satisfy Firestore rules (notWipingRoster/notWipingLedger).
+      var allowWipe = (options && options.allowCollectionWipe === true) || (payload.allowCollectionWipe === true) || (this.allowCollectionWipe === true);
+      if (allowWipe) {
+        payload.allowCollectionWipe = true;
+        console.warn('[Security Override] allowCollectionWipe active for ' + currentSchoolId + '. Bypassing roster and ledger wipe guards.');
       }
 
-      // HARD FAILSAFE 3: Refuse to overwrite populated collections (students, fees, attendance, teachers)
-      // with empty arrays if the local cache previously had data.
-      var cachedRawForGuard = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
-      if (cachedRawForGuard) {
-        try {
-          var cachedDoc = JSON.parse(cachedRawForGuard);
-          if (cachedDoc) {
-            var checkWipe = function(field, label) {
-              if (Array.isArray(cachedDoc[field]) && cachedDoc[field].length > 0 && (!payload[field] || payload[field].length === 0)) {
-                console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe ' + label + ' (' + cachedDoc[field].length + ' items -> 0) on ' + currentSchoolId);
-                return true;
+      if (!allowWipe) {
+        // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from server baseline
+        if (this.initialServerStudentCount > 0 && (!payload.students || payload.students.length === 0)) {
+          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + this.initialServerStudentCount + ' items -> 0) on ' + currentSchoolId);
+          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+          if (!bypassLoader) this.hideLoader();
+          return false;
+        }
+        if (this.initialServerTeacherCount > 0 && (!payload.teachers || payload.teachers.length === 0)) {
+          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + this.initialServerTeacherCount + ' items -> 0) on ' + currentSchoolId);
+          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+          if (!bypassLoader) this.hideLoader();
+          return false;
+        }
+
+        // HARD FAILSAFE 3: Refuse to overwrite populated collections (students, fees, attendance, teachers)
+        // with empty arrays if the local cache previously had data.
+        var cachedRawForGuard = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
+        if (cachedRawForGuard) {
+          try {
+            var cachedDoc = JSON.parse(cachedRawForGuard);
+            if (cachedDoc) {
+              var checkWipe = function(field, label) {
+                if (Array.isArray(cachedDoc[field]) && cachedDoc[field].length > 0 && (!payload[field] || payload[field].length === 0)) {
+                  console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe ' + label + ' (' + cachedDoc[field].length + ' items -> 0) on ' + currentSchoolId);
+                  return true;
+                }
+                return false;
+              };
+              if (checkWipe('students', 'students') || checkWipe('fees', 'fees') || checkWipe('attendance', 'attendance') || checkWipe('teachers', 'teachers')) {
+                this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+                if (!bypassLoader) this.hideLoader();
+                return false;
               }
-              return false;
-            };
-            if (checkWipe('students', 'students') || checkWipe('fees', 'fees') || checkWipe('attendance', 'attendance') || checkWipe('teachers', 'teachers')) {
-              this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-              if (!bypassLoader) this.hideLoader();
-              return false;
             }
+          } catch (e) {
+            console.warn('Failed to verify wipe guard against cached data:', e);
           }
-        } catch (e) {
-          console.warn('Failed to verify wipe guard against cached data:', e);
         }
       }
       
@@ -374,6 +386,10 @@ window.SchoolApp = {
       }
       
       console.log('Successfully saved tenant data to Cloud Firestore for: ' + currentSchoolId);
+      if (allowWipe) {
+        delete this.store.allowCollectionWipe;
+        delete this.allowCollectionWipe;
+      }
       
       // Update localStorage cache to match
       try {

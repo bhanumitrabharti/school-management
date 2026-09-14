@@ -3502,7 +3502,13 @@
     init: function() {
       runMigration();
     },
-    render: render
+    render: function(container) {
+      if (!SchoolApp.store.examConfig) {
+        runMigration();
+      }
+      render(container);
+    },
+    runMigration: runMigration
   });
 
 })();

@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v11 for Phase 3 Fee Engine upgrade + data loading failsafes.
-const CACHE_NAME = 'erp-cache-v11';
+// Bumped to v12 for unified roster wipe escape hatch + safe exam migration trigger.
+const CACHE_NAME = 'erp-cache-v12';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
