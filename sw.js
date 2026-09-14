@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v16 for login form submit reload fix and Greenwood restoration.
-const CACHE_NAME = 'erp-cache-v16';
+// Bumped to v17 for emergency rollback of login form onsubmit attribute.
+const CACHE_NAME = 'erp-cache-v17';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
