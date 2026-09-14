@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v17 for emergency rollback of login form onsubmit attribute.
-const CACHE_NAME = 'erp-cache-v17';
+// Bumped to v18 for correctness-first data freshness and multi-school session isolation.
+const CACHE_NAME = 'erp-cache-v18';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

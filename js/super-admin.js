@@ -3074,7 +3074,12 @@ const db = getFirestore(app);
         showToast('Redirecting as ' + role + ' of "' + school.school_name + '"…', 'info');
 
         setTimeout(function () {
-            window.location.href = 'index.html';
+            var isProd = window.location.hostname.endsWith('ctrlshifts.in');
+            if (isProd && school.subdomain && !window.location.hostname.startsWith(school.subdomain)) {
+                window.location.href = 'https://' + school.subdomain + '.ctrlshifts.in/index.html?impersonate_school_id=' + encodeURIComponent(schoolId) + '&impersonate_role=' + encodeURIComponent(role);
+            } else {
+                window.location.href = 'index.html?impersonate_school_id=' + encodeURIComponent(schoolId) + '&impersonate_role=' + encodeURIComponent(role);
+            }
         }, 800);
     }
 

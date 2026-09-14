@@ -33,7 +33,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /tenant_data/{schoolId}/{allChildren=**} {
+    match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
       allow read, write: if true;
     }
 

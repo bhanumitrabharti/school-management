@@ -1177,8 +1177,9 @@
         html += '<td>' + (idx + 1) + '</td>';
         html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></td>';
 
-        if (statusInfo.status === 'none') {
-          html += '<td class="center"><span style="color: var(--danger); font-weight: 600;">No marks</span></td>';
+        if (statusInfo.status === 'none' || statusInfo.status === 'no_subjects' || !statusInfo.marks) {
+          var noMarksLabel = statusInfo.status === 'no_subjects' ? 'No subjects' : 'No marks';
+          html += '<td class="center"><span style="color: var(--danger); font-weight: 600;">' + noMarksLabel + '</span></td>';
           html += '<td class="center text-muted">—</td>';
           html += '<td class="center text-muted">—</td>';
           html += '<td class="center">';
@@ -1192,12 +1193,15 @@
           html += '  <button class="btn btn-secondary btn-sm" disabled title="Enter all marks first" style="cursor: not-allowed;"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Report Card</button>';
           html += '</td>';
         } else {
-          var m = statusInfo.marks;
-          var stColor = m.result === 'Pass' ? 'badge-success' : 'badge-danger';
-          var statusText = m.result === 'Pass' ? 'Pass ✅' : 'Fail ❌';
+          var m = statusInfo.marks || {};
+          var isPass = (m.result === 'Pass');
+          var stColor = isPass ? 'badge-success' : 'badge-danger';
+          var statusText = isPass ? 'Pass ✅' : (m.result ? 'Fail ❌' : '—');
+          var totalDisp = (m.total !== undefined && m.maxTotal !== undefined) ? (m.total + ' / ' + m.maxTotal) : '—';
+          var gradeDisp = m.grade || '—';
           
-          html += '<td class="center font-semibold">' + m.total + ' / ' + m.maxTotal + '</td>';
-          html += '<td class="center"><span class="badge badge-purple">' + m.grade + '</span></td>';
+          html += '<td class="center font-semibold">' + totalDisp + '</td>';
+          html += '<td class="center"><span class="badge badge-purple">' + gradeDisp + '</span></td>';
           html += '<td class="center"><span class="badge ' + stColor + '">' + statusText + '</span></td>';
           html += '<td class="center">';
           html += '  <button class="btn btn-secondary btn-sm generate-reportcard-btn" data-student-id="' + s.id + '"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Report Card</button>';

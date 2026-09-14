@@ -157,7 +157,7 @@ window.SchoolApp = {
   },
 
   get currentSchoolId() {
-    return this.store.currentSchoolId || 'svm_bokaro_001';
+    return (this.store && this.store.currentSchoolId) || '';
   },
 
   assertSchoolIsolation: function(data, schoolId) {
@@ -268,7 +268,13 @@ window.SchoolApp = {
       this.showLoader('Saving...');
     }
     try {
-      var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+      var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+      if (!currentSchoolId) {
+        console.error('[Security] Save blocked: No active school ID context.');
+        if (!bypassLoader) this.hideLoader();
+        this.showToast('Save failed: No active school identified.', 'error');
+        return false;
+      }
       const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
       const payload = JSON.parse(JSON.stringify(this.store));
       if (!payload.settings) payload.settings = {};
@@ -291,43 +297,21 @@ window.SchoolApp = {
       }
 
       if (!allowWipe) {
-        // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from server baseline
-        if (this.initialServerStudentCount > 0 && (!payload.students || payload.students.length === 0)) {
-          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + this.initialServerStudentCount + ' items -> 0) on ' + currentSchoolId);
-          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-          if (!bypassLoader) this.hideLoader();
-          return false;
-        }
-        if (this.initialServerTeacherCount > 0 && (!payload.teachers || payload.teachers.length === 0)) {
-          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + this.initialServerTeacherCount + ' items -> 0) on ' + currentSchoolId);
-          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-          if (!bypassLoader) this.hideLoader();
-          return false;
-        }
+        // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from live server baseline
+        var serverStudentBaseline = (this.liveServerStudentCount !== undefined) ? this.liveServerStudentCount : (this.initialServerStudentCount || 0);
+        var serverTeacherBaseline = (this.liveServerTeacherCount !== undefined) ? this.liveServerTeacherCount : (this.initialServerTeacherCount || 0);
 
-        // HARD FAILSAFE 3: Refuse to overwrite populated collections (students, fees, attendance, teachers)
-        // with empty arrays if the local cache previously had data.
-        var cachedRawForGuard = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
-        if (cachedRawForGuard) {
-          try {
-            var cachedDoc = JSON.parse(cachedRawForGuard);
-            if (cachedDoc) {
-              var checkWipe = function(field, label) {
-                if (Array.isArray(cachedDoc[field]) && cachedDoc[field].length > 0 && (!payload[field] || payload[field].length === 0)) {
-                  console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe ' + label + ' (' + cachedDoc[field].length + ' items -> 0) on ' + currentSchoolId);
-                  return true;
-                }
-                return false;
-              };
-              if (checkWipe('students', 'students') || checkWipe('fees', 'fees') || checkWipe('attendance', 'attendance') || checkWipe('teachers', 'teachers')) {
-                this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-                if (!bypassLoader) this.hideLoader();
-                return false;
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to verify wipe guard against cached data:', e);
-          }
+        if (serverStudentBaseline > 0 && (!payload.students || payload.students.length === 0)) {
+          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + serverStudentBaseline + ' items -> 0) on ' + currentSchoolId);
+          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+          if (!bypassLoader) this.hideLoader();
+          return false;
+        }
+        if (serverTeacherBaseline > 0 && (!payload.teachers || payload.teachers.length === 0)) {
+          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + serverTeacherBaseline + ' items -> 0) on ' + currentSchoolId);
+          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+          if (!bypassLoader) this.hideLoader();
+          return false;
         }
       }
       
@@ -425,6 +409,64 @@ window.SchoolApp = {
     }
   },
 
+  resetTenantSession: function(newSchoolId) {
+    console.log('[Tenant Isolation] Tearing down tenant session. Transitioning to:', newSchoolId || 'none');
+
+    // 1. Unsubscribe main tenant listener
+    if (this.tenantListenerUnsubscribe) {
+      try { this.tenantListenerUnsubscribe(); } catch (e) { console.warn('Error unsubscribing tenantListener:', e); }
+      this.tenantListenerUnsubscribe = null;
+    }
+
+    // 2. Unsubscribe and clear all attendance subcollection listeners
+    if (this._attendanceListeners) {
+      var aKeys = Object.keys(this._attendanceListeners);
+      for (var i = 0; i < aKeys.length; i++) {
+        if (typeof this._attendanceListeners[aKeys[i]] === 'function') {
+          try { this._attendanceListeners[aKeys[i]](); } catch (e) { console.warn('Error unsubscribing attendance listener:', e); }
+        }
+      }
+    }
+    this._attendanceListeners = {};
+    this._attendanceMonths = {};
+
+    // 3. Unsubscribe and clear all fee subcollection listeners
+    if (this._feesListeners) {
+      var fKeys = Object.keys(this._feesListeners);
+      for (var j = 0; j < fKeys.length; j++) {
+        if (typeof this._feesListeners[fKeys[j]] === 'function') {
+          try { this._feesListeners[fKeys[j]](); } catch (e) { console.warn('Error unsubscribing fee listener:', e); }
+        }
+      }
+    }
+    this._feesListeners = {};
+    this._feesYears = {};
+
+    // 4. Purge local tenant storage caches to prevent cross-school contamination
+    try {
+      for (var k = localStorage.length - 1; k >= 0; k--) {
+        var keyName = localStorage.key(k);
+        if (keyName && keyName.startsWith('cached_tenant_data_')) {
+          localStorage.removeItem(keyName);
+        }
+      }
+    } catch (e) {
+      console.warn('Error clearing cached_tenant_data_ from localStorage:', e);
+    }
+
+    // 5. Hard reset in-memory store to pristine baseline
+    var preservedSchools = (this.store && this.store.schools) ? this.store.schools : [];
+    this.store = this.getInitialStore();
+    this.store.schools = preservedSchools;
+    this.store.currentSchoolId = newSchoolId || '';
+    this.currentUser = null;
+    this.tenantInitialized = false;
+    this.initialServerStudentCount = 0;
+    this.initialServerTeacherCount = 0;
+    this.liveServerStudentCount = 0;
+    this.liveServerTeacherCount = 0;
+  },
+
   // ---------- Subcollection Compatibility Layer (Dual-Read / Single-Write) ----------
   _attendanceMonths: {},
   _attendanceListeners: {},
@@ -447,7 +489,8 @@ window.SchoolApp = {
     if (!yearMonth) {
       yearMonth = new Date().toISOString().slice(0, 7);
     }
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) return [];
 
     // 1. If in local memory cache, return it
     if (this._attendanceMonths[yearMonth]) {
@@ -529,8 +572,8 @@ window.SchoolApp = {
 
   listenToAttendanceMonth: function(yearMonth) {
     if (!yearMonth) yearMonth = new Date().toISOString().slice(0, 7);
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
-    if (!this.isRestructured(currentSchoolId)) return;
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId || !this.isRestructured(currentSchoolId)) return;
     if (this._attendanceListeners[yearMonth]) return;
 
     if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
@@ -566,7 +609,11 @@ window.SchoolApp = {
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
       return false;
     }
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Attendance] Save blocked: No active school context.');
+      return false;
+    }
     var ym = (record && record.date ? record.date : new Date().toISOString().split('T')[0]).slice(0, 7);
 
     // Update in-memory store
@@ -633,7 +680,11 @@ window.SchoolApp = {
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
       return false;
     }
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Attendance] Delete blocked: No active school context.');
+      return false;
+    }
     var record = typeof recordOrId === 'object' && recordOrId !== null ? recordOrId :
       (this.store.attendance || []).find(function(a) { return a.id === recordOrId; });
     if (!record) return false;
@@ -687,7 +738,8 @@ window.SchoolApp = {
       year = String(new Date().getFullYear());
     }
     year = String(year);
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) return [];
 
     if (this._feesYears[year]) {
       return this._feesYears[year];
@@ -748,8 +800,8 @@ window.SchoolApp = {
   listenToFeesYear: function(year) {
     if (!year) year = String(new Date().getFullYear());
     year = String(year);
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
-    if (!this.isRestructured(currentSchoolId)) return;
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId || !this.isRestructured(currentSchoolId)) return;
     if (this._feesListeners[year]) return;
 
     if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
@@ -785,7 +837,11 @@ window.SchoolApp = {
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
       return false;
     }
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Fees] Save blocked: No active school context.');
+      return false;
+    }
     var yr = String((txn && txn.date ? txn.date : new Date().toISOString()).slice(0, 4));
     var mo = String((txn && txn.date ? txn.date : new Date().toISOString()).slice(5, 7)) || 'unknown';
 
@@ -841,7 +897,11 @@ window.SchoolApp = {
 
   saveFeeTransactions: async function(txns, bypassLoader) {
     if (!Array.isArray(txns) || txns.length === 0) return true;
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Fees] Bulk save blocked: No active school context.');
+      return false;
+    }
     var self = this;
 
     if (!this.store.fees) this.store.fees = [];
@@ -914,7 +974,11 @@ window.SchoolApp = {
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
       return false;
     }
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Fees] Delete blocked: No active school context.');
+      return false;
+    }
     var yr = txnDate ? String(txnDate).slice(0, 4) : '';
     var mo = txnDate ? String(txnDate).slice(5, 7) : 'unknown';
 
@@ -961,7 +1025,8 @@ window.SchoolApp = {
   /* ===== EXAM MARKS DUAL-READ / SINGLE-WRITE ===== */
   loadExamMarksTerm: async function(termId) {
     if (!termId) return {};
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) return {};
 
     if (this.store.examMarks && this.store.examMarks[termId] && Object.keys(this.store.examMarks[termId]).length > 0) {
       return this.store.examMarks[termId];
@@ -994,7 +1059,11 @@ window.SchoolApp = {
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
       return false;
     }
-    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Exam Marks] Delete blocked: No active school context.');
+      return false;
+    }
 
     if (this.store.examMarks && this.store.examMarks[termId]) {
       delete this.store.examMarks[termId];
@@ -1025,7 +1094,11 @@ window.SchoolApp = {
       return false;
     }
     try {
-      var currentSchoolId = this.store.currentSchoolId || localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+      var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+      if (!currentSchoolId) {
+        console.error('[Exam Marks] Save blocked: No active school context.');
+        return false;
+      }
 
       // Update in-memory store
       if (!this.store.examMarks) this.store.examMarks = {};
@@ -1173,15 +1246,21 @@ window.SchoolApp = {
           }
         }
 
+        var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+        var querySchoolId = urlParams ? urlParams.get('impersonate_school_id') : null;
         if (!sub && !activeSchoolId) {
-          activeSchoolId = localStorage.getItem('impersonate_school_id') || 'svm_bokaro_001';
+          activeSchoolId = querySchoolId || localStorage.getItem('impersonate_school_id') || null;
         }
 
         self.store.currentSchoolId = activeSchoolId || '';
 
-        if (self.tenantListenerUnsubscribe) {
-          self.tenantListenerUnsubscribe();
-          self.tenantListenerUnsubscribe = null;
+        // Clean teardown before attaching new tenant listener if switching schools or already listening
+        if (activeSchoolId) {
+          if (self.tenantListenerUnsubscribe || (self.store && self.store.currentSchoolId && self.store.currentSchoolId !== activeSchoolId)) {
+            self.resetTenantSession(activeSchoolId);
+          } else {
+            self.store.currentSchoolId = activeSchoolId;
+          }
         }
 
         if (activeSchoolId) {
@@ -1200,40 +1279,26 @@ window.SchoolApp = {
             var docExists = docSnap.exists();
             if (docExists) {
               parsed = docSnap.data();
-              try {
-                localStorage.setItem('cached_tenant_data_' + activeSchoolId, JSON.stringify(parsed));
-              } catch (e) {
-                console.warn('Failed to write secondary cache to localStorage:', e);
-              }
-            } else {
-              try {
-                var cachedData = localStorage.getItem('cached_tenant_data_' + activeSchoolId);
-                if (cachedData) {
-                  parsed = JSON.parse(cachedData);
-                  docExists = true;
-                  console.log('Successfully loaded secondary cache from localStorage for: ' + activeSchoolId);
-                }
-              } catch (e) {
-                console.error('Failed to parse secondary cache from localStorage:', e);
-              }
             }
 
             // SAFEGUARD: Never auto-create or overwrite tenant document from a client onSnapshot event.
-            // If the document is not yet found or cache is empty, simply wait for the next snapshot from server.
+            // If the document is not found, simply wait for the next snapshot from server.
             if (!docExists) {
               console.warn('Document not found on snapshot for ' + activeSchoolId + ' — waiting for next snapshot, NOT auto-initializing.');
               return;
             }
 
             if (parsed) {
-              var currentStr = JSON.stringify(self.store);
-              var freshStr = JSON.stringify(parsed);
-              if (currentStr !== freshStr) {
-                self.store = Object.assign({}, self.store, parsed);
-                self.store.currentSchoolId = activeSchoolId;
-              }
+              // Clean replacement from initial baseline + server snapshot (NO MERGING with stale state)
+              var preservedSchools = (self.store && self.store.schools) ? self.store.schools : [];
+              self.store = Object.assign(self.getInitialStore(), parsed, {
+                currentSchoolId: activeSchoolId
+              });
+              self.store.schools = preservedSchools;
               self.initialServerStudentCount = (parsed.students || []).length;
               self.initialServerTeacherCount = (parsed.teachers || []).length;
+              self.liveServerStudentCount = (parsed.students || []).length;
+              self.liveServerTeacherCount = (parsed.teachers || []).length;
               self.tenantInitialized = true;
             }
 
@@ -1375,17 +1440,6 @@ window.SchoolApp = {
           }, (error) => {
             console.error("Firestore tenant onSnapshot error:", error);
             self.updateConnectionIndicator(true);
-
-            try {
-              var cachedData = localStorage.getItem('cached_tenant_data_' + activeSchoolId);
-              if (cachedData) {
-                var parsed = JSON.parse(cachedData);
-                self.store = Object.assign({}, self.store, parsed);
-                self.store.currentSchoolId = activeSchoolId;
-              }
-            } catch (err) {
-              console.error('Error loading local cache on snapshot failure:', err);
-            }
 
             if (!firstResolveCalled) {
               firstResolveCalled = true;
@@ -2235,13 +2289,11 @@ window.SchoolApp = {
     this.currentUser = null;
     this.currentPage = 'dashboard';
     
-    // Unsubscribe from real-time listeners
-    if (this.tenantListenerUnsubscribe) {
-      this.tenantListenerUnsubscribe();
-      this.tenantListenerUnsubscribe = null;
-    }
+    // Hard session teardown: unsubscribe listeners, clear caches and reset store
+    this.resetTenantSession('');
+
     if (this.schoolsListenerUnsubscribe) {
-      this.schoolsListenerUnsubscribe();
+      try { this.schoolsListenerUnsubscribe(); } catch (e) {}
       this.schoolsListenerUnsubscribe = null;
     }
 
@@ -2736,7 +2788,6 @@ window.SchoolApp = {
         this.store.notifications = this.store.notifications.slice(0, 50);
       }
 
-      this.save(true);
       this.updateNotificationBadge();
       
       // If dropdown is open, re-render it in real time
@@ -2825,7 +2876,7 @@ window.SchoolApp = {
       return true;
     }
     if (!this.store.schools) return true;
-    var currentSchoolId = this.store.currentSchoolId || "svm_bokaro_001";
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || "";
     var school = this.store.schools.find(function(s) { return s.school_id === currentSchoolId; });
     if (!school) return true;
     if (school.allowed_features && school.allowed_features.indexOf(page) === -1) {
@@ -2836,7 +2887,7 @@ window.SchoolApp = {
 
   updateSidebarLockBadges: function() {
     var self = this;
-    var currentSchoolId = this.store.currentSchoolId || "svm_bokaro_001";
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || "";
     var isSVM = currentSchoolId === "svm_bokaro_001";
 
     document.querySelectorAll('.nav-item').forEach(function(item) {
@@ -4870,7 +4921,12 @@ window.SchoolApp = {
       localStorage.removeItem('impersonate_school_id');
       localStorage.removeItem('impersonate_role');
       sessionStorage.removeItem('isImpersonating');
-      window.location.href = 'super-admin.html';
+      var isProd = window.location.hostname.endsWith('ctrlshifts.in');
+      if (isProd) {
+        window.location.href = 'https://ctrlshifts.in/super-admin.html';
+      } else {
+        window.location.href = 'super-admin.html';
+      }
     });
   }
 };
@@ -4886,9 +4942,15 @@ document.addEventListener('DOMContentLoaded', async function() {
   SchoolApp.applyUserTheme();
 
   // ---- Impersonation Auto-Login Check ----
-  var impSchoolId = localStorage.getItem('impersonate_school_id');
-  var impRole = localStorage.getItem('impersonate_role');
+  var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+  var impSchoolId = (urlParams ? urlParams.get('impersonate_school_id') : null) || localStorage.getItem('impersonate_school_id');
+  var impRole = (urlParams ? urlParams.get('impersonate_role') : null) || localStorage.getItem('impersonate_role');
   if (impSchoolId && impRole) {
+    localStorage.setItem('impersonate_school_id', impSchoolId);
+    localStorage.setItem('impersonate_role', impRole);
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('isImpersonating', 'true');
+    }
     var allSchools = SchoolApp.store.schools || [];
     var targetSchool = null;
     for (var i = 0; i < allSchools.length; i++) {
