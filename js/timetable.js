@@ -11,8 +11,36 @@
     sectionVal: '',
     dayVal: 'Monday',
     draftTimetable: null,
-    viewMode: 'teacher' // Default view mode is now 'teacher'
+    viewMode: 'teacher', // Default view mode is now 'teacher'
+    isDirty: false
   };
+
+  function setDirty(dirty) {
+    state.isDirty = !!dirty;
+    if (window.SchoolApp) {
+      SchoolApp.adminIsDirty = !!dirty;
+    }
+  }
+
+  // Window beforeunload guard for unsaved draft
+  if (!window._timetableBeforeUnloadAttached) {
+    window.addEventListener('beforeunload', function(e) {
+      if (state.isDirty) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes in your timetable draft. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    });
+    window._timetableBeforeUnloadAttached = true;
+  }
+
+  function discardDraft() {
+    state.draftTimetable = null;
+    setDirty(false);
+    initGlobalDraft();
+    SchoolApp.showToast('Draft changes discarded. Reloaded saved timetable.', 'info');
+    render();
+  }
 
   function initGlobalDraft() {
     if (!state.draftTimetable) {
@@ -363,16 +391,35 @@
     }
 
     // Action buttons group (permanently visible)
+    html += '  <div class="action-buttons-group" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center;">';
     if (!SchoolApp.isTeacher()) {
-      html += '  <div class="action-buttons-group" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">';
       html += '    <button class="btn btn-secondary btn-sm" id="timetable-settings-btn" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">settings</span> Timing Settings</button>';
-      html += '    <button class="btn btn-secondary btn-sm" id="find-inactive-slots-btn" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">search</span> 🔍 Find Inactive Teacher Slots</button>';
-      html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">auto_awesome</span> 🪄 Auto-Fill Empty Slots</button>';
+      html += '    <button class="btn btn-secondary btn-sm" id="find-inactive-slots-btn" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">search</span> 🔍 Inactive Slots</button>';
+      html += '    <button class="btn btn-secondary btn-sm" id="auto-generate-btn" style="background: rgba(108, 92, 231, 0.15); color: #a29bfe; border: 1px solid rgba(108, 92, 231, 0.3); display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">auto_awesome</span> 🪄 Auto-Fill</button>';
       html += '    <button class="btn btn-primary btn-sm" id="save-timetable-btn" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">save</span> Save Timetable</button>';
-      html += '    <button class="btn btn-danger btn-sm" id="btn-reset-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">delete_sweep</span> Reset Timetable</button>';
-      html += '  </div>';
+      html += '    <button class="btn btn-danger btn-sm" id="btn-reset-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">delete_sweep</span> Reset</button>';
     }
+    html += '    <button class="btn btn-secondary btn-sm" id="btn-print-timetable" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">print</span> Print</button>';
+    html += '    <button class="btn btn-secondary btn-sm" id="btn-export-timetable-excel" style="display: inline-flex; align-items: center; gap: 6px;"><span class="material-icons-round" style="font-size: 16px;">table_view</span> Export Excel</button>';
+    html += '  </div>';
     html += '</div>';
+
+    // Unsaved Changes Draft Banner (Area 2b)
+    if (state.isDirty) {
+      html += '<div class="alert alert-warning" id="timetable-unsaved-banner" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: var(--radius-md); padding: 12px 18px; margin-top: 16px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">';
+      html += '  <div style="display: flex; align-items: center; gap: 10px;">';
+      html += '    <span class="material-icons-round" style="color: var(--warning); font-size: 24px;">pending</span>';
+      html += '    <div>';
+      html += '      <strong style="color: var(--text-primary); font-size: 13.5px;">Unsaved Timetable Draft in Memory</strong>';
+      html += '      <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">You have unsaved timetable modifications or auto-fill results. These are in draft mode and not yet live.</div>';
+      html += '    </div>';
+      html += '  </div>';
+      html += '  <div style="display: flex; gap: 8px; align-items: center;">';
+      html += '    <button type="button" class="btn btn-secondary btn-sm" id="btn-discard-draft-banner" style="display: inline-flex; align-items: center; gap: 4px;"><span class="material-icons-round" style="font-size: 14px;">undo</span> Discard</button>';
+      html += '    <button type="button" class="btn btn-primary btn-sm" id="btn-save-draft-banner" style="display: inline-flex; align-items: center; gap: 4px;"><span class="material-icons-round" style="font-size: 14px;">save</span> Save Timetable</button>';
+      html += '  </div>';
+      html += '</div>';
+    }
 
     if (state.viewMode === 'class') {
       // Main Period Grid Card list
@@ -637,6 +684,18 @@
     var saveBtn = document.getElementById('save-timetable-btn');
     if (saveBtn) saveBtn.addEventListener('click', saveTimetable);
 
+    var bannerSaveBtn = document.getElementById('btn-save-draft-banner');
+    if (bannerSaveBtn) bannerSaveBtn.addEventListener('click', saveTimetable);
+
+    var bannerDiscardBtn = document.getElementById('btn-discard-draft-banner');
+    if (bannerDiscardBtn) bannerDiscardBtn.addEventListener('click', discardDraft);
+
+    var printBtn = document.getElementById('btn-print-timetable');
+    if (printBtn) printBtn.addEventListener('click', printTimetable);
+
+    var exportExcelBtn = document.getElementById('btn-export-timetable-excel');
+    if (exportExcelBtn) exportExcelBtn.addEventListener('click', exportTimetableToExcel);
+
     var findInactiveBtn = document.getElementById('find-inactive-slots-btn');
     if (findInactiveBtn) findInactiveBtn.addEventListener('click', findInactiveTeacherSlots);
 
@@ -679,6 +738,7 @@
 
         if (state.draftTimetable && state.draftTimetable[classSection] && state.draftTimetable[classSection][day]) {
           delete state.draftTimetable[classSection][day][period];
+          setDirty(true);
           SchoolApp.showToast('Assignment removed from draft.', 'info');
           render();
         }
@@ -704,6 +764,7 @@
         } else {
           state.draftTimetable[currentClassSection][state.dayVal][period] = { subject: subVal, teacherId: '', isFallback: false, isWarning: false };
         }
+        setDirty(true);
         render();
       });
     });
@@ -727,12 +788,98 @@
         state.draftTimetable[currentClassSection][state.dayVal][period].teacherId = teachVal;
         state.draftTimetable[currentClassSection][state.dayVal][period].isFallback = false;
         state.draftTimetable[currentClassSection][state.dayVal][period].isWarning = false;
+        setDirty(true);
         render();
       });
     });
 
     var resetBtn = document.getElementById('btn-reset-timetable');
     if (resetBtn) resetBtn.addEventListener('click', resetTimetable);
+  }
+
+  function printTimetable() {
+    window.print();
+  }
+
+  function exportTimetableToExcel() {
+    var settings = (SchoolApp.store && SchoolApp.store.timetable && SchoolApp.store.timetable.settings) || {};
+    var allTeachers = SchoolApp.store.teachers || [];
+    var timetableData = state.draftTimetable || SchoolApp.store.timetable || {};
+
+    if (state.viewMode === 'class') {
+      var currentClassSection = state.classVal + '-' + state.sectionVal;
+      var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      var maxPeriods = settings.totalPeriods || 8;
+      
+      var exportRows = [];
+      days.forEach(function(d) {
+        var periodsCount = (d === 'Saturday') ? (settings.satTotalPeriods || 6) : maxPeriods;
+        var row = { 'Day': d };
+        var daySchedule = (timetableData[currentClassSection] && timetableData[currentClassSection][d]) || {};
+        
+        for (var p = 1; p <= maxPeriods; p++) {
+          if (p <= periodsCount) {
+            var slot = daySchedule[p];
+            if (slot && slot.subject) {
+              var tObj = allTeachers.find(function(t) { return t.id === slot.teacherId; });
+              var tName = tObj ? (tObj.firstName + ' ' + (tObj.lastName || '')).trim() : (slot.teacherId || 'Unassigned');
+              row['Period ' + p] = slot.subject + ' (' + tName + ')';
+            } else {
+              row['Period ' + p] = '—';
+            }
+          } else {
+            row['Period ' + p] = 'N/A';
+          }
+        }
+        exportRows.push(row);
+      });
+
+      var headers = [{ header: 'Day', key: 'Day' }];
+      for (var p = 1; p <= maxPeriods; p++) {
+        var timeStr = SchoolApp.getPeriodTimeStr(p, 'Monday');
+        headers.push({ header: 'Period ' + p + (timeStr ? ' (' + timeStr + ')' : ''), key: 'Period ' + p });
+      }
+
+      var fileName = 'Timetable_Class_' + currentClassSection + '_' + new Date().toISOString().split('T')[0] + '.xlsx';
+      SchoolApp.utils.exportToExcel(exportRows, headers, fileName);
+    } else {
+      // Teacher Matrix View
+      var activeTeachers = allTeachers.filter(function(t) {
+        return t.status === 'Active' || hasAssignedSlots(t.id, timetableData);
+      });
+      var periodsCount = (state.dayVal === 'Saturday') ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8);
+      
+      var exportRows = [];
+      for (var p = 1; p <= periodsCount; p++) {
+        var timeStr = SchoolApp.getPeriodTimeStr(p, state.dayVal);
+        var row = { 'Period / Time': 'Period ' + p + (timeStr ? ' (' + timeStr + ')' : '') };
+
+        activeTeachers.forEach(function(t) {
+          var assignment = null;
+          for (var classSection in timetableData) {
+            if (classSection === 'settings') continue;
+            var daySchedule = timetableData[classSection] ? timetableData[classSection][state.dayVal] : null;
+            if (daySchedule && daySchedule[p] && daySchedule[p].teacherId === t.id) {
+              assignment = 'Class ' + classSection + ' - ' + daySchedule[p].subject;
+              break;
+            }
+          }
+          var colHeader = (t.firstName + ' ' + (t.lastName || '')).trim();
+          row[colHeader] = assignment || 'Free';
+        });
+
+        exportRows.push(row);
+      }
+
+      var headers = [{ header: 'Period / Time', key: 'Period / Time' }];
+      activeTeachers.forEach(function(t) {
+        var colHeader = (t.firstName + ' ' + (t.lastName || '')).trim();
+        headers.push({ header: colHeader + (t.subject ? ' (' + t.subject + ')' : ''), key: colHeader });
+      });
+
+      var fileName = 'Timetable_Teachers_' + state.dayVal + '_' + new Date().toISOString().split('T')[0] + '.xlsx';
+      SchoolApp.utils.exportToExcel(exportRows, headers, fileName);
+    }
   }
 
   function showSettingsModal() {
@@ -999,6 +1146,7 @@
         isWarning: false
       };
 
+      setDirty(true);
       SchoolApp.showToast('Assignment added to draft.', 'success');
       SchoolApp.closeModal();
       render();
@@ -1162,37 +1310,75 @@
 
               var assigned = false;
 
+              // STEP 0 (Area 2a) — Soft Priority for Period 1: Class Teacher
+              if (p === 1 && !assigned) {
+                var classTeacher = allTeachers.find(function(t) {
+                  if (t.status !== 'Active') return false;
+                  var ct = t.classTeacherOf || [];
+                  return ct.some(function(item) {
+                    return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
+                           String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim();
+                  });
+                });
+
+                if (classTeacher && !getTeacherConflict(classTeacher.id, day, 1, classSection)) {
+                  // Find candidate subjects that the class teacher actually teaches
+                  var ctEligibleSubs = candidateSubjects.filter(function(sub) {
+                    return teachesSub(classTeacher, sub) && getSubjectCount(classTeacher.id, sub) < 2;
+                  });
+
+                  if (ctEligibleSubs.length > 0) {
+                    var ctSubject = ctEligibleSubs[0];
+                    state.draftTimetable[classSection][day][p] = {
+                      subject: ctSubject,
+                      teacherId: classTeacher.id,
+                      isFallback: false,
+                      isWarning: false,
+                      isClassTeacher: true
+                    };
+                    var subNorm = ctSubject.toLowerCase().trim();
+                    if (usedSubjectsToday.indexOf(subNorm) === -1) {
+                      usedSubjectsToday.push(subNorm);
+                    }
+                    lastPeriodSubject = ctSubject;
+                    assigned = true;
+                  }
+                }
+              }
+
               // STEP 1 — Primary Assignment:
               // Find a teacher where ALL conditions are true:
               // - teacher.subjects includes the period's subject
               // - teacher.assignedClasses includes the period's class
               // - teacher has no other assignment in this period
               // - same subject for same teacher: max 2 times per day
-              for (var i = 0; i < candidateSubjects.length; i++) {
-                var subject = candidateSubjects[i];
-                var primaryTeachers = allTeachers.filter(function(t) {
-                  return t.status === 'Active' &&
-                         teachesSub(t, subject) &&
-                         hasClass(t, c, s) &&
-                         !getTeacherConflict(t.id, day, p, classSection) &&
-                         getSubjectCount(t.id, subject) < 2;
-                });
+              if (!assigned) {
+                for (var i = 0; i < candidateSubjects.length; i++) {
+                  var subject = candidateSubjects[i];
+                  var primaryTeachers = allTeachers.filter(function(t) {
+                    return t.status === 'Active' &&
+                           teachesSub(t, subject) &&
+                           hasClass(t, c, s) &&
+                           !getTeacherConflict(t.id, day, p, classSection) &&
+                           getSubjectCount(t.id, subject) < 2;
+                  });
 
-                if (primaryTeachers.length > 0) {
-                  var picked = primaryTeachers[Math.floor(Math.random() * primaryTeachers.length)];
-                  state.draftTimetable[classSection][day][p] = {
-                    subject: subject,
-                    teacherId: picked.id,
-                    isFallback: false,
-                    isWarning: false
-                  };
-                  var subNorm = subject.toLowerCase().trim();
-                  if (usedSubjectsToday.indexOf(subNorm) === -1) {
-                    usedSubjectsToday.push(subNorm);
+                  if (primaryTeachers.length > 0) {
+                    var picked = primaryTeachers[Math.floor(Math.random() * primaryTeachers.length)];
+                    state.draftTimetable[classSection][day][p] = {
+                      subject: subject,
+                      teacherId: picked.id,
+                      isFallback: false,
+                      isWarning: false
+                    };
+                    var subNorm = subject.toLowerCase().trim();
+                    if (usedSubjectsToday.indexOf(subNorm) === -1) {
+                      usedSubjectsToday.push(subNorm);
+                    }
+                    lastPeriodSubject = subject;
+                    assigned = true;
+                    break;
                   }
-                  lastPeriodSubject = subject;
-                  assigned = true;
-                  break;
                 }
               }
 
@@ -1247,9 +1433,10 @@
         });
       });
 
+      setDirty(true);
       render();
-      var msg = resetFirst ? 'Timetable reset and regenerated from scratch!' : 'Empty timetable slots auto-filled across all classes!';
-      SchoolApp.showToast(msg, 'success');
+      var msg = resetFirst ? 'Timetable reset and regenerated in draft!' : 'Empty timetable slots auto-filled in draft!';
+      SchoolApp.showToast(msg + ' Review and click "Save Timetable" to commit live.', 'info');
   }
 
   function saveTimetable() {
@@ -1355,6 +1542,7 @@
     
     SchoolApp.save();
     state.draftTimetable = null; // Clear draft state
+    setDirty(false);
     SchoolApp.showToast('Timetable saved successfully for all classes.', 'success');
     render();
   }
@@ -1369,6 +1557,7 @@
         if (state.draftTimetable) {
           delete state.draftTimetable[currentClassSection];
         }
+        setDirty(false);
         SchoolApp.save();
         SchoolApp.showToast("Timetable for " + currentClassSection + " has been cleared.", "success");
         render();
@@ -1381,6 +1570,7 @@
           SchoolApp.store.timetable.settings = settings;
         }
         state.draftTimetable = null;
+        setDirty(false);
         SchoolApp.save();
         SchoolApp.showToast("School-wide timetable has been cleared.", "success");
         render();
@@ -1393,5 +1583,18 @@
     init: function() {},
     render: render
   });
+
+  window.TimetableModule = {
+    state: state,
+    setDirty: setDirty,
+    discardDraft: discardDraft,
+    initGlobalDraft: initGlobalDraft,
+    generateAutoTimetable: generateAutoTimetable,
+    saveTimetable: saveTimetable,
+    resetTimetable: resetTimetable,
+    exportTimetableToExcel: exportTimetableToExcel,
+    printTimetable: printTimetable,
+    render: render
+  };
 
 })();

@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v21 for auth bypass fix and default credential elimination.
-const CACHE_NAME = 'erp-cache-v21';
+// Bumped to v22 for Attendance, Timetable & Geofence/My Attendance feature rollout.
+const CACHE_NAME = 'erp-cache-v22';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

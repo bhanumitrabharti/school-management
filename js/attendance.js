@@ -7,7 +7,7 @@
 (function() {
 
   var state = {
-    currentView: 'mark', // 'mark' or 'history'
+    currentView: 'mark', // 'mark', 'history', or 'summary'
     selectedClass: '',
     selectedSection: '',
     selectedDate: new Date().toISOString().split('T')[0],
@@ -16,7 +16,18 @@
       fromDate: '',
       toDate: '',
       classFilter: 'all',
-      sectionFilter: 'all'
+      sectionFilter: 'all',
+      statusFilter: 'all' // 'all', 'taken', 'pending'
+    },
+    summaryFilters: {
+      rangePreset: '1month', // '1month', '3months', '4months', '6months', 'academic', 'custom'
+      fromDate: '',
+      toDate: '',
+      classFilter: 'all',
+      sectionFilter: 'all',
+      searchTerm: '',
+      page: 1,
+      pageSize: 25
     }
   };
 
@@ -75,23 +86,24 @@
     }
     var combos = [];
     var settings = SchoolApp.store.settings || {};
-    var classesList = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
-    var rawSections = settings.sections || {};
+    var classesList = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || ['1', '2', '3', '4', '5'];
+    var rawSections = settings.sections || ['A', 'B'];
     
     classesList.forEach(function(c) {
       var sectList = [];
       if (Array.isArray(rawSections)) {
         sectList = rawSections;
       } else if (typeof rawSections === 'object') {
-        sectList = rawSections[c] || [];
+        sectList = rawSections[c] || ['A'];
       }
       sectList.forEach(function(s) {
-        // Only include classes that have students
-        var hasStudents = SchoolApp.store.students.some(function(st) {
+        var hasStudents = (SchoolApp.store.students || []).some(function(st) {
           return normalizeClassName(st.class) === normalizeClassName(c) &&
                  normalizeSectionName(st.section) === normalizeSectionName(s);
         });
-        if (hasStudents) combos.push({ class: c, section: s });
+        if (hasStudents || (SchoolApp.store.students || []).length === 0) {
+          combos.push({ class: c, section: s });
+        }
       });
     });
     return combos;
@@ -105,6 +117,212 @@
     }).sort(function(a, b) {
       return a.rollNumber.localeCompare(b.rollNumber);
     });
+  }
+
+  function getDailyClassStatusMap(targetDate) {
+    var available = getAvailableClasses();
+    var records = SchoolApp.store.attendance || [];
+    var map = [];
+
+    available.forEach(function(c) {
+      var rec = records.find(function(a) {
+        return a.date === targetDate &&
+               normalizeClassName(a.class) === normalizeClassName(c.class) &&
+               normalizeSectionName(a.section) === normalizeSectionName(c.section);
+      });
+
+      var teacherName = 'Not recorded';
+      var presentCount = 0, absentCount = 0, lateCount = 0;
+      if (rec) {
+        if (rec.teacherId) {
+          var t = SchoolApp.store.teachers && SchoolApp.store.teachers.find(function(tech) { return tech.id === rec.teacherId; });
+          teacherName = t ? (t.firstName + ' ' + (t.lastName || '')).trim() : (rec.teacherId === 'admin' ? 'Administrator' : rec.teacherId);
+        } else {
+          teacherName = 'Not recorded';
+        }
+        var subRecs = Array.isArray(rec.records) ? rec.records : [];
+        presentCount = subRecs.filter(function(r) { return r.status === 'present'; }).length;
+        absentCount = subRecs.filter(function(r) { return r.status === 'absent'; }).length;
+        lateCount = subRecs.filter(function(r) { return r.status === 'late'; }).length;
+      }
+
+      var total = presentCount + absentCount + lateCount;
+      var perc = total > 0 ? Math.round(((presentCount + lateCount) / total) * 100) : 0;
+
+      map.push({
+        class: c.class,
+        section: c.section,
+        key: c.class + '-' + c.section,
+        taken: !!rec,
+        record: rec || null,
+        teacherName: teacherName,
+        presentCount: presentCount,
+        absentCount: absentCount,
+        lateCount: lateCount,
+        totalTracked: total,
+        percent: perc,
+        timestamp: rec ? rec.timestamp : null
+      });
+    });
+
+    return map;
+  }
+
+  function getSummaryDateRange(preset) {
+    var today = new Date();
+    var todayStr = today.toISOString().split('T')[0];
+    var fromStr = todayStr;
+
+    if (preset === '1month') {
+      var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      fromStr = firstDay.toISOString().split('T')[0];
+    } else if (preset === '3months') {
+      var d = new Date(today);
+      d.setMonth(d.getMonth() - 3);
+      fromStr = d.toISOString().split('T')[0];
+    } else if (preset === '4months') {
+      var d = new Date(today);
+      d.setMonth(d.getMonth() - 4);
+      fromStr = d.toISOString().split('T')[0];
+    } else if (preset === '6months') {
+      var d = new Date(today);
+      d.setMonth(d.getMonth() - 6);
+      fromStr = d.toISOString().split('T')[0];
+    } else if (preset === 'academic') {
+      var acad = (SchoolApp.store.settings && SchoolApp.store.settings.academicYear) || '';
+      var startYear = parseInt(acad.split('-')[0], 10) || today.getFullYear();
+      fromStr = startYear + '-04-01';
+      if (fromStr > todayStr) {
+        fromStr = (startYear - 1) + '-04-01';
+      }
+    }
+    return { fromDate: fromStr, toDate: todayStr };
+  }
+
+  async function ensureAttendanceLoadedForRange(fromDate, toDate) {
+    if (!fromDate || !toDate || typeof SchoolApp.loadAttendanceMonth !== 'function') return;
+    try {
+      var start = new Date(fromDate);
+      var end = new Date(toDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return;
+      var monthsToLoad = [];
+      var cur = new Date(start.getFullYear(), start.getMonth(), 1);
+      while (cur <= end) {
+        var ym = cur.toISOString().slice(0, 7);
+        if (monthsToLoad.indexOf(ym) === -1) {
+          monthsToLoad.push(ym);
+        }
+        cur.setMonth(cur.getMonth() + 1);
+      }
+      await Promise.all(monthsToLoad.map(function(ym) {
+        return SchoolApp.loadAttendanceMonth(ym);
+      }));
+    } catch (e) {
+      console.warn('[Attendance] Error loading multi-month attendance:', e);
+    }
+  }
+
+  function aggregateStudentAttendanceSummary(fromDate, toDate, classFilter, sectionFilter, searchTerm) {
+    var students = SchoolApp.store.students || [];
+    var records = SchoolApp.store.attendance || [];
+
+    // Filter students
+    var filteredStudents = students.filter(function(s) {
+      if (s.status !== 'Active') return false;
+      if (classFilter && classFilter !== 'all' && normalizeClassName(s.class) !== normalizeClassName(classFilter)) return false;
+      if (sectionFilter && sectionFilter !== 'all' && normalizeSectionName(s.section) !== normalizeSectionName(sectionFilter)) return false;
+      if (searchTerm) {
+        var term = searchTerm.toLowerCase().trim();
+        var name = (s.firstName + ' ' + (s.lastName || '')).toLowerCase();
+        var roll = String(s.rollNumber || '').toLowerCase();
+        var adm = String(s.admissionNumber || s.admissionNo || '').toLowerCase();
+        if (name.indexOf(term) === -1 && roll.indexOf(term) === -1 && adm.indexOf(term) === -1) return false;
+      }
+      return true;
+    });
+
+    // Filter records in range
+    var rangeRecords = records.filter(function(r) {
+      return r.date >= fromDate && r.date <= toDate;
+    });
+
+    var studentRows = [];
+    var totalWorkingDaysSet = new Set();
+    var sumPresent = 0;
+    var sumTotalDays = 0;
+    var highAttCount = 0;
+    var lowAttCount = 0;
+
+    filteredStudents.forEach(function(s) {
+      var sClassNorm = normalizeClassName(s.class);
+      var sSecNorm = normalizeSectionName(s.section);
+
+      var matchingSessions = rangeRecords.filter(function(r) {
+        return normalizeClassName(r.class) === sClassNorm && normalizeSectionName(r.section) === sSecNorm;
+      });
+
+      var totalDays = 0;
+      var presentDays = 0;
+      var absentDays = 0;
+      var lateDays = 0;
+
+      matchingSessions.forEach(function(sess) {
+        var recs = Array.isArray(sess.records) ? sess.records : [];
+        var studentRec = recs.find(function(r) { return r.studentId === s.id; });
+        if (studentRec) {
+          totalDays++;
+          totalWorkingDaysSet.add(sess.date);
+          if (studentRec.status === 'present') presentDays++;
+          else if (studentRec.status === 'absent') absentDays++;
+          else if (studentRec.status === 'late') lateDays++;
+        }
+      });
+
+      var effectivePresent = presentDays + lateDays;
+      var perc = totalDays > 0 ? Math.round((effectivePresent / totalDays) * 100) : 0;
+
+      sumPresent += effectivePresent;
+      sumTotalDays += totalDays;
+      if (perc >= 90) highAttCount++;
+      if (perc < 75) lowAttCount++;
+
+      studentRows.push({
+        studentId: s.id,
+        name: SchoolApp.getStudentFullName(s),
+        rollNumber: s.rollNumber || '—',
+        admissionNumber: s.admissionNumber || s.admissionNo || '—',
+        class: s.class,
+        section: s.section,
+        classSection: s.class + '-' + s.section,
+        totalDays: totalDays,
+        presentDays: presentDays,
+        absentDays: absentDays,
+        lateDays: lateDays,
+        percentage: perc
+      });
+    });
+
+    // Sort by Class numeric/alphabetical then Roll Number
+    studentRows.sort(function(a, b) {
+      if (normalizeClassName(a.class) !== normalizeClassName(b.class)) {
+        return String(a.class).localeCompare(String(b.class), undefined, { numeric: true });
+      }
+      if (normalizeSectionName(a.section) !== normalizeSectionName(b.section)) {
+        return String(a.section).localeCompare(String(b.section));
+      }
+      return String(a.rollNumber).localeCompare(String(b.rollNumber), undefined, { numeric: true });
+    });
+
+    var overallAverage = sumTotalDays > 0 ? Math.round((sumPresent / sumTotalDays) * 100) : 0;
+
+    return {
+      rows: studentRows,
+      totalUniqueDates: totalWorkingDaysSet.size,
+      totalStudents: studentRows.length,
+      overallAverage: overallAverage,
+      highAttCount: highAttCount,
+      lowAttCount: lowAttCount
+    };
   }
 
   function getAttendanceStats() {
@@ -178,6 +396,7 @@
     html += '<div class="view-toggle">';
     html += '<button class="view-toggle-btn' + (state.currentView === 'mark' ? ' active' : '') + '" data-view="mark"><span class="material-icons-round">edit_note</span> Mark</button>';
     html += '<button class="view-toggle-btn' + (state.currentView === 'history' ? ' active' : '') + '" data-view="history"><span class="material-icons-round">history</span> History</button>';
+    html += '<button class="view-toggle-btn' + (state.currentView === 'summary' ? ' active' : '') + '" data-view="summary"><span class="material-icons-round">analytics</span> Summary Report</button>';
     html += '</div></div></div>';
 
     // Stats Cards
@@ -191,8 +410,10 @@
     // Content based on view
     if (state.currentView === 'mark') {
       html += renderMarkView();
-    } else {
+    } else if (state.currentView === 'history') {
       html += renderHistoryView();
+    } else if (state.currentView === 'summary') {
+      html += renderSummaryReportView();
     }
 
     container.innerHTML = html;
@@ -202,15 +423,50 @@
   function renderMarkView() {
     var html = '';
     var availableClasses = getAvailableClasses();
+    var statusMap = getDailyClassStatusMap(state.selectedDate);
+    var takenCount = statusMap.filter(function(c) { return c.taken; }).length;
+    var totalCount = statusMap.length;
 
     html += '<div class="card mt-2"><div class="card-header"><h3><span class="material-icons-round">edit_note</span> Mark Attendance</h3>';
-    html += '<div class="flex gap-2">';
+    html += '<div class="flex gap-2" style="align-items:center;">';
+    html += '<label class="form-label" style="margin:0;font-size:13px;color:var(--text-secondary);">Date:</label>';
     html += '<input type="date" class="form-input" id="attendance-date" value="' + state.selectedDate + '" style="width:auto">';
     html += '</div></div><div class="card-body">';
 
-    // Class Selection
-    html += '<div class="flex gap-2 mb-3" style="flex-wrap:wrap">';
-    html += '<select class="form-select" id="att-class-select" style="width:auto;min-width:150px"><option value="">Select Class</option>';
+    // Daily Class Status Matrix Bar (Area 1a)
+    html += '<div class="daily-status-bar" style="background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:var(--radius-md);padding:12px 16px;margin-bottom:16px;">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">';
+    html += '<div style="font-size:13px;font-weight:600;color:var(--text-primary);display:flex;align-items:center;gap:6px;">';
+    html += '<span class="material-icons-round" style="font-size:18px;color:var(--accent-primary);">calendar_today</span>';
+    html += 'Status for ' + SchoolApp.formatDate(state.selectedDate) + ': <span style="color:' + (takenCount === totalCount && totalCount > 0 ? 'var(--success)' : 'var(--warning)') + ';">' + takenCount + ' of ' + totalCount + ' Classes Taken</span>';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);">Click any class chip to select & manage</div>';
+    html += '</div>';
+
+    html += '<div class="class-status-chips" style="display:flex;flex-wrap:wrap;gap:8px;">';
+    statusMap.forEach(function(c) {
+      var isCurrent = normalizeClassName(state.selectedClass) === normalizeClassName(c.class) &&
+                      normalizeSectionName(state.selectedSection) === normalizeSectionName(c.section);
+      var borderStyle = isCurrent ? '2px solid var(--accent-primary)' : '1px solid var(--border-light)';
+      var bgStyle = c.taken ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.10)';
+      var textColor = c.taken ? 'var(--success)' : 'var(--warning)';
+      var icon = c.taken ? 'check_circle' : 'hourglass_empty';
+      var statusLabel = c.taken ? 'Taken' : 'Pending';
+
+      html += '<button type="button" class="btn-class-chip" data-class="' + escapeHTML(c.class) + '" data-section="' + escapeHTML(c.section) + '" style="background:' + bgStyle + ';border:' + borderStyle + ';border-radius:20px;padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all var(--transition-fast);">';
+      html += '<span class="material-icons-round" style="font-size:14px;color:' + textColor + ';">' + icon + '</span>';
+      html += '<strong style="font-size:12px;color:var(--text-primary);">Class ' + escapeHTML(c.key) + '</strong>';
+      html += '<span class="badge" style="font-size:10px;background:transparent;color:' + textColor + ';padding:0;">' + statusLabel + '</span>';
+      if (c.taken) {
+        html += '<span style="font-size:10px;color:var(--text-muted);border-left:1px solid var(--border-light);padding-left:6px;" title="Marked by ' + escapeHTML(c.teacherName) + '">' + escapeHTML(c.teacherName) + '</span>';
+      }
+      html += '</button>';
+    });
+    html += '</div></div>';
+
+    // Class Selection & Top Controls
+    html += '<div class="flex gap-2 mb-3" style="flex-wrap:wrap;align-items:center;">';
+    html += '<select class="form-select" id="att-class-select" style="width:auto;min-width:160px"><option value="">Select Class</option>';
     availableClasses.forEach(function(c) {
       var val = c.class + '-' + c.section;
       var isSelected = normalizeClassName(state.selectedClass) === normalizeClassName(c.class) &&
@@ -223,24 +479,57 @@
       var students = getStudentsForClass(state.selectedClass, state.selectedSection);
       html += '<span class="badge badge-info" style="font-size:13px;padding:8px 16px">' + students.length + ' Students</span>';
 
-      // Check for existing record
-      var existing = SchoolApp.store.attendance.find(function(a) {
-        return a.date === state.selectedDate &&
-               normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
-               normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
-      });
-      if (existing) {
-        html += '<span class="badge badge-warning" style="font-size:13px;padding:8px 16px">⚠ Already submitted for this date</span>';
-      }
-
       // Quick actions
-      html += '<div style="margin-left:auto;display:flex;gap:8px">';
+      html += '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">';
       html += '<button class="btn btn-success btn-sm" id="mark-all-present"><span class="material-icons-round">done_all</span> All Present</button>';
       html += '<button class="btn btn-danger btn-sm" id="mark-all-absent"><span class="material-icons-round">close</span> All Absent</button>';
       html += '<button class="btn btn-secondary btn-sm" id="mark-reset"><span class="material-icons-round">refresh</span> Reset</button>';
       html += '</div>';
     }
     html += '</div>';
+
+    // Detailed Class Status & Attribution Banner (Area 1a)
+    if (state.selectedClass && state.selectedSection) {
+      var existing = SchoolApp.store.attendance.find(function(a) {
+        return a.date === state.selectedDate &&
+               normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+               normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
+      });
+
+      if (existing) {
+        var teacherName = 'Not recorded';
+        if (existing.teacherId) {
+          var t = SchoolApp.store.teachers && SchoolApp.store.teachers.find(function(tech) { return tech.id === existing.teacherId; });
+          teacherName = t ? (t.firstName + ' ' + (t.lastName || '')).trim() : (existing.teacherId === 'admin' ? 'Administrator' : existing.teacherId);
+        }
+        var timeStr = existing.timestamp ? new Date(existing.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        var pCount = existing.records.filter(function(r) { return r.status === 'present'; }).length;
+        var aCount = existing.records.filter(function(r) { return r.status === 'absent'; }).length;
+        var lCount = existing.records.filter(function(r) { return r.status === 'late'; }).length;
+        var totCount = existing.records.length;
+        var percVal = totCount > 0 ? Math.round(((pCount + lCount) / totCount) * 100) : 0;
+
+        html += '<div class="alert alert-success" style="background:rgba(16, 185, 129, 0.10);border:1px solid rgba(16, 185, 129, 0.3);border-radius:var(--radius-md);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span class="material-icons-round" style="color:var(--success);font-size:24px;">verified</span>';
+        html += '<div>';
+        html += '<div style="font-weight:600;color:var(--text-primary);font-size:14px;">Attendance Marked on ' + SchoolApp.formatDate(state.selectedDate) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Marked by: <strong>' + escapeHTML(teacherName) + '</strong> ' + (timeStr ? 'at ' + timeStr : '') + ' · <strong>' + pCount + ' Present</strong>, <strong>' + aCount + ' Absent</strong>, <strong>' + lCount + ' Late</strong> (' + percVal + '%)</div>';
+        html += '</div></div>';
+        html += '<span class="badge badge-success" style="font-size:11px;padding:6px 12px;">✅ Recorded · Edit below to update</span>';
+        html += '</div>';
+      } else {
+        html += '<div class="alert alert-warning" style="background:rgba(245, 158, 11, 0.10);border:1px solid rgba(245, 158, 11, 0.3);border-radius:var(--radius-md);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">';
+        html += '<div style="display:flex;align-items:center;gap:10px;">';
+        html += '<span class="material-icons-round" style="color:var(--warning);font-size:24px;">pending_actions</span>';
+        html += '<div>';
+        html += '<div style="font-weight:600;color:var(--text-primary);font-size:14px;">Attendance Pending for Class ' + escapeHTML(state.selectedClass) + '-' + escapeHTML(state.selectedSection) + '</div>';
+        html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">No attendance has been submitted for this class on ' + SchoolApp.formatDate(state.selectedDate) + '. Mark roster below.</div>';
+        html += '</div></div>';
+        html += '<span class="badge badge-warning" style="font-size:11px;padding:6px 12px;">⏳ Pending Submission</span>';
+        html += '</div>';
+      }
+    }
 
     // Attendance Grid
     if (state.selectedClass && state.selectedSection) {
@@ -275,13 +564,14 @@
         });
         var total = students.length;
         var perc = total > 0 ? Math.round(((presentCount + lateCount) / total) * 100) : 0;
+        var isEdit = !!existing;
 
         html += '<div class="attendance-summary">';
         html += '<div class="summary-item"><span class="summary-dot green"></span><strong>' + presentCount + '</strong> Present</div>';
         html += '<div class="summary-item"><span class="summary-dot red"></span><strong>' + absentCount + '</strong> Absent</div>';
         html += '<div class="summary-item"><span class="summary-dot amber"></span><strong>' + lateCount + '</strong> Late</div>';
         html += '<div class="summary-item"><strong>' + perc + '%</strong> Attendance</div>';
-        html += '<button class="btn btn-primary" id="submit-attendance"><span class="material-icons-round">save</span> Submit Attendance</button>';
+        html += '<button class="btn btn-primary" id="submit-attendance"><span class="material-icons-round">' + (isEdit ? 'save' : 'how_to_reg') + '</span> ' + (isEdit ? 'Update Attendance' : 'Submit Attendance') + '</button>';
         html += '</div>';
 
         // Progress bar
@@ -290,7 +580,7 @@
         html += '<div class="empty-state"><span class="material-icons-round">school</span><h3>No Students</h3><p>No active students found in this class.</p></div>';
       }
     } else {
-      html += '<div class="empty-state"><span class="material-icons-round">touch_app</span><h3>Select a Class</h3><p>Choose a class above to start marking attendance.</p></div>';
+      html += '<div class="empty-state"><span class="material-icons-round">touch_app</span><h3>Select a Class</h3><p>Choose a class above or click a chip in the daily matrix to start marking attendance.</p></div>';
     }
 
     html += '</div></div>';
@@ -327,7 +617,7 @@
 
     // Filters
     html += '<div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">';
-    html += '<div class="filter-group">';
+    html += '<div class="filter-group" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">';
     html += '<input type="date" class="form-input" id="history-from" value="' + (state.historyFilters.fromDate || '') + '" style="width:auto" placeholder="From Date">';
     html += '<input type="date" class="form-input" id="history-to" value="' + (state.historyFilters.toDate || '') + '" style="width:auto" placeholder="To Date">';
     html += '<select class="form-select" id="history-class"><option value="all">All Classes</option>';
@@ -388,8 +678,8 @@
       html += '</tr></thead><tbody>';
 
       records.forEach(function(r) {
-        var teacher = SchoolApp.store.teachers.find(function(t) { return t.id === r.teacherId; });
-        var teacherName = teacher ? teacher.firstName + ' ' + teacher.lastName : 'Unknown';
+        var teacher = SchoolApp.store.teachers && SchoolApp.store.teachers.find(function(t) { return t.id === r.teacherId; });
+        var teacherName = teacher ? (teacher.firstName + ' ' + (teacher.lastName || '')).trim() : (r.teacherId === 'admin' ? 'Administrator' : (r.teacherId || 'Teacher'));
         var present = r.records.filter(function(rec) { return rec.status === 'present'; }).length;
         var absent = r.records.filter(function(rec) { return rec.status === 'absent'; }).length;
         var late = r.records.filter(function(rec) { return rec.status === 'late'; }).length;
@@ -399,8 +689,8 @@
 
         html += '<tr>';
         html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
-        html += '<td><span class="badge badge-info">' + r.class + '-' + r.section + '</span></td>';
-        html += '<td>' + teacherName + '</td>';
+        html += '<td><span class="badge badge-info">' + escapeHTML(r.class) + '-' + escapeHTML(r.section) + '</span></td>';
+        html += '<td>' + escapeHTML(teacherName) + '</td>';
         html += '<td><span style="color:var(--success)">' + present + '</span></td>';
         html += '<td><span style="color:var(--danger)">' + absent + '</span></td>';
         html += '<td><span style="color:var(--warning)">' + late + '</span></td>';
@@ -424,16 +714,227 @@
     return html;
   }
 
+  /* ============================================================
+     AREA 1b: MULTI-RANGE STUDENT ATTENDANCE SUMMARY REPORT
+     ============================================================ */
+
+  function renderSummaryReportView() {
+    var html = '';
+    var sf = state.summaryFilters;
+
+    // Resolve date range if not explicitly set
+    if (!sf.fromDate || !sf.toDate) {
+      var dRange = getSummaryDateRange(sf.rangePreset);
+      sf.fromDate = dRange.fromDate;
+      sf.toDate = dRange.toDate;
+    }
+
+    var settings = SchoolApp.store.settings || {};
+    var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
+    var rawSections = settings.sections || {};
+    var sections = [];
+    if (Array.isArray(rawSections)) {
+      sections = rawSections;
+    } else if (typeof rawSections === 'object') {
+      var allSecs = new Set();
+      Object.values(rawSections).forEach(function(arr) {
+        if (Array.isArray(arr)) arr.forEach(function(s) { allSecs.add(s); });
+      });
+      sections = Array.from(allSecs);
+    }
+
+    if (SchoolApp.isTeacher()) {
+      var ct = SchoolApp.currentUser.classTeacherOf || [];
+      classes = classes.filter(function(c) {
+        return ct.some(function(item) { return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim(); });
+      });
+      sections = sections.filter(function(s) {
+        return ct.some(function(item) { return String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim(); });
+      });
+    }
+
+    // Compute aggregated data
+    var summaryData = aggregateStudentAttendanceSummary(sf.fromDate, sf.toDate, sf.classFilter, sf.sectionFilter, sf.searchTerm);
+    var allRows = summaryData.rows;
+    var totalRows = allRows.length;
+    var totalPages = Math.ceil(totalRows / sf.pageSize) || 1;
+    if (sf.page > totalPages) sf.page = totalPages;
+    if (sf.page < 1) sf.page = 1;
+
+    var startIdx = (sf.page - 1) * sf.pageSize;
+    var endIdx = Math.min(startIdx + sf.pageSize, totalRows);
+    var pageRows = allRows.slice(startIdx, endIdx);
+
+    html += '<div class="card mt-2"><div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">';
+    html += '<h3><span class="material-icons-round">analytics</span> Attendance Summary Report</h3>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    html += '<button type="button" class="btn btn-primary btn-sm" id="btn-export-summary-excel" ' + (totalRows === 0 ? 'disabled' : '') + ' style="display:inline-flex;align-items:center;gap:6px;">';
+    html += '<span class="material-icons-round" style="font-size:16px;">download</span> Export Summary (Excel)</button>';
+    html += '</div></div><div class="card-body">';
+
+    // Preset Range Selectors
+    html += '<div class="summary-range-bar mb-3" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--bg-secondary);padding:10px 14px;border-radius:var(--radius-md);border:1px solid var(--border-light);">';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-right:4px;">Date Range:</span>';
+
+    var presets = [
+      { id: '1month', label: 'This Month' },
+      { id: '3months', label: 'Last 3 Months' },
+      { id: '4months', label: 'Last 4 Months' },
+      { id: '6months', label: 'Last 6 Months' },
+      { id: 'academic', label: 'Academic Year' },
+      { id: 'custom', label: 'Custom Range' }
+    ];
+
+    presets.forEach(function(p) {
+      var isActive = sf.rangePreset === p.id;
+      var btnClass = isActive ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+      html += '<button type="button" class="' + btnClass + ' summary-preset-btn" data-preset="' + p.id + '" style="font-size:12px;padding:4px 10px;">' + p.label + '</button>';
+    });
+    html += '</div>';
+
+    // Filter toolbar
+    html += '<div class="toolbar mb-3" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
+    html += '<div class="filter-group" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">';
+    html += '<input type="date" class="form-input" id="summary-from" value="' + sf.fromDate + '" style="width:auto;min-width:130px;" title="From Date" ' + (sf.rangePreset !== 'custom' ? 'disabled' : '') + '>';
+    html += '<input type="date" class="form-input" id="summary-to" value="' + sf.toDate + '" style="width:auto;min-width:130px;" title="To Date" ' + (sf.rangePreset !== 'custom' ? 'disabled' : '') + '>';
+    html += '<select class="form-select" id="summary-class" style="width:auto;min-width:120px;"><option value="all">All Classes</option>';
+    classes.forEach(function(c) { html += '<option value="' + c + '"' + (sf.classFilter === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
+    html += '</select>';
+    html += '<select class="form-select" id="summary-section" style="width:auto;min-width:120px;"><option value="all">All Sections</option>';
+    sections.forEach(function(s) { html += '<option value="' + s + '"' + (sf.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
+    html += '</select>';
+    html += '</div>';
+
+    html += '<div style="display:flex;gap:8px;align-items:center;">';
+    html += '<input type="text" class="form-input" id="summary-search" placeholder="Search by name / roll #" value="' + escapeHTML(sf.searchTerm) + '" style="width:auto;min-width:180px;font-size:13px;">';
+    html += '</div>';
+    html += '</div>';
+
+    // Summary Metric KPI Cards
+    html += '<div class="stats-grid mb-3" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;">';
+    html += '<div class="stat-card cyan" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">event_available</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.totalUniqueDates + '</div><div class="stat-label" style="font-size:11px;">Working Days Recorded</div></div></div>';
+    html += '<div class="stat-card green" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">percent</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.overallAverage + '%</div><div class="stat-label" style="font-size:11px;">Overall Average %</div></div></div>';
+    html += '<div class="stat-card purple" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">groups</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.totalStudents + '</div><div class="stat-label" style="font-size:11px;">Students Evaluated</div></div></div>';
+    html += '<div class="stat-card green" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">star</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.highAttCount + '</div><div class="stat-label" style="font-size:11px;">High Attendance (≥90%)</div></div></div>';
+    html += '<div class="stat-card red" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">warning</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.lowAttCount + '</div><div class="stat-label" style="font-size:11px;">Critical (&lt;75%)</div></div></div>';
+    html += '</div>';
+
+    // Aggregated Student Summary Table
+    if (totalRows > 0) {
+      html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">';
+      html += '<span>Showing <strong>' + (startIdx + 1) + '–' + endIdx + '</strong> of <strong>' + totalRows + '</strong> students</span>';
+      html += '<span>Period: <strong>' + SchoolApp.formatDate(sf.fromDate) + '</strong> to <strong>' + SchoolApp.formatDate(sf.toDate) + '</strong></span>';
+      html += '</div>';
+
+      html += '<div class="table-container" style="overflow-x:auto;"><table class="data-table"><thead><tr>';
+      html += '<th style="width:70px;">Roll #</th>';
+      html += '<th>Student Name</th>';
+      html += '<th>Class</th>';
+      html += '<th style="text-align:center;">Working Days</th>';
+      html += '<th style="text-align:center;">Present</th>';
+      html += '<th style="text-align:center;">Absent</th>';
+      html += '<th style="text-align:center;">Late</th>';
+      html += '<th style="text-align:center;">Attendance %</th>';
+      html += '<th style="text-align:center;">Status</th>';
+      html += '</tr></thead><tbody>';
+
+      pageRows.forEach(function(row) {
+        var statusBadge = '';
+        if (row.totalDays === 0) {
+          statusBadge = '<span class="badge badge-secondary" style="font-size:11px;">No Data</span>';
+        } else if (row.percentage >= 90) {
+          statusBadge = '<span class="badge badge-success" style="font-size:11px;">Good</span>';
+        } else if (row.percentage >= 75) {
+          statusBadge = '<span class="badge badge-warning" style="font-size:11px;">Average</span>';
+        } else {
+          statusBadge = '<span class="badge badge-danger" style="font-size:11px;">Critical</span>';
+        }
+
+        var percClass = row.totalDays === 0 ? 'badge-secondary' : (row.percentage >= 90 ? 'badge-success' : row.percentage >= 75 ? 'badge-warning' : 'badge-danger');
+
+        html += '<tr>';
+        html += '<td><strong>#' + escapeHTML(row.rollNumber) + '</strong></td>';
+        html += '<td><span style="color:var(--accent-primary);text-decoration:underline;cursor:pointer;" onclick="openStudentProfile(\'' + row.studentId + '\')">' + escapeHTML(row.name) + '</span></td>';
+        html += '<td><span class="badge badge-info">' + escapeHTML(row.classSection) + '</span></td>';
+        html += '<td style="text-align:center;">' + row.totalDays + '</td>';
+        html += '<td style="text-align:center;color:var(--success);font-weight:600;">' + row.presentDays + '</td>';
+        html += '<td style="text-align:center;color:var(--danger);font-weight:600;">' + row.absentDays + '</td>';
+        html += '<td style="text-align:center;color:var(--warning);font-weight:600;">' + row.lateDays + '</td>';
+        html += '<td style="text-align:center;"><span class="badge ' + percClass + '" style="font-weight:600;">' + row.percentage + '%</span></td>';
+        html += '<td style="text-align:center;">' + statusBadge + '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+
+      // Pagination Controls
+      if (totalPages > 1) {
+        html += '<div class="pagination mt-3" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">';
+        html += '<div style="font-size:12px;color:var(--text-muted);">Page ' + sf.page + ' of ' + totalPages + '</div>';
+        html += '<div style="display:flex;gap:6px;">';
+        html += '<button type="button" class="btn btn-secondary btn-sm" id="summary-prev-page" ' + (sf.page <= 1 ? 'disabled' : '') + '>&laquo; Previous</button>';
+        html += '<button type="button" class="btn btn-secondary btn-sm" id="summary-next-page" ' + (sf.page >= totalPages ? 'disabled' : '') + '>Next &raquo;</button>';
+        html += '</div></div>';
+      }
+    } else {
+      html += '<div class="empty-state mt-2" style="padding:32px 16px;"><span class="material-icons-round" style="font-size:36px;color:var(--text-muted);">analytics</span><h3>No Attendance Data Found</h3><p style="color:var(--text-muted);font-size:13px;">No recorded attendance sessions found for the selected filters in this date range.</p></div>';
+    }
+
+    html += '</div></div>';
+    return html;
+  }
+
   function attachEvents() {
     // View toggle
     document.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
+      btn.addEventListener('click', async function() {
         state.currentView = this.getAttribute('data-view');
+        if (state.currentView === 'summary') {
+          var sf = state.summaryFilters;
+          if (!sf.fromDate || !sf.toDate) {
+            var r = getSummaryDateRange(sf.rangePreset);
+            sf.fromDate = r.fromDate;
+            sf.toDate = r.toDate;
+          }
+          SchoolApp.showLoader('Loading attendance records for summary...');
+          try {
+            await ensureAttendanceLoadedForRange(sf.fromDate, sf.toDate);
+          } finally {
+            SchoolApp.hideLoader();
+          }
+        }
         render();
       });
     });
 
-    // Date
+    // Class Status Chip click handlers (Area 1a)
+    document.querySelectorAll('.btn-class-chip').forEach(function(chip) {
+      chip.addEventListener('click', function() {
+        var cls = this.getAttribute('data-class');
+        var sec = this.getAttribute('data-section');
+        state.selectedClass = cls;
+        state.selectedSection = sec;
+
+        var students = getStudentsForClass(cls, sec);
+        state.attendanceStatus = {};
+        var existing = SchoolApp.store.attendance.find(function(a) {
+          return a.date === state.selectedDate &&
+                 normalizeClassName(a.class) === normalizeClassName(cls) &&
+                 normalizeSectionName(a.section) === normalizeSectionName(sec);
+        });
+        students.forEach(function(s) {
+          if (existing) {
+            var rec = existing.records.find(function(r) { return r.studentId === s.id; });
+            state.attendanceStatus[s.id] = rec ? rec.status : 'present';
+          } else {
+            state.attendanceStatus[s.id] = 'present';
+          }
+        });
+        render();
+      });
+    });
+
+    // Date Picker on Mark tab
     var dateInput = document.getElementById('attendance-date');
     if (dateInput) {
       dateInput.addEventListener('change', async function() {
@@ -442,11 +943,29 @@
         if (ym && typeof SchoolApp.loadAttendanceMonth === 'function') {
           await SchoolApp.loadAttendanceMonth(ym);
         }
+        // Update attendanceStatus for currently selected class if any
+        if (state.selectedClass && state.selectedSection) {
+          var students = getStudentsForClass(state.selectedClass, state.selectedSection);
+          var existing = SchoolApp.store.attendance.find(function(a) {
+            return a.date === state.selectedDate &&
+                   normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+                   normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
+          });
+          state.attendanceStatus = {};
+          students.forEach(function(s) {
+            if (existing) {
+              var rec = existing.records.find(function(r) { return r.studentId === s.id; });
+              state.attendanceStatus[s.id] = rec ? rec.status : 'present';
+            } else {
+              state.attendanceStatus[s.id] = 'present';
+            }
+          });
+        }
         render();
       });
     }
 
-    // Class selection
+    // Class selection dropdown
     var classSelect = document.getElementById('att-class-select');
     if (classSelect) {
       classSelect.addEventListener('change', function() {
@@ -455,19 +974,13 @@
           var parsed = parseClassSection(val);
           state.selectedClass = parsed.class;
           state.selectedSection = parsed.section;
-          // Initialize all as present
           var students = getStudentsForClass(state.selectedClass, state.selectedSection);
           state.attendanceStatus = {};
-          students.forEach(function(s) { state.attendanceStatus[s.id] = 'present'; });
-
-          // Load existing record if any
           var existing = SchoolApp.store.attendance.find(function(a) {
             return a.date === state.selectedDate &&
                    normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
                    normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
           });
-          state.attendanceStatus = {};
-          var students = getStudentsForClass(state.selectedClass, state.selectedSection);
           students.forEach(function(s) {
             if (existing) {
               var rec = existing.records.find(function(r) { return r.studentId === s.id; });
@@ -485,21 +998,19 @@
       });
     }
 
-    // Status toggle buttons
+    // Status toggle buttons (Present / Absent / Late)
     document.querySelectorAll('.status-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var studentId = this.getAttribute('data-student');
         var status = this.getAttribute('data-status');
         state.attendanceStatus[studentId] = status;
 
-        // Update UI without full re-render
         var card = this.closest('.attendance-card');
         if (card) {
           card.className = 'attendance-card ' + status;
           card.querySelectorAll('.status-btn').forEach(function(b) { b.classList.remove('active'); });
           this.classList.add('active');
         }
-        updateSummaryStats();
       });
     });
 
@@ -530,7 +1041,7 @@
       });
     }
 
-    // Submit attendance
+    // Submit / Update attendance
     var submitBtn = document.getElementById('submit-attendance');
     if (submitBtn) {
       submitBtn.addEventListener('click', function() {
@@ -622,6 +1133,139 @@
     if (viewArchiveBtn) {
       viewArchiveBtn.addEventListener('click', function() {
         openArchivedAttendanceModal();
+      });
+    }
+
+    // Summary Report Event Listeners (Area 1b)
+    document.querySelectorAll('.summary-preset-btn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var preset = this.getAttribute('data-preset');
+        state.summaryFilters.rangePreset = preset;
+        if (preset !== 'custom') {
+          var r = getSummaryDateRange(preset);
+          state.summaryFilters.fromDate = r.fromDate;
+          state.summaryFilters.toDate = r.toDate;
+          SchoolApp.showLoader('Loading attendance records for range...');
+          try {
+            await ensureAttendanceLoadedForRange(r.fromDate, r.toDate);
+          } finally {
+            SchoolApp.hideLoader();
+          }
+        }
+        state.summaryFilters.page = 1;
+        render();
+      });
+    });
+
+    var sumFrom = document.getElementById('summary-from');
+    if (sumFrom) {
+      sumFrom.addEventListener('change', async function() {
+        state.summaryFilters.fromDate = this.value;
+        state.summaryFilters.page = 1;
+        SchoolApp.showLoader('Loading records...');
+        try {
+          await ensureAttendanceLoadedForRange(state.summaryFilters.fromDate, state.summaryFilters.toDate);
+        } finally {
+          SchoolApp.hideLoader();
+        }
+        render();
+      });
+    }
+
+    var sumTo = document.getElementById('summary-to');
+    if (sumTo) {
+      sumTo.addEventListener('change', async function() {
+        state.summaryFilters.toDate = this.value;
+        state.summaryFilters.page = 1;
+        SchoolApp.showLoader('Loading records...');
+        try {
+          await ensureAttendanceLoadedForRange(state.summaryFilters.fromDate, state.summaryFilters.toDate);
+        } finally {
+          SchoolApp.hideLoader();
+        }
+        render();
+      });
+    }
+
+    var sumClass = document.getElementById('summary-class');
+    if (sumClass) {
+      sumClass.addEventListener('change', function() {
+        state.summaryFilters.classFilter = this.value;
+        state.summaryFilters.page = 1;
+        render();
+      });
+    }
+
+    var sumSection = document.getElementById('summary-section');
+    if (sumSection) {
+      sumSection.addEventListener('change', function() {
+        state.summaryFilters.sectionFilter = this.value;
+        state.summaryFilters.page = 1;
+        render();
+      });
+    }
+
+    var sumSearch = document.getElementById('summary-search');
+    if (sumSearch) {
+      sumSearch.addEventListener('input', function() {
+        state.summaryFilters.searchTerm = this.value;
+        state.summaryFilters.page = 1;
+        render();
+      });
+    }
+
+    var sumPrev = document.getElementById('summary-prev-page');
+    if (sumPrev) {
+      sumPrev.addEventListener('click', function() {
+        if (state.summaryFilters.page > 1) {
+          state.summaryFilters.page--;
+          render();
+        }
+      });
+    }
+
+    var sumNext = document.getElementById('summary-next-page');
+    if (sumNext) {
+      sumNext.addEventListener('click', function() {
+        state.summaryFilters.page++;
+        render();
+      });
+    }
+
+    var exportExcelBtn = document.getElementById('btn-export-summary-excel');
+    if (exportExcelBtn) {
+      exportExcelBtn.addEventListener('click', function() {
+        var sf = state.summaryFilters;
+        var summaryData = aggregateStudentAttendanceSummary(sf.fromDate, sf.toDate, sf.classFilter, sf.sectionFilter, sf.searchTerm);
+        var exportRows = summaryData.rows.map(function(r) {
+          return {
+            'Roll No': r.rollNumber,
+            'Student Name': r.name,
+            'Class': r.class,
+            'Section': r.section,
+            'Total Working Days': r.totalDays,
+            'Present (Days)': r.presentDays,
+            'Absent (Days)': r.absentDays,
+            'Late (Days)': r.lateDays,
+            'Attendance %': r.percentage + '%',
+            'Status': r.totalDays === 0 ? 'No Data' : (r.percentage >= 90 ? 'Good' : (r.percentage >= 75 ? 'Average' : 'Critical'))
+          };
+        });
+        var headers = [
+          { header: 'Roll No', key: 'Roll No' },
+          { header: 'Student Name', key: 'Student Name' },
+          { header: 'Class', key: 'Class' },
+          { header: 'Section', key: 'Section' },
+          { header: 'Total Working Days', key: 'Total Working Days' },
+          { header: 'Present (Days)', key: 'Present (Days)' },
+          { header: 'Absent (Days)', key: 'Absent (Days)' },
+          { header: 'Late (Days)', key: 'Late (Days)' },
+          { header: 'Attendance %', key: 'Attendance %' },
+          { header: 'Status', key: 'Status' }
+        ];
+        var fileName = 'Attendance_Summary_' + (sf.classFilter === 'all' ? 'AllClasses' : 'Class_' + sf.classFilter) + '_' + sf.fromDate + '_to_' + sf.toDate + '.xlsx';
+        SchoolApp.utils.exportToExcel(exportRows, headers, fileName);
+        SchoolApp.showToast('Attendance summary exported successfully.', 'success');
       });
     }
   }

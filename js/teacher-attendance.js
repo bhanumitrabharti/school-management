@@ -2,11 +2,13 @@
 
 /* ============================================================
    Shishu Vikash Mandir - Teacher Attendance & GPS Geofence Module
+   Area 3: Geofence Policy Mode, Enhanced Correction Audit Trail,
+   and Downloadable Attendance Reports
    ============================================================ */
 
 (function() {
 
-  // Dynamic Coordinates Loader
+  // Dynamic Coordinates & Geofence Settings Loader
   function getGeofenceSettings() {
     var s = SchoolApp.store.settings || {};
     var g = s.geofence;
@@ -17,26 +19,39 @@
       return {
         lat: 23.7588,
         lng: 86.1179,
-        radius: 200
+        radius: 200,
+        policy: 'lenient'
       };
     }
     
     return {
-      lat: g && g.lat !== undefined ? parseFloat(g.lat) : null,
-      lng: g && g.lng !== undefined ? parseFloat(g.lng) : null,
-      radius: g && g.radius !== undefined ? parseInt(g.radius, 10) : 200
+      lat: g && g.lat !== undefined && g.lat !== null && g.lat !== '' ? parseFloat(g.lat) : null,
+      lng: g && g.lng !== undefined && g.lng !== null && g.lng !== '' ? parseFloat(g.lng) : null,
+      radius: g && g.radius !== undefined && g.radius !== null && g.radius !== '' ? parseInt(g.radius, 10) : 200,
+      policy: (g && g.policy) ? g.policy : 'lenient' // Explicitly defaults to 'lenient' for backwards compatibility
     };
   }
 
+  var todayStr = new Date().toISOString().split('T')[0];
+  var firstDayOfMonth = todayStr.substring(0, 8) + '01';
+
   var state = {
-    activeTab: 'approvals', // 'approvals' | 'logs'
-    selectedDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+    activeTab: 'approvals', // 'approvals' | 'logs' | 'summary'
+    selectedDate: todayStr, // YYYY-MM-DD for single day log
+    teacherFilter: 'all',
+    geoFilter: 'all',
+    reqStatusFilter: 'Pending',
+    adminStartDate: firstDayOfMonth,
+    adminEndDate: todayStr,
+    teacherStartDate: firstDayOfMonth,
+    teacherEndDate: todayStr,
     clockInterval: null,
     lastCapturedLocation: null
   };
 
   // Haversine formula to compute distance between coordinates in meters
   function calculateDistance(lat1, lon1, lat2, lon2) {
+    if (lat1 === null || lon1 === null || lat2 === null || lon2 === null) return 0;
     var R = 6371e3; // Earth radius in meters
     var phi1 = lat1 * Math.PI / 180;
     var phi2 = lat2 * Math.PI / 180;
@@ -52,9 +67,9 @@
   }
 
   function getTodayPunchStatus(teacherId) {
-    var todayStr = new Date().toISOString().split('T')[0];
+    var curToday = new Date().toISOString().split('T')[0];
     var punches = (SchoolApp.store.teacherAttendance || []).filter(function(p) {
-      return p.teacherId === teacherId && p.date === todayStr;
+      return p.teacherId === teacherId && p.date === curToday;
     });
 
     punches.sort(function(a, b) {
@@ -78,7 +93,7 @@
 
     var geo = getGeofenceSettings();
     if (geo.lat === null || geo.lng === null) {
-      SchoolApp.showToast('School location has not been configured by the administrator yet. Please configure it in School Settings.', 'error');
+      SchoolApp.showToast('School location has not been configured by the administrator yet. Please configure it in Geofence Settings.', 'error');
       return;
     }
 
@@ -92,14 +107,31 @@
       var isInside = distance <= geo.radius;
       var geofenceStatus = isInside ? 'Inside Geofence' : 'Outside Geofence';
 
-      var todayStr = new Date().toISOString().split('T')[0];
+      var curDate = new Date().toISOString().split('T')[0];
       var timeStr = new Date().toTimeString().split(' ')[0]; // HH:MM:SS
 
+      // AREA 3a: Strict Policy Check
+      if (!isInside && geo.policy === 'strict') {
+        state.lastCapturedLocation = {
+          latitude: lat.toFixed(5),
+          longitude: lon.toFixed(5),
+          distance: Math.round(distance),
+          status: 'Outside Geofence (Blocked)'
+        };
+        render();
+        SchoolApp.showToast(
+          'Punch Blocked: You are ' + Math.round(distance) + 'm from school (allowed radius: ' + geo.radius + 'm). Strict geofence is active. Please request manual approval if on duty.',
+          'error'
+        );
+        return;
+      }
+
+      // Lenient policy or Inside Geofence
       var punchRecord = {
         id: SchoolApp.generateId(),
         teacherId: SchoolApp.currentUser.id,
-        teacherName: SchoolApp.currentUser.firstName + ' ' + SchoolApp.currentUser.lastName,
-        date: todayStr,
+        teacherName: (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim(),
+        date: curDate,
         type: type,
         time: timeStr,
         timestamp: new Date().toISOString(),
@@ -107,7 +139,9 @@
         longitude: lon,
         distance: Math.round(distance),
         geofenceStatus: geofenceStatus,
-        method: 'GPS'
+        outsideGeofence: !isInside,
+        method: 'GPS',
+        isCorrected: false
       };
 
       if (!SchoolApp.store.teacherAttendance) {
@@ -125,7 +159,11 @@
       };
 
       var successMsg = 'Attendance marked: Checked ' + (type === 'in' ? 'In' : 'Out') + '. Status: ' + geofenceStatus;
-      SchoolApp.showToast(successMsg, isInside ? 'success' : 'warning');
+      if (!isInside) {
+        SchoolApp.showToast(successMsg + ' (Warning: Flagged for admin review)', 'warning');
+      } else {
+        SchoolApp.showToast(successMsg, 'success');
+      }
       render();
     }, function(error) {
       console.error('Geolocation failure:', error);
@@ -137,21 +175,124 @@
     });
   }
 
+  // Admin Geofence Settings Modal (Area 3a)
+  function showGeofenceSettingsModal() {
+    var geo = getGeofenceSettings();
+    var curLat = geo.lat !== null ? geo.lat : '';
+    var curLng = geo.lng !== null ? geo.lng : '';
+    var curRadius = geo.radius || 200;
+    var curPolicy = geo.policy || 'strict';
+
+    var bodyHTML = '<form id="geofence-settings-form" class="form-grid" style="display:flex; flex-direction:column; gap:16px;">';
+    
+    bodyHTML += '  <div style="background:rgba(6, 182, 212, 0.08); border:1px solid rgba(6, 182, 212, 0.25); border-radius:8px; padding:12px 16px; font-size:13px; color:var(--text-secondary); line-height:1.5;">';
+    bodyHTML += '    <strong style="color:var(--text-primary); display:flex; align-items:center; gap:6px; margin-bottom:4px;"><span class="material-icons-round" style="color:#06b6d4; font-size:18px;">my_location</span> School Location & Radius</strong>';
+    bodyHTML += '    Teachers must be within this geographic boundary to mark attendance. Punches outside the radius are enforced according to the selected policy.';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size:11.5px; font-weight:700;">School Latitude *</label>';
+    bodyHTML += '      <input type="number" step="any" id="geo-lat" class="form-input" value="' + curLat + '" placeholder="e.g. 23.7588" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size:11.5px; font-weight:700;">School Longitude *</label>';
+    bodyHTML += '      <input type="number" step="any" id="geo-lng" class="form-input" value="' + curLng + '" placeholder="e.g. 86.1179" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div style="text-align:right;">';
+    bodyHTML += '    <button type="button" class="btn btn-secondary btn-xs" id="btn-detect-gps-loc" style="display:inline-flex; align-items:center; gap:4px; font-size:11.5px;"><span class="material-icons-round" style="font-size:14px;">gps_fixed</span> Use My Current Location</button>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:11.5px; font-weight:700;">Allowed Geofence Radius (meters) *</label>';
+    bodyHTML += '    <input type="number" id="geo-radius" class="form-input" min="20" max="5000" value="' + curRadius + '" required>';
+    bodyHTML += '    <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Recommended: 200m for campus area.</div>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:11.5px; font-weight:700;">Enforcement Policy Mode *</label>';
+    bodyHTML += '    <div style="display:flex; flex-direction:column; gap:8px; margin-top:4px;">';
+    bodyHTML += '      <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; cursor:pointer;">';
+    bodyHTML += '        <input type="radio" name="geo-policy" value="strict" ' + (curPolicy === 'strict' ? 'checked' : '') + ' style="margin-top:2px;">';
+    bodyHTML += '        <div><strong style="color:var(--danger);">Strict Mode (Recommended)</strong><div style="font-size:11.5px; color:var(--text-muted);">Blocks punches if teacher is outside the radius. Teacher must submit manual correction request.</div></div>';
+    bodyHTML += '      </label>';
+    bodyHTML += '      <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; cursor:pointer;">';
+    bodyHTML += '        <input type="radio" name="geo-policy" value="lenient" ' + (curPolicy === 'lenient' ? 'checked' : '') + ' style="margin-top:2px;">';
+    bodyHTML += '        <div><strong style="color:var(--warning);">Lenient Mode</strong><div style="font-size:11.5px; color:var(--text-muted);">Allows punches from anywhere, but flags outside punches with warning tags for admin audit.</div></div>';
+    bodyHTML += '      </label>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="btn-save-geofence-settings"><span class="material-icons-round">save</span> Save Settings</button>';
+
+    SchoolApp.showModal('Geofence & Location Settings', bodyHTML, footerHTML);
+
+    document.getElementById('btn-detect-gps-loc').addEventListener('click', function() {
+      if (!navigator.geolocation) {
+        SchoolApp.showToast('Geolocation not supported on this device.', 'error');
+        return;
+      }
+      SchoolApp.showToast('Detecting GPS location...', 'info');
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        document.getElementById('geo-lat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('geo-lng').value = pos.coords.longitude.toFixed(6);
+        SchoolApp.showToast('Location coordinates detected.', 'success');
+      }, function(err) {
+        SchoolApp.showToast('Could not fetch location: ' + err.message, 'error');
+      });
+    });
+
+    document.getElementById('btn-save-geofence-settings').addEventListener('click', function() {
+      var latVal = parseFloat(document.getElementById('geo-lat').value);
+      var lngVal = parseFloat(document.getElementById('geo-lng').value);
+      var radiusVal = parseInt(document.getElementById('geo-radius').value, 10);
+      var selectedRadio = document.querySelector('input[name="geo-policy"]:checked');
+      var policyVal = selectedRadio ? selectedRadio.value : 'strict';
+
+      if (isNaN(latVal) || isNaN(lngVal) || isNaN(radiusVal) || radiusVal <= 0) {
+        SchoolApp.showToast('Please enter valid latitude, longitude, and positive radius.', 'error');
+        return;
+      }
+
+      if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+      SchoolApp.store.settings.geofence = {
+        lat: latVal,
+        lng: lngVal,
+        radius: radiusVal,
+        policy: policyVal
+      };
+
+      SchoolApp.save(true);
+      SchoolApp.closeModal();
+      SchoolApp.showToast('Geofence settings updated successfully.', 'success');
+      render();
+    });
+  }
+
+  // Teacher Correction Request Modal (Area 3b)
   function showCorrectionModal() {
-    var todayStr = new Date().toISOString().split('T')[0];
+    var curToday = new Date().toISOString().split('T')[0];
 
     var bodyHTML = '<form id="correction-request-form" class="form-grid">';
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Select Correction Date *</label>';
-    bodyHTML += '<input type="date" id="corr-date" class="form-input" max="' + todayStr + '" required></div>';
+    bodyHTML += '<input type="date" id="corr-date" class="form-input" max="' + curToday + '" value="' + curToday + '" required></div>';
     
-    bodyHTML += '<div class="form-group"><label class="form-label">Requested Time In *</label>';
-    bodyHTML += '<input type="time" id="corr-time-in" class="form-input" required></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Requested Status *</label>';
+    bodyHTML += '<select id="corr-status-req" class="form-select"><option value="Present">Present</option><option value="Half Day">Half Day</option><option value="Late">Late</option><option value="Leave">On Duty / Leave</option></select></div>';
+
+    bodyHTML += '<div class="form-group"><label class="form-label">Time In</label>';
+    bodyHTML += '<input type="time" id="corr-time-in" class="form-input" value="08:00"></div>';
     
-    bodyHTML += '<div class="form-group"><label class="form-label">Requested Time Out *</label>';
-    bodyHTML += '<input type="time" id="corr-time-out" class="form-input" required></div>';
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Time Out</label>';
+    bodyHTML += '<input type="time" id="corr-time-out" class="form-input" value="14:00"></div>';
     
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Reason / Justification *</label>';
-    bodyHTML += '<textarea id="corr-reason" class="form-textarea" rows="3" placeholder="e.g. Forgot to check in at morning assembly or medical leave half-day" required></textarea></div>';
+    bodyHTML += '<textarea id="corr-reason" class="form-textarea" rows="3" placeholder="e.g. Field duty, GPS hardware glitch, or morning assembly assignment" required></textarea></div>';
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -161,20 +302,22 @@
 
     document.getElementById('submit-correction-btn').addEventListener('click', function() {
       var dateVal = document.getElementById('corr-date').value;
+      var statusReqVal = document.getElementById('corr-status-req').value;
       var timeInVal = document.getElementById('corr-time-in').value;
       var timeOutVal = document.getElementById('corr-time-out').value;
       var reasonVal = document.getElementById('corr-reason').value.trim();
 
-      if (!dateVal || !timeInVal || !timeOutVal || !reasonVal) {
-        SchoolApp.showToast('Please fill in all requested fields correctly.', 'error');
+      if (!dateVal || !reasonVal) {
+        SchoolApp.showToast('Please provide date and reason for correction.', 'error');
         return;
       }
 
       var request = {
         id: SchoolApp.generateId(),
         teacherId: SchoolApp.currentUser.id,
-        teacherName: SchoolApp.currentUser.firstName + ' ' + SchoolApp.currentUser.lastName,
+        teacherName: (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim(),
         date: dateVal,
+        statusRequested: statusReqVal,
         timeIn: timeInVal,
         timeOut: timeOutVal,
         reason: reasonVal,
@@ -189,81 +332,61 @@
       SchoolApp.store.teacherCorrectionRequests.push(request);
       SchoolApp.save();
       SchoolApp.closeModal();
-      SchoolApp.showToast('Correction request submitted for approval.', 'success');
+      SchoolApp.showToast('Correction request submitted for administrator approval.', 'success');
       render();
     });
   }
 
   function showGpsFallbackModal() {
-    var todayStr = new Date().toISOString().split('T')[0];
-    var timeStr = new Date().toTimeString().split(' ')[0].substring(0, 5); // HH:MM
-
-    var bodyHTML = '<form id="gps-fallback-form" class="form-grid">';
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Date</label>';
-    bodyHTML += '<input type="date" id="fallback-date" class="form-input" value="' + todayStr + '" readonly></div>';
-    
-    bodyHTML += '<div class="form-group"><label class="form-label">Punch Type *</label>';
-    bodyHTML += '<select id="fallback-punch-type" class="form-select"><option value="in">Punch In</option><option value="out">Punch Out</option></select></div>';
-
-    bodyHTML += '<div class="form-group"><label class="form-label">Time *</label>';
-    bodyHTML += '<input type="time" id="fallback-time" class="form-input" value="' + timeStr + '" required></div>';
-    
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Reason / Justification *</label>';
-    bodyHTML += '<textarea id="fallback-reason" class="form-textarea" rows="2" required>GPS not working / Location capture failed</textarea></div>';
-    bodyHTML += '</form>';
-
-    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
-    footerHTML += '<button class="btn btn-primary" id="submit-fallback-btn"><span class="material-icons-round">send</span> Send Request</button>';
-
-    SchoolApp.showModal('Request Manual Attendance Approval', bodyHTML, footerHTML);
-
-    document.getElementById('submit-fallback-btn').addEventListener('click', function() {
-      var dateVal = document.getElementById('fallback-date').value;
-      var typeVal = document.getElementById('fallback-punch-type').value;
-      var timeVal = document.getElementById('fallback-time').value;
-      var reasonVal = document.getElementById('fallback-reason').value.trim();
-
-      if (!timeVal || !reasonVal) {
-        SchoolApp.showToast('Please fill in all requested fields.', 'error');
-        return;
-      }
-
-      var request = {
-        id: SchoolApp.generateId(),
-        teacherId: SchoolApp.currentUser.id,
-        teacherName: SchoolApp.currentUser.firstName + ' ' + SchoolApp.currentUser.lastName,
-        date: dateVal,
-        timeIn: typeVal === 'in' ? timeVal : '',
-        timeOut: typeVal === 'out' ? timeVal : '',
-        reason: reasonVal,
-        status: 'Pending',
-        submittedAt: new Date().toISOString()
-      };
-
-      if (!SchoolApp.store.teacherCorrectionRequests) {
-        SchoolApp.store.teacherCorrectionRequests = [];
-      }
-      SchoolApp.store.teacherCorrectionRequests.push(request);
-      SchoolApp.save();
-      SchoolApp.closeModal();
-      SchoolApp.showToast('Manual attendance request submitted to admin.', 'success');
-      render();
-    });
+    showCorrectionModal();
   }
 
-  function processCorrection(requestId, approve) {
+  // Admin Review / Approval with full audit trail (Area 3b)
+  function processCorrection(requestId, approve, reviewNotes) {
     if (!SchoolApp.store.teacherCorrectionRequests) return;
 
     var reqIdx = SchoolApp.store.teacherCorrectionRequests.findIndex(function(r) { return r.id === requestId; });
     if (reqIdx === -1) return;
 
     var request = SchoolApp.store.teacherCorrectionRequests[reqIdx];
-    
+    var adminName = (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim() || SchoolApp.currentUser.username || 'Administrator';
+    var nowISO = new Date().toISOString();
+
     if (approve) {
       request.status = 'Approved';
+      request.reviewedBy = adminName;
+      request.reviewedAt = nowISO;
+      request.adminNotes = reviewNotes || 'Approved by Admin';
+
       if (!SchoolApp.store.teacherAttendance) SchoolApp.store.teacherAttendance = [];
 
-      // Insert Punch In log entry
+      // Find and capture existing punches for this date as audit trail snapshot
+      var existingPunches = SchoolApp.store.teacherAttendance.filter(function(p) {
+        return p.teacherId === request.teacherId && p.date === request.date;
+      });
+
+      var originalPunchesSnapshot = existingPunches.map(function(p) {
+        return {
+          id: p.id,
+          time: p.time,
+          type: p.type,
+          geofenceStatus: p.geofenceStatus,
+          method: p.method,
+          distance: p.distance
+        };
+      });
+
+      var auditData = {
+        requestId: request.id,
+        correctedBy: adminName,
+        correctedAt: nowISO,
+        reason: request.reason,
+        adminNotes: request.adminNotes,
+        originalPunches: originalPunchesSnapshot,
+        approvedStatus: request.statusRequested || 'Present'
+      };
+
+      // Insert or update Punch In
       if (request.timeIn) {
         var inRecord = {
           id: SchoolApp.generateId(),
@@ -277,12 +400,15 @@
           longitude: null,
           distance: 0,
           geofenceStatus: 'Inside Geofence (Manual Correction)',
-          method: 'Manual'
+          outsideGeofence: false,
+          method: 'Manual',
+          isCorrected: true,
+          correctionAudit: auditData
         };
         SchoolApp.store.teacherAttendance.push(inRecord);
       }
 
-      // Insert Punch Out log entry
+      // Insert or update Punch Out
       if (request.timeOut) {
         var outRecord = {
           id: SchoolApp.generateId(),
@@ -296,22 +422,250 @@
           longitude: null,
           distance: 0,
           geofenceStatus: 'Inside Geofence (Manual Correction)',
-          method: 'Manual'
+          outsideGeofence: false,
+          method: 'Manual',
+          isCorrected: true,
+          correctionAudit: auditData
         };
         SchoolApp.store.teacherAttendance.push(outRecord);
       }
 
-      SchoolApp.showToast('Correction approved and punches injected successfully.', 'success');
+      SchoolApp.showToast('Correction approved and audit trail recorded.', 'success');
     } else {
       request.status = 'Rejected';
+      request.reviewedBy = adminName;
+      request.reviewedAt = nowISO;
+      request.adminNotes = reviewNotes || 'Rejected by Admin';
       SchoolApp.showToast('Correction request rejected.', 'warning');
     }
 
-    request.reviewedAt = new Date().toISOString();
     SchoolApp.save();
     render();
   }
 
+  // Admin Direct Manual Attendance Modal (Area 3b)
+  function showAdminDirectPunchModal() {
+    var teachers = SchoolApp.store.teachers || [];
+    var curToday = new Date().toISOString().split('T')[0];
+
+    var bodyHTML = '<form id="admin-direct-punch-form" class="form-grid" style="display:flex; flex-direction:column; gap:14px;">';
+    
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:11.5px; font-weight:700;">Select Teacher *</label>';
+    bodyHTML += '    <select id="direct-teacher-id" class="form-select" required>';
+    teachers.forEach(function(t) {
+      bodyHTML += '<option value="' + t.id + '">' + t.firstName + ' ' + (t.lastName || '') + ' (' + (t.subject || 'Teacher') + ')</option>';
+    });
+    bodyHTML += '    </select>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:11.5px; font-weight:700;">Date *</label>';
+    bodyHTML += '    <input type="date" id="direct-date" class="form-input" value="' + curToday + '" max="' + curToday + '" required>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size:11.5px; font-weight:700;">Punch In Time</label>';
+    bodyHTML += '      <input type="time" id="direct-time-in" class="form-input" value="08:00">';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size:11.5px; font-weight:700;">Punch Out Time</label>';
+    bodyHTML += '      <input type="time" id="direct-time-out" class="form-input" value="14:00">';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:11.5px; font-weight:700;">Correction Reason / Admin Justification *</label>';
+    bodyHTML += '    <textarea id="direct-reason" class="form-textarea" rows="2" placeholder="e.g. Official Duty / Manual administrative override" required></textarea>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="btn-save-direct-punch"><span class="material-icons-round">save</span> Save Attendance</button>';
+
+    SchoolApp.showModal('Manual Teacher Attendance Entry', bodyHTML, footerHTML);
+
+    document.getElementById('btn-save-direct-punch').addEventListener('click', function() {
+      var tId = document.getElementById('direct-teacher-id').value;
+      var dateVal = document.getElementById('direct-date').value;
+      var timeInVal = document.getElementById('direct-time-in').value;
+      var timeOutVal = document.getElementById('direct-time-out').value;
+      var reasonVal = document.getElementById('direct-reason').value.trim();
+
+      if (!tId || !dateVal || !reasonVal) {
+        SchoolApp.showToast('Please select teacher, date, and provide justification.', 'error');
+        return;
+      }
+
+      var teacherObj = teachers.find(function(t) { return t.id === tId; });
+      var teacherName = teacherObj ? (teacherObj.firstName + ' ' + (teacherObj.lastName || '')).trim() : 'Teacher';
+      var adminName = (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim() || SchoolApp.currentUser.username || 'Administrator';
+      var nowISO = new Date().toISOString();
+
+      var auditData = {
+        correctedBy: adminName,
+        correctedAt: nowISO,
+        reason: reasonVal,
+        directEntry: true,
+        approvedStatus: 'Present'
+      };
+
+      if (!SchoolApp.store.teacherAttendance) SchoolApp.store.teacherAttendance = [];
+
+      if (timeInVal) {
+        SchoolApp.store.teacherAttendance.push({
+          id: SchoolApp.generateId(),
+          teacherId: tId,
+          teacherName: teacherName,
+          date: dateVal,
+          type: 'in',
+          time: timeInVal + (timeInVal.length === 5 ? ':00' : ''),
+          timestamp: dateVal + 'T' + timeInVal + (timeInVal.length === 5 ? ':00' : '') + '.000Z',
+          latitude: null,
+          longitude: null,
+          distance: 0,
+          geofenceStatus: 'Inside Geofence (Manual Correction)',
+          outsideGeofence: false,
+          method: 'Manual',
+          isCorrected: true,
+          correctionAudit: auditData
+        });
+      }
+
+      if (timeOutVal) {
+        SchoolApp.store.teacherAttendance.push({
+          id: SchoolApp.generateId(),
+          teacherId: tId,
+          teacherName: teacherName,
+          date: dateVal,
+          type: 'out',
+          time: timeOutVal + (timeOutVal.length === 5 ? ':00' : ''),
+          timestamp: dateVal + 'T' + timeOutVal + (timeOutVal.length === 5 ? ':00' : '') + '.000Z',
+          latitude: null,
+          longitude: null,
+          distance: 0,
+          geofenceStatus: 'Inside Geofence (Manual Correction)',
+          outsideGeofence: false,
+          method: 'Manual',
+          isCorrected: true,
+          correctionAudit: auditData
+        });
+      }
+
+      SchoolApp.save();
+      SchoolApp.closeModal();
+      SchoolApp.showToast('Attendance recorded with audit trail for ' + teacherName, 'success');
+      render();
+    });
+  }
+
+  // Export functions (Area 3c)
+  function exportTeacherAttendanceExcel(teacherId) {
+    var allPunches = SchoolApp.store.teacherAttendance || [];
+    var filtered = allPunches;
+
+    if (teacherId) {
+      filtered = filtered.filter(function(p) { return p.teacherId === teacherId; });
+    }
+
+    if (state.teacherStartDate && state.teacherEndDate) {
+      filtered = filtered.filter(function(p) {
+        return p.date >= state.teacherStartDate && p.date <= state.teacherEndDate;
+      });
+    }
+
+    filtered.sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+
+    var rows = filtered.map(function(p) {
+      var audit = p.correctionAudit || {};
+      return {
+        'Date': p.date,
+        'Teacher Name': p.teacherName,
+        'Punch Type': p.type ? p.type.toUpperCase() : '—',
+        'Punch Time': p.time,
+        'Geofence Status': p.geofenceStatus || '—',
+        'Distance (m)': p.distance !== undefined ? p.distance : '—',
+        'Latitude': p.latitude ? p.latitude.toFixed(5) : '—',
+        'Longitude': p.longitude ? p.longitude.toFixed(5) : '—',
+        'Method': p.method || 'GPS',
+        'Is Corrected': p.isCorrected ? 'YES' : 'NO',
+        'Corrected By': audit.correctedBy || '—',
+        'Correction Reason': audit.reason || '—'
+      };
+    });
+
+    var headers = [
+      { header: 'Date', key: 'Date' },
+      { header: 'Teacher Name', key: 'Teacher Name' },
+      { header: 'Punch Type', key: 'Punch Type' },
+      { header: 'Punch Time', key: 'Punch Time' },
+      { header: 'Geofence Status', key: 'Geofence Status' },
+      { header: 'Distance (m)', key: 'Distance (m)' },
+      { header: 'Latitude', key: 'Latitude' },
+      { header: 'Longitude', key: 'Longitude' },
+      { header: 'Method', key: 'Method' },
+      { header: 'Is Corrected', key: 'Is Corrected' },
+      { header: 'Corrected By', key: 'Corrected By' },
+      { header: 'Correction Reason', key: 'Correction Reason' }
+    ];
+
+    var teacherNameSlug = teacherId ? (SchoolApp.currentUser.firstName || 'Teacher') : 'All_Teachers';
+    var fileName = 'Teacher_Attendance_' + teacherNameSlug + '_' + (state.teacherStartDate || 'All') + '_to_' + (state.teacherEndDate || 'All') + '.xlsx';
+    SchoolApp.utils.exportToExcel(rows, headers, fileName);
+  }
+
+  function exportAdminSummaryExcel() {
+    var allPunches = SchoolApp.store.teacherAttendance || [];
+    var teachers = SchoolApp.store.teachers || [];
+    var startDate = state.adminStartDate || '2026-01-01';
+    var endDate = state.adminEndDate || todayStr;
+
+    var filtered = allPunches.filter(function(p) {
+      return p.date >= startDate && p.date <= endDate;
+    });
+
+    // Group by teacher
+    var rows = teachers.map(function(t) {
+      var tPunches = filtered.filter(function(p) { return p.teacherId === t.id; });
+      var inPunches = tPunches.filter(function(p) { return p.type === 'in'; });
+      var insideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1; }).length;
+      var outsideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1; }).length;
+      var correctedCount = tPunches.filter(function(p) { return p.isCorrected === true; }).length;
+      var totalLogs = tPunches.length;
+      var complianceRate = totalLogs > 0 ? Math.round((insideCount / totalLogs) * 100) : 100;
+
+      return {
+        'Teacher Name': t.firstName + ' ' + (t.lastName || ''),
+        'Subject': t.subject || '—',
+        'Status': t.status,
+        'Total Punches': totalLogs,
+        'Days Present (In)': inPunches.length,
+        'Inside Geofence': insideCount,
+        'Outside Geofence': outsideCount,
+        'Corrected by Admin': correctedCount,
+        'Geofence Compliance': complianceRate + '%'
+      };
+    });
+
+    var headers = [
+      { header: 'Teacher Name', key: 'Teacher Name' },
+      { header: 'Subject', key: 'Subject' },
+      { header: 'Status', key: 'Status' },
+      { header: 'Total Punches', key: 'Total Punches' },
+      { header: 'Days Present (In)', key: 'Days Present (In)' },
+      { header: 'Inside Geofence', key: 'Inside Geofence' },
+      { header: 'Outside Geofence', key: 'Outside Geofence' },
+      { header: 'Corrected by Admin', key: 'Corrected by Admin' },
+      { header: 'Geofence Compliance', key: 'Geofence Compliance' }
+    ];
+
+    var fileName = 'Teacher_Attendance_Audit_Summary_' + startDate + '_to_' + endDate + '.xlsx';
+    SchoolApp.utils.exportToExcel(rows, headers, fileName);
+  }
+
+  // Teacher UI Rendering
   function renderTeacherUI(container) {
     var teacherId = SchoolApp.currentUser.id;
     var status = getTodayPunchStatus(teacherId);
@@ -319,14 +673,14 @@
     var disableIn = !!status.punchIn;
     var disableOut = !status.punchIn || !!status.punchOut;
 
-    var todayStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    var dateDisplay = new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     var html = '<div class="teacher-attendance-portal">';
 
     // Punch Box UI
     html += '<div class="punch-card-wrapper">';
     html += '<div class="punch-clock" id="punch-live-clock">00:00:00</div>';
-    html += '<div class="punch-date">' + todayStr + '</div>';
+    html += '<div class="punch-date">' + dateDisplay + '</div>';
     
     html += '<div class="punch-buttons">';
     html += '<button class="btn-punch btn-punch-in" id="punch-in-btn" ' + (disableIn ? 'disabled' : '') + '>';
@@ -344,16 +698,16 @@
     }
     html += '<div class="punch-status-text">' + statusText + '</div>';
 
-    // GPS visual indicator
+    // GPS visual indicator & Geofence Diagnostics
+    var geo = getGeofenceSettings();
     if (state.lastCapturedLocation) {
       var loc = state.lastCapturedLocation;
-      var badgeClass = loc.status === 'Inside Geofence' ? 'inside' : 'outside';
-      var badgeIcon = loc.status === 'Inside Geofence' ? 'check_circle' : 'warning';
+      var badgeClass = loc.status.indexOf('Inside') !== -1 ? 'inside' : 'outside';
+      var badgeIcon = loc.status.indexOf('Inside') !== -1 ? 'check_circle' : 'warning';
       html += '<div class="geofence-badge ' + badgeClass + '"><span class="material-icons-round">' + badgeIcon + '</span>' + loc.status + '</div>';
-      html += '<div class="gps-info-text">Last Punch GPS: ' + loc.latitude + ', ' + loc.longitude + ' (' + loc.distance + 'm from school)</div>';
+      html += '<div class="gps-info-text">Last Punch GPS: ' + loc.latitude + ', ' + loc.longitude + ' (' + loc.distance + 'm from school, policy: ' + geo.policy + ')</div>';
     } else {
-      var geo = getGeofenceSettings();
-      var radiusMsg = (geo.lat === null || geo.lng === null) ? 'Not Configured' : (geo.radius + 'm');
+      var radiusMsg = (geo.lat === null || geo.lng === null) ? 'Not Configured' : (geo.radius + 'm (' + (geo.policy === 'strict' ? 'Strict' : 'Lenient') + ')');
       var schoolName = (SchoolApp.store.settings && SchoolApp.store.settings.schoolName) || 'School';
       html += '<div class="gps-info-text"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">location_on</span> ' + schoolName + ' Geofence Radius: ' + radiusMsg + '</div>';
     }
@@ -362,21 +716,78 @@
     html += '<div style="margin-top: 12px; text-align: center;"><a href="#" id="gps-fallback-btn" style="font-size: 13px; color: var(--accent-secondary); text-decoration: underline;">GPS not working? Request manual approval</a></div>';
     html += '</div>'; // End punch-card-wrapper
 
-    // Personal Logs List
-    html += '<div class="card mb-4"><div class="card-header"><h3><span class="material-icons-round">history</span> My Punch Logs (Last 30 Days)</h3></div>';
-    html += '<div class="card-body">';
-    
-    var myPunches = (SchoolApp.store.teacherAttendance || []).filter(function(p) { return p.teacherId === teacherId; });
-    myPunches.sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+    // Personal Logs & History with Filters (Area 3c)
+    html += '<div class="card mb-4">';
+    html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '    <h3 style="margin:0;"><span class="material-icons-round">history</span> My Attendance History & Reports</h3>';
+    html += '    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">';
+    html += '      <button class="btn btn-secondary btn-xs" id="quick-filter-month">This Month</button>';
+    html += '      <button class="btn btn-secondary btn-xs" id="quick-filter-30d">Last 30 Days</button>';
+    html += '      <button class="btn btn-secondary btn-xs" id="quick-filter-all">All</button>';
+    html += '      <button class="btn btn-primary btn-sm" id="btn-export-my-attendance" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">table_view</span> Export Excel</button>';
+    html += '    </div>';
+    html += '  </div>';
 
-    if (myPunches.length > 0) {
+    // Filter toolbar
+    html += '  <div style="padding:12px 20px; background:rgba(255,255,255,0.02); border-bottom:1px solid var(--border-light); display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">';
+    html += '    <div style="min-width:140px;">';
+    html += '      <label class="form-label" style="font-size:11px; margin-bottom:4px;">From Date</label>';
+    html += '      <input type="date" id="teacher-filter-start" class="form-input" value="' + state.teacherStartDate + '">';
+    html += '    </div>';
+    html += '    <div style="min-width:140px;">';
+    html += '      <label class="form-label" style="font-size:11px; margin-bottom:4px;">To Date</label>';
+    html += '      <input type="date" id="teacher-filter-end" class="form-input" value="' + state.teacherEndDate + '">';
+    html += '    </div>';
+    html += '    <div>';
+    html += '      <button class="btn btn-secondary btn-sm" id="btn-apply-teacher-filter">Apply Filter</button>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Summary Stat KPI Cards for Teacher
+    var allMyPunches = (SchoolApp.store.teacherAttendance || []).filter(function(p) { return p.teacherId === teacherId; });
+    var filteredMyPunches = allMyPunches.filter(function(p) {
+      if (state.teacherStartDate && p.date < state.teacherStartDate) return false;
+      if (state.teacherEndDate && p.date > state.teacherEndDate) return false;
+      return true;
+    });
+    filteredMyPunches.sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
+
+    var totalPunches = filteredMyPunches.length;
+    var insidePunches = filteredMyPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1; }).length;
+    var outsidePunches = filteredMyPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1; }).length;
+    var correctedPunches = filteredMyPunches.filter(function(p) { return p.isCorrected === true; }).length;
+    var compliancePct = totalPunches > 0 ? Math.round((insidePunches / totalPunches) * 100) : 100;
+
+    html += '  <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; padding:16px 20px;">';
+    html += '    <div class="kpi-card" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); border-radius:8px; padding:14px;">';
+    html += '      <div style="font-size:11px; color:var(--text-secondary); text-transform:uppercase; font-weight:700;">Total Logs</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:var(--text-primary); margin-top:4px;">' + totalPunches + '</div>';
+    html += '    </div>';
+    html += '    <div class="kpi-card" style="background:rgba(16, 185, 129, 0.06); border:1px solid rgba(16, 185, 129, 0.2); border-radius:8px; padding:14px;">';
+    html += '      <div style="font-size:11px; color:#10b981; text-transform:uppercase; font-weight:700;">Inside Geofence</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:#10b981; margin-top:4px;">' + insidePunches + ' <span style="font-size:13px; font-weight:400;">(' + compliancePct + '%)</span></div>';
+    html += '    </div>';
+    html += '    <div class="kpi-card" style="background:rgba(239, 68, 68, 0.06); border:1px solid rgba(239, 68, 68, 0.2); border-radius:8px; padding:14px;">';
+    html += '      <div style="font-size:11px; color:#ef4444; text-transform:uppercase; font-weight:700;">Outside Geofence</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:#ef4444; margin-top:4px;">' + outsidePunches + '</div>';
+    html += '    </div>';
+    html += '    <div class="kpi-card" style="background:rgba(59, 130, 246, 0.06); border:1px solid rgba(59, 130, 246, 0.2); border-radius:8px; padding:14px;">';
+    html += '      <div style="font-size:11px; color:#3b82f6; text-transform:uppercase; font-weight:700;">Admin Corrected</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:#3b82f6; margin-top:4px;">' + correctedPunches + '</div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    html += '  <div class="card-body" style="padding:0 20px 20px 20px;">';
+    if (filteredMyPunches.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Date</th><th>Time</th><th>Type</th><th>Geofence Status</th><th>Coordinates</th><th>Method</th>';
+      html += '<th>Date</th><th>Time</th><th>Type</th><th>Geofence Status</th><th>Coordinates</th><th>Method</th><th>Audit Trail</th>';
       html += '</tr></thead><tbody>';
-      myPunches.forEach(function(p) {
+      filteredMyPunches.forEach(function(p) {
         var typeColor = p.type === 'in' ? 'badge-success' : 'badge-danger';
-        var geoColor = p.geofenceStatus.indexOf('Inside') !== -1 ? 'badge-success' : 'badge-danger';
+        var geoColor = (p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1) ? 'badge-success' : 'badge-danger';
         var coordsText = p.latitude ? p.latitude.toFixed(5) + ', ' + p.longitude.toFixed(5) : '—';
+        var audit = p.correctionAudit || {};
+        var auditTag = p.isCorrected ? '<span class="badge badge-info" title="Corrected by ' + (audit.correctedBy || 'Admin') + ' on ' + (audit.correctedAt ? new Date(audit.correctedAt).toLocaleDateString('en-IN') : '—') + ': ' + (audit.reason || '') + '"><span class="material-icons-round" style="font-size:11px; vertical-align:middle;">verified</span> Corrected</span>' : '<span style="color:var(--text-muted); font-size:12px;">Standard</span>';
         
         html += '<tr>';
         html += '<td>' + SchoolApp.formatDate(p.date) + '</td>';
@@ -384,14 +795,16 @@
         html += '<td><span class="badge ' + typeColor + '">Punch ' + p.type.toUpperCase() + '</span></td>';
         html += '<td><span class="badge ' + geoColor + '">' + p.geofenceStatus + '</span></td>';
         html += '<td>' + coordsText + '</td>';
-        html += '<td><span class="badge badge-info">' + p.method + '</span></td>';
+        html += '<td><span class="badge badge-info">' + (p.method || 'GPS') + '</span></td>';
+        html += '<td>' + auditTag + '</td>';
         html += '</tr>';
       });
       html += '</tbody></table></div>';
     } else {
-      html += '<div class="empty-state" style="padding: 24px;"><span class="material-icons-round">fingerprint</span><h3>No Punches Recorded</h3><p>You have not registered any punch logs yet.</p></div>';
+      html += '<div class="empty-state" style="padding: 24px;"><span class="material-icons-round">fingerprint</span><h3>No Punches in Selected Range</h3><p>No punch logs match the selected date range.</p></div>';
     }
-    html += '</div></div>';
+    html += '  </div>';
+    html += '</div>';
 
     // Pending Correction Requests
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">edit_calendar</span> My Correction Requests</h3></div>';
@@ -401,13 +814,15 @@
 
     if (myRequests.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Requested Date</th><th>In / Out Time</th><th>Reason</th><th>Status</th>';
+      html += '<th>Requested Date</th><th>In / Out Time</th><th>Status Requested</th><th>Reason</th><th>Admin Review</th><th>Status</th>';
       html += '</tr></thead><tbody>';
       myRequests.forEach(function(r) {
         var statusColor = 'badge-purple';
         if (r.status === 'Approved') statusColor = 'badge-success';
         if (r.status === 'Rejected') statusColor = 'badge-danger';
         
+        var reviewText = r.reviewedBy ? ('Reviewed by ' + r.reviewedBy + (r.adminNotes ? ' (' + r.adminNotes + ')' : '')) : 'Pending review';
+
         html += '<tr>';
         html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
         var timeText = '';
@@ -418,8 +833,10 @@
         } else if (r.timeOut) {
           timeText = 'Punch Out: ' + r.timeOut;
         }
-        html += '<td><strong>' + timeText + '</strong></td>';
+        html += '<td><strong>' + (timeText || '—') + '</strong></td>';
+        html += '<td><span class="badge badge-info">' + (r.statusRequested || 'Present') + '</span></td>';
         html += '<td>' + r.reason + '</td>';
+        html += '<td style="font-size:12px; color:var(--text-secondary);">' + reviewText + '</td>';
         html += '<td><span class="badge ' + statusColor + '">' + r.status + '</span></td>';
         html += '</tr>';
       });
@@ -438,12 +855,10 @@
     state.clockInterval = setInterval(function() {
       var clockEl = document.getElementById('punch-live-clock');
       if (clockEl) {
-        var time = new Date().toTimeString().split(' ')[0];
-        clockEl.textContent = time;
+        clockEl.textContent = new Date().toTimeString().split(' ')[0];
       }
     }, 1000);
 
-    // Initial clock setup
     var clockEl = document.getElementById('punch-live-clock');
     if (clockEl) {
       clockEl.textContent = new Date().toTimeString().split(' ')[0];
@@ -466,99 +881,269 @@
         showGpsFallbackModal();
       });
     }
+
+    var exportBtn = document.getElementById('btn-export-my-attendance');
+    if (exportBtn) exportBtn.addEventListener('click', function() { exportTeacherAttendanceExcel(teacherId); });
+
+    var btnApplyFilter = document.getElementById('btn-apply-teacher-filter');
+    if (btnApplyFilter) {
+      btnApplyFilter.addEventListener('click', function() {
+        state.teacherStartDate = document.getElementById('teacher-filter-start').value;
+        state.teacherEndDate = document.getElementById('teacher-filter-end').value;
+        render();
+      });
+    }
+
+    var btnMonth = document.getElementById('quick-filter-month');
+    if (btnMonth) {
+      btnMonth.addEventListener('click', function() {
+        state.teacherStartDate = firstDayOfMonth;
+        state.teacherEndDate = todayStr;
+        render();
+      });
+    }
+
+    var btn30d = document.getElementById('quick-filter-30d');
+    if (btn30d) {
+      btn30d.addEventListener('click', function() {
+        var d = new Date();
+        d.setDate(d.getDate() - 30);
+        state.teacherStartDate = d.toISOString().split('T')[0];
+        state.teacherEndDate = todayStr;
+        render();
+      });
+    }
+
+    var btnAll = document.getElementById('quick-filter-all');
+    if (btnAll) {
+      btnAll.addEventListener('click', function() {
+        state.teacherStartDate = '';
+        state.teacherEndDate = '';
+        render();
+      });
+    }
   }
 
+  // Admin UI Rendering
   function renderAdminUI(container) {
     if (state.clockInterval) {
       clearInterval(state.clockInterval);
       state.clockInterval = null;
     }
 
+    var teachers = SchoolApp.store.teachers || [];
+    var geo = getGeofenceSettings();
+
     var html = '<div class="admin-teacher-attendance">';
 
+    // Page Header with Action Buttons
+    html += '<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">';
+    html += '  <h2><span class="material-icons-round">fingerprint</span> Staff Attendance & GPS Geofence</h2>';
+    html += '  <div class="header-actions" style="display:flex; gap:8px; flex-wrap:wrap;">';
+    html += '    <button class="btn btn-secondary btn-sm" id="btn-admin-geofence-settings" style="display:inline-flex; align-items:center; gap:6px; background:rgba(6, 182, 212, 0.15); color:#06b6d4; border:1px solid rgba(6, 182, 212, 0.3);"><span class="material-icons-round" style="font-size:16px;">settings_suggest</span> Geofence Settings (' + (geo.policy === 'strict' ? 'Strict' : 'Lenient') + ')</button>';
+    html += '    <button class="btn btn-secondary btn-sm" id="btn-admin-manual-punch" style="display:inline-flex; align-items:center; gap:6px; background:rgba(108, 92, 231, 0.15); color:#a29bfe; border:1px solid rgba(108, 92, 231, 0.3);"><span class="material-icons-round" style="font-size:16px;">add_circle</span> Manual Override / Add</button>';
+    html += '  </div>';
+    html += '</div>';
+
     // Tabs
-    html += '<div class="teacher-att-tabs">';
-    html += '<button class="teacher-att-tab ' + (state.activeTab === 'approvals' ? 'active' : '') + '" id="tab-btn-approvals">Correction Requests</button>';
-    html += '<button class="teacher-att-tab ' + (state.activeTab === 'logs' ? 'active' : '') + '" id="tab-btn-logs">Daily GPS Logs</button>';
+    html += '<div class="teacher-att-tabs" style="display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--border-light); padding-bottom:8px;">';
+    html += '  <button class="teacher-att-tab btn btn-sm ' + (state.activeTab === 'approvals' ? 'btn-primary' : 'btn-secondary') + '" id="tab-btn-approvals"><span class="material-icons-round" style="font-size:15px; vertical-align:middle; margin-right:4px;">checklist</span> Correction Requests</button>';
+    html += '  <button class="teacher-att-tab btn btn-sm ' + (state.activeTab === 'logs' ? 'btn-primary' : 'btn-secondary') + '" id="tab-btn-logs"><span class="material-icons-round" style="font-size:15px; vertical-align:middle; margin-right:4px;">history</span> Daily GPS Logs</button>';
+    html += '  <button class="teacher-att-tab btn btn-sm ' + (state.activeTab === 'summary' ? 'btn-primary' : 'btn-secondary') + '" id="tab-btn-summary"><span class="material-icons-round" style="font-size:15px; vertical-align:middle; margin-right:4px;">analytics</span> Audit Summary Report</button>';
     html += '</div>';
 
     if (state.activeTab === 'approvals') {
-      html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">checklist</span> Pending Correction Requests</h3></div>';
-      html += '<div class="card-body">';
+      // Requests Tab
+      var allRequests = SchoolApp.store.teacherCorrectionRequests || [];
+      var filteredRequests = allRequests;
+      if (state.reqStatusFilter !== 'all') {
+        filteredRequests = filteredRequests.filter(function(r) { return r.status === state.reqStatusFilter; });
+      }
+      filteredRequests.sort(function(a, b) { return new Date(b.submittedAt) - new Date(a.submittedAt); });
 
-      var pending = (SchoolApp.store.teacherCorrectionRequests || []).filter(function(r) { return r.status === 'Pending'; });
-      
-      if (pending.length > 0) {
+      html += '<div class="card">';
+      html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+      html += '    <h3 style="margin:0;"><span class="material-icons-round">checklist</span> Teacher Correction & Approval Requests</h3>';
+      html += '    <div style="display:flex; gap:10px; align-items:center;">';
+      html += '      <label style="font-size:12px; color:var(--text-secondary);">Status Filter:</label>';
+      html += '      <select id="admin-req-status-filter" class="form-select" style="max-width:140px;">';
+      html += '        <option value="Pending"' + (state.reqStatusFilter === 'Pending' ? ' selected' : '') + '>Pending Only</option>';
+      html += '        <option value="Approved"' + (state.reqStatusFilter === 'Approved' ? ' selected' : '') + '>Approved</option>';
+      html += '        <option value="Rejected"' + (state.reqStatusFilter === 'Rejected' ? ' selected' : '') + '>Rejected</option>';
+      html += '        <option value="all"' + (state.reqStatusFilter === 'all' ? ' selected' : '') + '>All Requests</option>';
+      html += '      </select>';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="card-body">';
+      if (filteredRequests.length > 0) {
         html += '<div class="table-container"><table class="data-table"><thead><tr>';
-        html += '<th>Teacher Name</th><th>Requested Date</th><th>In / Out Time</th><th>Reason</th><th>Submitted At</th><th>Actions</th>';
+        html += '<th>Teacher Name</th><th>Requested Date</th><th>In / Out Time</th><th>Status Requested</th><th>Reason / Justification</th><th>Review Audit</th><th>Status</th><th>Actions</th>';
         html += '</tr></thead><tbody>';
 
-        pending.forEach(function(r) {
-          html += '<tr>';
-          html += '<td><strong>' + r.teacherName + '</strong></td>';
-          html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
+        filteredRequests.forEach(function(r) {
+          var statusColor = 'badge-purple';
+          if (r.status === 'Approved') statusColor = 'badge-success';
+          if (r.status === 'Rejected') statusColor = 'badge-danger';
+
           var timeText = '';
           if (r.timeIn && r.timeOut) {
             timeText = r.timeIn + ' - ' + r.timeOut;
           } else if (r.timeIn) {
-            timeText = 'Punch In: ' + r.timeIn;
+            timeText = 'In: ' + r.timeIn;
           } else if (r.timeOut) {
-            timeText = 'Punch Out: ' + r.timeOut;
+            timeText = 'Out: ' + r.timeOut;
           }
-          html += '<td><strong>' + timeText + '</strong></td>';
+
+          var auditText = r.reviewedBy ? (r.reviewedBy + ' (' + new Date(r.reviewedAt).toLocaleDateString('en-IN') + ')') : 'Pending';
+
+          html += '<tr>';
+          html += '<td><strong>' + r.teacherName + '</strong></td>';
+          html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
+          html += '<td><strong>' + (timeText || '—') + '</strong></td>';
+          html += '<td><span class="badge badge-info">' + (r.statusRequested || 'Present') + '</span></td>';
           html += '<td>' + r.reason + '</td>';
-          html += '<td>' + new Date(r.submittedAt).toLocaleString('en-IN') + '</td>';
+          html += '<td style="font-size:12px; color:var(--text-secondary);">' + auditText + '</td>';
+          html += '<td><span class="badge ' + statusColor + '">' + r.status + '</span></td>';
           html += '<td><div class="table-actions">';
-          html += '<button class="btn-icon approve-request-btn" data-id="' + r.id + '" title="Approve" style="color:var(--success); font-size: 22px;"><span class="material-icons-round">check_circle</span></button>';
-          html += '<button class="btn-icon reject-request-btn" data-id="' + r.id + '" title="Reject" style="color:var(--danger); font-size: 22px;"><span class="material-icons-round">cancel</span></button>';
+          if (r.status === 'Pending') {
+            html += '<button class="btn-icon approve-request-btn" data-id="' + r.id + '" title="Approve" style="color:var(--success); font-size: 22px;"><span class="material-icons-round">check_circle</span></button>';
+            html += '<button class="btn-icon reject-request-btn" data-id="' + r.id + '" title="Reject" style="color:var(--danger); font-size: 22px;"><span class="material-icons-round">cancel</span></button>';
+          } else {
+            html += '<span style="font-size:11.5px; color:var(--text-muted);">Processed</span>';
+          }
           html += '</div></td>';
           html += '</tr>';
         });
 
         html += '</tbody></table></div>';
       } else {
-        html += '<div class="empty-state" style="padding: 24px;"><span class="material-icons-round">playlist_add_check</span><h3>No Pending Requests</h3><p>All teacher correction requests have been processed.</p></div>';
+        html += '<div class="empty-state" style="padding: 24px;"><span class="material-icons-round">playlist_add_check</span><h3>No Requests Found</h3><p>No teacher correction requests match your filter.</p></div>';
+      }
+      html += '  </div>';
+      html += '</div>';
+
+    } else if (state.activeTab === 'logs') {
+      // Daily GPS Logs Tab
+      html += '<div class="card">';
+      html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">';
+      html += '    <h3 style="margin:0;"><span class="material-icons-round">history</span> Daily GPS Punch Logs</h3>';
+      html += '    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">';
+      html += '      <input type="date" id="admin-log-date-picker" class="form-input" value="' + state.selectedDate + '" style="max-width:160px;">';
+      html += '      <select id="admin-log-teacher-filter" class="form-select" style="max-width:180px;">';
+      html += '        <option value="all">All Teachers</option>';
+      teachers.forEach(function(t) {
+        html += '<option value="' + t.id + '"' + (state.teacherFilter === t.id ? ' selected' : '') + '>' + t.firstName + ' ' + (t.lastName || '') + '</option>';
+      });
+      html += '      </select>';
+      html += '      <select id="admin-log-geo-filter" class="form-select" style="max-width:150px;">';
+      html += '        <option value="all"' + (state.geoFilter === 'all' ? ' selected' : '') + '>All Locations</option>';
+      html += '        <option value="inside"' + (state.geoFilter === 'inside' ? ' selected' : '') + '>Inside Geofence</option>';
+      html += '        <option value="outside"' + (state.geoFilter === 'outside' ? ' selected' : '') + '>Outside Geofence</option>';
+      html += '        <option value="corrected"' + (state.geoFilter === 'corrected' ? ' selected' : '') + '>Corrected Only</option>';
+      html += '      </select>';
+      html += '      <button class="btn btn-secondary btn-sm" id="btn-export-daily-logs" style="display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:16px;">table_view</span> Export Logs</button>';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="card-body">';
+      var dayLogs = (SchoolApp.store.teacherAttendance || []).filter(function(l) { return l.date === state.selectedDate; });
+      if (state.teacherFilter !== 'all') {
+        dayLogs = dayLogs.filter(function(l) { return l.teacherId === state.teacherFilter; });
+      }
+      if (state.geoFilter === 'inside') {
+        dayLogs = dayLogs.filter(function(l) { return l.geofenceStatus && l.geofenceStatus.indexOf('Inside') !== -1; });
+      } else if (state.geoFilter === 'outside') {
+        dayLogs = dayLogs.filter(function(l) { return l.geofenceStatus && l.geofenceStatus.indexOf('Outside') !== -1; });
+      } else if (state.geoFilter === 'corrected') {
+        dayLogs = dayLogs.filter(function(l) { return l.isCorrected === true; });
       }
 
-      html += '</div></div>';
-    } else {
-      // Daily GPS Logs tab
-      html += '<div class="card"><div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">';
-      html += '<h3><span class="material-icons-round">history</span> Daily GPS Punch Logs</h3>';
-      html += '<div class="filter-group" style="margin: 0;"><input type="date" id="admin-log-date-picker" class="form-input" value="' + state.selectedDate + '" style="max-width:180px;"></div>';
-      html += '</div>';
-      
-      html += '<div class="card-body">';
-
-      var dayLogs = (SchoolApp.store.teacherAttendance || []).filter(function(l) { return l.date === state.selectedDate; });
       dayLogs.sort(function(a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
 
       if (dayLogs.length > 0) {
         html += '<div class="table-container"><table class="data-table"><thead><tr>';
-        html += '<th>Teacher Name</th><th>Time</th><th>Type</th><th>Geofence Status</th><th>Coordinates</th><th>Method</th>';
+        html += '<th>Teacher Name</th><th>Time</th><th>Type</th><th>Geofence Status</th><th>Distance</th><th>Coordinates</th><th>Method</th><th>Audit Status</th>';
         html += '</tr></thead><tbody>';
 
         dayLogs.forEach(function(l) {
           var typeColor = l.type === 'in' ? 'badge-success' : 'badge-danger';
-          var geoColor = l.geofenceStatus.indexOf('Inside') !== -1 ? 'badge-success' : 'badge-danger';
-          var coordsText = l.latitude ? l.latitude.toFixed(5) + ', ' + l.longitude.toFixed(5) + ' (' + l.distance + 'm)' : '—';
+          var geoColor = (l.geofenceStatus && l.geofenceStatus.indexOf('Inside') !== -1) ? 'badge-success' : 'badge-danger';
+          var coordsText = l.latitude ? l.latitude.toFixed(5) + ', ' + l.longitude.toFixed(5) : '—';
+          var distanceText = l.distance !== undefined ? (l.distance + 'm') : '—';
+          var audit = l.correctionAudit || {};
+          var auditBadge = l.isCorrected ? '<span class="badge badge-info" title="Corrected by ' + (audit.correctedBy || 'Admin') + ': ' + (audit.reason || '') + '"><span class="material-icons-round" style="font-size:11px; vertical-align:middle;">verified</span> Corrected</span>' : '<span style="color:var(--text-muted); font-size:12px;">Standard GPS</span>';
 
           html += '<tr>';
           html += '<td><strong>' + l.teacherName + '</strong></td>';
           html += '<td>' + l.time + '</td>';
           html += '<td><span class="badge ' + typeColor + '">Punch ' + l.type.toUpperCase() + '</span></td>';
           html += '<td><span class="badge ' + geoColor + '">' + l.geofenceStatus + '</span></td>';
+          html += '<td>' + distanceText + '</td>';
           html += '<td>' + coordsText + '</td>';
-          html += '<td><span class="badge badge-info">' + l.method + '</span></td>';
+          html += '<td><span class="badge badge-info">' + (l.method || 'GPS') + '</span></td>';
+          html += '<td>' + auditBadge + '</td>';
           html += '</tr>';
         });
 
         html += '</tbody></table></div>';
       } else {
-        html += '<div class="empty-state" style="padding:24px;"><span class="material-icons-round">date_range</span><h3>No Punches on ' + SchoolApp.formatDate(state.selectedDate) + '</h3><p>Try selecting another date to view logs.</p></div>';
+        html += '<div class="empty-state" style="padding:24px;"><span class="material-icons-round">date_range</span><h3>No Punches on ' + SchoolApp.formatDate(state.selectedDate) + '</h3><p>Try selecting another date or clear your filters to view logs.</p></div>';
       }
+      html += '  </div>';
+      html += '</div>';
 
-      html += '</div></div>';
+    } else if (state.activeTab === 'summary') {
+      // Multi-Range Audit Summary Report Tab (Area 3c)
+      html += '<div class="card">';
+      html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">';
+      html += '    <h3 style="margin:0;"><span class="material-icons-round">analytics</span> Staff Attendance Audit Summary Report</h3>';
+      html += '    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">';
+      html += '      <label style="font-size:12px; color:var(--text-secondary);">From:</label>';
+      html += '      <input type="date" id="admin-summary-start" class="form-input" value="' + state.adminStartDate + '" style="max-width:145px;">';
+      html += '      <label style="font-size:12px; color:var(--text-secondary);">To:</label>';
+      html += '      <input type="date" id="admin-summary-end" class="form-input" value="' + state.adminEndDate + '" style="max-width:145px;">';
+      html += '      <button class="btn btn-secondary btn-sm" id="btn-apply-admin-summary">Apply</button>';
+      html += '      <button class="btn btn-primary btn-sm" id="btn-export-admin-summary" style="display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:16px;">table_view</span> Export Audit Sheet</button>';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="card-body">';
+      var allPunches = SchoolApp.store.teacherAttendance || [];
+      var filteredPunches = allPunches.filter(function(p) {
+        return p.date >= state.adminStartDate && p.date <= state.adminEndDate;
+      });
+
+      html += '<div class="table-container"><table class="data-table"><thead><tr>';
+      html += '<th>Teacher Name</th><th>Subject</th><th>Status</th><th>Total Punches</th><th>Days Present</th><th>Inside Geofence</th><th>Outside Geofence</th><th>Admin Corrected</th><th>Compliance Rate</th>';
+      html += '</tr></thead><tbody>';
+
+      teachers.forEach(function(t) {
+        var tPunches = filteredPunches.filter(function(p) { return p.teacherId === t.id; });
+        var inPunches = tPunches.filter(function(p) { return p.type === 'in'; });
+        var insideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1; }).length;
+        var outsideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1; }).length;
+        var correctedCount = tPunches.filter(function(p) { return p.isCorrected === true; }).length;
+        var totalLogs = tPunches.length;
+        var complianceRate = totalLogs > 0 ? Math.round((insideCount / totalLogs) * 100) : 100;
+        var compColor = complianceRate >= 85 ? 'badge-success' : (complianceRate >= 60 ? 'badge-warning' : 'badge-danger');
+
+        html += '<tr>';
+        html += '<td><strong>' + t.firstName + ' ' + (t.lastName || '') + '</strong></td>';
+        html += '<td>' + (t.subject || '—') + '</td>';
+        html += '<td><span class="badge ' + (t.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + t.status + '</span></td>';
+        html += '<td><strong>' + totalLogs + '</strong></td>';
+        html += '<td>' + inPunches.length + '</td>';
+        html += '<td><span style="color:#10b981; font-weight:600;">' + insideCount + '</span></td>';
+        html += '<td><span style="color:#ef4444; font-weight:600;">' + outsideCount + '</span></td>';
+        html += '<td><span style="color:#3b82f6; font-weight:600;">' + correctedCount + '</span></td>';
+        html += '<td><span class="badge ' + compColor + '">' + complianceRate + '%</span></td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+      html += '  </div>';
+      html += '</div>';
     }
 
     html += '</div>';
@@ -566,23 +1151,45 @@
     container.innerHTML = html;
 
     // Attach listeners
-    var approvalsBtn = document.getElementById('tab-btn-approvals');
-    if (approvalsBtn) {
-      approvalsBtn.addEventListener('click', function() {
+    var btnGeofenceSettings = document.getElementById('btn-admin-geofence-settings');
+    if (btnGeofenceSettings) btnGeofenceSettings.addEventListener('click', showGeofenceSettingsModal);
+
+    var btnManualPunch = document.getElementById('btn-admin-manual-punch');
+    if (btnManualPunch) btnManualPunch.addEventListener('click', showAdminDirectPunchModal);
+
+    var approvalsTabBtn = document.getElementById('tab-btn-approvals');
+    if (approvalsTabBtn) {
+      approvalsTabBtn.addEventListener('click', function() {
         state.activeTab = 'approvals';
         render();
       });
     }
 
-    var logsBtn = document.getElementById('tab-btn-logs');
-    if (logsBtn) {
-      logsBtn.addEventListener('click', function() {
+    var logsTabBtn = document.getElementById('tab-btn-logs');
+    if (logsTabBtn) {
+      logsTabBtn.addEventListener('click', function() {
         state.activeTab = 'logs';
         render();
       });
     }
 
+    var summaryTabBtn = document.getElementById('tab-btn-summary');
+    if (summaryTabBtn) {
+      summaryTabBtn.addEventListener('click', function() {
+        state.activeTab = 'summary';
+        render();
+      });
+    }
+
     if (state.activeTab === 'approvals') {
+      var reqStatusFilterEl = document.getElementById('admin-req-status-filter');
+      if (reqStatusFilterEl) {
+        reqStatusFilterEl.addEventListener('change', function() {
+          state.reqStatusFilter = this.value;
+          render();
+        });
+      }
+
       document.querySelectorAll('.approve-request-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var id = this.getAttribute('data-id');
@@ -600,12 +1207,51 @@
           });
         });
       });
-    } else {
+    } else if (state.activeTab === 'logs') {
       var datePicker = document.getElementById('admin-log-date-picker');
       if (datePicker) {
         datePicker.addEventListener('change', function() {
           state.selectedDate = this.value;
           render();
+        });
+      }
+
+      var teacherFilterEl = document.getElementById('admin-log-teacher-filter');
+      if (teacherFilterEl) {
+        teacherFilterEl.addEventListener('change', function() {
+          state.teacherFilter = this.value;
+          render();
+        });
+      }
+
+      var geoFilterEl = document.getElementById('admin-log-geo-filter');
+      if (geoFilterEl) {
+        geoFilterEl.addEventListener('change', function() {
+          state.geoFilter = this.value;
+          render();
+        });
+      }
+
+      var exportLogsBtn = document.getElementById('btn-export-daily-logs');
+      if (exportLogsBtn) {
+        exportLogsBtn.addEventListener('click', function() {
+          exportTeacherAttendanceExcel(null);
+        });
+      }
+    } else if (state.activeTab === 'summary') {
+      var btnApplySummary = document.getElementById('btn-apply-admin-summary');
+      if (btnApplySummary) {
+        btnApplySummary.addEventListener('click', function() {
+          state.adminStartDate = document.getElementById('admin-summary-start').value;
+          state.adminEndDate = document.getElementById('admin-summary-end').value;
+          render();
+        });
+      }
+
+      var exportSummaryBtn = document.getElementById('btn-export-admin-summary');
+      if (exportSummaryBtn) {
+        exportSummaryBtn.addEventListener('click', function() {
+          exportAdminSummaryExcel();
         });
       }
     }
@@ -636,5 +1282,16 @@
     },
     render: render
   });
+
+  window.TeacherAttendanceModule = {
+    state: state,
+    punch: punch,
+    calculateDistance: calculateDistance,
+    getGeofenceSettings: getGeofenceSettings,
+    processCorrection: processCorrection,
+    exportTeacherAttendanceExcel: exportTeacherAttendanceExcel,
+    exportAdminSummaryExcel: exportAdminSummaryExcel,
+    render: render
+  };
 
 })();
