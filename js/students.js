@@ -317,6 +317,7 @@
         html += '<td>' + s.parentPhone + '</td>';
         html += '<td><span class="badge ' + (s.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + s.status + '</span></td>';
         html += '<td><div class="table-actions">';
+        html += '<button class="btn-icon student-fee-btn" data-id="' + s.id + '" title="Financial Profile" style="color:var(--accent-primary);"><span class="material-icons-round">account_balance_wallet</span></button>';
         html += '<button class="btn-icon student-view-btn" data-id="' + s.id + '" title="View"><span class="material-icons-round">visibility</span></button>';
         var canEdit = isAdmin && SchoolApp.checkFeatureAccess('students');
         if (canEdit) {
@@ -425,6 +426,18 @@
     // View buttons
     document.querySelectorAll('.student-view-btn').forEach(function(btn) {
       btn.addEventListener('click', function() { viewStudent(this.getAttribute('data-id')); });
+    });
+
+    // Fee Profile buttons
+    document.querySelectorAll('.student-fee-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var sId = this.getAttribute('data-id');
+        if (typeof SchoolApp.openStudentFinancialProfile === 'function') {
+          SchoolApp.openStudentFinancialProfile(sId);
+        } else if (typeof window.openStudentProfile === 'function') {
+          window.openStudentProfile(sId);
+        }
+      });
     });
 
     // Edit/delete buttons (admin-only check occurs dynamically in template, bind if present)
@@ -739,7 +752,23 @@
     html += '<div class="detail-item"><span class="detail-item-label">Email</span><span class="detail-item-value">' + (student.parentEmail || '—') + '</span></div>';
     html += '</div></div>';
 
-    SchoolApp.showModal('Student Details', html, '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>');
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+    footerHTML += '<button class="btn btn-primary" id="view-student-fee-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">account_balance_wallet</span> Fee Profile</button>';
+    SchoolApp.showModal('Student Details', html, footerHTML);
+
+    var feeBtn = document.getElementById('view-student-fee-btn');
+    if (feeBtn) {
+      feeBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+        setTimeout(function() {
+          if (typeof SchoolApp.openStudentFinancialProfile === 'function') {
+            SchoolApp.openStudentFinancialProfile(id);
+          } else if (typeof window.openStudentProfile === 'function') {
+            window.openStudentProfile(id);
+          }
+        }, 150);
+      });
+    }
   }
 
   function deleteStudent(id) {

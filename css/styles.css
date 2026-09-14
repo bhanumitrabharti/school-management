@@ -6080,3 +6080,75 @@ body.light-theme #dryrun-sim-date {
   }
 }
 
+/* ==================== SECTION: PHASE 4 STUDENT FINANCIAL PROFILE ==================== */
+.financial-profile-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.financial-profile-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.financial-profile-container::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+
+.profile-switcher-wrapper {
+  position: relative;
+}
+
+.profile-switcher-dropdown {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.profile-switcher-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.light-theme .profile-switcher-dropdown {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme .profile-switcher-item:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.fee-head-chip {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fee-head-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 768px) {
+  .profile-header-strip {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+  .profile-switcher-wrapper {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .financial-profile-container .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .financial-profile-container .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .profile-contact-strip {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+

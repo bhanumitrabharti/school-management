@@ -1559,6 +1559,14 @@
         id: t.id,
         date: t.date,
         type: t.type,
+        subType: t.subType || null,
+        isVoided: !!t.isVoided,
+        isReversal: !!t.isReversal,
+        voidReason: t.voidReason || null,
+        voidedAt: t.voidedAt || null,
+        voidedBy: t.voidedBy || null,
+        originalTxnId: t.originalTxnId || null,
+        feeHeadId: t.feeHeadId || null,
         amount: amt,
         discount: disc,
         discountType: t.discountType || null,
@@ -1617,6 +1625,10 @@
     var html = '';
     html += '<div style="max-width:680px; margin:0 auto; padding:24px; border:2px solid ' + primaryColor + '; border-radius:10px; background:#ffffff; font-family:Inter, Arial, sans-serif; color:#1e293b; box-sizing:border-box;">';
     
+    if (txn.isVoided) {
+      html += '<div style="background:#fee2e2; border:2px solid #ef4444; color:#b91c1c; font-weight:800; text-align:center; padding:10px; margin-bottom:14px; border-radius:6px; font-size:15px; text-transform:uppercase; letter-spacing:1px;">⚠️ VOIDED / CANCELLED RECEIPT (Reason: ' + escapeHTML(txn.voidReason || 'Admin reversal') + ')</div>';
+    }
+
     // Header section
     html += '  <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:2px solid ' + primaryColor + '; padding-bottom:14px; margin-bottom:16px;">';
     html += '    <div style="display:flex; align-items:center; gap:14px;">';
@@ -1881,70 +1893,642 @@
     }
   }
 
-  function showLedgerModal(studentId) {
-    var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
-    if (!s) return;
+  /* ============================================================
+     PHASE 4: STUDENT FINANCIAL PROFILE & VOID/REVERSAL ENGINE
+     ============================================================ */
 
+  async function voidFeeTransaction(txnId, reason) {
+    if (!SchoolApp.isAdmin()) {
+      SchoolApp.showToast('Access Denied: Only administrators can void/reverse transactions.', 'error');
+      return false;
+    }
+
+    if (!reason || !reason.trim()) {
+      SchoolApp.showToast('Void reason is required.', 'error');
+      return false;
+    }
+
+    var fees = SchoolApp.store.fees || [];
+    var txn = fees.find(function(f) { return f.id === txnId; });
+    if (!txn) {
+      SchoolApp.showToast('Transaction not found.', 'error');
+      return false;
+    }
+
+    if (txn.isVoided) {
+      SchoolApp.showToast('This transaction has already been voided.', 'warning');
+      return false;
+    }
+
+    if (txn.isReversal) {
+      SchoolApp.showToast('Cannot void a reversal transaction directly.', 'warning');
+      return false;
+    }
+
+    var adminName = SchoolApp.currentUser ? (SchoolApp.currentUser.name || SchoolApp.currentUser.username || 'Admin') : 'Admin';
+    var nowIso = new Date().toISOString();
+    var nowDate = nowIso.split('T')[0];
+
+    // 1. Mark original transaction as voided
+    txn.isVoided = true;
+    txn.voidedAt = nowIso;
+    txn.voidedBy = adminName;
+    txn.voidReason = reason.trim();
+
+    // 2. Create reversal entry
+    var revId = SchoolApp.generateId ? SchoolApp.generateId() : ('rev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+    txn.reversalTxnId = revId;
+
+    var revAmt = -parseFloat(txn.amount || 0);
+    var revDisc = txn.discount ? -parseFloat(txn.discount || 0) : 0;
+    var origGross = parseFloat(txn.grossAmount || (parseFloat(txn.amount || 0) + parseFloat(txn.discount || 0)));
+    var revGross = -origGross;
+
+    var reversalTxn = {
+      id: revId,
+      studentId: txn.studentId,
+      schoolId: SchoolApp.store.currentSchoolId,
+      type: txn.type, // Keep 'due' or 'payment' so standard arithmetic nets out cleanly
+      subType: 'reversal',
+      isReversal: true,
+      originalTxnId: txn.id,
+      feeHeadId: txn.feeHeadId || null,
+      date: nowDate,
+      timestamp: nowIso,
+      amount: revAmt,
+      discount: revDisc,
+      discountType: txn.discountType || null,
+      discountValue: txn.discountValue ? -parseFloat(txn.discountValue) : 0,
+      grossAmount: revGross,
+      mode: txn.mode || 'Reversal',
+      description: 'Reversal: ' + (txn.description || (txn.type === 'due' ? 'Fee Due' : 'Payment')) + ' (Voided)',
+      remarks: 'Reason: ' + reason.trim(),
+      voidedBy: adminName
+    };
+
+    if (Array.isArray(txn.allocations) && txn.allocations.length > 0) {
+      reversalTxn.allocations = txn.allocations.map(function(a) {
+        return {
+          feeHeadId: a.feeHeadId,
+          feeHeadName: a.feeHeadName,
+          amount: -parseFloat(a.amount || 0)
+        };
+      });
+    }
+
+    SchoolApp.showLoader('Processing reversal...');
+    try {
+      var success = false;
+      if (typeof SchoolApp.saveFeeTransactions === 'function') {
+        success = await SchoolApp.saveFeeTransactions([txn, reversalTxn]);
+      } else if (typeof SchoolApp.saveFeeTransaction === 'function') {
+        var s1 = await SchoolApp.saveFeeTransaction(txn, true);
+        var s2 = await SchoolApp.saveFeeTransaction(reversalTxn, true);
+        success = s1 && s2;
+      } else {
+        if (!SchoolApp.store.fees.some(function(f) { return f.id === revId; })) {
+          SchoolApp.store.fees.push(reversalTxn);
+        }
+        success = await SchoolApp.save(true);
+      }
+
+      if (success) {
+        SchoolApp.showToast('Transaction voided and reversal recorded successfully.', 'success');
+        return true;
+      } else {
+        SchoolApp.showToast('Failed to persist reversal.', 'error');
+        return false;
+      }
+    } catch (err) {
+      console.error('[Void Transaction Error]', err);
+      SchoolApp.showToast('Error voiding transaction: ' + (err.message || 'Check network'), 'error');
+      return false;
+    } finally {
+      SchoolApp.hideLoader();
+    }
+  }
+
+  function showVoidTransactionModal(txnId, studentId) {
+    if (!SchoolApp.isAdmin()) {
+      SchoolApp.showToast('Access Denied: Only administrators can void transactions.', 'error');
+      return;
+    }
+
+    var fees = SchoolApp.store.fees || [];
+    var txn = fees.find(function(f) { return f.id === txnId; });
+    if (!txn) {
+      SchoolApp.showToast('Transaction not found.', 'error');
+      return;
+    }
+
+    var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
+    var sName = s ? SchoolApp.getStudentFullName(s) : 'Student';
+
+    var html = '<div class="void-txn-modal-content" style="padding: 6px 0;">';
+    html += '<div style="background: rgba(245, 158, 11, 0.12); border-left: 4px solid var(--warning); padding: 12px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; color: var(--text-primary); line-height: 1.5;">';
+    html += '<strong style="color: var(--warning);"><span class="material-icons-round" style="font-size: 16px; vertical-align: middle;">shield</span> Audit Trail Preservation:</strong><br>';
+    html += 'This transaction will <strong>never be deleted</strong>. A permanent, linked reversal entry will be recorded in the ledger with your reason, netting the balance to zero.';
+    html += '</div>';
+
+    html += '<div style="background: var(--bg-tertiary, rgba(255,255,255,0.04)); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 13px;">';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom: 6px;">';
+    html += '<span style="color:var(--text-secondary);">Student:</span><strong>' + escapeHTML(sName) + '</strong>';
+    html += '</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom: 6px;">';
+    html += '<span style="color:var(--text-secondary);">Transaction Date:</span><span>' + formatDateDDMMYYYY(txn.date) + '</span>';
+    html += '</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom: 6px;">';
+    html += '<span style="color:var(--text-secondary);">Type:</span><span class="badge ' + (txn.type === 'due' ? 'badge-danger' : 'badge-success') + '">' + (txn.type === 'due' ? 'Due Charge' : 'Payment') + '</span>';
+    html += '</div>';
+    html += '<div style="display:flex; justify-content:space-between; margin-bottom: 6px;">';
+    html += '<span style="color:var(--text-secondary);">Description:</span><span>' + escapeHTML(txn.description || '—') + '</span>';
+    html += '</div>';
+    html += '<div style="display:flex; justify-content:space-between; border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 6px; font-size: 14px;">';
+    html += '<span style="color:var(--text-secondary); font-weight: 600;">Amount:</span><strong style="color: ' + (txn.type === 'due' ? 'var(--danger)' : 'var(--success)') + ';">₹' + Math.abs(parseFloat(txn.amount || 0)).toLocaleString('en-IN') + '</strong>';
+    html += '</div>';
+    if (txn.discount > 0) {
+      html += '<div style="display:flex; justify-content:space-between; margin-top: 4px; font-size: 12px; color: var(--info);">';
+      html += '<span>Discount Applied:</span><span>₹' + parseFloat(txn.discount).toLocaleString('en-IN') + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="form-group">';
+    html += '<label style="display:block; font-weight:600; font-size:12px; margin-bottom:6px; color:var(--text-primary);">Reason for Void / Reversal <span style="color:var(--danger)">*</span>:</label>';
+    html += '<textarea id="void-txn-reason-input" class="form-input" style="width:100%; min-height:80px; resize:vertical;" placeholder="Required: Explain why this transaction is being reversed (e.g., Wrong student selected, Cheque bounced, Concession approved by Principal)..."></textarea>';
+    html += '<span id="void-txn-reason-err" style="color:var(--danger); font-size:11px; display:none; margin-top:4px;">Please provide a reason before confirming.</span>';
+    html += '</div>';
+    html += '</div>';
+
+    var footer = '<button class="btn btn-secondary" id="void-modal-cancel-btn">Back to Profile</button>';
+    footer += '<button class="btn btn-danger" id="void-modal-confirm-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">undo</span> Confirm Void & Reverse</button>';
+
+    SchoolApp.showModal('Void / Reverse Transaction', html, footer);
+
+    var cancelBtn = document.getElementById('void-modal-cancel-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+        setTimeout(function() { openStudentFinancialProfile(studentId); }, 150);
+      });
+    }
+
+    var confirmBtn = document.getElementById('void-modal-confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', async function() {
+        var reasonInput = document.getElementById('void-txn-reason-input');
+        var errEl = document.getElementById('void-txn-reason-err');
+        var reason = reasonInput ? reasonInput.value.trim() : '';
+        if (!reason) {
+          if (errEl) errEl.style.display = 'block';
+          if (reasonInput) reasonInput.focus();
+          return;
+        }
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Processing...';
+
+        var ok = await voidFeeTransaction(txnId, reason);
+        SchoolApp.closeModal();
+        if (ok) {
+          setTimeout(function() {
+            openStudentFinancialProfile(studentId);
+            render();
+          }, 200);
+        }
+      });
+    }
+  }
+
+  function generateStudentFeeStatementHTML(studentId) {
+    var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
+    if (!s) return '';
+
+    var settings = SchoolApp.store.settings || {};
+    var schoolInfo = settings.schoolInfo || SchoolApp.store.schoolInfo || {};
+    var schoolName = schoolInfo.name || settings.schoolName || settings.name || 'Paathshala Academy';
+    var schoolAddress = schoolInfo.address || settings.address || '';
+    var schoolPhone = schoolInfo.phone || settings.phone || schoolInfo.contact || '';
+    var schoolEmail = schoolInfo.email || settings.email || '';
+    var schoolAffiliation = schoolInfo.affiliation || schoolInfo.regNo || '';
+    var sName = SchoolApp.getStudentFullName(s);
+
+    var statement = generateFeeStatement(studentId);
     var ledger = getStudentLedger(studentId);
+    var headMap = getStudentPendingDuesByHead(studentId);
+
+    var now = new Date();
+    var printDateStr = formatDateDDMMYYYY(now.toISOString().split('T')[0]) + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
+    html += '<title>' + escapeHTML(sName) + ' - Fee Statement</title>';
+    html += '<style>';
+    html += 'body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1e293b; margin: 0; padding: 24px; font-size: 13px; line-height: 1.5; background: #fff; }';
+    html += '.statement-wrapper { max-width: 800px; margin: 0 auto; border: 1px solid #cbd5e1; padding: 32px; border-radius: 8px; }';
+    html += '.school-header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 20px; }';
+    html += '.school-title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.5px; }';
+    html += '.school-meta { font-size: 12px; color: #64748b; margin: 2px 0; }';
+    html += '.doc-title { text-align: center; font-size: 15px; font-weight: 700; background: #f1f5f9; padding: 8px; border-radius: 4px; margin: 16px 0; letter-spacing: 1px; color: #1e293b; border: 1px solid #e2e8f0; }';
+    html += '.student-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; font-size: 12px; }';
+    html += '.student-grid div { display: flex; justify-content: space-between; padding: 2px 0; }';
+    html += '.student-grid span.label { color: #64748b; font-weight: 500; }';
+    html += '.student-grid span.val { color: #0f172a; font-weight: 600; }';
+    html += '.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }';
+    html += '.kpi-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; background: #fff; }';
+    html += '.kpi-num { font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 4px; }';
+    html += '.kpi-lbl { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 600; }';
+    html += '.kpi-due { color: #dc2626; }';
+    html += '.kpi-paid { color: #16a34a; }';
+    html += 'table.data-tbl { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }';
+    html += 'table.data-tbl th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-weight: 600; color: #334155; }';
+    html += 'table.data-tbl td { border: 1px solid #e2e8f0; padding: 8px 10px; color: #1e293b; vertical-align: top; }';
+    html += 'table.data-tbl tr.voided { text-decoration: line-through; color: #94a3b8; background: #f8fafc; }';
+    html += 'table.data-tbl tr.reversal { background: #fffbeb; color: #b45309; }';
+    html += '.sec-heading { font-size: 13px; font-weight: 700; color: #0f172a; margin: 16px 0 8px 0; display: flex; align-items: center; justify-content: space-between; }';
+    html += '.statement-footer { margin-top: 36px; padding-top: 20px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #64748b; }';
+    html += '.sign-block { text-align: center; width: 180px; }';
+    html += '.sign-line { border-top: 1px solid #334155; margin-top: 40px; padding-top: 4px; font-weight: 600; color: #1e293b; }';
+    html += '@media print { body { padding: 0; } .statement-wrapper { border: none; padding: 0; width: 100%; max-width: 100%; } }';
+    html += '</style></head><body>';
+
+    html += '<div class="statement-wrapper">';
+    html += '<div class="school-header">';
+    html += '<div class="school-title">' + escapeHTML(schoolName) + '</div>';
+    if (schoolAddress) html += '<div class="school-meta">' + escapeHTML(schoolAddress) + '</div>';
+    var contactLine = [];
+    if (schoolPhone) contactLine.push('Phone: ' + escapeHTML(schoolPhone));
+    if (schoolEmail) contactLine.push('Email: ' + escapeHTML(schoolEmail));
+    if (schoolAffiliation) contactLine.push('Affiliation: ' + escapeHTML(schoolAffiliation));
+    if (contactLine.length) html += '<div class="school-meta">' + contactLine.join(' | ') + '</div>';
+    html += '</div>';
+
+    html += '<div class="doc-title">STUDENT FEE STATEMENT / STATEMENT OF ACCOUNT</div>';
+
+    // Student Grid
+    html += '<div class="student-grid">';
+    html += '<div><span class="label">Student Name:</span><span class="val">' + escapeHTML(sName) + '</span></div>';
+    html += '<div><span class="label">Roll Number:</span><span class="val">' + escapeHTML(s.rollNumber || s.rollNo || '—') + '</span></div>';
+    html += '<div><span class="label">Class & Section:</span><span class="val">Class ' + escapeHTML(s.class) + ' - ' + escapeHTML(s.section) + '</span></div>';
+    html += '<div><span class="label">Admission Date:</span><span class="val">' + formatDateDDMMYYYY(s.admissionDate) + '</span></div>';
+    html += '<div><span class="label">Parent/Guardian:</span><span class="val">' + escapeHTML(s.parentName || '—') + '</span></div>';
+    html += '<div><span class="label">Parent Mobile:</span><span class="val">' + escapeHTML(s.parentPhone || '—') + '</span></div>';
+    html += '<div><span class="label">Status:</span><span class="val">' + escapeHTML(s.status || 'Active') + '</span></div>';
+    html += '<div><span class="label">Statement Date:</span><span class="val">' + printDateStr + '</span></div>';
+    html += '</div>';
+
+    // KPI Cards
+    html += '<div class="kpi-grid">';
+    html += '<div class="kpi-card"><div class="kpi-lbl">Total Charges</div><div class="kpi-num">₹' + statement.totalCharged.toLocaleString('en-IN') + '</div></div>';
+    html += '<div class="kpi-card"><div class="kpi-lbl">Total Paid</div><div class="kpi-num kpi-paid">₹' + statement.totalPaid.toLocaleString('en-IN') + '</div></div>';
+    html += '<div class="kpi-card"><div class="kpi-lbl">Discounts/Waivers</div><div class="kpi-num">₹' + (statement.totalDiscount || 0).toLocaleString('en-IN') + '</div></div>';
+    html += '<div class="kpi-card"><div class="kpi-lbl">Net Outstanding</div><div class="kpi-num ' + (statement.netDue > 0 ? 'kpi-due' : 'kpi-paid') + '">₹' + statement.netDue.toLocaleString('en-IN') + '</div></div>';
+    html += '</div>';
+
+    // Fee Head Breakdown Table
+    var headKeys = Object.keys(headMap);
+    if (headKeys.length > 0) {
+      html += '<div class="sec-heading"><span>Fee Head Pending Analysis</span></div>';
+      html += '<table class="data-tbl"><thead><tr><th>Fee Category</th><th style="text-align:right">Total Charged</th><th style="text-align:right">Total Settled</th><th style="text-align:right">Pending Balance</th></tr></thead><tbody>';
+      headKeys.forEach(function(k) {
+        var h = headMap[k];
+        if (h.totalCharged > 0 || h.totalAllocated > 0 || h.pending > 0) {
+          html += '<tr>';
+          html += '<td><strong>' + escapeHTML(h.name) + '</strong></td>';
+          html += '<td style="text-align:right">₹' + h.totalCharged.toLocaleString('en-IN') + '</td>';
+          html += '<td style="text-align:right">₹' + h.totalAllocated.toLocaleString('en-IN') + '</td>';
+          html += '<td style="text-align:right"><strong style="color:' + (h.pending > 0 ? '#dc2626' : '#16a34a') + '">₹' + h.pending.toLocaleString('en-IN') + '</strong></td>';
+          html += '</tr>';
+        }
+      });
+      html += '</tbody></table>';
+    }
+
+    // Ledger Timeline Table
+    html += '<div class="sec-heading"><span>Complete Transaction Ledger (Audit History)</span></div>';
+    if (ledger.transactions.length > 0) {
+      html += '<table class="data-tbl"><thead><tr><th>Date</th><th>Description</th><th>Type</th><th style="text-align:right">Amount</th><th style="text-align:right">Running Balance</th></tr></thead><tbody>';
+      ledger.transactions.forEach(function(t) {
+        var rowClass = t.isVoided ? 'voided' : (t.isReversal ? 'reversal' : '');
+        html += '<tr class="' + rowClass + '">';
+        html += '<td style="white-space:nowrap">' + formatDateDDMMYYYY(t.date) + '</td>';
+        html += '<td>';
+        if (t.isVoided) {
+          html += '<span>' + escapeHTML(t.description) + '</span> <em>[VOIDED: ' + escapeHTML(t.voidReason || '') + ']</em>';
+        } else if (t.isReversal) {
+          html += '<span>' + escapeHTML(t.description) + '</span> <em>[' + escapeHTML(t.remarks || '') + ']</em>';
+        } else {
+          html += '<strong>' + escapeHTML(t.description) + '</strong>';
+          if (t.discount > 0) {
+            html += ' <span style="font-size:11px; color:#2563eb;">(₹' + t.discount.toLocaleString('en-IN') + ' discount)</span>';
+          }
+          if (t.remarks) {
+            html += '<br><small style="color:#64748b">' + escapeHTML(t.remarks) + '</small>';
+          }
+        }
+        html += '</td>';
+        html += '<td>' + (t.type === 'due' ? 'Due' : 'Payment') + '</td>';
+        html += '<td style="text-align:right; font-weight:600;">' + (t.amount < 0 ? '-₹' + Math.abs(t.amount).toLocaleString('en-IN') : '₹' + t.amount.toLocaleString('en-IN')) + '</td>';
+        html += '<td style="text-align:right; font-weight:700;">₹' + t.balance.toLocaleString('en-IN') + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    } else {
+      html += '<div style="text-align:center; padding:20px; color:#64748b; border:1px solid #e2e8f0; border-radius:6px; margin-bottom:20px;">No transactions recorded.</div>';
+    }
+
+    // Statement Footer with Signature
+    html += '<div class="statement-footer">';
+    html += '<div>Generated via Paathshala ERP<br>Confidential & Proprietary</div>';
+    html += '<div class="sign-block"><div class="sign-line">Authorized Signatory / Cashier</div></div>';
+    html += '</div>';
+
+    html += '</div></body></html>';
+    return html;
+  }
+
+  function printStudentFeeStatement(studentId) {
+    var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
+    var sName = s ? SchoolApp.getStudentFullName(s) : 'Student';
+    var sClass = s ? s.class : '';
+    var htmlContent = generateStudentFeeStatementHTML(studentId);
+
+    if (typeof window.printViaBlob === 'function') {
+      window.printViaBlob(htmlContent, sName + '_Fee_Statement', sClass);
+    } else {
+      var printWin = window.open('', '_blank');
+      if (printWin) {
+        printWin.document.write(htmlContent);
+        printWin.document.close();
+        printWin.focus();
+        printWin.print();
+      }
+    }
+  }
+
+  function openStudentFinancialProfile(studentId) {
+    var student = (SchoolApp.store.students || []).find(function(s) { return s.id === studentId; });
+    if (!student) {
+      SchoolApp.showToast('Student record not found.', 'error');
+      return;
+    }
+
+    var sFullName = SchoolApp.getStudentFullName(student);
+    var initials = SchoolApp.getInitials(sFullName);
+    var color = SchoolApp.getAvatarColor(sFullName);
     var isAdmin = SchoolApp.isAdmin();
 
-    var bodyHTML = '<div class="student-ledger-view">';
+    var statement = generateFeeStatement(studentId);
+    var ledger = getStudentLedger(studentId);
+    var headMap = getStudentPendingDuesByHead(studentId);
 
-    // Summary mini cards
-    bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(3, 1fr); gap: 12px">';
-    bodyHTML += '<div class="stat-card purple" style="padding:14px"><div class="stat-info"><div class="stat-number" style="font-size:18px">₹' + ledger.totalDues.toLocaleString('en-IN') + '</div><div class="stat-label" style="font-size:11px">Total Dues</div></div></div>';
-    bodyHTML += '<div class="stat-card green" style="padding:14px"><div class="stat-info"><div class="stat-number" style="font-size:18px">₹' + ledger.totalPaid.toLocaleString('en-IN') + '</div><div class="stat-label" style="font-size:11px">Total Paid</div></div></div>';
-    
-    var balColor = ledger.outstanding > 0 ? 'amber' : 'cyan';
-    bodyHTML += '<div class="stat-card ' + balColor + '" style="padding:14px"><div class="stat-info"><div class="stat-number" style="font-size:18px">₹' + ledger.outstanding.toLocaleString('en-IN') + '</div><div class="stat-label" style="font-size:11px">Outstanding</div></div></div>';
+    var bodyHTML = '<div class="financial-profile-container" style="display:flex; flex-direction:column; gap:14px; max-height:calc(85vh - 140px); overflow-y:auto; padding:4px 6px;">';
+
+    // 1. Header Strip with Identity & Quick Switcher
+    bodyHTML += '<div class="profile-header-strip" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; border-bottom:1px solid var(--border-color); padding-bottom:14px;">';
+    bodyHTML += '  <div style="display:flex; align-items:center; gap:14px;">';
+    if (student.photoUrl) {
+      bodyHTML += '    <img src="' + escapeHTML(student.photoUrl) + '" alt="' + escapeHTML(sFullName) + '" style="width:52px; height:52px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-primary);">';
+    } else {
+      bodyHTML += '    <div class="avatar avatar-md" data-color="' + color + '" style="width:52px; height:52px; font-size:18px; font-weight:700;">' + escapeHTML(initials.toUpperCase()) + '</div>';
+    }
+    bodyHTML += '    <div>';
+    bodyHTML += '      <h3 style="margin:0 0 4px 0; font-size:18px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">';
+    bodyHTML += '        ' + escapeHTML(sFullName);
+    bodyHTML += '        <span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '" style="font-size:10px; padding:2px 8px;">' + (student.status || 'Active') + '</span>';
+    bodyHTML += '      </h3>';
+    bodyHTML += '      <div style="font-size:12px; color:var(--text-secondary); display:flex; gap:8px; align-items:center;">';
+    bodyHTML += '        <span class="badge badge-info" style="font-size:11px;">Class ' + escapeHTML(student.class) + '-' + escapeHTML(student.section) + '</span>';
+    bodyHTML += '        <span>Roll No: <strong>' + escapeHTML(student.rollNumber || student.rollNo || '—') + '</strong></span>';
+    bodyHTML += '      </div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    // Quick Switcher Search Bar
+    bodyHTML += '  <div class="profile-switcher-wrapper" style="position:relative; min-width:240px; max-width:300px; width:100%;">';
+    bodyHTML += '    <div style="position:relative; display:flex; align-items:center;">';
+    bodyHTML += '      <span class="material-icons-round" style="position:absolute; left:10px; font-size:16px; color:var(--text-muted); pointer-events:none;">search</span>';
+    bodyHTML += '      <input type="text" id="profile-student-switcher" class="form-input" style="padding-left:32px; font-size:12px; height:34px; width:100%; border-radius:18px;" placeholder="Switch student (name/roll)..." autocomplete="off">';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div id="profile-switcher-dropdown" class="profile-switcher-dropdown hidden" style="position:absolute; right:0; top:calc(100% + 4px); width:100%; max-height:200px; overflow-y:auto; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 8px 25px rgba(0,0,0,0.5); z-index:1100;"></div>';
+    bodyHTML += '  </div>';
     bodyHTML += '</div>';
 
-    // Ledger transactions table
+    // 2. Student & Parent Contact Info Strip
+    bodyHTML += '<div class="profile-contact-strip" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; background:var(--bg-tertiary, rgba(255,255,255,0.03)); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px; font-size:12px;">';
+    bodyHTML += '  <div><span style="color:var(--text-secondary);">DOB:</span> <strong>' + (formatDateDDMMYYYY(student.dateOfBirth) || '—') + '</strong></div>';
+    bodyHTML += '  <div><span style="color:var(--text-secondary);">Admission Date:</span> <strong>' + (formatDateDDMMYYYY(student.admissionDate) || '—') + '</strong></div>';
+    bodyHTML += '  <div><span style="color:var(--text-secondary);">Guardian:</span> <strong>' + escapeHTML(student.parentName || '—') + '</strong></div>';
+    bodyHTML += '  <div style="display:flex; align-items:center; gap:6px;">';
+    bodyHTML += '    <span style="color:var(--text-secondary);">Phone:</span>';
+    bodyHTML += '    <strong>' + escapeHTML(student.parentPhone || '—') + '</strong>';
+    if (student.parentPhone) {
+      var rawPhone = String(student.parentPhone).replace(/[^0-9]/g, '');
+      bodyHTML += '    <a href="https://wa.me/' + (rawPhone.length === 10 ? '91' + rawPhone : rawPhone) + '" target="_blank" title="Chat on WhatsApp" style="color:#25D366; display:inline-flex; align-items:center; margin-left:2px;"><span class="material-icons-round" style="font-size:16px;">chat</span></a>';
+    }
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
+    // 3. Executive KPI Cards (4 Cards)
+    bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(4, 1fr); gap: 10px;">';
+    bodyHTML += '  <div class="stat-card purple" style="padding:12px 14px;">';
+    bodyHTML += '    <div class="stat-info">';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + statement.totalCharged.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Billed</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div class="stat-card green" style="padding:12px 14px;">';
+    bodyHTML += '    <div class="stat-info">';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + statement.totalPaid.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Collected</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div class="stat-card cyan" style="padding:12px 14px;">';
+    bodyHTML += '    <div class="stat-info">';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + (statement.totalDiscount || 0).toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Discounts / Waivers</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    var balColor = statement.netDue > 0 ? 'amber' : 'green';
+    var balTag = statement.netDue > 0 ? (statement.monthsOverdue > 0 ? statement.monthsOverdue + ' Mo Overdue' : 'Net Outstanding') : 'Cleared ✓';
+    bodyHTML += '  <div class="stat-card ' + balColor + '" style="padding:12px 14px;">';
+    bodyHTML += '    <div class="stat-info">';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + statement.netDue.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">' + balTag + '</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
+    // 4. Fee Head Breakdown Chips
+    var activeHeads = Object.keys(headMap);
+    if (activeHeads.length > 0) {
+      bodyHTML += '<div style="margin-bottom: 8px;">';
+      bodyHTML += '  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.5px;">Pending Dues by Fee Category</div>';
+      bodyHTML += '  <div class="fee-head-chips-container" style="display:flex; flex-wrap:wrap; gap:8px;">';
+      activeHeads.forEach(function(k) {
+        var h = headMap[k];
+        if (h.totalCharged > 0 || h.totalAllocated > 0 || h.pending > 0) {
+          var isCleared = h.pending <= 0;
+          bodyHTML += '<div class="fee-head-chip" style="background:var(--bg-secondary); border:1px solid ' + (isCleared ? 'var(--border-color)' : 'rgba(239, 68, 68, 0.3)') + '; border-radius:6px; padding:6px 10px; font-size:12px; display:inline-flex; align-items:center; gap:8px;">';
+          bodyHTML += '  <span style="font-weight:600; color:var(--text-primary);">' + escapeHTML(h.name) + ':</span>';
+          bodyHTML += '  <span style="color:var(--text-secondary); font-size:11px;">Billed: ₹' + h.totalCharged.toLocaleString('en-IN') + ' · Paid: ₹' + h.totalAllocated.toLocaleString('en-IN') + '</span>';
+          if (isCleared) {
+            bodyHTML += '  <span class="badge badge-success" style="font-size:10px; padding:2px 6px;">Cleared ✓</span>';
+          } else {
+            bodyHTML += '  <span class="badge badge-danger" style="font-size:10px; padding:2px 6px;">Pending: ₹' + h.pending.toLocaleString('en-IN') + '</span>';
+          }
+          bodyHTML += '</div>';
+        }
+      });
+      bodyHTML += '  </div>';
+      bodyHTML += '</div>';
+    }
+
+    // 5. Complete Transaction Ledger (Audit History)
+    bodyHTML += '<div>';
+    bodyHTML += '  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.5px;">Transaction Timeline & Audit Trail</div>';
     if (ledger.transactions.length > 0) {
-      bodyHTML += '<div class="table-container" style="max-height: 300px; overflow-y: auto;"><table class="data-table"><thead><tr>';
-      bodyHTML += '<th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th>Running Balance</th><th>Action</th>';
+      bodyHTML += '<div class="table-container" style="max-height: 280px; overflow-y: auto;"><table class="data-table"><thead><tr>';
+      bodyHTML += '<th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th>Running Balance</th><th>Actions</th>';
       bodyHTML += '</tr></thead><tbody>';
 
       ledger.transactions.forEach(function(t) {
-        bodyHTML += '<tr>';
-        bodyHTML += '<td style="font-size:12px">' + t.date + '</td>';
-        bodyHTML += '<td><strong>' + t.description + '</strong>' + (t.remarks ? '<br><span style="font-size:11px;color:var(--text-muted)">' + t.remarks + '</span>' : '') + '</td>';
-        
-        var typeBadge = t.type === 'due' ? 'badge-danger' : 'badge-success';
-        bodyHTML += '<td><span class="badge ' + typeBadge + '">' + (t.type === 'due' ? 'Due' : 'Paid') + '</span></td>';
-        
-        bodyHTML += '<td>₹' + t.amount.toLocaleString('en-IN') + '</td>';
-        bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
-        
-        bodyHTML += '<td><div class="table-actions" style="display:flex; gap:4px; align-items:center;">';
-        if (t.type === 'payment') {
-          bodyHTML += '<button class="btn-icon fees-print-receipt-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" title="Print Fee Receipt PDF" style="color:var(--accent-secondary); min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">description</span></button>';
-          bodyHTML += '<button class="btn-icon fees-whatsapp-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" data-amount="' + t.amount + '" data-mode="' + (t.mode || 'Cash') + '" title="Send WhatsApp Receipt" style="color:#25D366; min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:18px">send</span></button>';
+        if (t.isVoided) {
+          bodyHTML += '<tr style="opacity: 0.65; background: rgba(239, 68, 68, 0.04);">';
+          bodyHTML += '<td style="font-size:12px; white-space:nowrap;">' + formatDateDDMMYYYY(t.date) + '</td>';
+          bodyHTML += '<td><span style="text-decoration:line-through;">' + escapeHTML(t.description) + '</span> <span class="badge badge-secondary" style="font-size:10px; margin-left:4px;">Voided</span><br><small style="color:var(--danger); font-size:11px;">Void reason: ' + escapeHTML(t.voidReason || 'Reversed by admin') + '</small></td>';
+          bodyHTML += '<td><span class="badge badge-secondary">Voided</span></td>';
+          bodyHTML += '<td style="text-decoration:line-through;">₹' + Math.abs(t.amount).toLocaleString('en-IN') + '</td>';
+          bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
+          bodyHTML += '<td><span style="color:var(--text-muted); font-size:11px;">Voided</span></td>';
+          bodyHTML += '</tr>';
+        } else if (t.isReversal) {
+          bodyHTML += '<tr style="background: rgba(245, 158, 11, 0.05); color: var(--warning);">';
+          bodyHTML += '<td style="font-size:12px; white-space:nowrap;">' + formatDateDDMMYYYY(t.date) + '</td>';
+          bodyHTML += '<td><strong>' + escapeHTML(t.description) + '</strong> <span class="badge badge-warning" style="font-size:10px; margin-left:4px;">Reversal</span><br><small style="color:var(--text-muted); font-size:11px;">' + escapeHTML(t.remarks || '') + '</small></td>';
+          bodyHTML += '<td><span class="badge badge-warning">Reversal</span></td>';
+          bodyHTML += '<td style="color:var(--warning); font-weight:600;">-₹' + Math.abs(t.amount).toLocaleString('en-IN') + '</td>';
+          bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
+          bodyHTML += '<td><span style="color:var(--text-muted); font-size:11px;">Reversal #' + (t.originalTxnId ? t.originalTxnId.slice(-6) : '') + '</span></td>';
+          bodyHTML += '</tr>';
+        } else {
+          bodyHTML += '<tr>';
+          bodyHTML += '<td style="font-size:12px; white-space:nowrap;">' + formatDateDDMMYYYY(t.date) + '</td>';
+          bodyHTML += '<td><strong>' + escapeHTML(t.description) + '</strong>';
+          if (t.discount > 0) {
+            bodyHTML += '<br><span style="font-size:11px; color:var(--info);">₹' + t.discount.toLocaleString('en-IN') + ' discount applied (' + (t.discountType === 'percentage' ? (t.discountValue || '') + '%' : 'Flat') + ')</span>';
+          }
+          if (t.remarks) {
+            bodyHTML += '<br><small style="color:var(--text-muted); font-size:11px;">' + escapeHTML(t.remarks) + '</small>';
+          }
+          bodyHTML += '</td>';
+
+          var typeBadge = t.type === 'due' ? 'badge-danger' : 'badge-success';
+          bodyHTML += '<td><span class="badge ' + typeBadge + '">' + (t.type === 'due' ? 'Due' : 'Paid') + '</span></td>';
+          bodyHTML += '<td>₹' + t.amount.toLocaleString('en-IN') + '</td>';
+          bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
+
+          bodyHTML += '<td><div class="table-actions" style="display:flex; gap:4px; align-items:center;">';
+          if (t.type === 'payment') {
+            bodyHTML += '<button class="btn-icon profile-print-receipt-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" title="Print Fee Receipt PDF" style="color:var(--accent-secondary); min-width:30px; min-height:30px;"><span class="material-icons-round" style="font-size:18px">description</span></button>';
+            bodyHTML += '<button class="btn-icon profile-whatsapp-receipt-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" data-amount="' + t.amount + '" data-mode="' + (t.mode || 'Cash') + '" title="Send WhatsApp Receipt" style="color:#25D366; min-width:30px; min-height:30px;"><span class="material-icons-round" style="font-size:18px">send</span></button>';
+          }
+          if (isAdmin) {
+            bodyHTML += '<button class="btn-icon profile-void-txn-btn" data-id="' + t.id + '" data-student-id="' + studentId + '" title="Void / Reverse Transaction" style="color:var(--danger); min-width:30px; min-height:30px;"><span class="material-icons-round" style="font-size:17px">undo</span></button>';
+          }
+          bodyHTML += '</div></td>';
+          bodyHTML += '</tr>';
         }
-        if (isAdmin) {
-          bodyHTML += '<button class="btn-icon delete-ledger-txn-btn" data-id="' + t.id + '" data-student-id="' + studentId + '" style="color:var(--danger); min-width:32px; min-height:32px;"><span class="material-icons-round" style="font-size:16px">delete</span></button>';
-        }
-        bodyHTML += '</div></td>';
-        bodyHTML += '</tr>';
       });
 
       bodyHTML += '</tbody></table></div>';
     } else {
-      bodyHTML += '<div class="empty-state" style="padding:24px"><span class="material-icons-round">receipt_long</span><h3>Ledger Empty</h3><p>No fee transactions recorded for this student.</p></div>';
+      bodyHTML += '<div class="empty-state" style="padding:20px; border:1px solid var(--border-color); border-radius:6px;"><span class="material-icons-round" style="font-size:32px;">receipt_long</span><p style="margin:4px 0 0 0;">No fee transactions recorded for this student.</p></div>';
     }
+    bodyHTML += '</div>';
 
     bodyHTML += '</div>';
 
-    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
-    if (ledger.outstanding > 0) {
-      footerHTML += '<button class="btn btn-secondary" id="ledger-modal-reminder-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">campaign</span> Send Fee Reminder</button>';
-      footerHTML += '<button class="btn btn-primary" id="ledger-modal-collect-btn"><span class="material-icons-round">payments</span> Record Payment</button>';
+    // Footer Action Bar
+    var footerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; width:100%; flex-wrap:wrap; gap:8px;">';
+    footerHTML += '  <div style="display:flex; gap:8px; align-items:center;">';
+    footerHTML += '    <button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+    footerHTML += '    <button class="btn btn-secondary" id="profile-print-stmt-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">print</span> Print Statement</button>';
+    footerHTML += '  </div>';
+    footerHTML += '  <div style="display:flex; gap:8px; align-items:center;">';
+    if (statement.netDue > 0) {
+      footerHTML += '    <button class="btn btn-secondary" id="profile-reminder-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">campaign</span> Send Reminder</button>';
+    }
+    if (isAdmin) {
+      footerHTML += '    <button class="btn btn-secondary" id="profile-add-charge-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">add_card</span> Add Due / Fine</button>';
+    }
+    footerHTML += '    <button class="btn btn-primary" id="profile-collect-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">payments</span> Record Payment</button>';
+    footerHTML += '  </div>';
+    footerHTML += '</div>';
+
+    SchoolApp.showModal(sFullName + ' - Student Financial Profile', bodyHTML, footerHTML);
+
+    var container = document.getElementById('modal-container');
+    if (container) {
+      container.style.maxWidth = '920px';
     }
 
-    SchoolApp.showModal(SchoolApp.getStudentFullName(s) + ' - Fee Ledger (Bahi Khata)', bodyHTML, footerHTML);
+    // Bind Quick Switcher Search
+    var switcherInput = document.getElementById('profile-student-switcher');
+    var switcherDropdown = document.getElementById('profile-switcher-dropdown');
+    if (switcherInput && switcherDropdown) {
+      switcherInput.addEventListener('input', function() {
+        var q = this.value.trim().toLowerCase();
+        if (q.length < 1) {
+          switcherDropdown.classList.add('hidden');
+          switcherDropdown.innerHTML = '';
+          return;
+        }
 
-    // Event listener for ledger modals
-    var colBtn = document.getElementById('ledger-modal-collect-btn');
+        var allStudents = SchoolApp.store.students || [];
+        var matches = allStudents.filter(function(st) {
+          var name = (st.firstName + ' ' + (st.lastName || '')).toLowerCase();
+          var roll = String(st.rollNumber || st.rollNo || '').toLowerCase();
+          var cls = String(st.class || '').toLowerCase();
+          return name.indexOf(q) !== -1 || roll.indexOf(q) !== -1 || cls.indexOf(q) !== -1;
+        }).slice(0, 8);
+
+        if (matches.length === 0) {
+          switcherDropdown.innerHTML = '<div style="padding:10px 12px; color:var(--text-muted); font-size:12px;">No matching students found.</div>';
+          switcherDropdown.classList.remove('hidden');
+          return;
+        }
+
+        var dropHtml = '';
+        matches.forEach(function(m) {
+          var mName = SchoolApp.getStudentFullName(m);
+          dropHtml += '<div class="profile-switcher-item" data-id="' + m.id + '" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12px; transition:background 0.15s;">';
+          dropHtml += '  <div><strong>' + escapeHTML(mName) + '</strong> <span style="color:var(--text-secondary); font-size:11px;">(' + escapeHTML(m.class) + '-' + escapeHTML(m.section) + ')</span></div>';
+          dropHtml += '  <span style="color:var(--text-muted); font-size:11px;">Roll: ' + escapeHTML(m.rollNumber || '—') + '</span>';
+          dropHtml += '</div>';
+        });
+
+        switcherDropdown.innerHTML = dropHtml;
+        switcherDropdown.classList.remove('hidden');
+
+        switcherDropdown.querySelectorAll('.profile-switcher-item').forEach(function(item) {
+          item.addEventListener('click', function() {
+            var newId = this.getAttribute('data-id');
+            switcherDropdown.classList.add('hidden');
+            openStudentFinancialProfile(newId);
+          });
+        });
+      });
+
+      // Close dropdown on outside click
+      document.addEventListener('click', function(e) {
+        if (!switcherInput.contains(e.target) && !switcherDropdown.contains(e.target)) {
+          switcherDropdown.classList.add('hidden');
+        }
+      }, { once: true });
+    }
+
+    // Bind Primary Action Buttons
+    var colBtn = document.getElementById('profile-collect-btn');
     if (colBtn) {
       colBtn.addEventListener('click', function() {
         SchoolApp.closeModal();
@@ -1952,7 +2536,7 @@
       });
     }
 
-    var remBtn = document.getElementById('ledger-modal-reminder-btn');
+    var remBtn = document.getElementById('profile-reminder-btn');
     if (remBtn) {
       remBtn.addEventListener('click', function() {
         SchoolApp.closeModal();
@@ -1960,8 +2544,23 @@
       });
     }
 
-    // Ledger receipt print & whatsapp click handlers inside modal
-    document.querySelectorAll('.fees-print-receipt-btn').forEach(function(btn) {
+    var addChargeBtn = document.getElementById('profile-add-charge-btn');
+    if (addChargeBtn) {
+      addChargeBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+        setTimeout(function() { showSingleChargeModal(studentId); }, 200);
+      });
+    }
+
+    var printStmtBtn = document.getElementById('profile-print-stmt-btn');
+    if (printStmtBtn) {
+      printStmtBtn.addEventListener('click', function() {
+        printStudentFeeStatement(studentId);
+      });
+    }
+
+    // Bind Ledger Row Actions
+    document.querySelectorAll('.profile-print-receipt-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var sId = this.getAttribute('data-student-id');
         var txnId = this.getAttribute('data-txn-id');
@@ -1969,7 +2568,7 @@
       });
     });
 
-    document.querySelectorAll('.fees-whatsapp-btn').forEach(function(btn) {
+    document.querySelectorAll('.profile-whatsapp-receipt-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var sId = this.getAttribute('data-student-id');
         var amount = parseFloat(this.getAttribute('data-amount') || 0);
@@ -1979,30 +2578,18 @@
       });
     });
 
-    // Ledger deletion click handlers
-    document.querySelectorAll('.delete-ledger-txn-btn').forEach(function(btn) {
+    document.querySelectorAll('.profile-void-txn-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var txnId = this.getAttribute('data-id');
         var sId = this.getAttribute('data-student-id');
-        
-        SchoolApp.showConfirm('Delete this transaction from the ledger? This will permanently recalculate outstanding balance.', async function() {
-          var txn = (SchoolApp.store.fees || []).find(function(f) { return f.id === txnId; });
-          if (txn) {
-            if (typeof SchoolApp.deleteFeeTransaction === 'function') {
-              await SchoolApp.deleteFeeTransaction(txnId, txn.date);
-            } else {
-              var idx = (SchoolApp.store.fees || []).findIndex(function(f) { return f.id === txnId; });
-              if (idx !== -1) SchoolApp.store.fees.splice(idx, 1);
-              SchoolApp.save();
-            }
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Transaction removed successfully!', 'success');
-            setTimeout(function() { showLedgerModal(sId); }, 200);
-            render();
-          }
-        });
+        showVoidTransactionModal(txnId, sId);
       });
     });
+  }
+
+  function showLedgerModal(studentId) {
+    // Consolidated in Phase 4: Forward legacy ledger button directly to Student Financial Profile
+    openStudentFinancialProfile(studentId);
   }
 
   function getStudentPendingDuesByHead(studentId) {
@@ -2022,6 +2609,9 @@
     var payments = [];
 
     allTxns.forEach(function(t) {
+      if (t.isVoided || t.isReversal) {
+        return;
+      }
       if (t.type === 'due') {
         var hid = t.feeHeadId || 'custom';
         var fh = feeHeadsList.find(function(h) { return h.id === hid; });
@@ -3132,6 +3722,8 @@
 
   // Expose Core Calculation Engine & Reminder Helpers
   window.generateFeeStatement = generateFeeStatement;
+  window.generateStudentFeeStatementHTML = generateStudentFeeStatementHTML;
+  window.printStudentFeeStatement = printStudentFeeStatement;
   window.buildFeeReminderMessage = buildFeeReminderMessage;
   window.buildFeeReminderSMS = buildFeeReminderSMS;
   window.calculateMonthsOverdue = calculateMonthsOverdue;
@@ -3143,8 +3735,13 @@
   window.generateFeeReceiptHTML = generateFeeReceiptHTML;
   window.sendWhatsAppReceipt = sendWhatsAppReceipt;
   window.getStudentPendingDuesByHead = getStudentPendingDuesByHead;
+  window.getStudentLedger = getStudentLedger;
+  window.openStudentFinancialProfile = openStudentFinancialProfile;
+  window.voidFeeTransaction = voidFeeTransaction;
 
   SchoolApp.generateFeeStatement = generateFeeStatement;
+  SchoolApp.generateStudentFeeStatementHTML = generateStudentFeeStatementHTML;
+  SchoolApp.printStudentFeeStatement = printStudentFeeStatement;
   SchoolApp.buildFeeReminderMessage = buildFeeReminderMessage;
   SchoolApp.buildFeeReminderSMS = buildFeeReminderSMS;
   SchoolApp.showFeeReminderPreviewModal = showFeeReminderPreviewModal;
@@ -3153,6 +3750,9 @@
   SchoolApp.generateFeeReceiptHTML = generateFeeReceiptHTML;
   SchoolApp.sendWhatsAppReceipt = sendWhatsAppReceipt;
   SchoolApp.getStudentPendingDuesByHead = getStudentPendingDuesByHead;
+  SchoolApp.getStudentLedger = getStudentLedger;
+  SchoolApp.openStudentFinancialProfile = openStudentFinancialProfile;
+  SchoolApp.voidFeeTransaction = voidFeeTransaction;
 
   // Register Module
   SchoolApp.registerModule('fees', {
@@ -3163,9 +3763,14 @@
       render(c);
     },
     showPaymentModal: showPaymentModal,
+    openStudentFinancialProfile: openStudentFinancialProfile,
     generateFeeReceiptHTML: generateFeeReceiptHTML,
+    generateStudentFeeStatementHTML: generateStudentFeeStatementHTML,
+    printStudentFeeStatement: printStudentFeeStatement,
+    voidFeeTransaction: voidFeeTransaction,
     sendWhatsAppReceipt: sendWhatsAppReceipt,
     getStudentPendingDuesByHead: getStudentPendingDuesByHead,
+    getStudentLedger: getStudentLedger,
     cleanup: function() {
       console.log("Fees module unmounted/cleaned up.");
     }

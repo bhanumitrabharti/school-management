@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v12 for unified roster wipe escape hatch + safe exam migration trigger.
-const CACHE_NAME = 'erp-cache-v12';
+// Bumped to v13 for Phase 4: Student Financial Profile (Bahi Khata) & Void/Reversal Audit Engine.
+const CACHE_NAME = 'erp-cache-v13';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

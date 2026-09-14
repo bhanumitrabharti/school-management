@@ -19,6 +19,12 @@ window.db = db;
 window.auth = auth;
 window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot };
 window.openStudentProfile = function(studentId) {
+  if (typeof window.openStudentFinancialProfile === 'function') {
+    return window.openStudentFinancialProfile(studentId);
+  }
+  if (window.SchoolApp && typeof window.SchoolApp.openStudentFinancialProfile === 'function') {
+    return window.SchoolApp.openStudentFinancialProfile(studentId);
+  }
   if (window.SchoolApp && typeof window.SchoolApp.openStudentProfile === 'function') {
     window.SchoolApp.openStudentProfile(studentId);
   }
@@ -870,6 +876,12 @@ window.SchoolApp = {
                 self._feesYears[yKey][foundIdx] = newItems[k];
               } else {
                 self._feesYears[yKey].push(newItems[k]);
+              }
+              var storeIdx = self.store.fees.findIndex(function(f) { return f.id === newItems[k].id; });
+              if (storeIdx !== -1) {
+                self.store.fees[storeIdx] = newItems[k];
+              } else {
+                self.store.fees.push(newItems[k]);
               }
             }
             var ymPrefix = yKey + '-' + mKey;
@@ -3155,6 +3167,12 @@ window.SchoolApp = {
   },
 
   openStudentProfile: function(studentId) {
+    if (typeof this.openStudentFinancialProfile === 'function') {
+      return this.openStudentFinancialProfile(studentId);
+    }
+    if (typeof window.openStudentFinancialProfile === 'function') {
+      return window.openStudentFinancialProfile(studentId);
+    }
     var student = (window.SchoolApp.store.students || []).find(function(s) {
       return s.id === studentId;
     });
