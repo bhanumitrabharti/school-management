@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v18 for correctness-first data freshness and multi-school session isolation.
-const CACHE_NAME = 'erp-cache-v18';
+// Bumped to v19 for login auto-reload suppression and safe tenant session preservation.
+const CACHE_NAME = 'erp-cache-v19';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

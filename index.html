@@ -478,6 +478,9 @@
             console.log('Service Worker registered successfully with scope:', reg.scope);
 
         function isFormDirty() {
+          // 0. User on login page (never auto-reload or disrupt login)
+          var loginPage = document.getElementById('login-page');
+          if (loginPage && !loginPage.classList.contains('hidden')) return true;
           // 1. Admin/settings dirty flag
           if (window.SchoolApp && window.SchoolApp.adminIsDirty) return true;
           // 2. Active modal open (student form, fee payment modal, expense modal, etc.)
@@ -517,10 +520,16 @@
 
       // Once the new worker takes control, reload so the page runs on the
       // fresh code/assets instead of a stale mix of old JS + new SW.
-      // SAFEGUARD: If form state is dirty or a modal is open, show non-blocking banner instead of interrupting user.
+      // SAFEGUARD: If on login page or form state is dirty, suppress reload so user is never interrupted.
       var reloadingAfterUpdate = false;
       navigator.serviceWorker.addEventListener('controllerchange', function() {
         if (reloadingAfterUpdate) return;
+        var loginPage = document.getElementById('login-page');
+        var isLoginPage = loginPage && !loginPage.classList.contains('hidden');
+        if (isLoginPage) {
+          console.log('[Service Worker] Update ready but user is on login page. Suppressing auto-reload.');
+          return;
+        }
         if (typeof isFormDirty === 'function' && isFormDirty()) {
           console.log('[Service Worker] Update ready but form state is dirty. Showing non-blocking banner.');
           if (typeof showRefreshBanner === 'function') showRefreshBanner();

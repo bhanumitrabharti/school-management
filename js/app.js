@@ -1252,11 +1252,11 @@ window.SchoolApp = {
           activeSchoolId = querySchoolId || localStorage.getItem('impersonate_school_id') || null;
         }
 
-        self.store.currentSchoolId = activeSchoolId || '';
+        var previousSchoolId = (self.store && self.store.currentSchoolId) ? self.store.currentSchoolId : '';
 
-        // Clean teardown before attaching new tenant listener if switching schools or already listening
+        // Clean teardown before attaching new tenant listener ONLY if switching to a DIFFERENT school
         if (activeSchoolId) {
-          if (self.tenantListenerUnsubscribe || (self.store && self.store.currentSchoolId && self.store.currentSchoolId !== activeSchoolId)) {
+          if (previousSchoolId && previousSchoolId !== activeSchoolId) {
             self.resetTenantSession(activeSchoolId);
           } else {
             self.store.currentSchoolId = activeSchoolId;
@@ -1264,6 +1264,16 @@ window.SchoolApp = {
         }
 
         if (activeSchoolId) {
+          // If already listening to this exact school and initialized, do not tear down or re-attach
+          if (self.tenantListenerUnsubscribe && previousSchoolId === activeSchoolId && self.tenantInitialized) {
+            if (!firstResolveCalled) {
+              firstResolveCalled = true;
+              if (!bypassLoader) self.hideLoader();
+              resolve(true);
+            }
+            return;
+          }
+
           const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
           let firstResolveCalled = false;
 
