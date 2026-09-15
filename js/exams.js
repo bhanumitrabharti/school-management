@@ -42,6 +42,8 @@
     classVal: '',
     sectionVal: '',
     subjectVal: '', // active subject for marks entry matrix
+    loadingMarks: false,
+    fetchedTerms: {},
     
     // Consolidated Combined Mode filters
     isCombined: false,
@@ -65,6 +67,45 @@
       Language: { full: 100, pass: 33 }
     }
   };
+
+  var pendingTermLoads = {};
+  async function ensureMarksLoaded(termId) {
+    if (!termId) return;
+    if (state.fetchedTerms && state.fetchedTerms[termId]) {
+      return;
+    }
+    if (SchoolApp.store && SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId] && Object.keys(SchoolApp.store.examMarks[termId]).length > 0) {
+      if (!state.fetchedTerms) state.fetchedTerms = {};
+      state.fetchedTerms[termId] = true;
+      return;
+    }
+    if (pendingTermLoads[termId]) {
+      return pendingTermLoads[termId];
+    }
+    if (typeof SchoolApp.loadExamMarksTerm === 'function') {
+      state.loadingMarks = true;
+      pendingTermLoads[termId] = (async function() {
+        try {
+          await SchoolApp.loadExamMarksTerm(termId);
+        } catch (e) {
+          console.warn('[Exams] Failed to load exam marks for term:', termId, e);
+        } finally {
+          if (!state.fetchedTerms) state.fetchedTerms = {};
+          state.fetchedTerms[termId] = true;
+          state.loadingMarks = false;
+          delete pendingTermLoads[termId];
+        }
+      })();
+      return pendingTermLoads[termId];
+    }
+  }
+
+  function renderMarksLoadingSpinner() {
+    return '<div class="card mt-3"><div class="card-body text-center" style="padding:48px 24px;">' +
+      '<div class="spinner" style="display:inline-block; width:36px; height:36px; border:3px solid #E5E7EB; border-top-color:#1E3A8A; border-radius:50%; animation:spin 1s linear infinite;"></div>' +
+      '<p style="margin-top:14px; color:#6B7280; font-size:14px; font-weight:500;">Loading examination marks from database...</p>' +
+      '</div></div>';
+  }
 
   function printViaBlob(htmlContent, studentName, studentClass) {
     var safeName = (studentName || 'Student')
@@ -687,6 +728,13 @@
 
     // Render marks entry area if selection matches
     if (state.examTerm && state.classVal && state.sectionVal && state.subjectVal) {
+      if (state.loadingMarks || (!state.fetchedTerms || !state.fetchedTerms[state.examTerm])) {
+        if (!pendingTermLoads[state.examTerm] && (!state.fetchedTerms || !state.fetchedTerms[state.examTerm])) {
+          ensureMarksLoaded(state.examTerm).then(function() { render(); });
+        }
+        return html + renderMarksLoadingSpinner();
+      }
+
       var students = (SchoolApp.store.students || []).filter(function(s) {
         return String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
                String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim() &&
@@ -854,6 +902,16 @@
     html += '  </div>';
 
     html += '</div></div></div>';
+
+    if (state.examTerm) {
+      if (state.loadingMarks) {
+        return html + renderMarksLoadingSpinner();
+      }
+      if (!state.fetchedTerms || !state.fetchedTerms[state.examTerm]) {
+        ensureMarksLoaded(state.examTerm).then(function() { render(); });
+        return html + renderMarksLoadingSpinner();
+      }
+    }
 
     var students = (SchoolApp.store.students || []).filter(function(s) {
       return String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
@@ -1144,6 +1202,27 @@
     }
 
     html += '</div></div>';
+
+    if (!state.isCombined) {
+      if (state.examTerm) {
+        if (state.loadingMarks || (!state.fetchedTerms || !state.fetchedTerms[state.examTerm])) {
+          if (!pendingTermLoads[state.examTerm] && (!state.fetchedTerms || !state.fetchedTerms[state.examTerm])) {
+            ensureMarksLoaded(state.examTerm).then(function() { render(); });
+          }
+          return html + renderMarksLoadingSpinner();
+        }
+      }
+    } else {
+      var unLoadedTerms = (state.combinedTerms || []).filter(function(tId) {
+        return (!state.fetchedTerms || !state.fetchedTerms[tId]) && !pendingTermLoads[tId];
+      });
+      if (state.loadingMarks || unLoadedTerms.length > 0) {
+        if (unLoadedTerms.length > 0) {
+          Promise.all(unLoadedTerms.map(ensureMarksLoaded)).then(function() { render(); });
+        }
+        return html + renderMarksLoadingSpinner();
+      }
+    }
 
     // Student List Table & Printing Cards
     var students = (SchoolApp.store.students || []).filter(function(s) {
@@ -1909,15 +1988,33 @@
     }
     var marksTab = document.getElementById('exam-tab-marks');
     if (marksTab) {
-      marksTab.addEventListener('click', function() { state.activeSubTab = 'marks_entry'; render(); });
+      marksTab.addEventListener('click', async function() {
+        state.activeSubTab = 'marks_entry';
+        if (state.examTerm) {
+          await ensureMarksLoaded(state.examTerm);
+        }
+        render();
+      });
     }
     var resultsTab = document.getElementById('exam-tab-results');
     if (resultsTab) {
-      resultsTab.addEventListener('click', function() { state.activeSubTab = 'results'; render(); });
+      resultsTab.addEventListener('click', async function() {
+        state.activeSubTab = 'results';
+        if (state.examTerm) {
+          await ensureMarksLoaded(state.examTerm);
+        }
+        render();
+      });
     }
     var reportsTab = document.getElementById('exam-tab-reports');
     if (reportsTab) {
-      reportsTab.addEventListener('click', function() { state.activeSubTab = 'report_cards'; render(); });
+      reportsTab.addEventListener('click', async function() {
+        state.activeSubTab = 'report_cards';
+        if (state.examTerm) {
+          await ensureMarksLoaded(state.examTerm);
+        }
+        render();
+      });
     }
 
     // Filter selectors
@@ -1925,9 +2022,7 @@
     if (setupTerm) {
       setupTerm.addEventListener('change', async function() {
         state.examTerm = this.value;
-        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
-          await SchoolApp.loadExamMarksTerm(this.value);
-        }
+        await ensureMarksLoaded(this.value);
         render();
       });
     }
@@ -1940,9 +2035,7 @@
     if (marksTerm) {
       marksTerm.addEventListener('change', async function() {
         state.examTerm = this.value;
-        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
-          await SchoolApp.loadExamMarksTerm(this.value);
-        }
+        await ensureMarksLoaded(this.value);
         render();
       });
     }
@@ -1963,9 +2056,7 @@
     if (resultsTerm) {
       resultsTerm.addEventListener('change', async function() {
         state.examTerm = this.value;
-        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
-          await SchoolApp.loadExamMarksTerm(this.value);
-        }
+        await ensureMarksLoaded(this.value);
         render();
       });
     }
@@ -1982,9 +2073,7 @@
     if (reportsTerm) {
       reportsTerm.addEventListener('change', async function() {
         state.examTerm = this.value;
-        if (this.value && typeof SchoolApp.loadExamMarksTerm === 'function') {
-          await SchoolApp.loadExamMarksTerm(this.value);
-        }
+        await ensureMarksLoaded(this.value);
         render();
       });
     }
@@ -3506,9 +3595,16 @@
     init: function() {
       runMigration();
     },
-    render: function(container) {
+    render: async function(container) {
       if (!SchoolApp.store.examConfig) {
         runMigration();
+      }
+      var termList = Object.values(SchoolApp.store.examTerms || {});
+      if (!state.examTerm && termList.length > 0) {
+        state.examTerm = termList[0].id;
+      }
+      if (state.activeSubTab !== 'setup' && state.examTerm) {
+        await ensureMarksLoaded(state.examTerm);
       }
       render(container);
     },

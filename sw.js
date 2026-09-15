@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v22 for Attendance, Timetable & Geofence/My Attendance feature rollout.
-const CACHE_NAME = 'erp-cache-v22';
+// Bumped to v23 for Exams async auto-preload and tab-switch data sync fix.
+const CACHE_NAME = 'erp-cache-v23';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
