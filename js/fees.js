@@ -3760,6 +3760,12 @@
       // Auto-charge handled centrally by SchoolApp.runAutoFeeReconciliation() in js/app.js
     },
     render: function(c) {
+      var currentYr = String(new Date().getFullYear());
+      if (SchoolApp.isRestructured && SchoolApp.isRestructured() && typeof SchoolApp.loadFeesYear === 'function' && (!SchoolApp.store.fees || SchoolApp.store.fees.length === 0)) {
+        SchoolApp.loadFeesYear(currentYr).then(function() {
+          render(c);
+        });
+      }
       render(c);
     },
     showPaymentModal: showPaymentModal,

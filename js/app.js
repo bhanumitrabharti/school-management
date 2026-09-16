@@ -1472,6 +1472,9 @@ window.SchoolApp = {
               });
               self.loadFeesYear(currentYr).then(function() {
                 self.listenToFeesYear(currentYr);
+                if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
+                  window.FeesModule.render();
+                }
               });
             }
             if (self.currentPage && firstResolveCalled) {
