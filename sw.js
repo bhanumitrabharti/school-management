@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v23 for Exams async auto-preload and tab-switch data sync fix.
-const CACHE_NAME = 'erp-cache-v23';
+// Bumped to v24 for Fee Due zeroing fix (loadFeesYear cache-merge, _mergeFeesIntoStore ID-based upsert, saveFeeTransaction cross-month preservation).
+const CACHE_NAME = 'erp-cache-v24';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

@@ -348,6 +348,16 @@ window.SchoolApp = {
         delete payload.examMarks;
       }
 
+      // Safety guard against accidental erasure of examTerms / examSubjects
+      var serverExamTermsBaseline = this.initialServerExamTermsCount || 0;
+      if (!allowWipe && serverExamTermsBaseline > 0) {
+        if (!payload.examTerms || Object.keys(payload.examTerms).length === 0) {
+          console.warn('[SAFETY GUARD] Prevented erasing examTerms on save (' + serverExamTermsBaseline + ' terms on server). Keeping server terms.');
+          delete payload.examTerms;
+          delete payload.examSubjects;
+        }
+      }
+
       // Storage Limit Safety Alert: Warn when approaching 900KB (85% of 1MB limit)
       var payloadStr = JSON.stringify(payload);
       var estimatedBytes = (typeof Blob !== 'undefined') ? new Blob([payloadStr]).size : payloadStr.length;
@@ -742,6 +752,7 @@ window.SchoolApp = {
     if (!currentSchoolId) return [];
 
     if (this._feesYears[year]) {
+      this._mergeFeesIntoStore(year, this._feesYears[year]);
       return this._feesYears[year];
     }
 
@@ -783,18 +794,46 @@ window.SchoolApp = {
     var legacy = (this.store && this.store.fees) || [];
     var matched = legacy.filter(function(f) { return f.date && String(f.date).startsWith(year); });
     this._feesYears[year] = matched;
+    this._mergeFeesIntoStore(year, matched);
     return matched;
   },
 
   _mergeFeesIntoStore: function(year, transactions) {
     if (!this.store) return;
     if (!this.store.fees) this.store.fees = [];
-    this.store.fees = this.store.fees.filter(function(f) {
-      return !(f.date && String(f.date).startsWith(year));
-    });
+    if (!Array.isArray(transactions)) return;
+
+    var incomingMap = {};
     for (var i = 0; i < transactions.length; i++) {
-      this.store.fees.push(transactions[i]);
+      var t = transactions[i];
+      if (t && t.id) {
+        incomingMap[t.id] = t;
+      }
     }
+
+    // Update existing records in store.fees in-place to support updates/status changes
+    var updatedIds = new Set();
+    for (var j = 0; j < this.store.fees.length; j++) {
+      var existing = this.store.fees[j];
+      if (existing && existing.id && incomingMap[existing.id]) {
+        this.store.fees[j] = incomingMap[existing.id];
+        updatedIds.add(existing.id);
+      }
+    }
+
+    // Append newly inserted records that don't exist yet
+    for (var k = 0; k < transactions.length; k++) {
+      var incoming = transactions[k];
+      if (incoming && incoming.id && !updatedIds.has(incoming.id)) {
+        this.store.fees.push(incoming);
+        updatedIds.add(incoming.id);
+      }
+    }
+
+    // Keep _feesYears synchronized with current store.fees
+    this._feesYears[year] = this.store.fees.filter(function(f) {
+      return f.date && String(f.date).startsWith(year);
+    });
   },
 
   listenToFeesYear: function(year) {
@@ -816,7 +855,6 @@ window.SchoolApp = {
               transactions = transactions.concat(data.transactions);
             }
           });
-          self._feesYears[year] = transactions;
           self._mergeFeesIntoStore(year, transactions);
           if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
             window.FeesModule.render();
@@ -1305,6 +1343,7 @@ window.SchoolApp = {
               self.store.schools = preservedSchools;
               self.initialServerStudentCount = (parsed.students || []).length;
               self.initialServerTeacherCount = (parsed.teachers || []).length;
+              self.initialServerExamTermsCount = Object.keys(parsed.examTerms || {}).length;
               self.liveServerStudentCount = (parsed.students || []).length;
               self.liveServerTeacherCount = (parsed.teachers || []).length;
               self.tenantInitialized = true;

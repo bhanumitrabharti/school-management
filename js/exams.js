@@ -280,14 +280,39 @@
       session: (SchoolApp.store.settings && SchoolApp.store.settings.academicYear) || "2025-26"
     };
 
-    SchoolApp.store.examTerms = {};
-    SchoolApp.store.examSubjects = {};
-    SchoolApp.store.examMarks = {};
+    if (!SchoolApp.store.examTerms || Object.keys(SchoolApp.store.examTerms).length === 0) {
+      SchoolApp.store.examTerms = {};
+    }
+    if (!SchoolApp.store.examSubjects || Object.keys(SchoolApp.store.examSubjects).length === 0) {
+      SchoolApp.store.examSubjects = {};
+    }
+    if (!SchoolApp.store.examMarks) {
+      SchoolApp.store.examMarks = {};
+    }
     if (!SchoolApp.store.examAuditLog) {
       SchoolApp.store.examAuditLog = [];
     }
 
     var oldExams = SchoolApp.store.exams || [];
+    if (Object.keys(SchoolApp.store.examTerms).length === 0) {
+      // Only populate from legacy exams array if examTerms is empty
+      oldExams.forEach(function(ex, idx) {
+        SchoolApp.store.examTerms[ex.id] = {
+          id: ex.id,
+          name: ex.name,
+          shortName: ex.name.substring(0, 5).trim(),
+          session: SchoolApp.store.examConfig.session,
+          startDate: ex.startDate || '',
+          endDate: ex.endDate || '',
+          resultDate: null,
+          status: 'published',
+          weightage: 50,
+          createdAt: new Date().toISOString(),
+          createdBy: 'migration',
+          order: idx + 1
+        };
+      });
+    }
     var oldMarks = SchoolApp.store.marks || [];
     var oldSubjectMapping = SchoolApp.store.subjectMapping || {};
 
