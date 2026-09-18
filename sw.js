@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v24 for Fee Due zeroing fix (loadFeesYear cache-merge, _mergeFeesIntoStore ID-based upsert, saveFeeTransaction cross-month preservation).
-const CACHE_NAME = 'erp-cache-v24';
+// Bumped to v25 for onSnapshot subcollection in-memory preservation fix (fees, attendance, examMarks).
+const CACHE_NAME = 'erp-cache-v25';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

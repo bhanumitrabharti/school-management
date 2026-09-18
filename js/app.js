@@ -1337,10 +1337,18 @@ window.SchoolApp = {
             if (parsed) {
               // Clean replacement from initial baseline + server snapshot (NO MERGING with stale state)
               var preservedSchools = (self.store && self.store.schools) ? self.store.schools : [];
+              var preservedFees = (self.store && self.store.fees && self.store.fees.length > 0 && (!parsed.fees || parsed.fees.length === 0)) ? self.store.fees : [];
+              var preservedAttendance = (self.store && self.store.attendance && self.store.attendance.length > 0 && (!parsed.attendance || parsed.attendance.length === 0)) ? self.store.attendance : [];
+              var preservedExamMarks = (self.store && self.store.examMarks && Object.keys(self.store.examMarks).length > 0 && (!parsed.examMarks || Object.keys(parsed.examMarks).length === 0)) ? self.store.examMarks : {};
+
               self.store = Object.assign(self.getInitialStore(), parsed, {
                 currentSchoolId: activeSchoolId
               });
               self.store.schools = preservedSchools;
+              if (preservedFees.length > 0) self.store.fees = preservedFees;
+              if (preservedAttendance.length > 0) self.store.attendance = preservedAttendance;
+              if (Object.keys(preservedExamMarks).length > 0) self.store.examMarks = preservedExamMarks;
+
               self.initialServerStudentCount = (parsed.students || []).length;
               self.initialServerTeacherCount = (parsed.teachers || []).length;
               self.initialServerExamTermsCount = Object.keys(parsed.examTerms || {}).length;
