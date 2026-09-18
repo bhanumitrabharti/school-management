@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v25 for onSnapshot subcollection in-memory preservation fix (fees, attendance, examMarks).
-const CACHE_NAME = 'erp-cache-v25';
+// Bumped to v26 for login page clean auto-reload and in-progress typing safeguard.
+const CACHE_NAME = 'erp-cache-v26';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

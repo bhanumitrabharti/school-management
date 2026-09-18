@@ -2257,6 +2257,7 @@ window.SchoolApp = {
 
   // ---------- Authentication ----------
   login: async function(role, credentials) {
+    this._loginInProgress = true;
     console.log("Login attempt started");
 
     // Ensure Firebase config is still correct and not accidentally changed
@@ -2375,8 +2376,10 @@ window.SchoolApp = {
         };
       }
       this.applyUserTheme();
+      this._loginInProgress = false;
       return true;
     } else {
+      this._loginInProgress = false;
       // Prioritize firebaseError if any, fallback to custom error
       const finalError = firebaseError || new Error((customResult && customResult.message) ? customResult.message : "Invalid credentials.");
       throw finalError;

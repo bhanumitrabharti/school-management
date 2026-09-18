@@ -471,6 +471,32 @@
   <script type="module" src="js/chatbot.js"></script>
   <!-- Service Worker Registration + Update Notification -->
   <script>
+    function hasUserStartedTypingOnLogin() {
+      var loginPage = document.getElementById('login-page');
+      if (!loginPage || loginPage.classList.contains('hidden')) return false;
+
+      // Check if login request is currently in flight
+      if (window.SchoolApp && window.SchoolApp._loginInProgress) return true;
+
+      // Check all login inputs for user input or active focus
+      var inputs = [
+        document.getElementById('admin-username'),
+        document.getElementById('admin-password'),
+        document.getElementById('teacher-email'),
+        document.getElementById('teacher-password')
+      ];
+
+      for (var i = 0; i < inputs.length; i++) {
+        var inp = inputs[i];
+        if (inp) {
+          if (inp.value && inp.value.trim().length > 0) return true;
+          if (document.activeElement === inp) return true;
+        }
+      }
+      return false;
+    }
+    window.hasUserStartedTypingOnLogin = hasUserStartedTypingOnLogin;
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
@@ -478,9 +504,8 @@
             console.log('Service Worker registered successfully with scope:', reg.scope);
 
         function isFormDirty() {
-          // 0. User on login page (never auto-reload or disrupt login)
-          var loginPage = document.getElementById('login-page');
-          if (loginPage && !loginPage.classList.contains('hidden')) return true;
+          // 0. User actively interacting or typed on login page
+          if (hasUserStartedTypingOnLogin()) return true;
           // 1. Admin/settings dirty flag
           if (window.SchoolApp && window.SchoolApp.adminIsDirty) return true;
           // 2. Active modal open (student form, fee payment modal, expense modal, etc.)
@@ -520,16 +545,25 @@
 
       // Once the new worker takes control, reload so the page runs on the
       // fresh code/assets instead of a stale mix of old JS + new SW.
-      // SAFEGUARD: If on login page or form state is dirty, suppress reload so user is never interrupted.
+      // SAFEGUARD: If user has typed inputs on login or form state is dirty, suppress reload and show banner.
       var reloadingAfterUpdate = false;
       navigator.serviceWorker.addEventListener('controllerchange', function() {
         if (reloadingAfterUpdate) return;
         var loginPage = document.getElementById('login-page');
         var isLoginPage = loginPage && !loginPage.classList.contains('hidden');
+
         if (isLoginPage) {
-          console.log('[Service Worker] Update ready but user is on login page. Suppressing auto-reload.');
+          if (typeof hasUserStartedTypingOnLogin === 'function' && hasUserStartedTypingOnLogin()) {
+            console.log('[Service Worker] Update ready but user is typing/submitting on login page. Suppressing auto-reload.');
+            if (typeof showRefreshBanner === 'function') showRefreshBanner();
+            return;
+          }
+          console.log('[Service Worker] Clean login page state. Auto-reloading to load newest bundle.');
+          reloadingAfterUpdate = true;
+          window.location.reload();
           return;
         }
+
         if (typeof isFormDirty === 'function' && isFormDirty()) {
           console.log('[Service Worker] Update ready but form state is dirty. Showing non-blocking banner.');
           if (typeof showRefreshBanner === 'function') showRefreshBanner();
