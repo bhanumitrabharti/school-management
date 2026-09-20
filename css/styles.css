@@ -1862,65 +1862,205 @@ a:hover { color: var(--accent-secondary); }
 
 /* ============================================================
    CLASS ASSIGNMENT GRID
+/* ============================================================
+   ASSIGNED CLASSES RESPONSIVE GRID & CARDS (Teacher Modal)
    ============================================================ */
-.class-grid {
-  display: grid;
-  grid-template-columns: auto repeat(3, 60px);
-  gap: 4px;
-  margin: 8px 0;
-  font-size: 13px;
-}
-
-.class-grid-header {
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-align: center;
-  padding: 8px;
-}
-
-.class-grid-label {
-  padding: 8px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.class-grid-cell {
+.assigned-classes-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  padding: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.class-grid-cell input[type="checkbox"] {
-  appearance: none;
-  width: 24px;
-  height: 24px;
-  border: 2px solid var(--border-light);
-  border-radius: 6px;
-  cursor: pointer;
-  position: relative;
+.assigned-classes-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.assigned-classes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.assigned-classes-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.assigned-classes-grid::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+
+.assigned-class-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   transition: all var(--transition-fast);
 }
 
-.class-grid-cell input[type="checkbox"]:checked {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
+.assigned-class-card:hover {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: var(--bg-card-hover);
 }
 
-.class-grid-cell input[type="checkbox"]:checked::after {
-  content: '✓';
-  position: absolute;
-  inset: 0;
+.assigned-class-card-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.class-grid-cell input[type="checkbox"]:hover {
-  border-color: var(--accent-primary-light);
+.assigned-class-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.assigned-class-badge .material-icons-round {
+  font-size: 15px;
+  color: var(--accent-primary-light);
+}
+
+.assigned-class-sections-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assigned-section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+}
+
+.assigned-section-chip:hover {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.35);
+  color: var(--text-primary);
+}
+
+.assigned-section-chip input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+  margin: 0;
+}
+
+.assigned-section-chip:has(input[type="checkbox"]:checked),
+.assigned-section-chip.is-selected {
+  background: rgba(124, 58, 237, 0.18) !important;
+  border: 1px solid var(--accent-primary) !important;
+  color: var(--text-primary) !important;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.25);
+}
+
+/* Light Theme Overrides */
+body.light-theme .assigned-classes-grid {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+body.light-theme .assigned-class-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .assigned-class-card:hover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+body.light-theme .assigned-class-card-header {
+  border-bottom-color: #f1f5f9;
+}
+
+body.light-theme .assigned-class-badge {
+  color: #1e293b;
+}
+
+body.light-theme .assigned-section-chip {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+body.light-theme .assigned-section-chip:hover {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+  color: #6d28d9;
+}
+
+body.light-theme .assigned-section-chip:has(input[type="checkbox"]:checked),
+body.light-theme .assigned-section-chip.is-selected {
+  background: #ede9fe !important;
+  border: 1px solid #7c3aed !important;
+  color: #6d28d9 !important;
+  box-shadow: 0 0 6px rgba(124, 58, 237, 0.15);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .assigned-classes-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    max-height: 240px;
+    gap: 8px;
+    padding: 6px;
+  }
+  .assigned-class-card {
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .assigned-classes-grid {
+    grid-template-columns: 1fr;
+    max-height: 220px;
+  }
+  .assigned-classes-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Legacy fallback support */
+.class-grid {
+  display: grid;
+  grid-template-columns: auto repeat(auto-fill, minmax(50px, 1fr));
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 13px;
 }
 
 /* ============================================================

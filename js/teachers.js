@@ -247,10 +247,16 @@
 
       var isCT = false;
       if (existingTeacher && existingTeacher.classTeacherOf) {
-        isCT = existingTeacher.classTeacherOf.some(function(item) {
-          return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
-                 String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim();
-        });
+        if (Array.isArray(existingTeacher.classTeacherOf)) {
+          isCT = existingTeacher.classTeacherOf.some(function(item) {
+            return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
+                   String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim();
+          });
+        } else if (typeof existingTeacher.classTeacherOf === 'string') {
+          var str = existingTeacher.classTeacherOf.toLowerCase().replace('class', '').trim();
+          isCT = str.includes(String(c).toLowerCase().trim() + '-' + String(s).toLowerCase().trim()) ||
+                 str.includes(String(c).toLowerCase().trim());
+        }
       }
 
       var existingCTInput = document.querySelector('input[name="ct-' + classSectionStr + '"]');
@@ -272,7 +278,7 @@
       
       selectedGlobalSubjects.forEach(function(sub) {
         var isSubAssigned = false;
-        if (existingTeacher && existingTeacher.subjectTeacherOf) {
+        if (existingTeacher && existingTeacher.subjectTeacherOf && Array.isArray(existingTeacher.subjectTeacherOf)) {
           isSubAssigned = existingTeacher.subjectTeacherOf.some(function(item) {
             return String(item.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
                    String(item.section).toLowerCase().trim() === String(s).toLowerCase().trim() &&
@@ -358,30 +364,47 @@
     ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (teacher && teacher.status === s ? ' selected' : '') + '>' + s + '</option>'; });
     bodyHTML += '</select></div>';
 
-    // Class Assignment Grid
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Assigned Classes *</label>';
-    bodyHTML += '<div class="class-grid">';
-    bodyHTML += '<div class="class-grid-header"></div>';
-    sections.forEach(function(s) { bodyHTML += '<div class="class-grid-header">' + s + '</div>'; });
+    // Assigned Classes Section (Organized & Responsive Card Grid)
+    bodyHTML += '<div class="form-group full-width">';
+    bodyHTML += '  <div class="assigned-classes-header">';
+    bodyHTML += '    <label class="form-label" style="margin-bottom: 0;">Assigned Classes *</label>';
+    bodyHTML += '    <span class="assigned-classes-hint">Select the classes & sections this teacher instructs</span>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div class="assigned-classes-grid">';
 
     classes.forEach(function(c) {
-      bodyHTML += '<div class="class-grid-label">Class ' + c + '</div>';
+      var displayCls = (c && String(c).startsWith('Class ')) ? c : ('Class ' + c);
+      bodyHTML += '    <div class="assigned-class-card">';
+      bodyHTML += '      <div class="assigned-class-card-header">';
+      bodyHTML += '        <span class="assigned-class-badge"><span class="material-icons-round">school</span> ' + displayCls + '</span>';
+      bodyHTML += '      </div>';
+      bodyHTML += '      <div class="assigned-class-sections-wrap">';
+
       sections.forEach(function(s) {
         var hasSection = true;
         if (typeof rawSections === 'object' && !Array.isArray(rawSections)) {
           hasSection = (rawSections[c] || []).indexOf(s) !== -1;
         }
+        if (!hasSection) return;
+
         var checked = teacher && teacher.assignedClasses && teacher.assignedClasses.some(function(ac) {
-          return ac.class === c && ac.section === s;
+          return String(ac.class).toLowerCase().trim() === String(c).toLowerCase().trim() &&
+                 String(ac.section).toLowerCase().trim() === String(s).toLowerCase().trim();
         });
-        if (hasSection) {
-          bodyHTML += '<div class="class-grid-cell"><input type="checkbox" class="class-assign-cb" data-class="' + c + '" data-section="' + s + '"' + (checked ? ' checked' : '') + '></div>';
-        } else {
-          bodyHTML += '<div class="class-grid-cell disabled-cell" style="opacity: 0.2;"><input type="checkbox" disabled style="cursor: not-allowed;"></div>';
-        }
+
+        bodyHTML += '        <label class="assigned-section-chip' + (checked ? ' is-selected' : '') + '">';
+        bodyHTML += '          <input type="checkbox" class="class-assign-cb" data-class="' + c + '" data-section="' + s + '"' + (checked ? ' checked' : '') + '>';
+        bodyHTML += '          <span class="section-chip-text">Sec ' + s + '</span>';
+        bodyHTML += '        </label>';
       });
+
+      bodyHTML += '      </div>';
+      bodyHTML += '    </div>';
     });
-    bodyHTML += '</div><span class="form-error" id="class-error" style="display: none;">Select at least one class</span></div>';
+
+    bodyHTML += '  </div>';
+    bodyHTML += '  <span class="form-error" id="class-error" style="display: none;">Select at least one class</span>';
+    bodyHTML += '</div>';
 
     // Class-Subject and Class Teacher Mapping Section
     bodyHTML += '<div class="form-group full-width" id="class-subject-mapping-section" style="margin-top: 15px; display: none;">';
@@ -402,6 +425,11 @@
     // Attach dynamic listeners
     document.querySelectorAll('.class-assign-cb').forEach(function(cb) {
       cb.addEventListener('change', function() {
+        var chip = this.closest('.assigned-section-chip');
+        if (chip) {
+          if (this.checked) chip.classList.add('is-selected');
+          else chip.classList.remove('is-selected');
+        }
         updateClassSubjectMappingUI(teacher);
       });
     });
