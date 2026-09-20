@@ -143,7 +143,15 @@
                 return { success: false, message: 'Teacher account is paused or inactive.' };
             }
 
-            const teacherPassStored = teacher.password || '';
+            const teacherPassStored = teacher.password;
+            if (!teacherPassStored || typeof teacherPassStored !== 'string' || teacherPassStored.trim() === '') {
+                console.error('[Auth Security] Login rejected: teacher account has no password configured.');
+                return { success: false, message: 'Account password not configured. Please contact school administrator.' };
+            }
+            if (!password || typeof password !== 'string' || password.trim() === '') {
+                return { success: false, message: 'Password is required.' };
+            }
+
             let isValid = false;
             let needsMigration = false;
 

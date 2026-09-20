@@ -37,9 +37,21 @@
     return teachers;
   }
 
-  function getSubjects() {
+  function getSubjects(teacher) {
     var settings = SchoolApp.store.settings || {};
-    return settings.subjects || ['Hindi', 'English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science', 'Sanskrit', 'Art'];
+    var base = settings.subjects || ['Hindi', 'English', 'Mathematics', 'Science', 'Social Studies', 'Computer Science', 'Sanskrit', 'Art'];
+    var subjectSet = new Set(base);
+    if (teacher) {
+      if (typeof teacher.subject === 'string') {
+        teacher.subject.split(',').forEach(function(s) { if (s.trim()) subjectSet.add(s.trim()); });
+      } else if (Array.isArray(teacher.subject)) {
+        teacher.subject.forEach(function(s) { if (s && s.trim()) subjectSet.add(s.trim()); });
+      }
+      if (Array.isArray(teacher.subjectTeacherOf)) {
+        teacher.subjectTeacherOf.forEach(function(st) { if (st && st.subject && st.subject.trim()) subjectSet.add(st.subject.trim()); });
+      }
+    }
+    return Array.from(subjectSet);
   }
 
   function render() {
@@ -135,8 +147,15 @@
         html += '<div class="teacher-card-detail"><span class="material-icons-round">school</span>' + t.qualification + '</div>';
 
         html += '<div class="teacher-card-classes">';
+        if (t.classTeacherOf && t.classTeacherOf.length > 0) {
+          t.classTeacherOf.forEach(function(ct) {
+            var ctCls = (ct.class && ct.class.startsWith('Class ')) ? ct.class : ('Class ' + (ct.class || ''));
+            html += '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px; font-weight: 600;" title="Class Teacher"><span class="material-icons-round" style="font-size: 11px; vertical-align: middle;">stars</span> ' + ctCls + '-' + ct.section + ' (CT)</span>';
+          });
+        }
         (t.assignedClasses || []).forEach(function(c) {
-          html += '<span class="badge badge-info">' + c.class + '-' + c.section + '</span>';
+          var clsStr = (c.class && c.class.startsWith('Class ')) ? c.class : ('Class ' + (c.class || ''));
+          html += '<span class="badge badge-info">' + clsStr + '-' + c.section + '</span>';
         });
         html += '</div>';
 
@@ -316,7 +335,7 @@
     // Global subjects checkboxes selection
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Subjects Taught *</label>';
     bodyHTML += '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin-top: 6px;">';
-    getSubjects().forEach(function(s) {
+    getSubjects(teacher).forEach(function(s) {
       var isChecked = false;
       if (teacher) {
         if (Array.isArray(teacher.subject)) {
@@ -851,9 +870,30 @@
     html += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
     (teacher.assignedClasses || []).forEach(function(ac) {
       var classStudents = SchoolApp.store.students.filter(function(s) { return s.class === ac.class && s.section === ac.section; }).length;
-      html += '<span class="badge badge-info">Class ' + ac.class + '-' + ac.section + ' (' + classStudents + ' students)</span>';
+      var clsLabel = (ac.class && ac.class.startsWith('Class ')) ? ac.class : ('Class ' + (ac.class || ''));
+      html += '<span class="badge badge-info">' + clsLabel + '-' + ac.section + ' (' + classStudents + ' students)</span>';
     });
     html += '</div></div>';
+
+    if (teacher.classTeacherOf && teacher.classTeacherOf.length > 0) {
+      html += '<div class="detail-section"><h4><span class="material-icons-round" style="color: #f59e0b;">stars</span> Class Teacher Assignment</h4>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+      teacher.classTeacherOf.forEach(function(ct) {
+        var ctLabel = (ct.class && ct.class.startsWith('Class ')) ? ct.class : ('Class ' + (ct.class || ''));
+        html += '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); font-weight: 600; padding: 6px 12px; font-size: 13px;"><span class="material-icons-round" style="font-size: 14px; vertical-align: middle; margin-right: 4px;">workspace_premium</span>Class Teacher of ' + ctLabel + '-' + ct.section + '</span>';
+      });
+      html += '</div></div>';
+    }
+
+    if (teacher.subjectTeacherOf && teacher.subjectTeacherOf.length > 0) {
+      html += '<div class="detail-section"><h4><span class="material-icons-round">menu_book</span> Subjects Taught per Class</h4>';
+      html += '<div class="table-container" style="margin-top: 6px;"><table class="data-table" style="font-size: 13px; width: 100%;"><thead><tr><th style="padding: 8px 12px;">Class & Section</th><th style="padding: 8px 12px;">Subject</th></tr></thead><tbody>';
+      teacher.subjectTeacherOf.forEach(function(st) {
+        var stCls = (st.class && st.class.startsWith('Class ')) ? st.class : ('Class ' + (st.class || ''));
+        html += '<tr><td style="padding: 8px 12px;"><strong>' + stCls + '-' + (st.section || '') + '</strong></td><td style="padding: 8px 12px;"><span class="badge badge-info">' + (st.subject || '') + '</span></td></tr>';
+      });
+      html += '</tbody></table></div></div>';
+    }
 
     if (SchoolApp.isAdmin()) {
       html += '<div class="detail-section"><h4><span class="material-icons-round">vpn_key</span> Login Credentials</h4><div class="detail-grid">';

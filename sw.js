@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v26 for login page clean auto-reload and in-progress typing safeguard.
-const CACHE_NAME = 'erp-cache-v26';
+// Bumped to v27 for teacher assignment UI display and auth security hardening.
+const CACHE_NAME = 'erp-cache-v27';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
