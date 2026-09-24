@@ -110,23 +110,58 @@
       var curDate = new Date().toISOString().split('T')[0];
       var timeStr = new Date().toTimeString().split(' ')[0]; // HH:MM:SS
 
-      // AREA 3a: Strict Policy Check
-      if (!isInside && geo.policy === 'strict') {
-        state.lastCapturedLocation = {
-          latitude: lat.toFixed(5),
-          longitude: lon.toFixed(5),
-          distance: Math.round(distance),
-          status: 'Outside Geofence (Blocked)'
-        };
-        render();
-        SchoolApp.showToast(
-          'Punch Blocked: You are ' + Math.round(distance) + 'm from school (allowed radius: ' + geo.radius + 'm). Strict geofence is active. Please request manual approval if on duty.',
-          'error'
-        );
-        return;
+      state.lastCapturedLocation = {
+        latitude: lat.toFixed(5),
+        longitude: lon.toFixed(5),
+        distance: Math.round(distance),
+        status: geofenceStatus
+      };
+
+      // STEP 2B: Location Enforcement
+      if (!isInside) {
+        if (type === 'in') {
+          // Punch In outside location: DO NOT auto-mark attendance
+          render();
+          showOutsideLocationPrompt(Math.round(distance), geo.radius, {
+            latitude: lat,
+            longitude: lon,
+            distance: Math.round(distance)
+          }, curDate, timeStr.substring(0, 5));
+          return;
+        } else {
+          // Punch Out outside location: ALLOW (to prevent teacher from being stuck)
+          var punchOutRecord = {
+            id: SchoolApp.generateId(),
+            teacherId: SchoolApp.currentUser.id,
+            teacherName: (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim(),
+            date: curDate,
+            type: 'out',
+            time: timeStr,
+            timestamp: new Date().toISOString(),
+            latitude: lat,
+            longitude: lon,
+            distance: Math.round(distance),
+            geofenceStatus: geofenceStatus,
+            outsideGeofence: true,
+            outsideLocationFlag: true,
+            markedVia: 'location_auto',
+            method: 'GPS',
+            isCorrected: false
+          };
+
+          if (!SchoolApp.store.teacherAttendance) {
+            SchoolApp.store.teacherAttendance = [];
+          }
+          SchoolApp.store.teacherAttendance.push(punchOutRecord);
+          SchoolApp.save();
+
+          SchoolApp.showToast('Checked Out outside school radius (' + Math.round(distance) + 'm). Attendance locked.', 'warning');
+          render();
+          return;
+        }
       }
 
-      // Lenient policy or Inside Geofence
+      // Inside Geofence: Auto-mark attendance
       var punchRecord = {
         id: SchoolApp.generateId(),
         teacherId: SchoolApp.currentUser.id,
@@ -139,7 +174,9 @@
         longitude: lon,
         distance: Math.round(distance),
         geofenceStatus: geofenceStatus,
-        outsideGeofence: !isInside,
+        outsideGeofence: false,
+        outsideLocationFlag: false,
+        markedVia: 'location_auto',
         method: 'GPS',
         isCorrected: false
       };
@@ -151,19 +188,8 @@
       SchoolApp.store.teacherAttendance.push(punchRecord);
       SchoolApp.save();
 
-      state.lastCapturedLocation = {
-        latitude: lat.toFixed(5),
-        longitude: lon.toFixed(5),
-        distance: Math.round(distance),
-        status: geofenceStatus
-      };
-
       var successMsg = 'Attendance marked: Checked ' + (type === 'in' ? 'In' : 'Out') + '. Status: ' + geofenceStatus;
-      if (!isInside) {
-        SchoolApp.showToast(successMsg + ' (Warning: Flagged for admin review)', 'warning');
-      } else {
-        SchoolApp.showToast(successMsg, 'success');
-      }
+      SchoolApp.showToast(successMsg, 'success');
       render();
     }, function(error) {
       console.error('Geolocation failure:', error);
@@ -172,6 +198,38 @@
         errorMsg = 'Location permission was denied. Please allow location access to register punches.';
       }
       SchoolApp.showToast(errorMsg, 'error');
+    });
+  }
+
+  // STEP 2B: Outside Location Bilingual Prompt
+  function showOutsideLocationPrompt(distance, allowedRadius, coords, date, timeIn) {
+    var bodyHTML = '<div style="text-align:center; padding: 12px 6px;">';
+    bodyHTML += '  <div style="width:64px; height:64px; border-radius:50%; background:rgba(239, 68, 68, 0.12); color:var(--danger); display:grid; place-items:center; margin:0 auto 16px auto;">';
+    bodyHTML += '    <span class="material-icons-round" style="font-size:36px;">wrong_location</span>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <h3 style="margin-bottom:8px; font-size:17px; color:var(--text-primary);">School Location se Bahar Hain</h3>';
+    bodyHTML += '  <p style="font-size:14px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;">';
+    bodyHTML += '    Aap school location se <strong>' + distance + 'm</strong> door hain (Allowed radius: <strong>' + allowedRadius + 'm</strong>).<br>Attendance automatically mark nahi ho sakti.';
+    bodyHTML += '  </p>';
+    bodyHTML += '  <p style="font-size:13.5px; font-weight:600; color:var(--text-primary); margin-bottom:0;">';
+    bodyHTML += '    Kya aap <strong>Attendance Regularization Request</strong> submit karna chahte hain?';
+    bodyHTML += '  </p>';
+    bodyHTML += '</div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="btn-prompt-submit-req"><span class="material-icons-round">edit_calendar</span> Submit Request</button>';
+
+    SchoolApp.showModal('Location Check Alert', bodyHTML, footerHTML);
+
+    document.getElementById('btn-prompt-submit-req').addEventListener('click', function() {
+      SchoolApp.closeModal();
+      setTimeout(function() {
+        showRegularizationModal({
+          date: date,
+          timeIn: timeIn,
+          coords: coords
+        });
+      }, 200);
     });
   }
 
@@ -274,71 +332,128 @@
     });
   }
 
-  // Teacher Correction Request Modal (Area 3b)
-  function showCorrectionModal() {
+  // STEP 2C: Teacher Regularization Request Modal
+  function showRegularizationModal(prefill) {
+    prefill = prefill || {};
     var curToday = new Date().toISOString().split('T')[0];
+    var reqDate = prefill.date || curToday;
+    var reqTimeIn = prefill.timeIn || '08:00';
+    var reqTimeOut = prefill.timeOut || '';
+    var coords = prefill.coords || (state.lastCapturedLocation ? {
+      latitude: parseFloat(state.lastCapturedLocation.latitude),
+      longitude: parseFloat(state.lastCapturedLocation.longitude),
+      distance: state.lastCapturedLocation.distance
+    } : null);
 
-    var bodyHTML = '<form id="correction-request-form" class="form-grid">';
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Select Correction Date *</label>';
-    bodyHTML += '<input type="date" id="corr-date" class="form-input" max="' + curToday + '" value="' + curToday + '" required></div>';
+    var bodyHTML = '<form id="regularization-request-form" class="form-grid" style="display:flex; flex-direction:column; gap:14px;">';
     
-    bodyHTML += '<div class="form-group"><label class="form-label">Requested Status *</label>';
-    bodyHTML += '<select id="corr-status-req" class="form-select"><option value="Present">Present</option><option value="Half Day">Half Day</option><option value="Late">Late</option><option value="Leave">On Duty / Leave</option></select></div>';
+    bodyHTML += '  <div style="background:rgba(6, 182, 212, 0.08); border:1px solid rgba(6, 182, 212, 0.25); border-radius:8px; padding:12px 14px; font-size:12.5px; color:var(--text-secondary); line-height:1.5;">';
+    bodyHTML += '    <strong style="color:var(--text-primary); display:flex; align-items:center; gap:6px; margin-bottom:4px;"><span class="material-icons-round" style="color:#06b6d4; font-size:18px;">assignment</span> Attendance Regularization Request</strong>';
+    bodyHTML += '    Submit your actual work times and reason for administrator review and approval.';
+    if (coords && !isNaN(coords.distance)) {
+      bodyHTML += '    <div style="margin-top:6px; font-size:11.5px; color:var(--text-muted);"><span class="material-icons-round" style="font-size:13px; vertical-align:middle;">pin_drop</span> Outside Radius: ' + coords.latitude + ', ' + coords.longitude + ' (' + coords.distance + 'm from campus)</div>';
+    }
+    bodyHTML += '  </div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Time In</label>';
-    bodyHTML += '<input type="time" id="corr-time-in" class="form-input" value="08:00"></div>';
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:12px; font-weight:700;">Date *</label>';
+    bodyHTML += '    <input type="date" id="req-date" class="form-input" max="' + curToday + '" value="' + reqDate + '" required>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size:12px; font-weight:700;">Punch In Time *</label>';
+    bodyHTML += '      <input type="time" id="req-time-in" class="form-input" value="' + reqTimeIn + '" required>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <div class="form-group">';
+    bodyHTML += '      <label class="form-label" style="font-size:12px; font-weight:700;">Punch Out Time (Optional)</label>';
+    bodyHTML += '      <input type="time" id="req-time-out" class="form-input" value="' + reqTimeOut + '">';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:12px; font-weight:700;">Reason for Regularization * (Min 10 characters)</label>';
+    bodyHTML += '    <textarea id="req-reason" class="form-textarea" rows="3" placeholder="e.g. Field duty assignment, official school visit, or GPS error" required minlength="10"></textarea>';
+    bodyHTML += '  </div>';
     
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Time Out</label>';
-    bodyHTML += '<input type="time" id="corr-time-out" class="form-input" value="14:00"></div>';
-    
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Reason / Justification *</label>';
-    bodyHTML += '<textarea id="corr-reason" class="form-textarea" rows="3" placeholder="e.g. Field duty, GPS hardware glitch, or morning assembly assignment" required></textarea></div>';
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
-    footerHTML += '<button class="btn btn-primary" id="submit-correction-btn"><span class="material-icons-round">send</span> Submit Request</button>';
+    footerHTML += '<button class="btn btn-primary" id="btn-submit-regularization"><span class="material-icons-round">send</span> Submit Request</button>';
 
-    SchoolApp.showModal('Request Attendance Correction', bodyHTML, footerHTML);
+    SchoolApp.showModal('Attendance Regularization Request', bodyHTML, footerHTML);
 
-    document.getElementById('submit-correction-btn').addEventListener('click', function() {
-      var dateVal = document.getElementById('corr-date').value;
-      var statusReqVal = document.getElementById('corr-status-req').value;
-      var timeInVal = document.getElementById('corr-time-in').value;
-      var timeOutVal = document.getElementById('corr-time-out').value;
-      var reasonVal = document.getElementById('corr-reason').value.trim();
+    document.getElementById('btn-submit-regularization').addEventListener('click', function() {
+      var dateVal = document.getElementById('req-date').value;
+      var timeInVal = document.getElementById('req-time-in').value;
+      var timeOutVal = document.getElementById('req-time-out').value;
+      var reasonVal = (document.getElementById('req-reason').value || '').trim();
 
-      if (!dateVal || !reasonVal) {
-        SchoolApp.showToast('Please provide date and reason for correction.', 'error');
+      if (!dateVal || !timeInVal) {
+        SchoolApp.showToast('Please specify date and Punch In time.', 'error');
+        return;
+      }
+
+      if (reasonVal.length < 10) {
+        SchoolApp.showToast('Please enter a detailed reason (minimum 10 characters).', 'error');
+        return;
+      }
+
+      var teacherId = SchoolApp.currentUser.id;
+
+      // Duplicate request check for same date (Pending)
+      var allRequests = SchoolApp.store.attendanceRequests || SchoolApp.store.teacherCorrectionRequests || [];
+      var isDuplicate = allRequests.some(function(r) {
+        var rD = r.requestDate || r.date;
+        var rS = (r.status || '').toLowerCase();
+        return r.teacherId === teacherId && rD === dateVal && rS === 'pending';
+      });
+
+      if (isDuplicate) {
+        SchoolApp.showToast('A pending regularization request for ' + SchoolApp.formatDate(dateVal) + ' already exists. Duplicate requests are not allowed.', 'warning');
         return;
       }
 
       var request = {
         id: SchoolApp.generateId(),
-        teacherId: SchoolApp.currentUser.id,
+        teacherId: teacherId,
         teacherName: (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim(),
+        requestDate: dateVal,
         date: dateVal,
-        statusRequested: statusReqVal,
+        requestedPunchIn: timeInVal,
         timeIn: timeInVal,
-        timeOut: timeOutVal,
+        requestedPunchOut: timeOutVal || null,
+        timeOut: timeOutVal || null,
+        statusRequested: 'Present',
         reason: reasonVal,
-        status: 'Pending',
-        submittedAt: new Date().toISOString()
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        reviewedAt: null,
+        reviewedBy: null,
+        adminNote: null,
+        adminNotes: null,
+        outsideLocationCoords: coords || null
       };
 
-      if (!SchoolApp.store.teacherCorrectionRequests) {
-        SchoolApp.store.teacherCorrectionRequests = [];
-      }
+      if (!SchoolApp.store.attendanceRequests) SchoolApp.store.attendanceRequests = [];
+      if (!SchoolApp.store.teacherCorrectionRequests) SchoolApp.store.teacherCorrectionRequests = [];
 
+      SchoolApp.store.attendanceRequests.push(request);
       SchoolApp.store.teacherCorrectionRequests.push(request);
+
       SchoolApp.save();
       SchoolApp.closeModal();
-      SchoolApp.showToast('Correction request submitted for administrator approval.', 'success');
+      SchoolApp.showToast('Request submitted. Pending Admin approval.', 'success');
       render();
     });
   }
 
+  function showCorrectionModal() {
+    showRegularizationModal();
+  }
+
   function showGpsFallbackModal() {
-    showCorrectionModal();
+    showRegularizationModal();
   }
 
   // Admin Review / Approval with full audit trail (Area 3b)
