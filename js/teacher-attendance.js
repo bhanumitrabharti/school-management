@@ -1288,6 +1288,7 @@
     punch: punch,
     calculateDistance: calculateDistance,
     getGeofenceSettings: getGeofenceSettings,
+    getTodayPunchStatus: getTodayPunchStatus,
     processCorrection: processCorrection,
     exportTeacherAttendanceExcel: exportTeacherAttendanceExcel,
     exportAdminSummaryExcel: exportAdminSummaryExcel,

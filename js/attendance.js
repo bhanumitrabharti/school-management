@@ -464,6 +464,28 @@
     });
     html += '</div></div>';
 
+    var punchStatus = null;
+    var isPunchedOutToday = false;
+    var curTodayStr = new Date().toISOString().split('T')[0];
+    if (SchoolApp.isTeacher() && state.selectedDate === curTodayStr) {
+      if (window.TeacherAttendanceModule && typeof window.TeacherAttendanceModule.getTodayPunchStatus === 'function') {
+        punchStatus = window.TeacherAttendanceModule.getTodayPunchStatus(SchoolApp.currentUser.id);
+        if (punchStatus && punchStatus.punchOut) {
+          isPunchedOutToday = true;
+        }
+      }
+    }
+
+    // Punch-Out Locked Warning Banner
+    if (isPunchedOutToday) {
+      html += '<div class="alert alert-danger" style="background:rgba(239, 68, 68, 0.12);border:1px solid rgba(239, 68, 68, 0.35);border-radius:var(--radius-md);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">';
+      html += '<span class="material-icons-round" style="color:var(--danger);font-size:28px;">lock_clock</span>';
+      html += '<div>';
+      html += '<div style="font-weight:700;color:var(--danger);font-size:14px;">Attendance Submission Locked — Duty Completed</div>';
+      html += '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">Aapne aaj <strong>' + (punchStatus.punchOut.time || 'earlier') + '</strong> par Punch Out kar liya hai. Punch Out ke baad attendance mark ya edit karna locked hai.</div>';
+      html += '</div></div>';
+    }
+
     // Class Selection & Top Controls
     html += '<div class="flex gap-2 mb-3" style="flex-wrap:wrap;align-items:center;">';
     html += '<select class="form-select" id="att-class-select" style="width:auto;min-width:160px"><option value="">Select Class</option>';
@@ -481,9 +503,9 @@
 
       // Quick actions
       html += '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">';
-      html += '<button class="btn btn-success btn-sm" id="mark-all-present"><span class="material-icons-round">done_all</span> All Present</button>';
-      html += '<button class="btn btn-danger btn-sm" id="mark-all-absent"><span class="material-icons-round">close</span> All Absent</button>';
-      html += '<button class="btn btn-secondary btn-sm" id="mark-reset"><span class="material-icons-round">refresh</span> Reset</button>';
+      html += '<button class="btn btn-success btn-sm" id="mark-all-present"' + (isPunchedOutToday ? ' disabled' : '') + '><span class="material-icons-round">done_all</span> All Present</button>';
+      html += '<button class="btn btn-danger btn-sm" id="mark-all-absent"' + (isPunchedOutToday ? ' disabled' : '') + '><span class="material-icons-round">close</span> All Absent</button>';
+      html += '<button class="btn btn-secondary btn-sm" id="mark-reset"' + (isPunchedOutToday ? ' disabled' : '') + '><span class="material-icons-round">refresh</span> Reset</button>';
       html += '</div>';
     }
     html += '</div>';
@@ -547,9 +569,9 @@
           html += '<div class="student-name" style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</div>';
           html += '<div class="student-roll">Roll #' + s.rollNumber + '</div>';
           html += '<div class="status-buttons">';
-          html += '<button class="status-btn present-btn' + (status === 'present' ? ' active' : '') + '" data-student="' + s.id + '" data-status="present" title="Present">P</button>';
-          html += '<button class="status-btn absent-btn' + (status === 'absent' ? ' active' : '') + '" data-student="' + s.id + '" data-status="absent" title="Absent">A</button>';
-          html += '<button class="status-btn late-btn' + (status === 'late' ? ' active' : '') + '" data-student="' + s.id + '" data-status="late" title="Late">L</button>';
+          html += '<button class="status-btn present-btn' + (status === 'present' ? ' active' : '') + '" data-student="' + s.id + '" data-status="present" title="Present"' + (isPunchedOutToday ? ' disabled' : '') + '>P</button>';
+          html += '<button class="status-btn absent-btn' + (status === 'absent' ? ' active' : '') + '" data-student="' + s.id + '" data-status="absent" title="Absent"' + (isPunchedOutToday ? ' disabled' : '') + '>A</button>';
+          html += '<button class="status-btn late-btn' + (status === 'late' ? ' active' : '') + '" data-student="' + s.id + '" data-status="late" title="Late"' + (isPunchedOutToday ? ' disabled' : '') + '>L</button>';
           html += '</div></div>';
         });
         html += '</div>';
@@ -571,7 +593,8 @@
         html += '<div class="summary-item"><span class="summary-dot red"></span><strong>' + absentCount + '</strong> Absent</div>';
         html += '<div class="summary-item"><span class="summary-dot amber"></span><strong>' + lateCount + '</strong> Late</div>';
         html += '<div class="summary-item"><strong>' + perc + '%</strong> Attendance</div>';
-        html += '<button class="btn btn-primary" id="submit-attendance"><span class="material-icons-round">' + (isEdit ? 'save' : 'how_to_reg') + '</span> ' + (isEdit ? 'Update Attendance' : 'Submit Attendance') + '</button>';
+        var submitDisabledAttr = isPunchedOutToday ? ' disabled title="Cannot submit: Duty completed for today."' : '';
+        html += '<button class="btn btn-primary" id="submit-attendance"' + submitDisabledAttr + '><span class="material-icons-round">' + (isEdit ? 'save' : 'how_to_reg') + '</span> ' + (isPunchedOutToday ? 'Locked (Punched Out)' : (isEdit ? 'Update Attendance' : 'Submit Attendance')) + '</button>';
         html += '</div>';
 
         // Progress bar
@@ -1285,6 +1308,15 @@
       if (!isCt) {
         SchoolApp.showToast('Access Denied: You are not the Class Teacher for this class.', 'error');
         return;
+      }
+
+      var curToday = new Date().toISOString().split('T')[0];
+      if (state.selectedDate === curToday && window.TeacherAttendanceModule && typeof window.TeacherAttendanceModule.getTodayPunchStatus === 'function') {
+        var punchStatus = window.TeacherAttendanceModule.getTodayPunchStatus(SchoolApp.currentUser.id);
+        if (punchStatus && punchStatus.punchOut) {
+          SchoolApp.showToast('Duty Completed: You have already punched out today at ' + (punchStatus.punchOut.time || '') + '. Attendance marking is locked.', 'error');
+          return;
+        }
       }
     }
 
