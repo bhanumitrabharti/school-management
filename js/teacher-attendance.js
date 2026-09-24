@@ -456,28 +456,112 @@
     showRegularizationModal();
   }
 
-  // Admin Review / Approval with full audit trail (Area 3b)
+  // Admin Review / Approval with full audit trail (Step 2D)
+  function showReviewCorrectionModal(requestId, approve) {
+    var allRequests = SchoolApp.store.attendanceRequests || SchoolApp.store.teacherCorrectionRequests || [];
+    var request = allRequests.find(function(r) { return r.id === requestId; });
+    if (!request) {
+      SchoolApp.showToast('Request not found.', 'error');
+      return;
+    }
+
+    var reqDate = request.requestDate || request.date;
+    var timeIn = request.requestedPunchIn || request.timeIn || '—';
+    var timeOut = request.requestedPunchOut || request.timeOut || '—';
+    var loc = request.outsideLocationCoords;
+
+    // Check for existing punches on this date (conflict detection)
+    var existingPunches = (SchoolApp.store.teacherAttendance || []).filter(function(p) {
+      return p.teacherId === request.teacherId && p.date === reqDate;
+    });
+
+    var bodyHTML = '<div class="form-grid" style="display:flex; flex-direction:column; gap:14px;">';
+
+    // Summary Card
+    bodyHTML += '  <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); border-radius:8px; padding:12px 14px; font-size:13px; line-height:1.6;">';
+    bodyHTML += '    <div><strong>Teacher:</strong> ' + request.teacherName + '</div>';
+    bodyHTML += '    <div><strong>Date:</strong> ' + SchoolApp.formatDate(reqDate) + '</div>';
+    bodyHTML += '    <div><strong>Time:</strong> Punch In: ' + timeIn + ' | Punch Out: ' + timeOut + '</div>';
+    bodyHTML += '    <div><strong>Reason:</strong> <span style="color:var(--text-secondary);">' + request.reason + '</span></div>';
+    if (loc && loc.distance) {
+      bodyHTML += '    <div style="margin-top:4px; font-size:12px; color:var(--text-muted);"><span class="material-icons-round" style="font-size:13px; vertical-align:middle;">pin_drop</span> GPS: ' + loc.latitude + ', ' + loc.longitude + ' (' + loc.distance + 'm outside campus)</div>';
+    }
+    bodyHTML += '  </div>';
+
+    // Conflict Warning if existing punches found
+    if (approve && existingPunches.length > 0) {
+      bodyHTML += '  <div style="background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.3); border-radius:8px; padding:10px 14px; font-size:12px; color:#f59e0b; line-height:1.4;">';
+      bodyHTML += '    <strong style="display:flex; align-items:center; gap:6px; margin-bottom:2px;"><span class="material-icons-round" style="font-size:16px;">warning</span> Conflict Notice</strong>';
+      bodyHTML += '    This teacher already has <strong>' + existingPunches.length + '</strong> punch record(s) on this date. Approving will record this approved regularization and preserve previous records in the audit history.';
+      bodyHTML += '  </div>';
+    }
+
+    bodyHTML += '  <div class="form-group">';
+    bodyHTML += '    <label class="form-label" style="font-size:12px; font-weight:700;">Admin Review Note (Optional)</label>';
+    bodyHTML += '    <textarea id="admin-review-note" class="form-textarea" rows="2" placeholder="' + (approve ? 'e.g. Approved as per official duty slip' : 'e.g. Outside campus without prior authorization') + '"></textarea>';
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
+    var actionBtnColor = approve ? 'btn-primary' : 'btn-danger';
+    var actionBtnIcon = approve ? 'check_circle' : 'cancel';
+    var actionBtnLabel = approve ? 'Approve Regularization' : 'Reject Request';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn ' + actionBtnColor + '" id="btn-confirm-review-action"><span class="material-icons-round">' + actionBtnIcon + '</span> ' + actionBtnLabel + '</button>';
+
+    var modalTitle = approve ? 'Approve Attendance Regularization' : 'Reject Regularization Request';
+    SchoolApp.showModal(modalTitle, bodyHTML, footerHTML);
+
+    document.getElementById('btn-confirm-review-action').addEventListener('click', function() {
+      var noteVal = (document.getElementById('admin-review-note').value || '').trim();
+      SchoolApp.closeModal();
+      processCorrection(requestId, approve, noteVal);
+    });
+  }
+
   function processCorrection(requestId, approve, reviewNotes) {
-    if (!SchoolApp.store.teacherCorrectionRequests) return;
-
-    var reqIdx = SchoolApp.store.teacherCorrectionRequests.findIndex(function(r) { return r.id === requestId; });
-    if (reqIdx === -1) return;
-
-    var request = SchoolApp.store.teacherCorrectionRequests[reqIdx];
     var adminName = (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim() || SchoolApp.currentUser.username || 'Administrator';
     var nowISO = new Date().toISOString();
 
+    // Ensure collections exist
+    if (!SchoolApp.store.attendanceRequests) SchoolApp.store.attendanceRequests = [];
+    if (!SchoolApp.store.teacherCorrectionRequests) SchoolApp.store.teacherCorrectionRequests = [];
+    if (!SchoolApp.store.teacherAttendance) SchoolApp.store.teacherAttendance = [];
+
+    var reqIdx1 = SchoolApp.store.attendanceRequests.findIndex(function(r) { return r.id === requestId; });
+    var reqIdx2 = SchoolApp.store.teacherCorrectionRequests.findIndex(function(r) { return r.id === requestId; });
+
+    var request = (reqIdx1 !== -1) ? SchoolApp.store.attendanceRequests[reqIdx1] : (reqIdx2 !== -1 ? SchoolApp.store.teacherCorrectionRequests[reqIdx2] : null);
+    if (!request) {
+      SchoolApp.showToast('Request record not found.', 'error');
+      return;
+    }
+
+    var targetStatus = approve ? 'approved' : 'rejected';
+    var targetStatusUpper = approve ? 'Approved' : 'Rejected';
+    var finalNote = reviewNotes || (approve ? 'Approved by Admin' : 'Rejected by Admin');
+
+    // Update in both arrays
+    [SchoolApp.store.attendanceRequests, SchoolApp.store.teacherCorrectionRequests].forEach(function(arr) {
+      arr.forEach(function(r) {
+        if (r.id === requestId) {
+          r.status = targetStatusUpper;
+          r.reviewedBy = adminName;
+          r.reviewedAt = nowISO;
+          r.adminNote = finalNote;
+          r.adminNotes = finalNote;
+        }
+      });
+    });
+
     if (approve) {
-      request.status = 'Approved';
-      request.reviewedBy = adminName;
-      request.reviewedAt = nowISO;
-      request.adminNotes = reviewNotes || 'Approved by Admin';
+      var reqDate = request.requestDate || request.date;
+      var timeIn = request.requestedPunchIn || request.timeIn;
+      var timeOut = request.requestedPunchOut || request.timeOut;
 
-      if (!SchoolApp.store.teacherAttendance) SchoolApp.store.teacherAttendance = [];
-
-      // Find and capture existing punches for this date as audit trail snapshot
+      // Capture existing punches for this date as audit trail snapshot
       var existingPunches = SchoolApp.store.teacherAttendance.filter(function(p) {
-        return p.teacherId === request.teacherId && p.date === request.date;
+        return p.teacherId === request.teacherId && p.date === reqDate;
       });
 
       var originalPunchesSnapshot = existingPunches.map(function(p) {
@@ -487,7 +571,8 @@
           type: p.type,
           geofenceStatus: p.geofenceStatus,
           method: p.method,
-          distance: p.distance
+          distance: p.distance,
+          markedVia: p.markedVia || 'location_auto'
         };
       });
 
@@ -496,26 +581,29 @@
         correctedBy: adminName,
         correctedAt: nowISO,
         reason: request.reason,
-        adminNotes: request.adminNotes,
+        adminNotes: finalNote,
         originalPunches: originalPunchesSnapshot,
         approvedStatus: request.statusRequested || 'Present'
       };
 
-      // Insert or update Punch In
-      if (request.timeIn) {
+      // Insert Punch In with markedVia = 'admin_approved_request'
+      if (timeIn) {
         var inRecord = {
           id: SchoolApp.generateId(),
           teacherId: request.teacherId,
           teacherName: request.teacherName,
-          date: request.date,
+          date: reqDate,
           type: 'in',
-          time: request.timeIn + (request.timeIn.length === 5 ? ':00' : ''),
-          timestamp: request.date + 'T' + request.timeIn + (request.timeIn.length === 5 ? ':00' : '') + '.000Z',
+          time: timeIn + (timeIn.length === 5 ? ':00' : ''),
+          timestamp: reqDate + 'T' + timeIn + (timeIn.length === 5 ? ':00' : '') + '.000Z',
           latitude: null,
           longitude: null,
           distance: 0,
-          geofenceStatus: 'Inside Geofence (Manual Correction)',
+          geofenceStatus: 'Inside Geofence (Admin Regularization)',
           outsideGeofence: false,
+          outsideLocationFlag: false,
+          markedVia: 'admin_approved_request',
+          requestId: request.id,
           method: 'Manual',
           isCorrected: true,
           correctionAudit: auditData
@@ -523,21 +611,24 @@
         SchoolApp.store.teacherAttendance.push(inRecord);
       }
 
-      // Insert or update Punch Out
-      if (request.timeOut) {
+      // Insert Punch Out with markedVia = 'admin_approved_request'
+      if (timeOut) {
         var outRecord = {
           id: SchoolApp.generateId(),
           teacherId: request.teacherId,
           teacherName: request.teacherName,
-          date: request.date,
+          date: reqDate,
           type: 'out',
-          time: request.timeOut + (request.timeOut.length === 5 ? ':00' : ''),
-          timestamp: request.date + 'T' + request.timeOut + (request.timeOut.length === 5 ? ':00' : '') + '.000Z',
+          time: timeOut + (timeOut.length === 5 ? ':00' : ''),
+          timestamp: reqDate + 'T' + timeOut + (timeOut.length === 5 ? ':00' : '') + '.000Z',
           latitude: null,
           longitude: null,
           distance: 0,
-          geofenceStatus: 'Inside Geofence (Manual Correction)',
+          geofenceStatus: 'Inside Geofence (Admin Regularization)',
           outsideGeofence: false,
+          outsideLocationFlag: false,
+          markedVia: 'admin_approved_request',
+          requestId: request.id,
           method: 'Manual',
           isCorrected: true,
           correctionAudit: auditData
@@ -545,13 +636,9 @@
         SchoolApp.store.teacherAttendance.push(outRecord);
       }
 
-      SchoolApp.showToast('Correction approved and audit trail recorded.', 'success');
+      SchoolApp.showToast('Regularization approved. Attendance marked via admin approval.', 'success');
     } else {
-      request.status = 'Rejected';
-      request.reviewedBy = adminName;
-      request.reviewedAt = nowISO;
-      request.adminNotes = reviewNotes || 'Rejected by Admin';
-      SchoolApp.showToast('Correction request rejected.', 'warning');
+      SchoolApp.showToast('Regularization request rejected.', 'warning');
     }
 
     SchoolApp.save();
@@ -1068,23 +1155,25 @@
     html += '</div>';
 
     if (state.activeTab === 'approvals') {
-      // Requests Tab
-      var allRequests = SchoolApp.store.teacherCorrectionRequests || [];
+      // Requests Tab (Step 2D)
+      var allRequests = SchoolApp.store.attendanceRequests || SchoolApp.store.teacherCorrectionRequests || [];
       var filteredRequests = allRequests;
       if (state.reqStatusFilter !== 'all') {
-        filteredRequests = filteredRequests.filter(function(r) { return r.status === state.reqStatusFilter; });
+        filteredRequests = filteredRequests.filter(function(r) {
+          return (r.status || '').toLowerCase() === state.reqStatusFilter.toLowerCase();
+        });
       }
       filteredRequests.sort(function(a, b) { return new Date(b.submittedAt) - new Date(a.submittedAt); });
 
       html += '<div class="card">';
       html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
-      html += '    <h3 style="margin:0;"><span class="material-icons-round">checklist</span> Teacher Correction & Approval Requests</h3>';
+      html += '    <h3 style="margin:0;"><span class="material-icons-round">checklist</span> Teacher Regularization & Approval Requests</h3>';
       html += '    <div style="display:flex; gap:10px; align-items:center;">';
       html += '      <label style="font-size:12px; color:var(--text-secondary);">Status Filter:</label>';
       html += '      <select id="admin-req-status-filter" class="form-select" style="max-width:140px;">';
-      html += '        <option value="Pending"' + (state.reqStatusFilter === 'Pending' ? ' selected' : '') + '>Pending Only</option>';
-      html += '        <option value="Approved"' + (state.reqStatusFilter === 'Approved' ? ' selected' : '') + '>Approved</option>';
-      html += '        <option value="Rejected"' + (state.reqStatusFilter === 'Rejected' ? ' selected' : '') + '>Rejected</option>';
+      html += '        <option value="pending"' + (state.reqStatusFilter.toLowerCase() === 'pending' ? ' selected' : '') + '>Pending Only</option>';
+      html += '        <option value="approved"' + (state.reqStatusFilter.toLowerCase() === 'approved' ? ' selected' : '') + '>Approved</option>';
+      html += '        <option value="rejected"' + (state.reqStatusFilter.toLowerCase() === 'rejected' ? ' selected' : '') + '>Rejected</option>';
       html += '        <option value="all"' + (state.reqStatusFilter === 'all' ? ' selected' : '') + '>All Requests</option>';
       html += '      </select>';
       html += '    </div>';
@@ -1093,37 +1182,46 @@
       html += '  <div class="card-body">';
       if (filteredRequests.length > 0) {
         html += '<div class="table-container"><table class="data-table"><thead><tr>';
-        html += '<th>Teacher Name</th><th>Requested Date</th><th>In / Out Time</th><th>Status Requested</th><th>Reason / Justification</th><th>Review Audit</th><th>Status</th><th>Actions</th>';
+        html += '<th>Teacher Name</th><th>Requested Date</th><th>In / Out Time</th><th>Reason</th><th>Location Data</th><th>Review Audit</th><th>Status</th><th>Actions</th>';
         html += '</tr></thead><tbody>';
 
         filteredRequests.forEach(function(r) {
+          var rStat = (r.status || 'Pending').toLowerCase();
           var statusColor = 'badge-purple';
-          if (r.status === 'Approved') statusColor = 'badge-success';
-          if (r.status === 'Rejected') statusColor = 'badge-danger';
+          if (rStat === 'approved') statusColor = 'badge-success';
+          if (rStat === 'rejected') statusColor = 'badge-danger';
+
+          var rDate = r.requestDate || r.date;
+          var timeIn = r.requestedPunchIn || r.timeIn;
+          var timeOut = r.requestedPunchOut || r.timeOut;
 
           var timeText = '';
-          if (r.timeIn && r.timeOut) {
-            timeText = r.timeIn + ' - ' + r.timeOut;
-          } else if (r.timeIn) {
-            timeText = 'In: ' + r.timeIn;
-          } else if (r.timeOut) {
-            timeText = 'Out: ' + r.timeOut;
+          if (timeIn && timeOut) {
+            timeText = timeIn + ' - ' + timeOut;
+          } else if (timeIn) {
+            timeText = 'In: ' + timeIn;
+          } else if (timeOut) {
+            timeText = 'Out: ' + timeOut;
           }
 
-          var auditText = r.reviewedBy ? (r.reviewedBy + ' (' + new Date(r.reviewedAt).toLocaleDateString('en-IN') + ')') : 'Pending';
+          var loc = r.outsideLocationCoords;
+          var locText = loc ? ('<span class="badge badge-warning" style="font-size:11px;" title="' + loc.latitude + ', ' + loc.longitude + '"><span class="material-icons-round" style="font-size:12px; vertical-align:middle;">pin_drop</span> ' + (loc.distance ? loc.distance + 'm outside' : 'GPS attached') + '</span>') : '<span style="color:var(--text-muted); font-size:11.5px;">Manual/None</span>';
+
+          var adminNotes = r.adminNote || r.adminNotes;
+          var auditText = r.reviewedBy ? (r.reviewedBy + ' (' + new Date(r.reviewedAt).toLocaleDateString('en-IN') + ')' + (adminNotes ? '<br><small style="color:var(--text-muted);">' + adminNotes + '</small>' : '')) : '<span style="color:var(--text-muted);">Pending</span>';
 
           html += '<tr>';
           html += '<td><strong>' + r.teacherName + '</strong></td>';
-          html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
+          html += '<td>' + SchoolApp.formatDate(rDate) + '</td>';
           html += '<td><strong>' + (timeText || '—') + '</strong></td>';
-          html += '<td><span class="badge badge-info">' + (r.statusRequested || 'Present') + '</span></td>';
           html += '<td>' + r.reason + '</td>';
+          html += '<td>' + locText + '</td>';
           html += '<td style="font-size:12px; color:var(--text-secondary);">' + auditText + '</td>';
-          html += '<td><span class="badge ' + statusColor + '">' + r.status + '</span></td>';
+          html += '<td><span class="badge ' + statusColor + '">' + (rStat === 'approved' ? 'Approved' : (rStat === 'rejected' ? 'Rejected' : 'Pending')) + '</span></td>';
           html += '<td><div class="table-actions">';
-          if (r.status === 'Pending') {
-            html += '<button class="btn-icon approve-request-btn" data-id="' + r.id + '" title="Approve" style="color:var(--success); font-size: 22px;"><span class="material-icons-round">check_circle</span></button>';
-            html += '<button class="btn-icon reject-request-btn" data-id="' + r.id + '" title="Reject" style="color:var(--danger); font-size: 22px;"><span class="material-icons-round">cancel</span></button>';
+          if (rStat === 'pending') {
+            html += '<button class="btn-icon approve-request-btn" data-id="' + r.id + '" title="Review & Approve" style="color:var(--success); font-size: 22px;"><span class="material-icons-round">check_circle</span></button>';
+            html += '<button class="btn-icon reject-request-btn" data-id="' + r.id + '" title="Review & Reject" style="color:var(--danger); font-size: 22px;"><span class="material-icons-round">cancel</span></button>';
           } else {
             html += '<span style="font-size:11.5px; color:var(--text-muted);">Processed</span>';
           }
@@ -1133,7 +1231,7 @@
 
         html += '</tbody></table></div>';
       } else {
-        html += '<div class="empty-state" style="padding: 24px;"><span class="material-icons-round">playlist_add_check</span><h3>No Requests Found</h3><p>No teacher correction requests match your filter.</p></div>';
+        html += '<div class="empty-state" style="padding: 24px;"><span class="material-icons-round">playlist_add_check</span><h3>No Requests Found</h3><p>No teacher regularization requests match your filter.</p></div>';
       }
       html += '  </div>';
       html += '</div>';
@@ -1308,18 +1406,14 @@
       document.querySelectorAll('.approve-request-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var id = this.getAttribute('data-id');
-          SchoolApp.showConfirm('Approve this attendance correction request?', function() {
-            processCorrection(id, true);
-          });
+          showReviewCorrectionModal(id, true);
         });
       });
 
       document.querySelectorAll('.reject-request-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var id = this.getAttribute('data-id');
-          SchoolApp.showConfirm('Reject this attendance correction request?', function() {
-            processCorrection(id, false);
-          });
+          showReviewCorrectionModal(id, false);
         });
       });
     } else if (state.activeTab === 'logs') {
