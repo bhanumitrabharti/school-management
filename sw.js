@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v28 for Teacher Edit modal Assigned Classes responsive card-chip redesign.
-const CACHE_NAME = 'erp-cache-v28';
+// Bumped to v29 for Teacher Attendance Location Enforcement, Regularization, and Dual Reports upgrade.
+const CACHE_NAME = 'erp-cache-v29';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
