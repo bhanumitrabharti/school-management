@@ -927,7 +927,7 @@
     html += '<div style="margin-top: 12px; text-align: center;"><a href="#" id="gps-fallback-btn" style="font-size: 13px; color: var(--accent-secondary); text-decoration: underline;">GPS not working? Request manual approval</a></div>';
     html += '</div>'; // End punch-card-wrapper
 
-    // Personal Logs & History with Filters (Area 3c)
+    // Personal Logs & History with Filters (Step 2F)
     html += '<div class="card mb-4">';
     html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
     html += '    <h3 style="margin:0;"><span class="material-icons-round">history</span> My Attendance History & Reports</h3>';
@@ -954,7 +954,7 @@
     html += '    </div>';
     html += '  </div>';
 
-    // Summary Stat KPI Cards for Teacher
+    // Summary Stat KPI Cards for Teacher (Strict user isolation: only currentUser.id)
     var allMyPunches = (SchoolApp.store.teacherAttendance || []).filter(function(p) { return p.teacherId === teacherId; });
     var filteredMyPunches = allMyPunches.filter(function(p) {
       if (state.teacherStartDate && p.date < state.teacherStartDate) return false;
@@ -964,10 +964,10 @@
     filteredMyPunches.sort(function(a, b) { return new Date(b.timestamp) - new Date(a.timestamp); });
 
     var totalPunches = filteredMyPunches.length;
-    var insidePunches = filteredMyPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1; }).length;
-    var outsidePunches = filteredMyPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1; }).length;
-    var correctedPunches = filteredMyPunches.filter(function(p) { return p.isCorrected === true; }).length;
-    var compliancePct = totalPunches > 0 ? Math.round((insidePunches / totalPunches) * 100) : 100;
+    var locationAutoCount = filteredMyPunches.filter(function(p) { return (p.markedVia === 'location_auto' || !p.markedVia) && !p.outsideLocationFlag && !p.isCorrected; }).length;
+    var adminApprovedCount = filteredMyPunches.filter(function(p) { return p.markedVia === 'admin_approved_request' || p.isCorrected === true; }).length;
+    var outsideRadiusCount = filteredMyPunches.filter(function(p) { return p.outsideLocationFlag || (p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1 && !p.isCorrected); }).length;
+    var compliancePct = totalPunches > 0 ? Math.round((locationAutoCount / totalPunches) * 100) : 100;
 
     html += '  <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; padding:16px 20px;">';
     html += '    <div class="kpi-card" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-light); border-radius:8px; padding:14px;">';
@@ -975,36 +975,44 @@
     html += '      <div style="font-size:24px; font-weight:700; color:var(--text-primary); margin-top:4px;">' + totalPunches + '</div>';
     html += '    </div>';
     html += '    <div class="kpi-card" style="background:rgba(16, 185, 129, 0.06); border:1px solid rgba(16, 185, 129, 0.2); border-radius:8px; padding:14px;">';
-    html += '      <div style="font-size:11px; color:#10b981; text-transform:uppercase; font-weight:700;">Inside Geofence</div>';
-    html += '      <div style="font-size:24px; font-weight:700; color:#10b981; margin-top:4px;">' + insidePunches + ' <span style="font-size:13px; font-weight:400;">(' + compliancePct + '%)</span></div>';
-    html += '    </div>';
-    html += '    <div class="kpi-card" style="background:rgba(239, 68, 68, 0.06); border:1px solid rgba(239, 68, 68, 0.2); border-radius:8px; padding:14px;">';
-    html += '      <div style="font-size:11px; color:#ef4444; text-transform:uppercase; font-weight:700;">Outside Geofence</div>';
-    html += '      <div style="font-size:24px; font-weight:700; color:#ef4444; margin-top:4px;">' + outsidePunches + '</div>';
+    html += '      <div style="font-size:11px; color:#10b981; text-transform:uppercase; font-weight:700;">📍 Location Auto</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:#10b981; margin-top:4px;">' + locationAutoCount + ' <span style="font-size:13px; font-weight:400;">(' + compliancePct + '%)</span></div>';
     html += '    </div>';
     html += '    <div class="kpi-card" style="background:rgba(59, 130, 246, 0.06); border:1px solid rgba(59, 130, 246, 0.2); border-radius:8px; padding:14px;">';
-    html += '      <div style="font-size:11px; color:#3b82f6; text-transform:uppercase; font-weight:700;">Admin Corrected</div>';
-    html += '      <div style="font-size:24px; font-weight:700; color:#3b82f6; margin-top:4px;">' + correctedPunches + '</div>';
+    html += '      <div style="font-size:11px; color:#3b82f6; text-transform:uppercase; font-weight:700;">✅ Admin Approved</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:#3b82f6; margin-top:4px;">' + adminApprovedCount + '</div>';
+    html += '    </div>';
+    html += '    <div class="kpi-card" style="background:rgba(245, 158, 11, 0.06); border:1px solid rgba(245, 158, 11, 0.2); border-radius:8px; padding:14px;">';
+    html += '      <div style="font-size:11px; color:#f59e0b; text-transform:uppercase; font-weight:700;">⚠️ Outside Radius</div>';
+    html += '      <div style="font-size:24px; font-weight:700; color:#f59e0b; margin-top:4px;">' + outsideRadiusCount + '</div>';
     html += '    </div>';
     html += '  </div>';
 
     html += '  <div class="card-body" style="padding:0 20px 20px 20px;">';
     if (filteredMyPunches.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Date</th><th>Time</th><th>Type</th><th>Geofence Status</th><th>Coordinates</th><th>Method</th><th>Audit Trail</th>';
+      html += '<th>Date</th><th>Time</th><th>Punch Type</th><th>Attendance Type</th><th>Geofence Status</th><th>Coordinates</th><th>Method</th><th>Audit Trail</th>';
       html += '</tr></thead><tbody>';
       filteredMyPunches.forEach(function(p) {
         var typeColor = p.type === 'in' ? 'badge-success' : 'badge-danger';
-        var geoColor = (p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1) ? 'badge-success' : 'badge-danger';
         var coordsText = p.latitude ? p.latitude.toFixed(5) + ', ' + p.longitude.toFixed(5) : '—';
         var audit = p.correctionAudit || {};
-        var auditTag = p.isCorrected ? '<span class="badge badge-info" title="Corrected by ' + (audit.correctedBy || 'Admin') + ' on ' + (audit.correctedAt ? new Date(audit.correctedAt).toLocaleDateString('en-IN') : '—') + ': ' + (audit.reason || '') + '"><span class="material-icons-round" style="font-size:11px; vertical-align:middle;">verified</span> Corrected</span>' : '<span style="color:var(--text-muted); font-size:12px;">Standard</span>';
+
+        var typeBadge = '<span class="badge badge-info" style="display:inline-flex; align-items:center; gap:3px;"><span class="material-icons-round" style="font-size:12px;">my_location</span> Location Auto</span>';
+        if (p.markedVia === 'admin_approved_request' || p.isCorrected) {
+          typeBadge = '<span class="badge badge-success" style="display:inline-flex; align-items:center; gap:3px;"><span class="material-icons-round" style="font-size:12px;">verified</span> Admin Approved</span>';
+        } else if (p.outsideLocationFlag || (p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1)) {
+          typeBadge = '<span class="badge badge-warning" style="display:inline-flex; align-items:center; gap:3px;"><span class="material-icons-round" style="font-size:12px;">wrong_location</span> Outside Radius</span>';
+        }
+
+        var auditTag = (p.isCorrected || p.markedVia === 'admin_approved_request') ? '<span class="badge badge-info" title="Approved by ' + (audit.correctedBy || 'Admin') + ': ' + (audit.adminNotes || audit.reason || '') + '"><span class="material-icons-round" style="font-size:11px; vertical-align:middle;">verified</span> Regularized</span>' : '<span style="color:var(--text-muted); font-size:12px;">Standard GPS</span>';
         
         html += '<tr>';
         html += '<td>' + SchoolApp.formatDate(p.date) + '</td>';
         html += '<td><strong>' + p.time + '</strong></td>';
-        html += '<td><span class="badge ' + typeColor + '">Punch ' + p.type.toUpperCase() + '</span></td>';
-        html += '<td><span class="badge ' + geoColor + '">' + p.geofenceStatus + '</span></td>';
+        html += '<td><span class="badge ' + typeColor + '">Punch ' + (p.type || 'IN').toUpperCase() + '</span></td>';
+        html += '<td>' + typeBadge + '</td>';
+        html += '<td>' + (p.geofenceStatus || '—') + (p.distance !== undefined ? ' (' + p.distance + 'm)' : '') + '</td>';
         html += '<td>' + coordsText + '</td>';
         html += '<td><span class="badge badge-info">' + (p.method || 'GPS') + '</span></td>';
         html += '<td>' + auditTag + '</td>';
@@ -1017,43 +1025,56 @@
     html += '  </div>';
     html += '</div>';
 
-    // Pending Correction Requests
-    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">edit_calendar</span> My Correction Requests</h3></div>';
+    // Personal Regularization Requests Tracker
+    html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">edit_calendar</span> My Regularization Requests</h3></div>';
     html += '<div class="card-body">';
-    var myRequests = (SchoolApp.store.teacherCorrectionRequests || []).filter(function(r) { return r.teacherId === teacherId; });
+    var allReqs = SchoolApp.store.attendanceRequests || SchoolApp.store.teacherCorrectionRequests || [];
+    var myRequests = allReqs.filter(function(r) { return r.teacherId === teacherId; });
     myRequests.sort(function(a, b) { return new Date(b.submittedAt) - new Date(a.submittedAt); });
 
     if (myRequests.length > 0) {
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Requested Date</th><th>In / Out Time</th><th>Status Requested</th><th>Reason</th><th>Admin Review</th><th>Status</th>';
+      html += '<th>Requested Date</th><th>In / Out Time</th><th>Reason</th><th>Location</th><th>Admin Review & Notes</th><th>Status</th>';
       html += '</tr></thead><tbody>';
       myRequests.forEach(function(r) {
+        var rStat = (r.status || 'Pending').toLowerCase();
         var statusColor = 'badge-purple';
-        if (r.status === 'Approved') statusColor = 'badge-success';
-        if (r.status === 'Rejected') statusColor = 'badge-danger';
+        if (rStat === 'approved') statusColor = 'badge-success';
+        if (rStat === 'rejected') statusColor = 'badge-danger';
         
-        var reviewText = r.reviewedBy ? ('Reviewed by ' + r.reviewedBy + (r.adminNotes ? ' (' + r.adminNotes + ')' : '')) : 'Pending review';
+        var rDate = r.requestDate || r.date;
+        var timeIn = r.requestedPunchIn || r.timeIn;
+        var timeOut = r.requestedPunchOut || r.timeOut;
+        var timeText = '';
+        if (timeIn && timeOut) {
+          timeText = timeIn + ' - ' + timeOut;
+        } else if (timeIn) {
+          timeText = 'Punch In: ' + timeIn;
+        } else if (timeOut) {
+          timeText = 'Punch Out: ' + timeOut;
+        }
+
+        var loc = r.outsideLocationCoords;
+        var locText = loc ? ('<span class="badge badge-warning" style="font-size:11px;"><span class="material-icons-round" style="font-size:12px; vertical-align:middle;">pin_drop</span> ' + (loc.distance ? loc.distance + 'm outside' : 'GPS') + '</span>') : '<span style="color:var(--text-muted); font-size:11.5px;">Manual</span>';
+
+        var adminNotes = r.adminNote || r.adminNotes;
+        var reviewText = '<span style="color:var(--text-muted);">Pending Review</span>';
+        if (r.reviewedBy) {
+          reviewText = 'Reviewed by ' + r.reviewedBy + (adminNotes ? '<br><strong style="color:' + (rStat === 'rejected' ? 'var(--danger)' : 'var(--text-primary)') + '; font-size:11.5px;">' + (rStat === 'rejected' ? 'Note: ' : 'Admin Note: ') + adminNotes + '</strong>' : '');
+        }
 
         html += '<tr>';
-        html += '<td>' + SchoolApp.formatDate(r.date) + '</td>';
-        var timeText = '';
-        if (r.timeIn && r.timeOut) {
-          timeText = r.timeIn + ' - ' + r.timeOut;
-        } else if (r.timeIn) {
-          timeText = 'Punch In: ' + r.timeIn;
-        } else if (r.timeOut) {
-          timeText = 'Punch Out: ' + r.timeOut;
-        }
+        html += '<td>' + SchoolApp.formatDate(rDate) + '</td>';
         html += '<td><strong>' + (timeText || '—') + '</strong></td>';
-        html += '<td><span class="badge badge-info">' + (r.statusRequested || 'Present') + '</span></td>';
         html += '<td>' + r.reason + '</td>';
+        html += '<td>' + locText + '</td>';
         html += '<td style="font-size:12px; color:var(--text-secondary);">' + reviewText + '</td>';
-        html += '<td><span class="badge ' + statusColor + '">' + r.status + '</span></td>';
+        html += '<td><span class="badge ' + statusColor + '">' + (rStat === 'approved' ? 'Approved' : (rStat === 'rejected' ? 'Rejected' : 'Pending')) + '</span></td>';
         html += '</tr>';
       });
       html += '</tbody></table></div>';
     } else {
-      html += '<p style="color:var(--text-secondary); text-align:center; padding:16px;">No correction requests found.</p>';
+      html += '<p style="color:var(--text-secondary); text-align:center; padding:16px;">No regularization requests found.</p>';
     }
     html += '</div></div>';
 
