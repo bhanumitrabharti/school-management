@@ -763,7 +763,7 @@
     });
   }
 
-  // Export functions (Area 3c)
+  // Export functions (Step 2E)
   function exportTeacherAttendanceExcel(teacherId) {
     var allPunches = SchoolApp.store.teacherAttendance || [];
     var filtered = allPunches;
@@ -782,19 +782,27 @@
 
     var rows = filtered.map(function(p) {
       var audit = p.correctionAudit || {};
+      var markedViaText = 'Location Auto';
+      if (p.markedVia === 'admin_approved_request' || p.isCorrected) {
+        markedViaText = 'Admin Approved';
+      } else if (p.outsideLocationFlag || p.outsideGeofence) {
+        markedViaText = 'Outside Radius (Flagged)';
+      }
+
       return {
         'Date': p.date,
         'Teacher Name': p.teacherName,
         'Punch Type': p.type ? p.type.toUpperCase() : '—',
         'Punch Time': p.time,
+        'Attendance Type / Marked Via': markedViaText,
         'Geofence Status': p.geofenceStatus || '—',
         'Distance (m)': p.distance !== undefined ? p.distance : '—',
         'Latitude': p.latitude ? p.latitude.toFixed(5) : '—',
         'Longitude': p.longitude ? p.longitude.toFixed(5) : '—',
         'Method': p.method || 'GPS',
-        'Is Corrected': p.isCorrected ? 'YES' : 'NO',
-        'Corrected By': audit.correctedBy || '—',
-        'Correction Reason': audit.reason || '—'
+        'Is Corrected / Regularized': (p.isCorrected || p.markedVia === 'admin_approved_request') ? 'YES' : 'NO',
+        'Approved / Corrected By': audit.correctedBy || '—',
+        'Review / Request Note': audit.adminNotes || audit.reason || '—'
       };
     });
 
@@ -803,14 +811,15 @@
       { header: 'Teacher Name', key: 'Teacher Name' },
       { header: 'Punch Type', key: 'Punch Type' },
       { header: 'Punch Time', key: 'Punch Time' },
+      { header: 'Attendance Type / Marked Via', key: 'Attendance Type / Marked Via' },
       { header: 'Geofence Status', key: 'Geofence Status' },
       { header: 'Distance (m)', key: 'Distance (m)' },
       { header: 'Latitude', key: 'Latitude' },
       { header: 'Longitude', key: 'Longitude' },
       { header: 'Method', key: 'Method' },
-      { header: 'Is Corrected', key: 'Is Corrected' },
-      { header: 'Corrected By', key: 'Corrected By' },
-      { header: 'Correction Reason', key: 'Correction Reason' }
+      { header: 'Is Corrected / Regularized', key: 'Is Corrected / Regularized' },
+      { header: 'Approved / Corrected By', key: 'Approved / Corrected By' },
+      { header: 'Review / Request Note', key: 'Review / Request Note' }
     ];
 
     var teacherNameSlug = teacherId ? (SchoolApp.currentUser.firstName || 'Teacher') : 'All_Teachers';
@@ -832,11 +841,11 @@
     var rows = teachers.map(function(t) {
       var tPunches = filtered.filter(function(p) { return p.teacherId === t.id; });
       var inPunches = tPunches.filter(function(p) { return p.type === 'in'; });
-      var insideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1; }).length;
-      var outsideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1; }).length;
-      var correctedCount = tPunches.filter(function(p) { return p.isCorrected === true; }).length;
+      var locationAutoCount = tPunches.filter(function(p) { return (p.markedVia === 'location_auto' || !p.markedVia) && !p.outsideLocationFlag && !p.isCorrected; }).length;
+      var adminApprovedCount = tPunches.filter(function(p) { return p.markedVia === 'admin_approved_request' || p.isCorrected === true; }).length;
+      var outsideCount = tPunches.filter(function(p) { return p.outsideLocationFlag || (p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1 && !p.isCorrected); }).length;
       var totalLogs = tPunches.length;
-      var complianceRate = totalLogs > 0 ? Math.round((insideCount / totalLogs) * 100) : 100;
+      var complianceRate = totalLogs > 0 ? Math.round((locationAutoCount / totalLogs) * 100) : 100;
 
       return {
         'Teacher Name': t.firstName + ' ' + (t.lastName || ''),
@@ -844,9 +853,9 @@
         'Status': t.status,
         'Total Punches': totalLogs,
         'Days Present (In)': inPunches.length,
-        'Inside Geofence': insideCount,
+        'Location Auto (Inside)': locationAutoCount,
+        'Admin Approved': adminApprovedCount,
         'Outside Geofence': outsideCount,
-        'Corrected by Admin': correctedCount,
         'Geofence Compliance': complianceRate + '%'
       };
     });
@@ -857,9 +866,9 @@
       { header: 'Status', key: 'Status' },
       { header: 'Total Punches', key: 'Total Punches' },
       { header: 'Days Present (In)', key: 'Days Present (In)' },
-      { header: 'Inside Geofence', key: 'Inside Geofence' },
+      { header: 'Location Auto (Inside)', key: 'Location Auto (Inside)' },
+      { header: 'Admin Approved', key: 'Admin Approved' },
       { header: 'Outside Geofence', key: 'Outside Geofence' },
-      { header: 'Corrected by Admin', key: 'Corrected by Admin' },
       { header: 'Geofence Compliance', key: 'Geofence Compliance' }
     ];
 
@@ -1237,10 +1246,30 @@
       html += '</div>';
 
     } else if (state.activeTab === 'logs') {
-      // Daily GPS Logs Tab
+      // Daily Attendance & GPS Logs Tab (Step 2E)
+      var allDayLogs = (SchoolApp.store.teacherAttendance || []).filter(function(l) { return l.date === state.selectedDate; });
+      var dayLogs = allDayLogs;
+      if (state.teacherFilter !== 'all') {
+        dayLogs = dayLogs.filter(function(l) { return l.teacherId === state.teacherFilter; });
+      }
+      if (state.geoFilter === 'inside') {
+        dayLogs = dayLogs.filter(function(l) { return (l.markedVia === 'location_auto' || !l.markedVia) && !l.outsideLocationFlag && !l.isCorrected; });
+      } else if (state.geoFilter === 'outside') {
+        dayLogs = dayLogs.filter(function(l) { return l.outsideLocationFlag || (l.geofenceStatus && l.geofenceStatus.indexOf('Outside') !== -1 && !l.isCorrected); });
+      } else if (state.geoFilter === 'corrected') {
+        dayLogs = dayLogs.filter(function(l) { return l.markedVia === 'admin_approved_request' || l.isCorrected === true; });
+      }
+
+      dayLogs.sort(function(a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
+
+      var countTotal = dayLogs.length;
+      var countAuto = dayLogs.filter(function(l) { return (l.markedVia === 'location_auto' || !l.markedVia) && !l.outsideLocationFlag && !l.isCorrected; }).length;
+      var countApproved = dayLogs.filter(function(l) { return l.markedVia === 'admin_approved_request' || l.isCorrected === true; }).length;
+      var countOutside = dayLogs.filter(function(l) { return l.outsideLocationFlag || (l.geofenceStatus && l.geofenceStatus.indexOf('Outside') !== -1 && !l.isCorrected); }).length;
+
       html += '<div class="card">';
       html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">';
-      html += '    <h3 style="margin:0;"><span class="material-icons-round">history</span> Daily GPS Punch Logs</h3>';
+      html += '    <h3 style="margin:0;"><span class="material-icons-round">history</span> Daily Attendance & GPS Punch Logs</h3>';
       html += '    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">';
       html += '      <input type="date" id="admin-log-date-picker" class="form-input" value="' + state.selectedDate + '" style="max-width:160px;">';
       html += '      <select id="admin-log-teacher-filter" class="form-select" style="max-width:180px;">';
@@ -1249,53 +1278,57 @@
         html += '<option value="' + t.id + '"' + (state.teacherFilter === t.id ? ' selected' : '') + '>' + t.firstName + ' ' + (t.lastName || '') + '</option>';
       });
       html += '      </select>';
-      html += '      <select id="admin-log-geo-filter" class="form-select" style="max-width:150px;">';
-      html += '        <option value="all"' + (state.geoFilter === 'all' ? ' selected' : '') + '>All Locations</option>';
-      html += '        <option value="inside"' + (state.geoFilter === 'inside' ? ' selected' : '') + '>Inside Geofence</option>';
-      html += '        <option value="outside"' + (state.geoFilter === 'outside' ? ' selected' : '') + '>Outside Geofence</option>';
-      html += '        <option value="corrected"' + (state.geoFilter === 'corrected' ? ' selected' : '') + '>Corrected Only</option>';
+      html += '      <select id="admin-log-geo-filter" class="form-select" style="max-width:170px;">';
+      html += '        <option value="all"' + (state.geoFilter === 'all' ? ' selected' : '') + '>All Attendance Types</option>';
+      html += '        <option value="inside"' + (state.geoFilter === 'inside' ? ' selected' : '') + '>📍 Location Auto</option>';
+      html += '        <option value="corrected"' + (state.geoFilter === 'corrected' ? ' selected' : '') + '>✅ Admin Approved</option>';
+      html += '        <option value="outside"' + (state.geoFilter === 'outside' ? ' selected' : '') + '>⚠️ Outside Radius</option>';
       html += '      </select>';
       html += '      <button class="btn btn-secondary btn-sm" id="btn-export-daily-logs" style="display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:16px;">table_view</span> Export Logs</button>';
       html += '    </div>';
       html += '  </div>';
 
+      // KPI Summary for Date
+      html += '  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; padding:12px 20px; background:rgba(255,255,255,0.02); border-bottom:1px solid var(--border-light);">';
+      html += '    <div style="font-size:12px; color:var(--text-secondary);">Total Punches: <strong style="color:var(--text-primary); font-size:14px;">' + countTotal + '</strong></div>';
+      html += '    <div style="font-size:12px; color:#10b981;">📍 Location Auto: <strong style="font-size:14px;">' + countAuto + '</strong></div>';
+      html += '    <div style="font-size:12px; color:#3b82f6;">✅ Admin Approved: <strong style="font-size:14px;">' + countApproved + '</strong></div>';
+      html += '    <div style="font-size:12px; color:#f59e0b;">⚠️ Outside Radius: <strong style="font-size:14px;">' + countOutside + '</strong></div>';
+      html += '  </div>';
+
       html += '  <div class="card-body">';
-      var dayLogs = (SchoolApp.store.teacherAttendance || []).filter(function(l) { return l.date === state.selectedDate; });
-      if (state.teacherFilter !== 'all') {
-        dayLogs = dayLogs.filter(function(l) { return l.teacherId === state.teacherFilter; });
-      }
-      if (state.geoFilter === 'inside') {
-        dayLogs = dayLogs.filter(function(l) { return l.geofenceStatus && l.geofenceStatus.indexOf('Inside') !== -1; });
-      } else if (state.geoFilter === 'outside') {
-        dayLogs = dayLogs.filter(function(l) { return l.geofenceStatus && l.geofenceStatus.indexOf('Outside') !== -1; });
-      } else if (state.geoFilter === 'corrected') {
-        dayLogs = dayLogs.filter(function(l) { return l.isCorrected === true; });
-      }
-
-      dayLogs.sort(function(a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
-
       if (dayLogs.length > 0) {
         html += '<div class="table-container"><table class="data-table"><thead><tr>';
-        html += '<th>Teacher Name</th><th>Time</th><th>Type</th><th>Geofence Status</th><th>Distance</th><th>Coordinates</th><th>Method</th><th>Audit Status</th>';
+        html += '<th>Teacher Name</th><th>Time</th><th>Punch Type</th><th>Attendance Type</th><th>Geofence & Distance</th><th>Coordinates</th><th>Method</th><th>Audit / Review</th>';
         html += '</tr></thead><tbody>';
 
         dayLogs.forEach(function(l) {
           var typeColor = l.type === 'in' ? 'badge-success' : 'badge-danger';
-          var geoColor = (l.geofenceStatus && l.geofenceStatus.indexOf('Inside') !== -1) ? 'badge-success' : 'badge-danger';
           var coordsText = l.latitude ? l.latitude.toFixed(5) + ', ' + l.longitude.toFixed(5) : '—';
           var distanceText = l.distance !== undefined ? (l.distance + 'm') : '—';
           var audit = l.correctionAudit || {};
-          var auditBadge = l.isCorrected ? '<span class="badge badge-info" title="Corrected by ' + (audit.correctedBy || 'Admin') + ': ' + (audit.reason || '') + '"><span class="material-icons-round" style="font-size:11px; vertical-align:middle;">verified</span> Corrected</span>' : '<span style="color:var(--text-muted); font-size:12px;">Standard GPS</span>';
+
+          var typeBadge = '<span class="badge badge-info" style="display:inline-flex; align-items:center; gap:3px;"><span class="material-icons-round" style="font-size:12px;">my_location</span> Location Auto</span>';
+          if (l.markedVia === 'admin_approved_request' || l.isCorrected) {
+            typeBadge = '<span class="badge badge-success" style="display:inline-flex; align-items:center; gap:3px;"><span class="material-icons-round" style="font-size:12px;">verified</span> Admin Approved</span>';
+          } else if (l.outsideLocationFlag || (l.geofenceStatus && l.geofenceStatus.indexOf('Outside') !== -1)) {
+            typeBadge = '<span class="badge badge-warning" style="display:inline-flex; align-items:center; gap:3px;"><span class="material-icons-round" style="font-size:12px;">wrong_location</span> Outside Radius</span>';
+          }
+
+          var auditText = '<span style="color:var(--text-muted); font-size:11.5px;">Auto GPS</span>';
+          if (l.isCorrected || l.markedVia === 'admin_approved_request') {
+            auditText = '<span style="font-size:11.5px; color:#3b82f6;">Approved by ' + (audit.correctedBy || 'Admin') + (audit.adminNotes ? '<br><small style="color:var(--text-muted);">' + audit.adminNotes + '</small>' : '') + '</span>';
+          }
 
           html += '<tr>';
           html += '<td><strong>' + l.teacherName + '</strong></td>';
           html += '<td>' + l.time + '</td>';
-          html += '<td><span class="badge ' + typeColor + '">Punch ' + l.type.toUpperCase() + '</span></td>';
-          html += '<td><span class="badge ' + geoColor + '">' + l.geofenceStatus + '</span></td>';
-          html += '<td>' + distanceText + '</td>';
+          html += '<td><span class="badge ' + typeColor + '">Punch ' + (l.type || 'IN').toUpperCase() + '</span></td>';
+          html += '<td>' + typeBadge + '</td>';
+          html += '<td>' + (l.geofenceStatus || '—') + ' (' + distanceText + ')</td>';
           html += '<td>' + coordsText + '</td>';
           html += '<td><span class="badge badge-info">' + (l.method || 'GPS') + '</span></td>';
-          html += '<td>' + auditBadge + '</td>';
+          html += '<td>' + auditText + '</td>';
           html += '</tr>';
         });
 
@@ -1307,7 +1340,7 @@
       html += '</div>';
 
     } else if (state.activeTab === 'summary') {
-      // Multi-Range Audit Summary Report Tab (Area 3c)
+      // Multi-Range Audit Summary Report Tab (Step 2E)
       html += '<div class="card">';
       html += '  <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">';
       html += '    <h3 style="margin:0;"><span class="material-icons-round">analytics</span> Staff Attendance Audit Summary Report</h3>';
@@ -1328,17 +1361,17 @@
       });
 
       html += '<div class="table-container"><table class="data-table"><thead><tr>';
-      html += '<th>Teacher Name</th><th>Subject</th><th>Status</th><th>Total Punches</th><th>Days Present</th><th>Inside Geofence</th><th>Outside Geofence</th><th>Admin Corrected</th><th>Compliance Rate</th>';
+      html += '<th>Teacher Name</th><th>Subject</th><th>Status</th><th>Total Punches</th><th>Days Present</th><th>Location Auto</th><th>Admin Approved</th><th>Outside Radius</th><th>Compliance Rate</th>';
       html += '</tr></thead><tbody>';
 
       teachers.forEach(function(t) {
         var tPunches = filteredPunches.filter(function(p) { return p.teacherId === t.id; });
         var inPunches = tPunches.filter(function(p) { return p.type === 'in'; });
-        var insideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Inside') !== -1; }).length;
-        var outsideCount = tPunches.filter(function(p) { return p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1; }).length;
-        var correctedCount = tPunches.filter(function(p) { return p.isCorrected === true; }).length;
+        var locationAutoCount = tPunches.filter(function(p) { return (p.markedVia === 'location_auto' || !p.markedVia) && !p.outsideLocationFlag && !p.isCorrected; }).length;
+        var adminApprovedCount = tPunches.filter(function(p) { return p.markedVia === 'admin_approved_request' || p.isCorrected === true; }).length;
+        var outsideCount = tPunches.filter(function(p) { return p.outsideLocationFlag || (p.geofenceStatus && p.geofenceStatus.indexOf('Outside') !== -1 && !p.isCorrected); }).length;
         var totalLogs = tPunches.length;
-        var complianceRate = totalLogs > 0 ? Math.round((insideCount / totalLogs) * 100) : 100;
+        var complianceRate = totalLogs > 0 ? Math.round((locationAutoCount / totalLogs) * 100) : 100;
         var compColor = complianceRate >= 85 ? 'badge-success' : (complianceRate >= 60 ? 'badge-warning' : 'badge-danger');
 
         html += '<tr>';
@@ -1347,9 +1380,9 @@
         html += '<td><span class="badge ' + (t.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + t.status + '</span></td>';
         html += '<td><strong>' + totalLogs + '</strong></td>';
         html += '<td>' + inPunches.length + '</td>';
-        html += '<td><span style="color:#10b981; font-weight:600;">' + insideCount + '</span></td>';
-        html += '<td><span style="color:#ef4444; font-weight:600;">' + outsideCount + '</span></td>';
-        html += '<td><span style="color:#3b82f6; font-weight:600;">' + correctedCount + '</span></td>';
+        html += '<td><span style="color:#10b981; font-weight:600;">' + locationAutoCount + '</span></td>';
+        html += '<td><span style="color:#3b82f6; font-weight:600;">' + adminApprovedCount + '</span></td>';
+        html += '<td><span style="color:#f59e0b; font-weight:600;">' + outsideCount + '</span></td>';
         html += '<td><span class="badge ' + compColor + '">' + complianceRate + '%</span></td>';
         html += '</tr>';
       });
