@@ -4033,6 +4033,20 @@ window.SchoolApp = {
 
     var html = '';
 
+    // Flag 3: One-time Admin Notification for Location Policy Change
+    var geofence = settings.geofence || {};
+    var showPolicyNotification = (!geofence.policy || geofence.policy === 'lenient') && (settings.attendancePolicyNotified !== true);
+
+    if (showPolicyNotification) {
+      html += '<div id="admin-attendance-policy-banner" style="background:rgba(6, 182, 212, 0.1); border:1px solid rgba(6, 182, 212, 0.3); border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+      html += '  <div style="font-size:13px; color:var(--text-primary); line-height:1.5;">';
+      html += '    <strong style="display:flex; align-items:center; gap:6px; margin-bottom:2px; color:#06b6d4;"><span class="material-icons-round" style="font-size:18px;">my_location</span> Attendance Policy Update</strong>';
+      html += '    Teachers outside school location will now be prompted to submit a Regularization Request instead of auto-marking attendance. Approve requests from the Attendance Requests section.';
+      html += '  </div>';
+      html += '  <button class="btn btn-secondary btn-xs" id="btn-dismiss-policy-notification" style="white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-weight:600;"><span class="material-icons-round" style="font-size:14px;">check</span> Dismiss</button>';
+      html += '</div>';
+    }
+
     // Stats Grid
     html += '<div class="stats-grid">';
     html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalStudents + '">0</div><div class="stat-label">Total Students</div></div></div>';
@@ -4160,6 +4174,19 @@ window.SchoolApp = {
     html += '</div>'; // End bottom dashboard-grid
 
     container.innerHTML = html;
+
+    // Attach Flag 3 policy banner dismiss listener
+    var btnDismiss = container.querySelector('#btn-dismiss-policy-notification');
+    if (btnDismiss) {
+      btnDismiss.addEventListener('click', function() {
+        if (!self.store.settings) self.store.settings = {};
+        self.store.settings.attendancePolicyNotified = true;
+        self.save(true);
+        var banner = document.getElementById('admin-attendance-policy-banner');
+        if (banner) banner.remove();
+        self.showToast('Policy notification dismissed.', 'info');
+      });
+    }
 
     // Animate stat counters
     setTimeout(function() {
