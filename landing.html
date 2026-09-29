@@ -1064,118 +1064,6 @@
       color: var(--amber);
     }
 
-    /* ============ FOUNDER & SVM SECTION ============ */
-    .founder {
-      background: var(--ink);
-      color: var(--white);
-      padding: 120px 0;
-    }
-
-    .founder-grid {
-      display: grid;
-      grid-template-columns: 0.85fr 1.15fr;
-      gap: 60px;
-      align-items: center;
-    }
-
-    .fphoto {
-      position: relative;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .fphoto img {
-      border-radius: 20px;
-      border: 1px solid var(--line-dark);
-      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.8);
-      width: 100%;
-      max-width: 320px;
-      aspect-ratio: 4 / 5;
-      object-fit: cover;
-      transition: var(--transition);
-    }
-
-    .fphoto img:hover {
-      transform: scale(1.02) translateY(-2px);
-    }
-
-    .fbadge {
-      position: absolute;
-      bottom: -20px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 90%;
-      max-width: 290px;
-      background: var(--white);
-      color: var(--text);
-      border-radius: 14px;
-      padding: 14px 18px;
-      box-shadow: var(--shadow-lg);
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      z-index: 12;
-    }
-
-    .fbadge .ic {
-      width: 38px;
-      height: 38px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #fef3c7, #fde68a);
-      display: grid;
-      place-items: center;
-      flex-none: none;
-      font-size: 20px;
-    }
-
-    .fbadge b {
-      font-size: 13.5px;
-      display: block;
-      line-height: 1.25;
-      color: var(--ink);
-    }
-
-    .fbadge span {
-      font-size: 11px;
-      color: var(--slate);
-    }
-
-    .founder blockquote {
-      font-family: var(--disp);
-      font-size: clamp(19px, 2.2vw, 22px);
-      font-weight: 500;
-      line-height: 1.55;
-      margin: 24px 0;
-      color: #e2e8f0;
-      border-left: 3px solid var(--amber);
-      padding-left: 20px;
-    }
-
-    .founder blockquote em {
-      color: var(--amber);
-      font-style: normal;
-    }
-
-    .fsign {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      margin-bottom: 32px;
-    }
-
-    .fsign b {
-      font-family: var(--disp);
-      font-size: 17px;
-      display: block;
-      color: var(--white);
-    }
-
-    .fsign span {
-      font-size: 13.5px;
-      color: var(--slate-l);
-    }
-
     /* ============ PRICING SECTION ============ */
     .pricing {
       padding: 110px 0;
@@ -1325,11 +1213,22 @@
       font-size: 12.5px;
       color: var(--green);
       font-weight: 600;
-      margin: 8px 0 24px;
+      margin: 8px 0 4px;
     }
 
     .plan.featured .per-stu {
       color: #6ee7b7;
+    }
+
+    .plan .yr-note {
+      font-size: 12px;
+      color: var(--slate);
+      margin: 0 0 20px;
+      font-weight: 500;
+    }
+
+    .plan.featured .yr-note {
+      color: var(--slate-l);
     }
 
     .plan ul {
@@ -1718,13 +1617,9 @@
 
     /* ============ MOBILE RESPONSIVE ADAPTATIONS ============ */
     @media (max-width: 980px) {
-      .hero-grid, .founder-grid {
+      .hero-grid {
         grid-template-columns: 1fr;
         gap: 48px;
-      }
-
-      .fphoto img {
-        max-width: 300px;
       }
 
       .proof-box {
@@ -1889,10 +1784,6 @@
         grid-template-columns: 1fr;
         gap: 32px;
       }
-
-      .fbadge {
-        max-width: 95%;
-      }
     }
   </style>
 </head>
@@ -2008,9 +1899,9 @@
         <span>Tested live, powering daily academic and financial operations across Jharkhand.</span>
       </div>
       <div class="proof-stats">
-        <div class="pstat"><b data-count="289" data-suffix="+">0</b><span>Students Monitored</span></div>
-        <div class="pstat"><b data-count="15" data-suffix="+">0</b><span>Active Educators</span></div>
-        <div class="pstat"><b data-count="94" data-suffix="%">0</b><span>Attendance Average</span></div>
+        <div class="pstat"><b data-count="289" data-suffix="+">289+</b><span>Students Monitored</span></div>
+        <div class="pstat"><b data-count="15" data-suffix="+">15+</b><span>Active Educators</span></div>
+        <div class="pstat"><b data-count="94" data-suffix="%">94%</b><span>Attendance Average</span></div>
         <div class="pstat"><b>Nursery to Class 8</b><span>Classes</span></div>
       </div>
     </div>
@@ -2173,19 +2064,19 @@
       <div class="calc-outputs">
         <div class="output-node">
           <span>Monthly Overhead Saved</span>
-          <b id="out-month">₹10,000</b>
+          <b id="out-month">₹11,760</b>
         </div>
         <div class="output-node green-node">
           <span>Net Annualized Recovery</span>
-          <b id="out-year">₹1,20,000</b>
+          <b id="out-year">₹1,41,120</b>
         </div>
         <div class="output-node">
           <span>Operational Hours Saved</span>
-          <b id="out-hours">400 hrs</b>
+          <b id="out-hours">68 hrs</b>
         </div>
         <div class="output-node">
           <span>Staff Resource Offset</span>
-          <b id="out-staff">2.5 Staff</b>
+          <b id="out-staff">0.4 Staff</b>
         </div>
         <div class="calc-recommendation" id="calc-rec">
           Recommended Activation Base: <strong>Paathshala Growth Tier</strong> (Up to 400 Students - Highly Recommended)
@@ -2231,7 +2122,8 @@
         <h3>Starter Tier</h3>
         <p class="for">Optimized configuration metrics for up to 150 students.</p>
         <div class="price">₹<span class="pv" data-m="399" data-y="333">333</span><small>/month</small></div>
-        <p class="per-stu yr-note">₹3,999/year billed annually • ₹2.66 per student</p>
+        <p class="per-stu" data-m="₹2.66 / student / month" data-y="₹2.22 / student / month">₹2.22 / student / month</p>
+        <p class="yr-note">₹3,999/year billed annually</p>
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Up to 150 student directories</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Granular fee ledgers + tracking</li>
@@ -2248,7 +2140,8 @@
         <h3>Growth Tier</h3>
         <p class="for">Full operational acceleration for up to 400 students.</p>
         <div class="price">₹<span class="pv" data-m="799" data-y="667">667</span><small>/month</small></div>
-        <p class="per-stu yr-note">₹7,999/year billed annually • ₹2.00 per student</p>
+        <p class="per-stu" data-m="₹2.00 / student / month" data-y="₹1.67 / student / month">₹1.67 / student / month</p>
+        <p class="yr-note">₹7,999/year billed annually</p>
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Up to 400 student directories</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Everything inside Starter included</li>
@@ -2264,7 +2157,8 @@
         <h3>Enterprise Tier</h3>
         <p class="for">Enterprise scaling parameters for up to 800 students.</p>
         <div class="price">₹<span class="pv" data-m="1499" data-y="1250">1250</span><small>/month</small></div>
-        <p class="per-stu yr-note">₹14,999/year billed annually • ₹1.87 per student</p>
+        <p class="per-stu" data-m="₹1.87 / student / month" data-y="₹1.56 / student / month">₹1.56 / student / month</p>
+        <p class="yr-note">₹14,999/year billed annually</p>
         <ul>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Up to 800 student directories</li>
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Everything inside Growth included</li>
@@ -2472,7 +2366,7 @@
       };
       requestAnimationFrame(tick);
     });
-  }, { threshold: 0.5 });
+  }, { threshold: 0.1 });
   document.querySelectorAll('[data-count]').forEach(el => cio.observe(el));
 
   // FAQ Accordion Panel Handler
@@ -2501,7 +2395,8 @@
     tm.classList.toggle('on', !yearly);
     ty.classList.toggle('on', yearly);
     document.querySelectorAll('.pv').forEach(p => p.textContent = yearly ? p.dataset.y : p.dataset.m);
-    document.querySelectorAll('.yr-note').forEach(note => note.style.visibility = yearly ? 'visible' : 'hidden');
+    document.querySelectorAll('.per-stu').forEach(p => p.textContent = yearly ? p.dataset.y : p.dataset.m);
+    document.querySelectorAll('.yr-note').forEach(note => note.style.display = yearly ? 'block' : 'none');
   }
   tm.onclick = () => setPrice(false);
   ty.onclick = () => setPrice(true);
@@ -2668,16 +2563,25 @@
     const students = parseInt(rangeInput.value, 10) || 200;
     if (countDisplay) countDisplay.textContent = students;
 
-    // Standard school administrative savings formulas:
-    // Cost saved vs manual paperwork & ledger operations: students * ₹50/month
-    const monthlyOverheadSaved = students * 50;
-    const netAnnualizedRecovery = monthlyOverheadSaved * 12;
-    // Administrative time saved: students * 2 hours per month
-    const hoursSaved = students * 2;
+    // Admin time saved: ~45 hrs/month base + 0.15 hrs per student above 50
+    const baseHours = 45;
+    const extraHours = Math.max(0, (students - 50) * 0.15);
+    const hoursSaved = Math.round(baseHours + extraHours);
+
+    // Overhead savings: ₹120/hr for admin staff (Tier-2 city rate)
+    const adminSavedRs = hoursSaved * 120;
+
+    // Paper/printing savings: ₹18 per student per month
+    const paperSaved = students * 18;
+
+    // Total monthly savings
+    const totalSaved = adminSavedRs + paperSaved;
+    const netAnnualizedRecovery = totalSaved * 12;
+
     // Staff equivalent offset (based on ~160 working hours/month per admin staff)
     const staffOffset = (hoursSaved / 160).toFixed(1);
 
-    if (outMonth) outMonth.textContent = '₹' + monthlyOverheadSaved.toLocaleString('en-IN');
+    if (outMonth) outMonth.textContent = '₹' + totalSaved.toLocaleString('en-IN');
     if (outYear) outYear.textContent = '₹' + netAnnualizedRecovery.toLocaleString('en-IN');
     if (outHours) outHours.textContent = hoursSaved.toLocaleString('en-IN') + ' hrs';
     if (outStaff) outStaff.textContent = staffOffset + ' Staff';
