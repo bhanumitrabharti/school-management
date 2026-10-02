@@ -317,7 +317,9 @@
         html += '<td>' + s.parentPhone + '</td>';
         html += '<td><span class="badge ' + (s.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + s.status + '</span></td>';
         html += '<td><div class="table-actions">';
-        html += '<button class="btn-icon student-fee-btn" data-id="' + s.id + '" title="Financial Profile" style="color:var(--accent-primary);"><span class="material-icons-round">account_balance_wallet</span></button>';
+        if (isAdmin) {
+          html += '<button class="btn-icon student-fee-btn" data-id="' + s.id + '" title="Financial Profile" style="color:var(--accent-primary);"><span class="material-icons-round">account_balance_wallet</span></button>';
+        }
         html += '<button class="btn-icon student-view-btn" data-id="' + s.id + '" title="View"><span class="material-icons-round">visibility</span></button>';
         var canEdit = isAdmin && SchoolApp.checkFeatureAccess('students');
         if (canEdit) {
@@ -514,6 +516,8 @@
 
     bodyHTML += '<div class="form-group"><label class="form-label">Roll Number *</label><input type="text" class="form-input" name="rollNumber" value="' + (student ? student.rollNumber : '') + '" required><span class="form-error">Required</span></div>';
 
+    bodyHTML += '<div class="form-group"><label class="form-label">Admission Number <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="admissionNumber" value="' + (student && student.admissionNumber ? student.admissionNumber : '') + '" placeholder="e.g. ADM-2024-001"></div>';
+
     bodyHTML += '<div class="form-group"><label class="form-label">Date of Birth *</label><input type="date" class="form-input" name="dateOfBirth" value="' + (student ? student.dateOfBirth : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Gender *</label><select class="form-select" name="gender" required><option value="">Select Gender</option>';
@@ -524,11 +528,15 @@
 
     bodyHTML += '<div class="form-group"><label class="form-label">Parent/Guardian Name *</label><input type="text" class="form-input" name="parentName" value="' + (student ? student.parentName : '') + '" required><span class="form-error">Required</span></div>';
 
+    bodyHTML += '<div class="form-group"><label class="form-label">Mother\'s Name <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="motherName" value="' + (student && student.motherName ? student.motherName : '') + '" placeholder="Mother\'s Name"></div>';
+
     bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone *</label><input type="text" class="form-input" name="parentPhone" value="' + (student ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="parentEmail" value="' + (student ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Admission Date <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="date" class="form-input" name="admissionDate" value="' + (student ? student.admissionDate : new Date().toISOString().split('T')[0]) + '"></div>';
+
+    bodyHTML += '<div class="form-group"><label class="form-label">Monthly Transport Fee (₹) <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="number" class="form-input" name="transportFee" min="0" step="1" value="' + (student && (student.transportFee || student.transport_fee) ? (student.transportFee || student.transport_fee) : '') + '" placeholder="0"></div>';
 
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Address <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><textarea class="form-textarea" name="address" rows="2">' + (student ? student.address : '') + '</textarea></div>';
 
@@ -643,6 +651,12 @@
       fields.lastName = nameParts.slice(1).join(' ') || '';
     }
 
+    // Process optional additional fields
+    fields.transportFee = parseFloat(fields.transportFee) || 0;
+    fields.transport_fee = fields.transportFee;
+    fields.motherName = (fields.motherName || '').trim();
+    fields.admissionNumber = (fields.admissionNumber || '').trim();
+
     // Validate aadhaar
     if (fields.aadhaarNumber && !SchoolApp.utils.validate.aadhaar(fields.aadhaarNumber)) {
       var aadhaarGroup = form.querySelector('[name="aadhaarNumber"]').closest('.form-group');
@@ -742,18 +756,30 @@
     html += '<div class="detail-section"><h4><span class="material-icons-round">school</span> Academic Information</h4><div class="detail-grid">';
     html += '<div class="detail-item"><span class="detail-item-label">Class & Section</span><span class="detail-item-value">Class ' + student.class + ' - Section ' + student.section + '</span></div>';
     html += '<div class="detail-item"><span class="detail-item-label">Roll Number</span><span class="detail-item-value">' + student.rollNumber + '</span></div>';
+    if (student.admissionNumber) {
+      html += '<div class="detail-item"><span class="detail-item-label">Admission Number</span><span class="detail-item-value">' + student.admissionNumber + '</span></div>';
+    }
     html += '<div class="detail-item"><span class="detail-item-label">Admission Date</span><span class="detail-item-value">' + SchoolApp.formatDate(student.admissionDate) + '</span></div>';
     html += '<div class="detail-item"><span class="detail-item-label">Status</span><span class="detail-item-value"><span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + student.status + '</span></span></div>';
+    var tFee = parseFloat(student.transportFee || student.transport_fee || 0);
+    if (tFee > 0) {
+      html += '<div class="detail-item"><span class="detail-item-label">Monthly Transport Fee</span><span class="detail-item-value" style="color:var(--accent-primary); font-weight:600;">₹' + tFee.toLocaleString('en-IN') + ' / mo</span></div>';
+    }
     html += '</div></div>';
 
     html += '<div class="detail-section"><h4><span class="material-icons-round">family_restroom</span> Parent/Guardian Information</h4><div class="detail-grid">';
     html += '<div class="detail-item"><span class="detail-item-label">Parent Name</span><span class="detail-item-value">' + (student.parentName || '—') + '</span></div>';
+    if (student.motherName) {
+      html += '<div class="detail-item"><span class="detail-item-label">Mother\'s Name</span><span class="detail-item-value">' + student.motherName + '</span></div>';
+    }
     html += '<div class="detail-item"><span class="detail-item-label">Phone</span><span class="detail-item-value">' + (student.parentPhone || '—') + '</span></div>';
     html += '<div class="detail-item"><span class="detail-item-label">Email</span><span class="detail-item-value">' + (student.parentEmail || '—') + '</span></div>';
     html += '</div></div>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
-    footerHTML += '<button class="btn btn-primary" id="view-student-fee-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">account_balance_wallet</span> Fee Profile</button>';
+    if (SchoolApp.isAdmin()) {
+      footerHTML += '<button class="btn btn-primary" id="view-student-fee-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">account_balance_wallet</span> Fee Profile</button>';
+    }
     SchoolApp.showModal('Student Details', html, footerHTML);
 
     var feeBtn = document.getElementById('view-student-fee-btn');
@@ -798,11 +824,14 @@
     { header: 'Class *', key: 'class' },
     { header: 'Section *', key: 'section' },
     { header: 'Roll Number *', key: 'rollNumber' },
+    { header: 'Admission Number (Optional)', key: 'admissionNumber' },
     { header: 'Date of Birth *', key: 'dateOfBirth' },
     { header: 'Gender *', key: 'gender' },
     { header: 'Parent/Guardian Name *', key: 'parentName' },
+    { header: 'Mother\'s Name (Optional)', key: 'motherName' },
     { header: 'Parent Phone *', key: 'parentPhone' },
     { header: 'Parent Email (Optional)', key: 'parentEmail' },
+    { header: 'Monthly Transport Fee (Optional)', key: 'transportFee', transform: function(v, row) { return row.transportFee || row.transport_fee || 0; } },
     { header: 'Aadhaar Number (Optional)', key: 'aadhaarNumber' },
     { header: 'Address (Optional)', key: 'address' },
     { header: 'Admission Date (Optional)', key: 'admissionDate' },

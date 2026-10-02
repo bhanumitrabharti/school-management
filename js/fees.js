@@ -766,12 +766,9 @@
   function getFilteredStudents() {
     var students = SchoolApp.store.students || [];
 
-    // Teacher restrictions: only assigned classes
-    if (SchoolApp.isTeacher() && SchoolApp.currentUser.assignedClasses) {
-      var ac = SchoolApp.currentUser.assignedClasses;
-      students = students.filter(function(s) {
-        return ac.some(function(c) { return c.class === s.class && c.section === s.section; });
-      });
+    // Teacher restrictions: fees are strictly admin-only
+    if (SchoolApp.isTeacher()) {
+      return [];
     }
 
     // Class filter
@@ -2266,6 +2263,11 @@
   }
 
   function openStudentFinancialProfile(studentId) {
+    if (!SchoolApp.isAdmin()) {
+      SchoolApp.showToast('Access denied.', 'error');
+      return;
+    }
+
     var student = (SchoolApp.store.students || []).find(function(s) { return s.id === studentId; });
     if (!student) {
       SchoolApp.showToast('Student record not found.', 'error');
@@ -2317,7 +2319,17 @@
     bodyHTML += '<div class="profile-contact-strip" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; background:var(--bg-tertiary, rgba(255,255,255,0.03)); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px; font-size:12px;">';
     bodyHTML += '  <div><span style="color:var(--text-secondary);">DOB:</span> <strong>' + (formatDateDDMMYYYY(student.dateOfBirth) || '—') + '</strong></div>';
     bodyHTML += '  <div><span style="color:var(--text-secondary);">Admission Date:</span> <strong>' + (formatDateDDMMYYYY(student.admissionDate) || '—') + '</strong></div>';
+    if (student.admissionNumber) {
+      bodyHTML += '  <div><span style="color:var(--text-secondary);">Admission No:</span> <strong>' + escapeHTML(student.admissionNumber) + '</strong></div>';
+    }
     bodyHTML += '  <div><span style="color:var(--text-secondary);">Guardian:</span> <strong>' + escapeHTML(student.parentName || '—') + '</strong></div>';
+    if (student.motherName) {
+      bodyHTML += '  <div><span style="color:var(--text-secondary);">Mother:</span> <strong>' + escapeHTML(student.motherName) + '</strong></div>';
+    }
+    var studentTransportFee = parseFloat(student.transportFee || student.transport_fee || 0);
+    if (studentTransportFee > 0) {
+      bodyHTML += '  <div><span style="color:var(--text-secondary);">Transport Fee:</span> <strong style="color:var(--accent-primary);">₹' + studentTransportFee.toLocaleString('en-IN') + ' / mo</strong></div>';
+    }
     bodyHTML += '  <div style="display:flex; align-items:center; gap:6px;">';
     bodyHTML += '    <span style="color:var(--text-secondary);">Phone:</span>';
     bodyHTML += '    <strong>' + escapeHTML(student.parentPhone || '—') + '</strong>';
@@ -2455,13 +2467,13 @@
     footerHTML += '    <button class="btn btn-secondary" id="profile-print-stmt-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">print</span> Print Statement</button>';
     footerHTML += '  </div>';
     footerHTML += '  <div style="display:flex; gap:8px; align-items:center;">';
-    if (statement.netDue > 0) {
+    if (isAdmin && statement.netDue > 0) {
       footerHTML += '    <button class="btn btn-secondary" id="profile-reminder-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">campaign</span> Send Reminder</button>';
     }
     if (isAdmin) {
       footerHTML += '    <button class="btn btn-secondary" id="profile-add-charge-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">add_card</span> Add Due / Fine</button>';
+      footerHTML += '    <button class="btn btn-primary" id="profile-collect-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">payments</span> Record Payment</button>';
     }
-    footerHTML += '    <button class="btn btn-primary" id="profile-collect-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px">payments</span> Record Payment</button>';
     footerHTML += '  </div>';
     footerHTML += '</div>';
 
@@ -2692,6 +2704,11 @@
   }
 
   function showPaymentModal(studentId) {
+    if (!SchoolApp.isAdmin()) {
+      SchoolApp.showToast('Access denied.', 'error');
+      return;
+    }
+
     var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
     if (!s) return;
 

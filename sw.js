@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v29 for Teacher Attendance Location Enforcement, Regularization, and Dual Reports upgrade.
-const CACHE_NAME = 'erp-cache-v29';
+// Bumped to v30 for Student Additional Fields (Mother Name, Admission No, Transport Fee), Teacher Fee Access Fix, and Dashboard Universal Search.
+const CACHE_NAME = 'erp-cache-v30';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

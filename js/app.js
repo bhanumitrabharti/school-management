@@ -1781,6 +1781,33 @@ window.SchoolApp = {
             timestamp: new Date().toISOString()
           });
         });
+
+        // Evaluate Student-Specific Monthly Transport Fee
+        activeStudents.forEach(function(s) {
+          var tAmt = parseFloat(s.transportFee || s.transport_fee || 0);
+          if (tAmt <= 0) return;
+
+          var alreadyBilledTransport = (self.store.fees || []).some(function(f) {
+            return f.studentId === s.id &&
+                   f.type === 'due' &&
+                   f.feeHeadId === 'fh_transport' &&
+                   (f.billingPeriod === m.period || (f.date && f.date.startsWith(m.period)));
+          });
+          if (alreadyBilledTransport) return;
+
+          result.tuitionDues.push({
+            id: self.generateId(),
+            studentId: s.id,
+            schoolId: self.currentSchoolId,
+            type: 'due',
+            feeHeadId: 'fh_transport',
+            amount: tAmt,
+            date: m.period + '-01',
+            description: 'Monthly Transport Fee - ' + monthName + ' ' + m.year,
+            billingPeriod: m.period,
+            timestamp: new Date().toISOString()
+          });
+        });
       });
     }
 
@@ -4049,10 +4076,10 @@ window.SchoolApp = {
 
     // Stats Grid
     html += '<div class="stats-grid">';
-    html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalStudents + '">0</div><div class="stat-label">Total Students</div></div></div>';
-    html += '<div class="stat-card cyan"><div class="stat-icon"><span class="material-icons-round">person</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalTeachers + '">0</div><div class="stat-label">Total Teachers</div></div></div>';
-    html += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div><div class="stat-info"><div class="stat-number" data-count="' + attendancePerc + '">0</div><div class="stat-label">Today\'s Attendance %</div></div></div>';
-    html += '<div class="stat-card amber"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalClasses + '">0</div><div class="stat-label">Total Classes</div></div></div>';
+    html += '<div class="stat-card purple" style="cursor: pointer;" onclick="SchoolApp.navigate(\'students\')" title="View Students"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalStudents + '">0</div><div class="stat-label">Total Students</div></div></div>';
+    html += '<div class="stat-card cyan" style="cursor: pointer;" onclick="SchoolApp.navigate(\'teachers\')" title="View Teachers"><div class="stat-icon"><span class="material-icons-round">person</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalTeachers + '">0</div><div class="stat-label">Total Teachers</div></div></div>';
+    html += '<div class="stat-card green" style="cursor: pointer;" onclick="SchoolApp.navigate(\'attendance\')" title="View Attendance"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div><div class="stat-info"><div class="stat-number" data-count="' + attendancePerc + '">0</div><div class="stat-label">Today\'s Attendance %</div></div></div>';
+    html += '<div class="stat-card amber" style="cursor: pointer;" onclick="SchoolApp.navigate(\'admin\')" title="View Class Management"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalClasses + '">0</div><div class="stat-label">Total Classes</div></div></div>';
     html += '</div>';
 
     // Digital Notice Board Widget
@@ -4289,16 +4316,16 @@ window.SchoolApp = {
     
     // Class Strength Card
     var classLabel = ctClasses.length > 0 ? 'My Class Strength (' + ctClasses.map(function(c) { return c.class + '-' + c.section; }).join(', ') + ')' : 'My Class Strength';
-    html += '<div class="stat-card purple"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + classStrength + '">0</div><div class="stat-label">' + classLabel + '</div></div></div>';
+    html += '<div class="stat-card purple" style="cursor: pointer;" onclick="SchoolApp.navigate(\'students\')" title="View My Students"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + classStrength + '">0</div><div class="stat-label">' + classLabel + '</div></div></div>';
     
     // Class Attendance Card
-    html += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div><div class="stat-info"><div class="stat-number" data-count="' + ctAttendancePerc + '">0</div><div class="stat-label">Class Attendance (Today)</div></div></div>';
+    html += '<div class="stat-card green" style="cursor: pointer;" onclick="SchoolApp.navigate(\'attendance\')" title="View Attendance"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div><div class="stat-info"><div class="stat-number" data-count="' + ctAttendancePerc + '">0</div><div class="stat-label">Class Attendance (Today)</div></div></div>';
     
     // Teaching Periods Card
-    html += '<div class="stat-card amber"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + upcomingCount + '">0</div><div class="stat-label">My Teaching Periods</div></div></div>';
+    html += '<div class="stat-card amber" style="cursor: pointer;" onclick="SchoolApp.navigate(\'timetable\')" title="View Timetable"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + upcomingCount + '">0</div><div class="stat-label">My Teaching Periods</div></div></div>';
     
     // Teacher's own Attendance Card
-    html += '<div class="stat-card cyan"><div class="stat-icon"><span class="material-icons-round">fingerprint</span></div><div class="stat-info"><div class="stat-number" data-count="' + teacherAttendancePerc + '">0</div><div class="stat-label">My Attendance % (This Month)</div></div></div>';
+    html += '<div class="stat-card cyan" style="cursor: pointer;" onclick="SchoolApp.navigate(\'teacher-attendance\')" title="View My Attendance"><div class="stat-icon"><span class="material-icons-round">fingerprint</span></div><div class="stat-info"><div class="stat-number" data-count="' + teacherAttendancePerc + '">0</div><div class="stat-label">My Attendance % (This Month)</div></div></div>';
     html += '</div>';
 
     // Digital Notice Board Widget (published notices only)
@@ -4943,13 +4970,34 @@ window.SchoolApp = {
           });
         }
         var matchedStudents = students.filter(function(s) {
-          return (s.firstName + ' ' + s.lastName).toLowerCase().indexOf(query) !== -1 ||
-                 s.rollNumber.toLowerCase().indexOf(query) !== -1;
+          var fullName = (s.name || ((s.firstName || '') + ' ' + (s.lastName || ''))).trim().toLowerCase();
+          var pName = (s.parentName || '').toLowerCase();
+          var mName = (s.motherName || '').toLowerCase();
+          var pPhone = (s.parentPhone || s.phone || '').toLowerCase();
+          var sMobile = (s.studentPhone || s.mobile || s.studentMobile || '').toLowerCase();
+          var roll = String(s.rollNumber || s.rollNo || '').toLowerCase();
+          var admNo = String(s.admissionNumber || s.admissionNo || '').toLowerCase();
+          var clsStr = ('class ' + (s.class || '') + ' ' + (s.section || '')).toLowerCase();
+          var simpleCls = String(s.class || '').toLowerCase();
+
+          return fullName.indexOf(query) !== -1 ||
+                 pPhone.indexOf(query) !== -1 ||
+                 sMobile.indexOf(query) !== -1 ||
+                 pName.indexOf(query) !== -1 ||
+                 mName.indexOf(query) !== -1 ||
+                 roll.indexOf(query) !== -1 ||
+                 admNo.indexOf(query) !== -1 ||
+                 clsStr.indexOf(query) !== -1 ||
+                 simpleCls === query;
         }).map(function(s) {
+          var sFullName = self.getStudentFullName(s);
+          var subInfo = 'Student · Class ' + s.class + '-' + s.section;
+          if (s.rollNumber) subInfo += ' (Roll ' + s.rollNumber + ')';
+          if (s.admissionNumber) subInfo += ' · Adm: ' + s.admissionNumber;
           return {
             id: s.id,
-            name: s.firstName + ' ' + s.lastName,
-            role: 'Student · Class ' + s.class + '-' + s.section,
+            name: sFullName,
+            role: subInfo,
             type: 'student'
           };
         });
@@ -4957,13 +5005,25 @@ window.SchoolApp = {
         // Search teachers
         var teachers = self.store.teachers || [];
         var matchedTeachers = teachers.filter(function(t) {
-          return (t.firstName + ' ' + t.lastName).toLowerCase().indexOf(query) !== -1 ||
-                 t.subject.toLowerCase().indexOf(query) !== -1;
+          var tFullName = (t.name || ((t.firstName || '') + ' ' + (t.lastName || ''))).trim().toLowerCase();
+          var subj = (t.subject || '').toLowerCase();
+          var phone = (t.phone || '').toLowerCase();
+          var email = (t.email || '').toLowerCase();
+          var qual = (t.qualification || '').toLowerCase();
+
+          return tFullName.indexOf(query) !== -1 ||
+                 subj.indexOf(query) !== -1 ||
+                 phone.indexOf(query) !== -1 ||
+                 email.indexOf(query) !== -1 ||
+                 qual.indexOf(query) !== -1;
         }).map(function(t) {
+          var tFullName = ((t.firstName || '') + ' ' + (t.lastName || '')).trim() || t.name || 'Teacher';
+          var subInfo = 'Teacher · ' + (t.subject || 'Faculty');
+          if (t.phone) subInfo += ' · ' + t.phone;
           return {
             id: t.id,
-            name: t.firstName + ' ' + t.lastName,
-            role: 'Teacher · ' + t.subject,
+            name: tFullName,
+            role: subInfo,
             type: 'teacher'
           };
         });
@@ -4991,14 +5051,14 @@ window.SchoolApp = {
             itemEl.addEventListener('click', function() {
               self.navigate(item.type === 'student' ? 'students' : 'teachers');
               
-              // Trigger detail modal display
+              // Trigger detail modal display after navigate's 200ms transition loader finishes
               setTimeout(function() {
                 if (item.type === 'student' && self.modules.students && self.modules.students.viewStudent) {
                   self.modules.students.viewStudent(item.id);
                 } else if (item.type === 'teacher' && self.modules.teachers && self.modules.teachers.viewTeacher) {
                   self.modules.teachers.viewTeacher(item.id);
                 }
-              }, 100);
+              }, 300);
 
               globalSearch.value = '';
               dropdown.remove();
