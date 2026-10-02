@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v30 for Student Additional Fields (Mother Name, Admission No, Transport Fee), Teacher Fee Access Fix, and Dashboard Universal Search.
-const CACHE_NAME = 'erp-cache-v30';
+// Bumped to v31 for Fee System Audit & Fix (Duplicate & Zero Due Prevention, Idempotency, and Transparent Fee History UI).
+const CACHE_NAME = 'erp-cache-v31';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

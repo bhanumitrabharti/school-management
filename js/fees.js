@@ -291,16 +291,29 @@
     }
 
     var allRecords = (SchoolApp.store.fees || []).filter(function(f) {
-      return f.studentId === sId;
+      return f && f.studentId === sId;
     });
 
-    var dues = allRecords.filter(function(f) { return f.type === 'due'; });
-    var payments = allRecords.filter(function(f) { return f.type === 'payment'; });
+    var seenDueKeys = new Set();
+    var dues = [];
+    allRecords.forEach(function(f) {
+      if (f.type !== 'due') return;
+      var amt = parseFloat(f.amount || 0);
+      if (amt <= 0 || f.isVoided) return;
+      var bp = f.billingPeriod || (f.date ? f.date.substring(0, 7) : '');
+      var head = f.feeHeadId || 'fh_tuition';
+      var key = head + '::' + bp;
+      if (bp && seenDueKeys.has(key)) return;
+      if (bp) seenDueKeys.add(key);
+      dues.push(f);
+    });
+
+    var payments = allRecords.filter(function(f) { return f.type === 'payment' && !f.isVoided; });
 
     var totalCharged = dues.reduce(function(sum, d) { return sum + (Number(d.amount) || 0); }, 0);
     var totalPaid = payments.reduce(function(sum, p) { return sum + (Number(p.amount) || 0); }, 0);
     var totalDiscount = payments.reduce(function(sum, p) { return sum + (Number(p.discount) || 0); }, 0);
-    var netDue = totalCharged - (totalPaid + totalDiscount);
+    var netDue = Math.max(0, totalCharged - (totalPaid + totalDiscount));
 
     // Current month charges (itemized by fee head)
     var today = new Date();
@@ -1509,22 +1522,38 @@
 
   function getStudentLedger(studentId) {
     var studentFees = (SchoolApp.store.fees || []).filter(function(f) {
-      return f.studentId === studentId;
+      return f && f.studentId === studentId;
     });
 
     // Sort chronologically
     studentFees.sort(function(a, b) {
-      return new Date(a.date) - new Date(b.date);
+      return new Date(a.date || a.timestamp || 0) - new Date(b.date || b.timestamp || 0);
+    });
+
+    // Deduplicate and filter ₹0 dues for display
+    var seenDueKeys = new Set();
+    var filteredFees = [];
+    studentFees.forEach(function(f) {
+      if (f.type === 'due') {
+        var amt = parseFloat(f.amount || 0);
+        if (amt <= 0) return; // Hide all ₹0 due records from display
+        var bp = f.billingPeriod || (f.date ? f.date.substring(0, 7) : '');
+        var head = f.feeHeadId || 'fh_tuition';
+        var key = head + '::' + bp;
+        if (bp && seenDueKeys.has(key)) return; // Keep only first canonical one
+        if (bp) seenDueKeys.add(key);
+      }
+      filteredFees.push(f);
     });
 
     var runningBalance = 0;
-    var transactions = studentFees.map(function(t) {
+    var transactions = filteredFees.map(function(t) {
       var amt = parseFloat(t.amount || 0);
       var disc = parseFloat(t.discount || 0);
       if (t.type === 'due') {
-        runningBalance += amt;
+        if (!t.isVoided) runningBalance += amt;
       } else {
-        runningBalance -= (amt + disc);
+        if (!t.isVoided) runningBalance -= (amt + disc);
       }
 
       var headName = '';
@@ -1552,6 +1581,13 @@
         }
       }
 
+      var isAuto = t.type === 'due' && (
+        (t.billingPeriod && t.billingPeriod !== 'manual' && t.billingPeriod !== 'custom') ||
+        !!t.originatingDueId ||
+        !!t.extraChargeId ||
+        (desc && (desc.indexOf('Monthly') !== -1 || desc.indexOf('Late Fee') !== -1))
+      );
+
       return {
         id: t.id,
         date: t.date,
@@ -1559,6 +1595,7 @@
         subType: t.subType || null,
         isVoided: !!t.isVoided,
         isReversal: !!t.isReversal,
+        isAuto: isAuto,
         voidReason: t.voidReason || null,
         voidedAt: t.voidedAt || null,
         voidedBy: t.voidedBy || null,
@@ -1573,7 +1610,7 @@
         description: desc,
         mode: t.mode,
         remarks: t.remarks,
-        balance: runningBalance
+        balance: Math.max(0, runningBalance)
       };
     });
 
@@ -2340,32 +2377,45 @@
     bodyHTML += '  </div>';
     bodyHTML += '</div>';
 
-    // 3. Executive KPI Cards (4 Cards)
+    // 3. Summary Strip at Top of Financial Profile (4 Metrics)
+    var totalDueAmt = statement.totalCharged || 0;
+    var totalPaidAmt = statement.totalPaid || 0;
+    var outstandingAmt = Math.max(0, statement.netDue || 0);
+
+    // Predict Next Due Date (5th of upcoming billing cycle)
+    var now = new Date();
+    var nextYear = now.getFullYear();
+    var nextMonth = now.getMonth() + 1; // 1-12
+    if (now.getDate() > 5) {
+      nextMonth++;
+      if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+    }
+    var nextDueStr = '05/' + (nextMonth < 10 ? '0' + nextMonth : nextMonth) + '/' + nextYear;
+
     bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(4, 1fr); gap: 10px;">';
     bodyHTML += '  <div class="stat-card purple" style="padding:12px 14px;">';
     bodyHTML += '    <div class="stat-info">';
-    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + statement.totalCharged.toLocaleString('en-IN') + '</div>';
-    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Billed</div>';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + totalDueAmt.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Due</div>';
     bodyHTML += '    </div>';
     bodyHTML += '  </div>';
     bodyHTML += '  <div class="stat-card green" style="padding:12px 14px;">';
     bodyHTML += '    <div class="stat-info">';
-    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + statement.totalPaid.toLocaleString('en-IN') + '</div>';
-    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Collected</div>';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + totalPaidAmt.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Paid</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    var balColor = outstandingAmt > 0 ? 'amber' : 'green';
+    bodyHTML += '  <div class="stat-card ' + balColor + '" style="padding:12px 14px;">';
+    bodyHTML += '    <div class="stat-info">';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + outstandingAmt.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Outstanding Balance</div>';
     bodyHTML += '    </div>';
     bodyHTML += '  </div>';
     bodyHTML += '  <div class="stat-card cyan" style="padding:12px 14px;">';
     bodyHTML += '    <div class="stat-info">';
-    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + (statement.totalDiscount || 0).toLocaleString('en-IN') + '</div>';
-    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Discounts / Waivers</div>';
-    bodyHTML += '    </div>';
-    bodyHTML += '  </div>';
-    var balColor = statement.netDue > 0 ? 'amber' : 'green';
-    var balTag = statement.netDue > 0 ? (statement.monthsOverdue > 0 ? statement.monthsOverdue + ' Mo Overdue' : 'Net Outstanding') : 'Cleared ✓';
-    bodyHTML += '  <div class="stat-card ' + balColor + '" style="padding:12px 14px;">';
-    bodyHTML += '    <div class="stat-info">';
-    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + statement.netDue.toLocaleString('en-IN') + '</div>';
-    bodyHTML += '      <div class="stat-label" style="font-size:11px;">' + balTag + '</div>';
+    bodyHTML += '      <div class="stat-number" style="font-size:16px;">' + nextDueStr + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Next Due Date</div>';
     bodyHTML += '    </div>';
     bodyHTML += '  </div>';
     bodyHTML += '</div>';
@@ -2395,12 +2445,12 @@
       bodyHTML += '</div>';
     }
 
-    // 5. Complete Transaction Ledger (Audit History)
+    // 5. Redesigned Transparent Fee History Ledger
     bodyHTML += '<div>';
-    bodyHTML += '  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.5px;">Transaction Timeline & Audit Trail</div>';
+    bodyHTML += '  <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px; letter-spacing: 0.5px;">Transaction Timeline & Fee History</div>';
     if (ledger.transactions.length > 0) {
       bodyHTML += '<div class="table-container" style="max-height: 280px; overflow-y: auto;"><table class="data-table"><thead><tr>';
-      bodyHTML += '<th>Date</th><th>Description</th><th>Type</th><th>Amount</th><th>Running Balance</th><th>Actions</th>';
+      bodyHTML += '<th>Date</th><th>Description</th><th>Source</th><th>Amount</th><th>Running Balance</th><th>Actions</th>';
       bodyHTML += '</tr></thead><tbody>';
 
       ledger.transactions.forEach(function(t) {
@@ -2408,7 +2458,7 @@
           bodyHTML += '<tr style="opacity: 0.65; background: rgba(239, 68, 68, 0.04);">';
           bodyHTML += '<td style="font-size:12px; white-space:nowrap;">' + formatDateDDMMYYYY(t.date) + '</td>';
           bodyHTML += '<td><span style="text-decoration:line-through;">' + escapeHTML(t.description) + '</span> <span class="badge badge-secondary" style="font-size:10px; margin-left:4px;">Voided</span><br><small style="color:var(--danger); font-size:11px;">Void reason: ' + escapeHTML(t.voidReason || 'Reversed by admin') + '</small></td>';
-          bodyHTML += '<td><span class="badge badge-secondary">Voided</span></td>';
+          bodyHTML += '<td><span class="badge" style="background:rgba(245,158,11,0.12); color:#b45309; border:1px solid rgba(245,158,11,0.25); font-size:11px; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">🔁 Adjustment</span></td>';
           bodyHTML += '<td style="text-decoration:line-through;">₹' + Math.abs(t.amount).toLocaleString('en-IN') + '</td>';
           bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
           bodyHTML += '<td><span style="color:var(--text-muted); font-size:11px;">Voided</span></td>';
@@ -2417,10 +2467,10 @@
           bodyHTML += '<tr style="background: rgba(245, 158, 11, 0.05); color: var(--warning);">';
           bodyHTML += '<td style="font-size:12px; white-space:nowrap;">' + formatDateDDMMYYYY(t.date) + '</td>';
           bodyHTML += '<td><strong>' + escapeHTML(t.description) + '</strong> <span class="badge badge-warning" style="font-size:10px; margin-left:4px;">Reversal</span><br><small style="color:var(--text-muted); font-size:11px;">' + escapeHTML(t.remarks || '') + '</small></td>';
-          bodyHTML += '<td><span class="badge badge-warning">Reversal</span></td>';
+          bodyHTML += '<td><span class="badge" style="background:rgba(245,158,11,0.12); color:#b45309; border:1px solid rgba(245,158,11,0.25); font-size:11px; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">🔁 Adjustment</span></td>';
           bodyHTML += '<td style="color:var(--warning); font-weight:600;">-₹' + Math.abs(t.amount).toLocaleString('en-IN') + '</td>';
           bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
-          bodyHTML += '<td><span style="color:var(--text-muted); font-size:11px;">Reversal #' + (t.originalTxnId ? t.originalTxnId.slice(-6) : '') + '</span></td>';
+          bodyHTML += '<td><span style="color:var(--text-muted); font-size:11px;">Reversal</span></td>';
           bodyHTML += '</tr>';
         } else {
           bodyHTML += '<tr>';
@@ -2434,9 +2484,24 @@
           }
           bodyHTML += '</td>';
 
-          var typeBadge = t.type === 'due' ? 'badge-danger' : 'badge-success';
-          bodyHTML += '<td><span class="badge ' + typeBadge + '">' + (t.type === 'due' ? 'Due' : 'Paid') + '</span></td>';
-          bodyHTML += '<td>₹' + t.amount.toLocaleString('en-IN') + '</td>';
+          // Source Tag
+          var sourceTagHTML = '';
+          if (t.type === 'payment') {
+            sourceTagHTML = '<span class="badge" style="background:rgba(16,185,129,0.12); color:#047857; border:1px solid rgba(16,185,129,0.25); font-size:11px; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">💳 Payment</span>';
+          } else if (t.isAuto) {
+            sourceTagHTML = '<span class="badge" style="background:rgba(99,102,241,0.12); color:#4338ca; border:1px solid rgba(99,102,241,0.25); font-size:11px; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">🤖 Auto-generated</span>';
+          } else {
+            sourceTagHTML = '<span class="badge" style="background:rgba(59,130,246,0.12); color:#1d4ed8; border:1px solid rgba(59,130,246,0.25); font-size:11px; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:3px;">✏️ Manual charge</span>';
+          }
+          bodyHTML += '<td>' + sourceTagHTML + '</td>';
+
+          // Amount
+          if (t.type === 'due') {
+            bodyHTML += '<td style="font-weight:600; color:var(--danger, #ef4444);">₹' + t.amount.toLocaleString('en-IN') + '</td>';
+          } else {
+            bodyHTML += '<td style="font-weight:600; color:var(--success, #10b981);">-₹' + t.amount.toLocaleString('en-IN') + '</td>';
+          }
+
           bodyHTML += '<td><strong>₹' + t.balance.toLocaleString('en-IN') + '</strong></td>';
 
           bodyHTML += '<td><div class="table-actions" style="display:flex; gap:4px; align-items:center;">';
@@ -2445,7 +2510,7 @@
             bodyHTML += '<button class="btn-icon profile-whatsapp-receipt-btn" data-student-id="' + studentId + '" data-txn-id="' + t.id + '" data-amount="' + t.amount + '" data-mode="' + (t.mode || 'Cash') + '" title="Send WhatsApp Receipt" style="color:#25D366; min-width:30px; min-height:30px;"><span class="material-icons-round" style="font-size:18px">send</span></button>';
           }
           if (isAdmin) {
-            bodyHTML += '<button class="btn-icon profile-void-txn-btn" data-id="' + t.id + '" data-student-id="' + studentId + '" title="Void / Reverse Transaction" style="color:var(--danger); min-width:30px; min-height:30px;"><span class="material-icons-round" style="font-size:17px">undo</span></button>';
+            bodyHTML += '<button class="btn-icon profile-void-txn-btn" data-id="' + t.id + '" data-student-id="' + studentId + '" title="Undo / Reverse Transaction" style="color:var(--danger); min-width:30px; min-height:30px;"><span class="material-icons-round" style="font-size:17px">undo</span></button>';
           }
           bodyHTML += '</div></td>';
           bodyHTML += '</tr>';
@@ -2454,7 +2519,7 @@
 
       bodyHTML += '</tbody></table></div>';
     } else {
-      bodyHTML += '<div class="empty-state" style="padding:20px; border:1px solid var(--border-color); border-radius:6px;"><span class="material-icons-round" style="font-size:32px;">receipt_long</span><p style="margin:4px 0 0 0;">No fee transactions recorded for this student.</p></div>';
+      bodyHTML += '<div class="empty-state" style="padding:28px; text-align:center; border:1px dashed var(--border-color); border-radius:8px;"><span class="material-icons-round" style="font-size:36px; color:var(--text-muted);">receipt_long</span><p style="margin:8px 0 0 0; font-size:14px; color:var(--text-secondary); font-weight:500;">No fee history yet</p></div>';
     }
     bodyHTML += '</div>';
 

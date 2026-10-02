@@ -1755,18 +1755,31 @@ window.SchoolApp = {
 
         activeStudents.forEach(function(s) {
           var alreadyBilled = (self.store.fees || []).some(function(f) {
-            return f.studentId === s.id && f.type === 'due' && f.feeHeadId === 'fh_tuition' &&
-              (f.billingPeriod === m.period || (f.date && f.date.startsWith(m.period)));
+            if (!f || f.studentId !== s.id || f.type !== 'due') return false;
+            var isHeadMatch = (f.feeHeadId === 'fh_tuition' || f.feeHeadId === 'tuition');
+            var fPeriod = f.billingPeriod || (f.date ? f.date.substring(0, 7) : '');
+            return isHeadMatch && (fPeriod === m.period || (f.date && f.date.startsWith(m.period)));
           });
           if (alreadyBilled) return;
 
-          var tuitionAmt = 1000;
+          var alreadyInBatch = result.tuitionDues.some(function(d) {
+            return d.studentId === s.id && (d.feeHeadId === 'fh_tuition' || d.feeHeadId === 'tuition') && d.billingPeriod === m.period;
+          });
+          if (alreadyInBatch) return;
+
+          var tuitionAmt = 0;
           if (settings.feeStructure && settings.feeStructure[s.class]) {
-            tuitionAmt = parseFloat(settings.feeStructure[s.class].tuition || 0);
+            var cStruct = settings.feeStructure[s.class];
+            var rawAmt = cStruct.fh_tuition !== undefined ? cStruct.fh_tuition : (cStruct.tuition !== undefined ? cStruct.tuition : cStruct['fh_tuition']);
+            tuitionAmt = parseFloat(rawAmt || 0);
           } else {
             var classStruct = (self.store.feeStructures || {})[s.class] || {};
-            tuitionAmt = parseFloat(classStruct.fh_tuition || 1000);
+            var rawAmt = classStruct.fh_tuition !== undefined ? classStruct.fh_tuition : classStruct.tuition;
+            tuitionAmt = parseFloat(rawAmt !== undefined ? rawAmt : 1000);
           }
+
+          // 1C: ZERO AMOUNT DUE PREVENTION: Skip record entirely if amount <= 0
+          if (tuitionAmt <= 0) return;
 
           result.tuitionDues.push({
             id: self.generateId(),
@@ -1788,12 +1801,17 @@ window.SchoolApp = {
           if (tAmt <= 0) return;
 
           var alreadyBilledTransport = (self.store.fees || []).some(function(f) {
-            return f.studentId === s.id &&
-                   f.type === 'due' &&
-                   f.feeHeadId === 'fh_transport' &&
-                   (f.billingPeriod === m.period || (f.date && f.date.startsWith(m.period)));
+            if (!f || f.studentId !== s.id || f.type !== 'due') return false;
+            var isHeadMatch = (f.feeHeadId === 'fh_transport' || f.feeHeadId === 'transport');
+            var fPeriod = f.billingPeriod || (f.date ? f.date.substring(0, 7) : '');
+            return isHeadMatch && (fPeriod === m.period || (f.date && f.date.startsWith(m.period)));
           });
           if (alreadyBilledTransport) return;
+
+          var alreadyTransportInBatch = result.tuitionDues.some(function(d) {
+            return d.studentId === s.id && (d.feeHeadId === 'fh_transport' || d.feeHeadId === 'transport') && d.billingPeriod === m.period;
+          });
+          if (alreadyTransportInBatch) return;
 
           result.tuitionDues.push({
             id: self.generateId(),
@@ -2218,6 +2236,19 @@ window.SchoolApp = {
   runAutoFeeReconciliation: async function(options) {
     try {
       if (!this.store || !this.store.students || this.store.students.length === 0) return;
+      if (this._isReconcilingAutoFees) return; // Prevent concurrent re-entrancy
+      this._isReconcilingAutoFees = true;
+
+      // Ensure current year fees are loaded for restructured schools before evaluating
+      var activeSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+      if (activeSchoolId && typeof this.isRestructured === 'function' && this.isRestructured(activeSchoolId)) {
+        var currentYr = String(new Date().getFullYear());
+        if (!this._feesYears || !this._feesYears[currentYr] || !Array.isArray(this.store.fees) || this.store.fees.length === 0) {
+          if (typeof this.loadFeesYear === 'function') {
+            await this.loadFeesYear(currentYr);
+          }
+        }
+      }
 
       var evalResult = this.evaluateAutoFeeDues(options || {});
       var newDueTxns = evalResult.allProjected;
@@ -2279,7 +2310,52 @@ window.SchoolApp = {
 
     } catch (e) {
       console.error('Error running Auto-Fee Engine:', e);
+    } finally {
+      this._isReconcilingAutoFees = false;
     }
+  },
+
+  // 1B. Cleanup Duplicate & Zero Dues (strictly restricted to dummy_test_school_isolated)
+  cleanDuplicateDues: async function(schoolId) {
+    if (!schoolId) schoolId = this.currentSchoolId;
+    if (schoolId !== 'dummy_test_school_isolated') {
+      console.warn('[Safety Guard] cleanDuplicateDues is restricted to dummy_test_school_isolated only.');
+      return { removedCount: 0, zeroCount: 0, success: false };
+    }
+
+    var fees = this.store.fees || [];
+    var seenMap = new Map();
+    var cleanFees = [];
+    var removedCount = 0;
+    var zeroCount = 0;
+
+    fees.forEach(function(f) {
+      if (f.type === 'due') {
+        var amt = parseFloat(f.amount || 0);
+        if (amt <= 0) {
+          zeroCount++;
+          return; // Purge ₹0 dues
+        }
+        var bp = f.billingPeriod || (f.date ? f.date.substring(0, 7) : '');
+        var head = f.feeHeadId || 'fh_tuition';
+        var key = f.studentId + '::' + head + '::' + bp;
+        if (bp && seenMap.has(key)) {
+          removedCount++;
+          return; // Skip duplicate, keep first canonical
+        }
+        if (bp) seenMap.set(key, true);
+      }
+      cleanFees.push(f);
+    });
+
+    this.store.fees = cleanFees;
+    await this.save(true);
+    return {
+      success: true,
+      removedCount: removedCount,
+      zeroCount: zeroCount,
+      remainingCount: cleanFees.length
+    };
   },
 
   // ---------- Authentication ----------
