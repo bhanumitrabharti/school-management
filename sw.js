@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v36 for privacy and terms external links routing fix and click interceptor guard.
-const CACHE_NAME = 'erp-cache-v36';
+// Bumped to v37 for login page Help & Support WhatsApp link update.
+const CACHE_NAME = 'erp-cache-v37';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
