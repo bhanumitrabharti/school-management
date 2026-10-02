@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v33 for Document & ID Generator Bug Fixes (Signature Upload, Admit Card Empty State, ID Card Preview).
-const CACHE_NAME = 'erp-cache-v33';
+// Bumped to v34 for ID Card visual redesign, parent photo upload, mobile responsiveness.
+const CACHE_NAME = 'erp-cache-v34';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

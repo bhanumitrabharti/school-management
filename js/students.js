@@ -553,6 +553,23 @@
     bodyHTML += '  <img id="student-photo-preview" src="' + photoSrc + '" style="max-width:80px;max-height:80px;display:' + photoDisplay + ';border-radius:50%;margin-top:8px;object-fit:cover;" />';
     bodyHTML += '</div>';
 
+    // Parent Photo Upload
+    var parentPhotoDisplay = (student && student.parentPhotoUrl) ? 'block' : 'none';
+    var parentPhotoSrc = (student && student.parentPhotoUrl) || '';
+    bodyHTML += '<div class="form-group">';
+    bodyHTML += '  <label class="form-label">Parent / Guardian Photo <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional — for ID card)</span></label>';
+    bodyHTML += '  <input type="file" id="parent-photo-input" accept="image/png,image/jpeg"';
+    bodyHTML += '    onchange="StudentsModule.handleParentPhotoSelect(this)" />';
+    bodyHTML += '  <div id="parent-photo-preview-wrap" style="display:' + parentPhotoDisplay + '; margin-top:8px; display:flex; align-items:center; gap:10px;">';
+    bodyHTML += '    <img id="parent-photo-preview" src="' + parentPhotoSrc + '" style="width:60px;height:72px;object-fit:cover;border-radius:6px;border:2px solid #0d6e7a;" />';
+    bodyHTML += '    <div>';
+    bodyHTML += '      <div style="font-size:12px;color:#059669;font-weight:600;">✓ Parent photo ready</div>';
+    bodyHTML += '      <div style="font-size:11px;color:#64748B;">Will appear on ID card (With Parent Photo template)</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <input type="hidden" id="parent-photo-data" name="parentPhotoUrl" value="' + parentPhotoSrc + '" />';
+    bodyHTML += '</div>';
+
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -688,6 +705,7 @@
       var idx = SchoolApp.store.students.findIndex(function(s) { return s.id === existing.id; });
       if (idx !== -1) {
         if (!fields.photoUrl) fields.photoUrl = existing.photoUrl;
+        if (!fields.parentPhotoUrl) fields.parentPhotoUrl = existing.parentPhotoUrl || '';
         var previousSnapshot = Object.assign({}, SchoolApp.store.students[idx]);
         Object.assign(SchoolApp.store.students[idx], fields);
         rollbackFn = function() { SchoolApp.store.students[idx] = previousSnapshot; };
@@ -1717,5 +1735,47 @@
     render: render,
     viewStudent: viewStudent
   });
+
+  // Expose StudentsModule globally (for inline onchange handlers)
+  window.StudentsModule = {
+    handleParentPhotoSelect: function(input) {
+      var file = input && input.files && input.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        SchoolApp.showToast('Please select a PNG or JPEG image.', 'error');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var raw = e.target.result;
+        // Compress to 100x120 (portrait — parent photo for ID card)
+        var img = new Image();
+        img.onload = function() {
+          var MAX_W = 100, MAX_H = 120;
+          var ratio = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+          var w = Math.round(img.width * ratio);
+          var h = Math.round(img.height * ratio);
+          var canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          var compressed = canvas.toDataURL('image/jpeg', 0.80);
+          // Store in hidden input so saveStudent() picks it up
+          var hiddenInput = document.getElementById('parent-photo-data');
+          if (hiddenInput) hiddenInput.value = compressed;
+          // Show preview
+          var preview = document.getElementById('parent-photo-preview');
+          if (preview) { preview.src = compressed; }
+          var wrap = document.getElementById('parent-photo-preview-wrap');
+          if (wrap) { wrap.style.display = 'flex'; }
+          SchoolApp.showToast('Parent photo ready. Save student to apply.', 'success');
+        };
+        img.onerror = function() { SchoolApp.showToast('Could not read image file.', 'error'); };
+        img.src = raw;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
 })();

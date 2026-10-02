@@ -68,6 +68,16 @@
     return s.principalName || 'Principal';
   }
 
+  function getSchoolPhone() {
+    var s = getSettings();
+    return s.phone || (s.schoolInfo && s.schoolInfo.phone) || '';
+  }
+
+  function getSchoolAddress() {
+    var s = getSettings();
+    return s.address || (s.schoolInfo && s.schoolInfo.address) || '';
+  }
+
   function getAcademicYear() {
     var s = getSettings();
     var store = getStore();
@@ -1311,13 +1321,13 @@
       html += '      </select>';
       html += '    </div>';
 
-      // Action Buttons: Generate Preview & Print Batch
-      html += '    <div style="display:flex; gap:8px;">';
-      html += '      <button type="button" class="btn btn-secondary" id="btn-generate-id-preview" style="flex:1; height:38px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" onclick="DocumentsModule.updateIDCardPreview(' + withParentPhoto + ')">';
+      // Action Buttons: Generate Preview & Print Batch (responsive, no overflow)
+      html += '    <div style="display:flex; flex-wrap:wrap; gap:8px;">';
+      html += '      <button type="button" class="btn btn-secondary" id="btn-generate-id-preview" style="flex:1; min-width:140px; height:38px; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap;" onclick="DocumentsModule.updateIDCardPreview(' + withParentPhoto + ')">';
       html += '        <span class="material-icons-round" style="font-size:16px;">visibility</span> Generate Preview';
       html += '      </button>';
-      html += '      <button type="button" class="btn btn-primary" id="btn-print-id-batch" style="flex:1; height:38px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" onclick="DocumentsModule.printIDCards(' + withParentPhoto + ')">';
-      html += '        <span class="material-icons-round" style="font-size:16px;">print</span> Print Batch (4 per A4)';
+      html += '      <button type="button" class="btn btn-primary" id="btn-print-id-batch" style="flex:1; min-width:140px; height:38px; display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap;" onclick="DocumentsModule.printIDCards(' + withParentPhoto + ')">';
+      html += '        <span class="material-icons-round" style="font-size:16px;">print</span> Print Batch (4/A4)';
       html += '      </button>';
       html += '    </div>';
 
@@ -1325,12 +1335,13 @@
       html += '</div>';
 
       // Count badge & Cards Preview Grid
-      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:6px;">';
       html += '  <div id="id-student-count-badge" style="font-size:13px; font-weight:600; color:var(--text-secondary);">Loading ID cards...</div>';
-      html += '  <div style="font-size:11px; color:var(--text-secondary);">Cards layout: 85.6mm &times; 54mm (Credit-card proportions)</div>';
+      html += '  <div style="font-size:11px; color:var(--text-secondary);">Cards: 85.6mm &times; 54mm (credit-card size)</div>';
       html += '</div>';
 
-      html += '<div id="id-cards-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px; max-height:700px; overflow-y:auto; padding:4px;"></div>';
+      // Responsive grid: 3 cols desktop → 2 tablet → 1 mobile
+      html += '<div id="id-cards-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; max-height:720px; overflow-y:auto; padding:4px;"></div>';
 
       panel.innerHTML = html;
 
@@ -1358,75 +1369,97 @@
       var schoolName = getSchoolName();
       var logo = getSchoolLogo();
       var year = getAcademicYear();
+      var schoolPhone = getSchoolPhone();
+      var schoolAddress = getSchoolAddress();
       var sName = student.name || ((student.firstName || '') + ' ' + (student.lastName || '')).trim() || 'STUDENT NAME';
       var initials = getStudentInitials(sName);
-      var roll = student.rollNumber || '—';
-      var adm = student.admissionNumber || '—';
-      var sClass = student.class || '—';
-      var sSec = student.section || '—';
-      var phone = student.parentPhone || student.phone || '—';
+      var sParentInitials = (student.parentName || 'PG').trim().split(/\s+/).map(function(w) { return w[0] || ''; }).join('').substring(0, 2).toUpperCase() || 'PG';
+      var roll = student.rollNumber || '\u2014';
+      var sClass = student.class || '\u2014';
+      var sSec = student.section || '\u2014';
+      var phone = student.parentPhone || student.phone || '\u2014';
       var parentName = student.parentName || 'Parent / Guardian';
+      var address = (student.address || '').replace(/\n/g, ', ').trim();
+
+      // Gradient header colors
+      var headerGrad = 'linear-gradient(135deg,#1a3a6b 0%,#1a5276 60%,#0d6e7a 100%)';
 
       var cardWidth = isPrint ? '85.6mm' : '100%';
-      var cardHeight = isPrint ? '54mm' : 'auto';
+      var cardMinH  = isPrint ? '54mm'   : '190px';
 
       var card = '';
-      card += '<div class="id-card" style="width:' + cardWidth + '; height:' + cardHeight + '; min-height:190px; border:1.5px solid #0F172A; border-radius:8px; background:#FFF; color:#0F172A; font-family:-apple-system, BlinkMacSystemFont, Roboto, sans-serif; position:relative; overflow:hidden; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between; page-break-inside:avoid; break-inside:avoid; box-shadow:' + (isPrint ? 'none' : '0 2px 8px rgba(0,0,0,0.06)') + ';">';
-      
-      // Card Header
-      card += '  <div style="background:#0F172A; color:#FFF; padding:6px 8px; display:flex; align-items:center; gap:8px;">';
+      card += '<div class="id-card" style="width:' + cardWidth + '; min-height:' + cardMinH + '; border:none; border-radius:10px; background:#FFF; color:#0F172A; font-family:-apple-system,BlinkMacSystemFont,Roboto,sans-serif; position:relative; overflow:hidden; box-sizing:border-box; display:flex; flex-direction:column; page-break-inside:avoid; break-inside:avoid; box-shadow:' + (isPrint ? '0 0 0 1.5px #1a3a6b' : '0 4px 16px rgba(26,58,107,0.18)') + ';">';
+
+      // Header Band
+      card += '  <div style="background:' + headerGrad + '; color:#FFF; padding:7px 10px 6px; display:flex; align-items:center; gap:8px; flex-shrink:0;">';
       if (logo) {
-        card += '    <img src="' + logo + '" style="width:28px; height:28px; object-fit:contain; background:#FFF; border-radius:50%; padding:1px;" />';
+        card += '    <img src="' + logo + '" style="width:30px; height:30px; object-fit:contain; background:rgba(255,255,255,0.92); border-radius:50%; padding:2px; flex-shrink:0;" />';
+      } else {
+        card += '    <div style="width:30px; height:30px; background:rgba(255,255,255,0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; flex-shrink:0;">' + escapeHTML((schoolName || 'S')[0]) + '</div>';
       }
-      card += '    <div style="flex:1; overflow:hidden;">';
-      card += '      <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHTML(schoolName) + '</div>';
-      card += '      <div style="font-size:8px; color:#94A3B8;">Academic Year: ' + escapeHTML(year) + '</div>';
+      card += '    <div style="flex:1; min-width:0;">';
+      card += '      <div style="font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
+      card += '      <div style="font-size:7.5px; color:rgba(255,255,255,0.75); margin-top:1px;">STUDENT IDENTITY CARD &nbsp;&middot;&nbsp; ' + escapeHTML(year) + '</div>';
       card += '    </div>';
       card += '  </div>';
 
-      // Card Body
-      card += '  <div style="padding:8px 10px; display:flex; align-items:center; gap:10px; flex:1;">';
+      // Accent Line
+      card += '  <div style="height:2px; background:linear-gradient(90deg,#0d6e7a,#1a3a6b,#f59e0b); flex-shrink:0;"></div>';
 
-      // Student Photo
+      // Body
+      card += '  <div style="padding:8px 10px; display:flex; align-items:flex-start; gap:9px; flex:1;">';
+
+      // Student Photo (52x62, larger than before)
       if (student.photoUrl) {
-        card += '    <img src="' + student.photoUrl + '" style="width:40px; height:48px; object-fit:cover; border:1px solid #CBD5E1; border-radius:4px; flex-shrink:0;" />';
+        card += '    <img src="' + student.photoUrl + '" style="width:52px; height:62px; object-fit:cover; border:2px solid #1a3a6b; border-radius:6px; flex-shrink:0;" />';
       } else {
-        card += '    <div style="width:40px; height:48px; border:1px dashed #94A3B8; background:#F8FAFC; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; flex-shrink:0;">';
-        card += '      <span style="font-size:13px; font-weight:700; color:#334155; line-height:1;">' + escapeHTML(initials) + '</span>';
-        card += '      <span style="font-size:7px; color:#64748B; margin-top:2px; line-height:1;">Affix Photo</span>';
+        card += '    <div style="width:52px; height:62px; background:linear-gradient(135deg,#EFF6FF,#DBEAFE); border:2px solid #93C5FD; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; flex-shrink:0;">';
+        card += '      <span style="font-size:18px; font-weight:800; color:#1a3a6b; line-height:1;">' + escapeHTML(initials) + '</span>';
+        card += '      <span style="font-size:6.5px; color:#3B82F6; margin-top:3px; line-height:1; font-weight:600;">PHOTO</span>';
         card += '    </div>';
       }
 
       // Middle: Student Info
-      card += '    <div style="flex:1; font-size:10px; line-height:1.35; overflow:hidden;">';
-      card += '      <div style="font-size:11px; font-weight:800; color:#0F172A; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHTML(sName) + '</div>';
-      card += '      <div><span style="color:#64748B;">Class:</span> <b>' + escapeHTML(sClass) + '</b> &nbsp; <span style="color:#64748B;">Sec:</span> <b>' + escapeHTML(sSec) + '</b></div>';
-      card += '      <div><span style="color:#64748B;">Roll No:</span> <b>' + escapeHTML(roll) + '</b></div>';
-      card += '      <div><span style="color:#64748B;">Adm No:</span> <b>' + escapeHTML(adm) + '</b></div>';
-      card += '      <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><span style="color:#64748B;">Ph:</span> <b>' + escapeHTML(phone) + '</b></div>';
+      card += '    <div style="flex:1; min-width:0; font-size:9.5px; line-height:1.4;">';
+      card += '      <div style="font-size:11.5px; font-weight:800; color:#1a3a6b; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px;">' + escapeHTML(sName) + '</div>';
+      card += '      <div style="display:flex; gap:10px; margin-bottom:1px;">';
+      card += '        <span><span style="color:#64748B;">Class:</span> <b style="color:#0F172A;">' + escapeHTML(sClass) + '</b></span>';
+      card += '        <span><span style="color:#64748B;">Sec:</span> <b style="color:#0F172A;">' + escapeHTML(sSec) + '</b></span>';
+      card += '      </div>';
+      card += '      <div style="margin-bottom:1px;"><span style="color:#64748B;">Roll No:</span> <b style="color:#0F172A;">' + escapeHTML(roll) + '</b></div>';
+      // Emergency Contact
+      card += '      <div style="margin-top:4px; border-top:1px solid #E2E8F0; padding-top:3px;">';
+      card += '        <div style="font-size:7.5px; font-weight:700; color:#DC2626; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:1px;">&#9889; Emergency Contact</div>';
+      card += '        <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600; color:#1a3a6b; font-size:9px;">' + escapeHTML(parentName) + '</div>';
+      card += '        <div style="color:#0F172A; font-weight:700; font-size:10px;">' + escapeHTML(phone) + '</div>';
+      card += '      </div>';
       card += '    </div>';
 
-      // Optional: Parent Photo Column
+      // Parent Photo Column
       if (withParentPhoto) {
-        card += '    <div style="width:48px; text-align:center; flex-shrink:0;">';
+        card += '    <div style="width:46px; text-align:center; flex-shrink:0; display:flex; flex-direction:column; align-items:center; gap:3px;">';
         if (student.parentPhotoUrl) {
-          card += '      <img src="' + student.parentPhotoUrl + '" style="width:32px; height:40px; object-fit:cover; border:1px solid #CBD5E1; border-radius:4px; margin:0 auto;" />';
+          card += '      <img src="' + student.parentPhotoUrl + '" style="width:40px; height:48px; object-fit:cover; border:2px solid #0d6e7a; border-radius:5px;" />';
         } else {
-          card += '      <div style="width:32px; height:40px; border:1px dashed #94A3B8; background:#F8FAFC; border-radius:4px; margin:0 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">';
-          card += '        <span style="font-size:11px; font-weight:700; color:#64748B;">P</span>';
-          card += '        <span style="font-size:6.5px; color:#94A3B8; line-height:1;">Parent</span>';
+          card += '      <div style="width:40px; height:48px; background:linear-gradient(135deg,#F0FDF4,#DCFCE7); border:2px solid #86EFAC; border-radius:5px; display:flex; flex-direction:column; align-items:center; justify-content:center;">';
+          card += '        <span style="font-size:14px; font-weight:800; color:#0d6e7a; line-height:1;">' + escapeHTML(sParentInitials) + '</span>';
+          card += '        <span style="font-size:6px; color:#059669; line-height:1; font-weight:600; margin-top:2px;">PARENT</span>';
           card += '      </div>';
         }
-        card += '      <div style="font-size:7.5px; color:#475569; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48px;">' + escapeHTML(parentName) + '</div>';
+        card += '      <div style="font-size:7px; color:#374151; font-weight:600; max-width:46px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; line-height:1.2;">' + escapeHTML((parentName.split(' ')[0]) || 'Parent') + '</div>';
         card += '    </div>';
       }
 
       card += '  </div>';
 
-      // Card Bottom Accent Bar
-      card += '  <div style="background:#F1F5F9; border-top:1px solid #E2E8F0; padding:3px 8px; font-size:7.5px; color:#64748B; display:flex; justify-content:space-between; align-items:center;">';
-      card += '    <span>STUDENT IDENTITY CARD</span>';
-      card += '    <span style="font-weight:600; color:#0F172A;">AUTHORIZED PASS</span>';
+      // Footer Band — address + school phone
+      var footerParts = [];
+      if (address) footerParts.push('\u{1F3E0} ' + address.substring(0, 48) + (address.length > 48 ? '\u2026' : ''));
+      if (schoolPhone) footerParts.push('\u{1F4DE} School: ' + schoolPhone);
+      var footerText = footerParts.join('  \u00B7  ') || 'STUDENT IDENTITY CARD';
+
+      card += '  <div style="background:linear-gradient(135deg,#1a3a6b,#0d6e7a); color:rgba(255,255,255,0.9); padding:3px 8px; font-size:7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;">';
+      card += '    ' + escapeHTML(footerText);
       card += '  </div>';
 
       card += '</div>';
