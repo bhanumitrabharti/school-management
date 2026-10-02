@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v35 for login page audit: auth guard fix, link updates, copyright footer.
-const CACHE_NAME = 'erp-cache-v35';
+// Bumped to v36 for privacy and terms external links routing fix and click interceptor guard.
+const CACHE_NAME = 'erp-cache-v36';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
@@ -13,6 +13,8 @@ const ASSETS_TO_CACHE = [
   '/index.html',
   '/super-admin.html',
   '/landing.html',
+  '/privacy.html',
+  '/terms.html',
   '/css/styles.css',
   '/js/app.js',
   '/js/admin.js',

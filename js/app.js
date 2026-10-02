@@ -4689,6 +4689,18 @@ window.SchoolApp = {
   setupEventListeners: function() {
     var self = this;
 
+    // Global link interceptor: Ensure external links are handled by the browser
+    document.addEventListener('click', function(e) {
+      var anchor = e.target.closest ? e.target.closest('a') : null;
+      if (anchor) {
+        var href = anchor.getAttribute('href');
+        if (href && (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:') || href.startsWith('tel:'))) {
+          // Do not intercept external links or mailto/tel protocols
+          return;
+        }
+      }
+    });
+
     // Listen to changes inside admin page to track dirty state
     var pageAdmin = document.getElementById('page-admin');
     if (pageAdmin) {
