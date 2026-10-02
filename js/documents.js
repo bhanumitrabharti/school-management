@@ -13,19 +13,25 @@
   var timetableRows = [];
 
   function requireAdmin() {
-    if (window.SchoolApp && typeof SchoolApp.isAdmin === 'function') {
-      if (SchoolApp.isAdmin()) return true;
-      var user = SchoolApp.currentUser || {};
-      if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'principal') return true;
-      if (sessionStorage.getItem('isImpersonating') === 'true') return true;
-      if (sessionStorage.getItem('erp_user_role') === 'admin') return true;
-      console.warn('[DocumentsModule] Access restricted: currentUser is not admin:', SchoolApp.currentUser);
-      if (SchoolApp.showToast) {
-        SchoolApp.showToast('Access restricted: Administrator only.', 'error');
-      }
-      return false;
-    }
-    return true;
+    // If SchoolApp isn't loaded yet, allow silently (page isn't visible anyway)
+    if (!window.SchoolApp) return true;
+
+    // If user is not yet authenticated (auth hasn't resolved), don't block or toast.
+    // The navigate() in app.js is the authoritative guard — it already handles
+    // the "Access Denied" toast and redirects. requireAdmin() here is a safety
+    // net to prevent rendering sensitive DOM content; it should never show its
+    // own toast because that creates duplicate toasts on page load.
+    if (!SchoolApp.currentUser) return false;
+
+    if (typeof SchoolApp.isAdmin === 'function' && SchoolApp.isAdmin()) return true;
+    var user = SchoolApp.currentUser || {};
+    if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'principal') return true;
+    if (sessionStorage.getItem('isImpersonating') === 'true') return true;
+    if (sessionStorage.getItem('erp_user_role') === 'admin') return true;
+
+    // User is authenticated but not admin — log only, no toast (navigate() already toasted)
+    console.warn('[DocumentsModule] Access restricted: currentUser is not admin:', user.role);
+    return false;
   }
 
   function escapeHTML(str) {

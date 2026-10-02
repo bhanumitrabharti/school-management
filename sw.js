@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v34 for ID Card visual redesign, parent photo upload, mobile responsiveness.
-const CACHE_NAME = 'erp-cache-v34';
+// Bumped to v35 for login page audit: auth guard fix, link updates, copyright footer.
+const CACHE_NAME = 'erp-cache-v35';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

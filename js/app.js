@@ -2725,14 +2725,16 @@ window.SchoolApp = {
       pageName = 'help';
     }
 
-    // Strict role check
+    // Strict role check — only run if auth has resolved (currentUser is set)
+    // During page load before login, currentUser is null and navigate() may be
+    // called by hash routing — we must not show "Access Denied" before auth.
     var adminOnlyPages = ['admin', 'fees', 'documents'];
-    if (this.isTeacher() && pageName === 'teachers') {
+    if (this.currentUser && this.isTeacher() && pageName === 'teachers') {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
       return;
     }
-    if (adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
+    if (this.currentUser && adminOnlyPages.indexOf(pageName) !== -1 && !this.isAdmin()) {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
       return;
@@ -4593,6 +4595,9 @@ window.SchoolApp = {
   showLoginPage: function() {
     document.getElementById('login-page').classList.remove('hidden');
     document.getElementById('app-layout').classList.add('hidden');
+    // Auto-populate copyright year
+    var yearEl = document.getElementById('login-copyright-year');
+    if (yearEl) yearEl.textContent = new Date().getFullYear();
     this.setupLoginButtonGate();
   },
 
