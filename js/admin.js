@@ -7,7 +7,7 @@
 (function() {
 
   
-  function compressImage(base64Str, maxW, maxH) {
+  function compressImage(base64Str, maxW, maxH, mimeType) {
     return new Promise(function(resolve) {
       var img = new Image();
       img.onload = function() {
@@ -32,7 +32,7 @@
         canvas.height = height;
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        var exportType = mimeType || (base64Str && base64Str.startsWith('data:image/png') ? 'image/png' : 'image/jpeg');
+        var exportType = (typeof mimeType !== 'undefined' && mimeType) ? mimeType : ((base64Str && base64Str.startsWith('data:image/png')) ? 'image/png' : 'image/jpeg');
         resolve(canvas.toDataURL(exportType, 0.85));
       };
       img.onerror = function() {
@@ -166,6 +166,9 @@
     if (!confirm('Remove digital signature?')) return;
     if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
     SchoolApp.store.settings.principalSignatureUrl = '';
+    if (SchoolApp.store.settings.schoolInfo) {
+      SchoolApp.store.settings.schoolInfo.principalSignatureUrl = '';
+    }
     SchoolApp.save(true);
     showSignaturePreview('');
     showSignatureStatus('info', 'Signature removed');
@@ -175,6 +178,8 @@
   window.handleSignatureSelect = function(input) {
     var file = input.files && input.files[0];
     if (!file) return;
+
+    console.log('[AdminSettings] handleSignatureSelect called with file:', file.name, file.size, file.type);
 
     if (!file.type.startsWith('image/')) {
       SchoolApp.showToast('Please select an image file (PNG or JPEG)', 'error');
@@ -198,16 +203,19 @@
 
         if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
         SchoolApp.store.settings.principalSignatureUrl = compressed;
+        if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+        SchoolApp.store.settings.schoolInfo.principalSignatureUrl = compressed;
 
         await SchoolApp.save(true);
 
         showSignaturePreview(compressed);
         showSignatureStatus('success', '✅ Digital signature uploaded successfully!');
         SchoolApp.showToast('Digital signature uploaded successfully!', 'success');
+        console.log('[AdminSettings] Digital signature saved successfully.');
       } catch(err) {
         console.error('Signature upload error:', err);
-        showSignatureStatus('error', '❌ Upload failed. Try again.');
-        SchoolApp.showToast('Upload failed. Try again.', 'error');
+        showSignatureStatus('error', '❌ Upload failed: ' + err.message);
+        SchoolApp.showToast('Upload failed: ' + err.message, 'error');
       }
     };
     reader.readAsDataURL(file);
@@ -4163,6 +4171,17 @@
         s.schoolInfo.website = s.website;
         s.upiId = document.getElementById('school-upi-id') ? document.getElementById('school-upi-id').value.trim() : (s.upiId || '');
         s.schoolInfo.upiId = s.upiId;
+
+        var principalNameInput = document.getElementById('settings-principal-name');
+        if (principalNameInput) {
+          s.principalName = principalNameInput.value.trim();
+        }
+        if (!s.schoolInfo) s.schoolInfo = {};
+        s.schoolInfo.principalName = s.principalName || '';
+        if (s.principalSignatureUrl) {
+          s.schoolInfo.principalSignatureUrl = s.principalSignatureUrl;
+        }
+
         s.phone = s.schoolInfo.phone;
         s.email = s.schoolInfo.email;
         s.address = s.schoolInfo.address;

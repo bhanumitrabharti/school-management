@@ -13,8 +13,14 @@
   var timetableRows = [];
 
   function requireAdmin() {
-    if (!window.SchoolApp || !SchoolApp.isAdmin || !SchoolApp.isAdmin()) {
-      if (window.SchoolApp && SchoolApp.showToast) {
+    if (window.SchoolApp && typeof SchoolApp.isAdmin === 'function') {
+      if (SchoolApp.isAdmin()) return true;
+      var user = SchoolApp.currentUser || {};
+      if (user.role === 'admin' || user.role === 'superadmin' || user.role === 'principal') return true;
+      if (sessionStorage.getItem('isImpersonating') === 'true') return true;
+      if (sessionStorage.getItem('erp_user_role') === 'admin') return true;
+      console.warn('[DocumentsModule] Access restricted: currentUser is not admin:', SchoolApp.currentUser);
+      if (SchoolApp.showToast) {
         SchoolApp.showToast('Access restricted: Administrator only.', 'error');
       }
       return false;
@@ -71,7 +77,9 @@
   function getAllStudents() {
     var store = getStore();
     return (store.students || []).filter(function(st) {
-      return !st.status || st.status.toLowerCase() === 'active';
+      if (!st) return false;
+      var status = st.status ? String(st.status).trim().toLowerCase() : 'active';
+      return status === 'active';
     });
   }
 
@@ -311,8 +319,45 @@
 
       var examTerms = store.examTerms || {};
       var termKeys = Object.keys(examTerms);
-      var classes = (store.settings && store.settings.classes) || [];
-      var sections = (store.settings && store.settings.sections) || ['A', 'B', 'C'];
+
+      console.log('[DocumentsModule] showAdmitCardFlow invoked. examTerms count:', termKeys.length, examTerms);
+
+      // Graceful Empty State when no exam terms are configured
+      if (termKeys.length === 0) {
+        console.log('[DocumentsModule] No exams configured. Rendering empty state.');
+        var emptyHtml = '';
+        emptyHtml += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">';
+        emptyHtml += '  <h3 style="margin:0; font-size:18px; font-weight:700; display:flex; align-items:center; gap:8px;">';
+        emptyHtml += '    <span>📋</span> Examination Admit Card Generator';
+        emptyHtml += '  </h3>';
+        emptyHtml += '  <button class="btn btn-secondary btn-sm" onclick="document.getElementById(\'docs-workflow-panel\').classList.add(\'hidden\');">Close</button>';
+        emptyHtml += '</div>';
+        emptyHtml += '<div style="text-align:center; padding:45px 20px; background:var(--bg-primary); border:1px dashed var(--border-color); border-radius:12px;">';
+        emptyHtml += '  <div style="font-size:42px; margin-bottom:12px;">📅</div>';
+        emptyHtml += '  <h4 style="font-size:16px; font-weight:700; margin:0 0 8px 0; color:var(--text-primary);">No Exams Configured</h4>';
+        emptyHtml += '  <p style="font-size:13px; color:var(--text-secondary); max-width:480px; margin:0 auto 20px auto; line-height:1.5;">';
+        emptyHtml += '    No exams configured. Please set up exam schedule in Settings first.';
+        emptyHtml += '  </p>';
+        emptyHtml += '  <button type="button" class="btn btn-primary" onclick="SchoolApp.navigate(\'exams\')">';
+        emptyHtml += '    <span class="material-icons-round" style="font-size:16px; vertical-align:middle;">assignment</span> Go to Exams Setup';
+        emptyHtml += '  </button>';
+        emptyHtml += '</div>';
+        panel.innerHTML = emptyHtml;
+        return;
+      }
+
+      var studentClasses = Array.from(new Set((store.students || []).map(function(s) { return String(s.class || '').trim(); }).filter(Boolean))).sort(function(a,b) {
+        var numA = parseInt(a, 10), numB = parseInt(b, 10);
+        return (!isNaN(numA) && !isNaN(numB)) ? numA - numB : a.localeCompare(b);
+      });
+      var classes = (store.settings && Array.isArray(store.settings.classes) && store.settings.classes.length > 0)
+        ? store.settings.classes
+        : (studentClasses.length > 0 ? studentClasses : ['1', '2', '3', '4', '5']);
+
+      var studentSections = Array.from(new Set((store.students || []).map(function(s) { return String(s.section || '').trim(); }).filter(Boolean))).sort();
+      var sections = (store.settings && Array.isArray(store.settings.sections) && store.settings.sections.length > 0)
+        ? store.settings.sections
+        : (studentSections.length > 0 ? studentSections : ['A', 'B', 'C']);
 
       var html = '';
       html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">';
@@ -331,14 +376,10 @@
       html += '    <div>';
       html += '      <label class="form-label" style="font-size:12px;">Examination</label>';
       html += '      <select id="ac-exam-select" class="form-select" onchange="DocumentsModule.onAdmitCardFilterChange()">';
-      if (termKeys.length === 0) {
-        html += '        <option value="term_annual">Annual Examination (' + escapeHTML(getAcademicYear()) + ')</option>';
-      } else {
-        termKeys.forEach(function(k) {
-          var t = examTerms[k];
-          html += '        <option value="' + escapeHTML(k) + '">' + escapeHTML(t.name || k) + '</option>';
-        });
-      }
+      termKeys.forEach(function(k) {
+        var t = examTerms[k];
+        html += '        <option value="' + escapeHTML(k) + '">' + escapeHTML(t.name || k) + '</option>';
+      });
       html += '      </select>';
       html += '    </div>';
 
@@ -401,6 +442,8 @@
       var className = classSelect.value;
       var section = secSelect.value;
 
+      console.log('[DocumentsModule] onAdmitCardFilterChange:', { termId: termId, className: className, section: section });
+
       // Resolve subjects
       var subjects = [];
       if (className !== 'ALL' && store.examSubjects && store.examSubjects[termId] && store.examSubjects[termId][className] && store.examSubjects[termId][className].subjects) {
@@ -447,6 +490,7 @@
 
       this.renderAdmitCardTimetableForm();
       this.updateAdmitCardStudentCount();
+      this.renderAdmitCardsPreview();
     },
 
     renderAdmitCardTimetableForm: function() {
@@ -1203,12 +1247,26 @@
     // PHASE 5 — STUDENT ID CARD GENERATOR FLOW
     // =========================================================================
     showIDCardFlow: function(withParentPhoto) {
+      console.log('[DocumentsModule] showIDCardFlow invoked, withParentPhoto:', withParentPhoto);
       var store = getStore();
       var panel = document.getElementById('docs-workflow-panel');
-      if (!panel) return;
+      if (!panel) {
+        console.error('[DocumentsModule] #docs-workflow-panel element not found!');
+        return;
+      }
 
-      var classes = (store.settings && store.settings.classes) || [];
-      var sections = (store.settings && store.settings.sections) || ['A', 'B', 'C'];
+      var studentClasses = Array.from(new Set((store.students || []).map(function(s) { return String(s.class || '').trim(); }).filter(Boolean))).sort(function(a,b) {
+        var numA = parseInt(a, 10), numB = parseInt(b, 10);
+        return (!isNaN(numA) && !isNaN(numB)) ? numA - numB : a.localeCompare(b);
+      });
+      var classes = (store.settings && Array.isArray(store.settings.classes) && store.settings.classes.length > 0)
+        ? store.settings.classes
+        : (studentClasses.length > 0 ? studentClasses : ['1', '2', '3', '4', '5']);
+
+      var studentSections = Array.from(new Set((store.students || []).map(function(s) { return String(s.section || '').trim(); }).filter(Boolean))).sort();
+      var sections = (store.settings && Array.isArray(store.settings.sections) && store.settings.sections.length > 0)
+        ? store.settings.sections
+        : (studentSections.length > 0 ? studentSections : ['A', 'B', 'C']);
 
       var html = '';
       html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">';
@@ -1253,10 +1311,13 @@
       html += '      </select>';
       html += '    </div>';
 
-      // Print Button
-      html += '    <div>';
-      html += '      <button class="btn btn-primary" style="width:100%; height:38px;" onclick="DocumentsModule.printIDCards(' + withParentPhoto + ')">';
-      html += '        <span class="material-icons-round" style="font-size:16px; vertical-align:middle;">print</span> Print Batch (4 per A4)';
+      // Action Buttons: Generate Preview & Print Batch
+      html += '    <div style="display:flex; gap:8px;">';
+      html += '      <button type="button" class="btn btn-secondary" id="btn-generate-id-preview" style="flex:1; height:38px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" onclick="DocumentsModule.updateIDCardPreview(' + withParentPhoto + ')">';
+      html += '        <span class="material-icons-round" style="font-size:16px;">visibility</span> Generate Preview';
+      html += '      </button>';
+      html += '      <button type="button" class="btn btn-primary" id="btn-print-id-batch" style="flex:1; height:38px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" onclick="DocumentsModule.printIDCards(' + withParentPhoto + ')">';
+      html += '        <span class="material-icons-round" style="font-size:16px;">print</span> Print Batch (4 per A4)';
       html += '      </button>';
       html += '    </div>';
 
@@ -1283,11 +1344,14 @@
       var selectedSec = secSelect ? secSelect.value : 'ALL';
 
       var allStudents = getAllStudents();
-      return allStudents.filter(function(st) {
-        var matchClass = (selectedClass === 'ALL' || String(st.class).trim().toLowerCase() === String(selectedClass).trim().toLowerCase());
-        var matchSec = (selectedSec === 'ALL' || String(st.section).trim().toLowerCase() === String(selectedSec).trim().toLowerCase());
+      console.log('[DocumentsModule] getFilteredIDStudents:', { selectedClass: selectedClass, selectedSec: selectedSec, totalStudents: allStudents.length });
+      var filtered = allStudents.filter(function(st) {
+        var matchClass = (selectedClass === 'ALL' || String(st.class || '').trim().toLowerCase() === String(selectedClass).trim().toLowerCase());
+        var matchSec = (selectedSec === 'ALL' || String(st.section || '').trim().toLowerCase() === String(selectedSec).trim().toLowerCase());
         return matchClass && matchSec;
       });
+      console.log('[DocumentsModule] filtered students count:', filtered.length);
+      return filtered;
     },
 
     buildIDCardHTML: function(student, withParentPhoto, isPrint) {
@@ -1373,15 +1437,24 @@
     updateIDCardPreview: function(withParentPhoto) {
       var grid = document.getElementById('id-cards-grid');
       var badge = document.getElementById('id-student-count-badge');
-      if (!grid) return;
+      if (!grid) {
+        console.error('[DocumentsModule] #id-cards-grid not found in DOM!');
+        return;
+      }
 
       var students = this.getFilteredIDStudents();
+      console.log('[DocumentsModule] updateIDCardPreview rendering', students.length, 'cards.');
+
       if (badge) {
         badge.innerHTML = '<span class="material-icons-round" style="font-size:16px; vertical-align:middle; color:var(--accent-primary);">groups</span> <b>' + students.length + '</b> card(s) ready for preview &amp; print';
       }
 
       if (students.length === 0) {
-        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-secondary);">No active students found matching the selected class/section.</div>';
+        grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:35px 20px; color:var(--text-secondary); background:var(--bg-primary); border-radius:10px; border:1px dashed var(--border-color);">' +
+          '<span class="material-icons-round" style="font-size:36px; color:var(--text-secondary); opacity:0.6; margin-bottom:8px;">badge</span>' +
+          '<div style="font-weight:600; font-size:14px; color:var(--text-primary); margin-bottom:4px;">No Matching Students Found</div>' +
+          '<div style="font-size:12px;">No active students match the selected class and section filter.</div>' +
+          '</div>';
         return;
       }
 
