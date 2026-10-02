@@ -6291,4 +6291,15 @@ body.light-theme .profile-switcher-item:hover {
   }
 }
 
+/* ==================== DOCUMENT & ID GENERATOR ==================== */
+.doc-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.doc-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+
 

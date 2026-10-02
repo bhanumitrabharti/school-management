@@ -2677,7 +2677,7 @@ window.SchoolApp = {
       var shouldRemove = false;
 
       if (self.isTeacher()) {
-        if (page === 'fees' || page === 'admin' || page === 'teachers') {
+        if (page === 'fees' || page === 'admin' || page === 'teachers' || page === 'documents') {
           shouldRemove = true;
         }
       }
@@ -2726,7 +2726,7 @@ window.SchoolApp = {
     }
 
     // Strict role check
-    var adminOnlyPages = ['admin', 'fees'];
+    var adminOnlyPages = ['admin', 'fees', 'documents'];
     if (this.isTeacher() && pageName === 'teachers') {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
@@ -2804,6 +2804,7 @@ window.SchoolApp = {
       fees: 'Fee Management',
       timetable: 'Timetable Management',
       exams: 'Exams',
+      documents: 'Document & ID Generator',
       admin: 'Admin Panel',
       help: 'Help & Support',
       'teacher-attendance': 'Teacher Attendance'

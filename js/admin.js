@@ -32,7 +32,8 @@
         canvas.height = height;
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        var exportType = mimeType || (base64Str && base64Str.startsWith('data:image/png') ? 'image/png' : 'image/jpeg');
+        resolve(canvas.toDataURL(exportType, 0.85));
       };
       img.onerror = function() {
         resolve(base64Str);
@@ -125,6 +126,87 @@
       } catch(err) {
         console.error('Logo upload error:', err);
         showLogoStatus('error', '❌ Upload failed. Try again.');
+        SchoolApp.showToast('Upload failed. Try again.', 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  function showSignatureStatus(type, msg) {
+    var container = document.getElementById('signature-status-container');
+    if (!container) return;
+    var color = type === 'success' ? '#15803D' : (type === 'error' ? '#DC2626' : '#2563EB');
+    container.style.color = color;
+    container.innerHTML = msg;
+  }
+
+  function showSignaturePreview(src) {
+    var preview = document.getElementById('signature-preview');
+    if (!preview) return;
+    if (!src) {
+      preview.innerHTML = '<span class="text-muted" style="font-size:12px;">No signature uploaded</span>';
+      return;
+    }
+    preview.innerHTML = 
+      '<div style="margin-top:8px;">' +
+      '  <img src="' + src + '" style="max-height:60px;max-width:200px;border-radius:6px;border:1px solid #E5E7EB;padding:4px;background:#FFF;object-fit:contain;">' +
+      '  <div style="display:flex;gap:8px;margin-top:8px;">' +
+      '    <button type="button" class="btn btn-secondary btn-xs" onclick="window.changeSignature()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Change Signature</button>' +
+      '    <button type="button" class="btn btn-danger btn-xs" onclick="window.removeSignature()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">delete</span> Remove Signature</button>' +
+      '  </div>' +
+      '</div>';
+  }
+
+  window.changeSignature = function() {
+    var input = document.getElementById('settings-signature-upload');
+    if (input) input.click();
+  };
+
+  window.removeSignature = function() {
+    if (!confirm('Remove digital signature?')) return;
+    if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+    SchoolApp.store.settings.principalSignatureUrl = '';
+    SchoolApp.save(true);
+    showSignaturePreview('');
+    showSignatureStatus('info', 'Signature removed');
+    SchoolApp.showToast('Signature removed', 'info');
+  };
+
+  window.handleSignatureSelect = function(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      SchoolApp.showToast('Please select an image file (PNG or JPEG)', 'error');
+      showSignatureStatus('error', '❌ Please select a valid image file');
+      return;
+    }
+
+    if (file.size > 500 * 1024) {
+      SchoolApp.showToast('Signature file size should be under 500KB', 'error');
+      showSignatureStatus('error', '❌ File size should be under 500KB');
+      return;
+    }
+
+    showSignatureStatus('processing', 'Uploading signature...');
+
+    var reader = new FileReader();
+    reader.onload = async function(ev) {
+      try {
+        var rawBase64 = ev.target.result;
+        var compressed = await compressImage(rawBase64, 400, 150);
+
+        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+        SchoolApp.store.settings.principalSignatureUrl = compressed;
+
+        await SchoolApp.save(true);
+
+        showSignaturePreview(compressed);
+        showSignatureStatus('success', '✅ Digital signature uploaded successfully!');
+        SchoolApp.showToast('Digital signature uploaded successfully!', 'success');
+      } catch(err) {
+        console.error('Signature upload error:', err);
+        showSignatureStatus('error', '❌ Upload failed. Try again.');
         SchoolApp.showToast('Upload failed. Try again.', 'error');
       }
     };
@@ -1790,6 +1872,32 @@
       html += '            </div>';
     } else {
       html += '            <span class="text-muted" style="font-size:12px;">No logo uploaded</span>';
+    }
+    html += '          </div>';
+    html += '        </div>';
+
+    var principalName = s.principalName || '';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label">Principal / Signatory Name</label>';
+    html += '          <input type="text" class="form-input" id="settings-principal-name" name="principalName" value="' + escapeAttr(principalName) + '" placeholder="e.g. Rajesh Kumar Sharma">';
+    html += '          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Appears on certificates, admit cards, and official documents</div>';
+    html += '        </div>';
+
+    var sigSrc = s.principalSignatureUrl || '';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label">Digital Signature</label>';
+    html += '          <input type="file" id="settings-signature-upload" accept="image/png, image/jpeg" class="form-input" onchange="window.handleSignatureSelect(this)" />';
+    html += '          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Signature will auto-appear on all certificates and admit cards</div>';
+    html += '          <div id="signature-status-container" style="margin-top:6px; font-size:13px; font-weight:600;"></div>';
+    html += '          <div id="signature-preview" style="margin-top:8px;">';
+    if (sigSrc) {
+      html += '            <img src="' + sigSrc + '" style="max-height:60px;max-width:200px;border-radius:6px;border:1px solid #E5E7EB;padding:4px;background:#FFF;object-fit:contain;">';
+      html += '            <div style="display:flex;gap:8px;margin-top:8px;">';
+      html += '              <button type="button" class="btn btn-secondary btn-xs" onclick="window.changeSignature()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">edit</span> Change Signature</button>';
+      html += '              <button type="button" class="btn btn-danger btn-xs" onclick="window.removeSignature()"><span class="material-icons-round" style="font-size:14px;vertical-align:middle;">delete</span> Remove Signature</button>';
+      html += '            </div>';
+    } else {
+      html += '            <span class="text-muted" style="font-size:12px;">No signature uploaded</span>';
     }
     html += '          </div>';
     html += '        </div>';

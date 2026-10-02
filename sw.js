@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v31 for Fee System Audit & Fix (Duplicate & Zero Due Prevention, Idempotency, and Transparent Fee History UI).
-const CACHE_NAME = 'erp-cache-v31';
+// Bumped to v32 for Document & ID Generator (Admit Card, Certificates, ID Cards).
+const CACHE_NAME = 'erp-cache-v32';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
@@ -22,6 +22,7 @@ const ASSETS_TO_CACHE = [
   '/js/attendance.js',
   '/js/fees.js',
   '/js/exams.js',
+  '/js/documents.js',
   '/js/timetable.js',
   '/js/help.js',
   '/js/auth-utils.js',
