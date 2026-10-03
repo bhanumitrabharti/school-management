@@ -10,9 +10,10 @@ service cloud.firestore {
     // HARD GUARD for students and teachers:
     // Even if restructured is true, students and teachers must NEVER be wiped to []
     // unless an explicit server-level override flag allowCollectionWipe == true is present.
+    // SECURITY: allowCollectionWipe client bypass removed. Wipe operations
+    // must go through the Firebase Admin SDK (server.js) which bypasses rules.
     function notWipingRoster(fieldName) {
-      return (request.resource.data.get('allowCollectionWipe', false) == true) ||
-             (resource == null || resource.data == null) ||
+      return (resource == null || resource.data == null) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
@@ -21,7 +22,6 @@ service cloud.firestore {
     // or explicit override flag is present.
     function notWipingLedger(fieldName) {
       return (request.resource.data.settings != null && request.resource.data.settings.restructured == true) ||
-             (request.resource.data.get('allowCollectionWipe', false) == true) ||
              (resource == null || resource.data == null) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }

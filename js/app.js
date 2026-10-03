@@ -164,6 +164,18 @@ window.SchoolApp = {
     return (this.store && this.store.currentSchoolId) || '';
   },
 
+  // SECURITY: Global HTML escaping utility — use everywhere user data is
+  // inserted via innerHTML to prevent stored XSS attacks.
+  escapeHTML: function(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  },
+
   assertSchoolIsolation: function(data, schoolId) {
     if (!data) return true;
     if (Array.isArray(data)) {
@@ -1290,8 +1302,12 @@ window.SchoolApp = {
 
         var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
         var querySchoolId = urlParams ? urlParams.get('impersonate_school_id') : null;
+        // SECURITY: Only honour URL param when a legitimate super-admin impersonation
+        // session is active. Without this check any authenticated user could load any
+        // school by appending ?impersonate_school_id=<arbitrary_id> to the URL.
+        var isImpersonationSession = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('isImpersonating') === 'true');
         if (!sub && !activeSchoolId) {
-          activeSchoolId = querySchoolId || localStorage.getItem('impersonate_school_id') || null;
+          activeSchoolId = (isImpersonationSession ? querySchoolId : null) || localStorage.getItem('impersonate_school_id') || null;
         }
 
         var previousSchoolId = (self.store && self.store.currentSchoolId) ? self.store.currentSchoolId : '';
@@ -3219,10 +3235,10 @@ window.SchoolApp = {
         var priorityText = n.priority === 'Urgent' ? '#ef5350' : '#6c5ce7';
         html += '<div style="padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); display: flex; flex-direction: column; gap: 4px;">';
         html += '<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">';
-        html += '<span style="font-weight: 600; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">' + n.title + '</span>';
-        html += '<span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: ' + priorityBg + '; color: ' + priorityText + '; font-weight: 700;">' + n.priority + '</span>';
+        html += '<span style="font-weight: 600; font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">' + SchoolApp.escapeHTML(n.title) + '</span>';
+        html += '<span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: ' + priorityBg + '; color: ' + priorityText + '; font-weight: 700;">' + SchoolApp.escapeHTML(n.priority) + '</span>';
         html += '</div>';
-        html += '<p style="margin: 0; font-size: 11px; color: var(--text-secondary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">' + n.message + '</p>';
+        html += '<p style="margin: 0; font-size: 11px; color: var(--text-secondary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">' + SchoolApp.escapeHTML(n.message) + '</p>';
         html += '<span style="font-size: 9px; color: var(--text-muted);">' + SchoolApp.formatDate(n.date) + '</span>';
         html += '</div>';
       });
@@ -4197,8 +4213,8 @@ window.SchoolApp = {
 
         html += '<div class="notice-item ' + priorityClass + '" style="padding:14px; border-radius:8px; border-left:4px solid; transition:all var(--transition-fast);">';
         html += '<div class="flex justify-between" style="align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">';
-        html += '<h4 style="margin:0; font-size:14px; font-weight:700;">' + notice.title + '</h4>';
-        
+        html += '<h4 style="margin:0; font-size:14px; font-weight:700;">' + SchoolApp.escapeHTML(notice.title) + '</h4>';
+
         var badgeColor = notice.priority === 'Urgent' ? 'badge-danger' : 'badge-purple';
         html += '<div class="flex gap-2" style="align-items:center;">';
         html += '<span class="badge ' + audBadge + '" style="font-size:10px;">' + audLabel + '</span>';
@@ -4206,7 +4222,7 @@ window.SchoolApp = {
         html += '<span style="font-size:11px; color:var(--text-muted);">' + dateFormatted + '</span>';
         html += '</div>';
         html += '</div>';
-        html += '<p style="margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5;">' + notice.message + '</p>';
+        html += '<p style="margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5;">' + SchoolApp.escapeHTML(notice.message) + '</p>';
         html += '</div>';
       });
       html += '</div>';
@@ -4430,15 +4446,15 @@ window.SchoolApp = {
         
         html += '<div class="notice-item ' + priorityClass + '" style="padding:14px; border-radius:8px; border-left:4px solid; transition:all var(--transition-fast);">';
         html += '<div class="flex justify-between" style="align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">';
-        html += '<h4 style="margin:0; font-size:14px; font-weight:700;">' + notice.title + '</h4>';
-        
+        html += '<h4 style="margin:0; font-size:14px; font-weight:700;">' + SchoolApp.escapeHTML(notice.title) + '</h4>';
+
         var badgeColor = notice.priority === 'Urgent' ? 'badge-danger' : 'badge-purple';
         html += '<div class="flex gap-2" style="align-items:center;">';
         html += '<span class="badge ' + badgeColor + '">' + notice.priority + '</span>';
         html += '<span style="font-size:11px; color:var(--text-muted);">' + dateFormatted + '</span>';
         html += '</div>';
         html += '</div>';
-        html += '<p style="margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5;">' + notice.message + '</p>';
+        html += '<p style="margin:0; font-size:13px; color:var(--text-secondary); line-height:1.5;">' + SchoolApp.escapeHTML(notice.message) + '</p>';
         html += '</div>';
       });
       html += '</div>';
@@ -5139,11 +5155,11 @@ window.SchoolApp = {
 
             var itemEl = document.createElement('div');
             itemEl.className = 'global-search-item';
-            itemEl.innerHTML = 
-              '<div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div>' +
+            itemEl.innerHTML =
+              '<div class="avatar avatar-sm" data-color="' + SchoolApp.escapeHTML(color) + '">' + SchoolApp.escapeHTML(initials) + '</div>' +
               '<div class="info">' +
-                '<span class="name">' + item.name + '</span>' +
-                '<span class="role">' + item.role + '</span>' +
+                '<span class="name">' + SchoolApp.escapeHTML(item.name) + '</span>' +
+                '<span class="role">' + SchoolApp.escapeHTML(item.role) + '</span>' +
               '</div>';
 
             itemEl.addEventListener('click', function() {

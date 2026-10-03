@@ -2019,7 +2019,7 @@
     html += '<div class="card mb-3 users-card"><div class="card-header users-header"><h3><span class="material-icons-round">admin_panel_settings</span> Admin Account</h3></div><div class="card-body">';
     html += '<form id="admin-creds-form" class="form-grid users-form-grid">';
     html += '<div class="form-group"><label class="form-label">Username</label><input type="text" class="form-input" name="adminUsername" value="' + (s.adminUsername || 'admin') + '"></div>';
-    html += '<div class="form-group"><label class="form-label">Password</label><div class="password-wrapper"><input type="password" class="form-input" name="adminPassword" value="' + (s.adminPassword || 'admin123') + '"><i class="fa fa-eye toggle-password"></i></div></div>';
+    html += '<div class="form-group"><label class="form-label">Password <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(leave blank to keep current)</span></label><div class="password-wrapper"><input type="password" class="form-input" name="adminPassword" placeholder="Enter new password to change"><i class="fa fa-eye toggle-password"></i></div></div>';
     html += '</form>';
     html += '<button class="btn btn-primary btn-sm mt-2 users-submit-btn" id="save-admin-creds"><span class="material-icons-round">save</span> Update Credentials</button>';
     html += '</div></div>';
@@ -4257,17 +4257,18 @@
         var form = document.getElementById('admin-creds-form');
         var username = form.querySelector('[name="adminUsername"]').value.trim();
         var password = form.querySelector('[name="adminPassword"]').value.trim();
-        if (username && password.length >= 4) {
+        // Blank password = keep existing (never expose or overwrite with empty)
+        var changingPassword = password.length > 0;
+        if (username && (!changingPassword || password.length >= 4)) {
           SchoolApp.store.settings.adminUsername = username;
-          if (password && !AuthUtils.isHashed(password)) {
+          if (changingPassword && !AuthUtils.isHashed(password)) {
             SchoolApp.store.settings.adminPassword = await AuthUtils.hashPassword(password);
-          } else {
-            SchoolApp.store.settings.adminPassword = password;
           }
+          // If password left blank, existing hash is preserved untouched
           await SchoolApp.save();
-          SchoolApp.showToast('Admin credentials updated.', 'success');
+          SchoolApp.showToast(changingPassword ? 'Admin credentials updated.' : 'Username updated.', 'success');
         } else {
-          SchoolApp.showToast('Username required, password min 4 characters.', 'error');
+          SchoolApp.showToast('Username required. New password must be at least 4 characters.', 'error');
         }
       });
     }
