@@ -2,6 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Auth helper — must be logged in via Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
     // HARD GUARD for students and teachers:
     // Even if restructured is true, students and teachers must NEVER be wiped to []
     // unless an explicit server-level override flag allowCollectionWipe == true is present.
@@ -21,11 +26,14 @@ service cloud.firestore {
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
+    // ── Tenant school data — authentication required ──────────────────────────
     match /tenant_data/{schoolId} {
-      allow read: if true;
-      allow create: if notWipingRoster('students') &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+                       notWipingRoster('students') &&
                        notWipingRoster('teachers');
-      allow update: if notWipingRoster('students') &&
+      allow update: if isAuthenticated() &&
+                       notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
                        notWipingLedger('fees') &&
                        notWipingLedger('attendance') &&
@@ -33,20 +41,26 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Subcollections (attendance months, fee years, exam marks) — auth required
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
+    // School registry — read public (for login school lookup), write auth only
     match /schools/{schoolId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
+    // Super-admin data — must be authenticated (super-admin.html handles its own UI guard)
     match /sa_data/{docId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
+    // Demo requests — unauthenticated write allowed (contact/signup form on landing page)
     match /demo_requests/{docId} {
-      allow read, write: if true;
+      allow create: if true;
+      allow read, update, delete: if isAuthenticated();
     }
 
   }

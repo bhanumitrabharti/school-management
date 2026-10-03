@@ -1,0 +1,14 @@
+# Firebase Admin SDK — full project admin access, must NEVER be deployed
+service-account-key.json
+*firebase-adminsdk*.json
+
+# Local backups and internal docs
+backups/
+brain/
+ANTIGRAVITY-TASKS
+Claude outputs/
+
+# Dev dependencies
+node_modules/
+.env
+.env*
