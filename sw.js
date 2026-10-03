@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v37 for login page Help & Support WhatsApp link update.
-const CACHE_NAME = 'erp-cache-v37';
+// Bumped to v38 for Firebase Storage integration — student & parent photo uploads now live.
+const CACHE_NAME = 'erp-cache-v38';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

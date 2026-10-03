@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -18,6 +19,9 @@ export const auth = getAuth(app);
 window.db = db;
 window.auth = auth;
 window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot };
+const storage = getStorage(app);
+window.storage = storage;
+window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
 window.openStudentProfile = function(studentId) {
   if (typeof window.openStudentFinancialProfile === 'function') {
     return window.openStudentFinancialProfile(studentId);

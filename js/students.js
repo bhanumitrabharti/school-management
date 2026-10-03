@@ -688,13 +688,34 @@
 
     var studentId = existing ? existing.id : SchoolApp.generateId();
     fields.id = studentId;
+    var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
 
+    // ── Student photo upload ────────────────────────────────────────────────
     const photoFile = document.getElementById("student-photo-input")?.files[0];
     if (photoFile) {
-      // Photo uploads are not enabled yet — StorageUtils.uploadStudentPhoto is
-      // currently a stub that never stores anything. Tell the admin plainly
-      // instead of silently discarding the photo they picked.
-      SchoolApp.showToast('Photo uploads are not available yet on your plan. Contact support to enable this.', 'warning');
+      SchoolApp.showToast('Uploading student photo…', 'info');
+      const photoUrl = await StorageUtils.uploadStudentPhoto(photoFile, schoolId, studentId, 'student');
+      if (photoUrl) {
+        fields.photoUrl = photoUrl;
+      } else {
+        SchoolApp.showToast('Photo upload failed — student saved without photo.', 'warning');
+      }
+    }
+
+    // ── Parent photo: convert base64 → Storage URL if a new photo was picked ─
+    const parentPhotoInput = document.getElementById('parent-photo-data');
+    const parentPhotoData = parentPhotoInput ? parentPhotoInput.value : '';
+    const existingParentUrl = existing ? (existing.parentPhotoUrl || '') : '';
+    // Only upload if it's a fresh base64 (data: URL) that differs from what's already saved
+    if (parentPhotoData.startsWith('data:') && parentPhotoData !== existingParentUrl) {
+      const parentUrl = await StorageUtils.uploadBase64Photo(parentPhotoData, schoolId, studentId, 'parent');
+      if (parentUrl) {
+        fields.parentPhotoUrl = parentUrl;
+      }
+      // If upload fails, fall back to keeping the base64 — better than losing the photo
+      if (!fields.parentPhotoUrl) {
+        fields.parentPhotoUrl = parentPhotoData;
+      }
     }
 
     var rollbackFn = null;
