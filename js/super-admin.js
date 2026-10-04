@@ -36,7 +36,12 @@ const db = getFirestore(app);
     // ─── Constants ──────────────────────────────────────
     var STORAGE_KEY = 'shishuvikash_data';
     var SESSION_KEY = 'sa_session';
-    var CREDENTIALS = { username: 'superadmin', password: '(tiYwJ+MQP5$Ta^QiGVRTys7CZLW' };
+    // SECURITY (C-2): Plaintext password removed from source.
+    // SHA-256 hash stored here as fallback. Password must be changed via Firebase Console
+    // by setting sa_data/sa_auth → { username: "superadmin", hash: "<sha256_of_new_password>" }
+    // Migration to Firebase Auth (F8) is planned as the permanent fix.
+    var _SA_USERNAME = 'superadmin';
+    var _SA_FALLBACK_HASH = 'f998b3b4cc8195419a2992902c42dc11cc9ac431d9a8468a0af82ff6b12792ec';
 
     // Expose cache and functions on window
     window.saCache = {
@@ -492,10 +497,40 @@ const db = getFirestore(app);
 
     // ─── Login Logic ────────────────────────────────────
 
+    /** Hash a string using SHA-256 via Web Crypto API (returns hex string). */
+    async function sha256Hex(str) {
+        const data = new TextEncoder().encode(str);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
     /** Validate credentials and switch to dashboard. */
     async function saLogin(username, password) {
-        console.log('SA login attempt started');
-        if (username === CREDENTIALS.username && password === CREDENTIALS.password) {
+        // SECURITY (C-2 + H-2): Password comparison now uses SHA-256 hash via Web Crypto API.
+        // Plaintext password never appears in source. Hash compared against Firestore sa_data/sa_auth
+        // (if configured) or built-in fallback hash.
+        if (username !== _SA_USERNAME) {
+            loginErrorMsg.textContent = 'Invalid username or password. Please try again.';
+            loginError.classList.add('visible');
+            passwordInput.value = '';
+            passwordInput.focus();
+            return false;
+        }
+
+        const enteredHash = await sha256Hex(password);
+
+        // Try Firestore sa_data/sa_auth first (allows password change without code deploy)
+        let expectedHash = _SA_FALLBACK_HASH;
+        try {
+            const authDoc = await getDoc(doc(db, 'sa_data', 'sa_auth'));
+            if (authDoc.exists() && authDoc.data().hash) {
+                expectedHash = authDoc.data().hash;
+            }
+        } catch (e) {
+            // Firestore unavailable — fall back to built-in hash
+        }
+
+        if (enteredHash === expectedHash) {
             sessionStorage.setItem(SESSION_KEY, 'active');
             loginPage.classList.add('hidden');
             dashboard.classList.add('active');

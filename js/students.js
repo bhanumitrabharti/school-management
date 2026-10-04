@@ -308,23 +308,36 @@
         var color = SchoolApp.getAvatarColor(s.firstName + s.lastName);
         var isSelected = state.selectedIds.indexOf(s.id) !== -1;
 
+        // SEC-07: All student-supplied fields escaped via escapeHTML() before injection into innerHTML.
+        // s.id is an auto-generated Firestore doc ID (alphanumeric) — safe in data-id attributes,
+        // but escapeHTML is applied anyway as a defence-in-depth measure.
+        var safeId       = escapeHTML(s.id);
+        var safeName     = escapeHTML(getStudentFullName(s));
+        var safeClass    = escapeHTML(s.class);
+        var safeSection  = escapeHTML(s.section);
+        var safeRoll     = escapeHTML(s.rollNumber);
+        var safeParent   = escapeHTML(s.parentName);
+        var safePhone    = escapeHTML(s.parentPhone);
+        var safeStatus   = escapeHTML(s.status);
+        var statusBadge  = (s.status === 'Active') ? 'badge-success' : 'badge-danger';
+
         html += '<tr>';
-        if (isAdmin) html += '<td><input type="checkbox" class="student-checkbox" data-id="' + s.id + '"' + (isSelected ? ' checked' : '') + ' style="cursor:pointer"></td>';
-        html += '<td><div class="table-student-name">' + getStudentAvatar(s, 32) + '<div><strong>' + getStudentFullName(s) + '</strong></div></div></td>';
-        html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
-        html += '<td>' + s.rollNumber + '</td>';
-        html += '<td>' + s.parentName + '</td>';
-        html += '<td>' + s.parentPhone + '</td>';
-        html += '<td><span class="badge ' + (s.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + s.status + '</span></td>';
+        if (isAdmin) html += '<td><input type="checkbox" class="student-checkbox" data-id="' + safeId + '"' + (isSelected ? ' checked' : '') + ' style="cursor:pointer"></td>';
+        html += '<td><div class="table-student-name">' + getStudentAvatar(s, 32) + '<div><strong>' + safeName + '</strong></div></div></td>';
+        html += '<td><span class="badge badge-info">' + safeClass + '-' + safeSection + '</span></td>';
+        html += '<td>' + safeRoll + '</td>';
+        html += '<td>' + safeParent + '</td>';
+        html += '<td>' + safePhone + '</td>';
+        html += '<td><span class="badge ' + statusBadge + '">' + safeStatus + '</span></td>';
         html += '<td><div class="table-actions">';
         if (isAdmin) {
-          html += '<button class="btn-icon student-fee-btn" data-id="' + s.id + '" title="Financial Profile" style="color:var(--accent-primary);"><span class="material-icons-round">account_balance_wallet</span></button>';
+          html += '<button class="btn-icon student-fee-btn" data-id="' + safeId + '" title="Financial Profile" style="color:var(--accent-primary);"><span class="material-icons-round">account_balance_wallet</span></button>';
         }
-        html += '<button class="btn-icon student-view-btn" data-id="' + s.id + '" title="View"><span class="material-icons-round">visibility</span></button>';
+        html += '<button class="btn-icon student-view-btn" data-id="' + safeId + '" title="View"><span class="material-icons-round">visibility</span></button>';
         var canEdit = isAdmin && SchoolApp.checkFeatureAccess('students');
         if (canEdit) {
-          html += '<button class="btn-icon student-edit-btn" data-id="' + s.id + '" title="Edit"><span class="material-icons-round">edit</span></button>';
-          html += '<button class="btn-icon student-delete-btn" data-id="' + s.id + '" title="Delete"><span class="material-icons-round">delete</span></button>';
+          html += '<button class="btn-icon student-edit-btn" data-id="' + safeId + '" title="Edit"><span class="material-icons-round">edit</span></button>';
+          html += '<button class="btn-icon student-delete-btn" data-id="' + safeId + '" title="Delete"><span class="material-icons-round">delete</span></button>';
         }
         html += '</div></td></tr>';
       });

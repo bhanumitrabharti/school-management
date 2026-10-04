@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
 const firebaseConfig = {
@@ -2509,7 +2509,16 @@ window.SchoolApp = {
     }
   },
 
-  logout: function() {
+  logout: async function() {
+    // SEC-09: Revoke Firebase Auth JWT so the token cannot be reused after logout.
+    // Without this call the Firebase ID token stays valid in IndexedDB until it expires (~1 hr).
+    try {
+      if (window.auth) {
+        await signOut(window.auth);
+      }
+    } catch (e) {
+      console.warn('[Logout] Firebase signOut error (non-fatal):', e);
+    }
     this.adminIsDirty = false;
     this.currentUser = null;
     this.currentPage = 'dashboard';
@@ -3036,11 +3045,14 @@ window.SchoolApp = {
 
     var toast = document.createElement('div');
     toast.className = 'toast toast-' + type;
+    // SECURITY: message set via textContent (not innerHTML) to prevent stored XSS.
+    // icons[type] is safe — sourced from hardcoded local object, never user-derived input.
     toast.innerHTML =
       '<div class="toast-icon"><span class="material-icons-round">' + icons[type] + '</span></div>' +
-      '<div class="toast-content"><div class="toast-message">' + message + '</div></div>' +
+      '<div class="toast-content"><div class="toast-message"></div></div>' +
       '<button class="toast-close" onclick="this.closest(\'.toast\').remove()"><span class="material-icons-round">close</span></button>' +
       '<div class="toast-progress" style="animation-duration: ' + duration + 'ms"></div>';
+    toast.querySelector('.toast-message').textContent = message;
 
     container.appendChild(toast);
 

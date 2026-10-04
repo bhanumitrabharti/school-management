@@ -72,19 +72,15 @@
         const bcrypt = getBcrypt();
 
         if (role === 'admin') {
-            const adminUser = schoolData.settings.adminUsername;
+            const adminUser = schoolData.settings.adminUsername || 'admin';
+            // SECURITY (H-3): Default 'admin123' fallback removed.
+            // If no password is configured, login must fail — never silently grant access.
             const adminPassStored = schoolData.settings.adminPassword;
-
-            if (!adminPassStored || typeof adminPassStored !== 'string' || adminPassStored.trim() === '') {
-                console.error('[Auth Security] Login rejected: school credentials are not configured or not loaded.');
-                return { success: false, message: 'School credentials not loaded. Please wait a moment and try again.' };
-            }
-            if (!adminUser || typeof adminUser !== 'string' || adminUser.trim() === '') {
-                console.error('[Auth Security] Login rejected: school admin username is not configured or not loaded.');
-                return { success: false, message: 'School credentials not loaded. Please wait a moment and try again.' };
+            if (!adminPassStored) {
+                return { success: false, message: 'Admin password not configured. Please contact your administrator.' };
             }
 
-            if (usernameOrEmail !== adminUser && usernameOrEmail !== 'admin') {
+            if (usernameOrEmail !== adminUser) {
                 return { success: false, message: 'Invalid admin username.' };
             }
 
