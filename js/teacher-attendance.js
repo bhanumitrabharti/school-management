@@ -102,7 +102,11 @@
     navigator.geolocation.getCurrentPosition(function(position) {
       var lat = position.coords.latitude;
       var lon = position.coords.longitude;
-      
+      // SEC-12: capture GPS fix accuracy (metres); high value = likely IP-based fallback
+      var gpsAccuracy = Math.round(position.coords.accuracy || 0);
+      // > 1 500 m accuracy is a strong indicator of a coarse (IP-based) fix, not true GPS
+      var isLowAccuracy = gpsAccuracy > 1500;
+
       var distance = calculateDistance(lat, lon, geo.lat, geo.lng);
       var isInside = distance <= geo.radius;
       var geofenceStatus = isInside ? 'Inside Geofence' : 'Outside Geofence';
@@ -114,7 +118,8 @@
         latitude: lat.toFixed(5),
         longitude: lon.toFixed(5),
         distance: Math.round(distance),
-        status: geofenceStatus
+        status: geofenceStatus,
+        gpsAccuracy: gpsAccuracy          // SEC-12 audit field
       };
 
       // STEP 2B: Location Enforcement
@@ -146,7 +151,9 @@
             outsideLocationFlag: true,
             markedVia: 'location_auto',
             method: 'GPS',
-            isCorrected: false
+            isCorrected: false,
+            gpsAccuracy: gpsAccuracy,             // SEC-12: accuracy in metres for audit
+            lowAccuracyFlag: isLowAccuracy        // SEC-12: true if fix appears IP-based
           };
 
           if (!SchoolApp.store.teacherAttendance) {
@@ -159,6 +166,18 @@
           render();
           return;
         }
+      }
+
+      // SEC-12: warn teacher (and flag record) when GPS accuracy is poor —
+      // a coarse IP-based fix can place the device anywhere in the city,
+      // making the geofence check unreliable.  We still allow the punch
+      // (blocking would punish teachers on poor networks) but the flag lets
+      // the admin review suspicious entries in the attendance log.
+      if (isLowAccuracy) {
+        SchoolApp.showToast(
+          '⚠️ GPS accuracy low (' + gpsAccuracy + 'm) — fix may be approximate. Punch recorded with low-accuracy flag.',
+          'warning'
+        );
       }
 
       // Inside Geofence: Auto-mark attendance
@@ -178,7 +197,9 @@
         outsideLocationFlag: false,
         markedVia: 'location_auto',
         method: 'GPS',
-        isCorrected: false
+        isCorrected: false,
+        gpsAccuracy: gpsAccuracy,           // SEC-12: accuracy in metres for audit
+        lowAccuracyFlag: isLowAccuracy      // SEC-12: true if fix appears IP-based
       };
 
       if (!SchoolApp.store.teacherAttendance) {

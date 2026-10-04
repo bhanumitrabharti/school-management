@@ -44,6 +44,19 @@ service cloud.firestore {
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
+    // SEC-11: Prevent oversized signature / logo blobs being written into the
+    // main tenant document.  The client already enforces a 500 KB upload cap;
+    // this Firestore-level guard is a defence-in-depth backstop.
+    // base64(500 KB) ≈ 680 000 chars; 800 000 chars gives a comfortable margin
+    // while still rejecting anything far outside the intended size range.
+    // Only checked when a 'settings' key is present in the incoming write.
+    function notOversizedBlobs() {
+      let s = request.resource.data.get('settings', null);
+      return s == null
+        || (s.get('principalSignatureUrl', '').size() < 800000
+            && s.get('logoUrl', '').size() < 800000);
+    }
+
     // ── F1: school_access — each user owns and manages only their own entry ──
     match /school_access/{uid} {
       allow read:  if isAuthenticated() && request.auth.uid == uid;
@@ -55,13 +68,15 @@ service cloud.firestore {
       allow read:   if canAccessSchool(schoolId);
       allow create: if canAccessSchool(schoolId) &&
                        notWipingRoster('students') &&
-                       notWipingRoster('teachers');
+                       notWipingRoster('teachers') &&
+                       notOversizedBlobs();           // SEC-11
       allow update: if canAccessSchool(schoolId) &&
                        notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
                        notWipingLedger('fees') &&
                        notWipingLedger('attendance') &&
-                       notWipingLedger('examMarks');
+                       notWipingLedger('examMarks') &&
+                       notOversizedBlobs();           // SEC-11
       allow delete: if false;
     }
 
