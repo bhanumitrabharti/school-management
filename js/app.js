@@ -885,10 +885,44 @@ window.SchoolApp = {
     }
   },
 
+  // SEC-10: Validate a fee transaction object before writing to Firestore.
+  // Rejects non-finite amounts, negative amounts on non-reversal records, and
+  // discounts that exceed the gross settlement amount.
+  // Returns null on success; an error string on failure.
+  _validateFeeTransaction: function(txn) {
+    if (!txn || typeof txn !== 'object') return 'null transaction object';
+    if (!txn.id || typeof txn.id !== 'string') return 'missing or invalid id';
+    if (!txn.studentId) return 'missing studentId';
+    if (txn.type !== 'due' && txn.type !== 'payment') return 'invalid type: ' + txn.type;
+
+    var amt = Number(txn.amount);
+    if (!isFinite(amt)) return 'non-finite amount: ' + String(txn.amount);
+
+    var isReversal = txn.isReversal === true || txn.subType === 'reversal';
+    if (!isReversal && amt < 0) return 'negative amount on non-reversal: ' + amt;
+
+    if (txn.type === 'payment' && !isReversal) {
+      var disc = Number(txn.discount || 0);
+      if (!isFinite(disc) || disc < 0) return 'invalid discount: ' + String(txn.discount);
+      var gross = Number(txn.grossAmount != null ? txn.grossAmount : (amt + disc));
+      if (!isFinite(gross) || gross < 0) return 'invalid grossAmount: ' + String(txn.grossAmount);
+      if (disc > gross + 0.01) return 'discount (' + disc + ') exceeds grossAmount (' + gross + ')';
+    }
+
+    return null; // valid
+  },
+
   saveFeeTransaction: async function(txn, bypassLoader) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return false;
+    }
+    // SEC-10: Validate transaction amounts before Firestore write
+    var _sec10err = this._validateFeeTransaction(txn);
+    if (_sec10err) {
+      console.error('[Fees SEC-10] Transaction rejected:', _sec10err, txn);
+      this.showToast('Transaction validation failed — record not saved.', 'error');
       return false;
     }
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
@@ -951,12 +985,21 @@ window.SchoolApp = {
 
   saveFeeTransactions: async function(txns, bypassLoader) {
     if (!Array.isArray(txns) || txns.length === 0) return true;
+    // SEC-10: Validate every transaction before any write
+    var self = this;
+    for (var _vi = 0; _vi < txns.length; _vi++) {
+      var _sec10bulkErr = self._validateFeeTransaction(txns[_vi]);
+      if (_sec10bulkErr) {
+        console.error('[Fees SEC-10] Bulk transaction rejected:', _sec10bulkErr, txns[_vi]);
+        self.showToast('Transaction validation failed — records not saved.', 'error');
+        return false;
+      }
+    }
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
     if (!currentSchoolId) {
       console.error('[Fees] Bulk save blocked: No active school context.');
       return false;
     }
-    var self = this;
 
     if (!this.store.fees) this.store.fees = [];
 

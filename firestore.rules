@@ -63,6 +63,17 @@ service cloud.firestore {
       allow write: if isAuthenticated() && request.auth.uid == uid;
     }
 
+    // SEC-10: Validate fee month document structure on write.
+    // Firestore Rules cannot iterate array elements, so per-transaction
+    // amount checks live in app.js (_validateFeeTransaction).  This rule
+    // ensures the document shape is exactly what the app writes, preventing
+    // an attacker from injecting arbitrary fields or a non-list payload.
+    function validFeeMonthDoc() {
+      return request.resource.data.keys().hasOnly(['transactions'])
+          && request.resource.data.transactions is list
+          && request.resource.data.transactions.size() <= 1000;
+    }
+
     // ── Tenant school data — F1: restricted to mapped school per user ─────────
     match /tenant_data/{schoolId} {
       allow read:   if canAccessSchool(schoolId);
@@ -80,9 +91,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Subcollections (attendance months, fee years, exam marks) — same per-school access
+    // Subcollections — per-school access.
+    // For fees_years specifically, writes must also satisfy validFeeMonthDoc():
+    // this prevents injecting arbitrary keys or non-list transaction payloads.   SEC-10
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
-      allow read, write: if canAccessSchool(schoolId);
+      allow read:  if canAccessSchool(schoolId);
+      allow write: if canAccessSchool(schoolId)
+          && (subcollection != 'fees_years' || validFeeMonthDoc());  // SEC-10
     }
 
     // ── School registry — public read; write = super-admin only ──────────────

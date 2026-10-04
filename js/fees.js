@@ -3116,7 +3116,9 @@
         var date = document.getElementById('pay-date').value;
         var remarks = document.getElementById('pay-remarks').value.trim();
 
-        if (isNaN(grossAmt) || grossAmt <= 0) {
+        // SEC-10: Sanitize and validate payment amount
+        grossAmt = Math.round(Number(grossAmt) * 100) / 100;
+        if (isNaN(grossAmt) || !isFinite(grossAmt) || grossAmt <= 0) {
           SchoolApp.showToast('Please enter a valid payment amount.', 'error');
           return;
         }
@@ -3138,7 +3140,9 @@
             SchoolApp.showToast('Discount cannot exceed gross amount.', 'error');
             return;
           }
-          if (discountAmt < 0) {
+          // SEC-10: Sanitize discount
+          discountAmt = Math.round(Number(discountAmt) * 100) / 100;
+          if (!isFinite(discountAmt) || discountAmt < 0) {
             SchoolApp.showToast('Discount cannot be negative.', 'error');
             return;
           }
@@ -3311,7 +3315,9 @@
         var desc = document.getElementById('charge-desc').value.trim();
         var note = document.getElementById('charge-note') ? document.getElementById('charge-note').value.trim() : '';
 
-        if (isNaN(amt) || amt <= 0) {
+        // SEC-10: Sanitize and validate charge amount
+        amt = Math.round(Number(amt) * 100) / 100;
+        if (isNaN(amt) || !isFinite(amt) || amt <= 0) {
           SchoolApp.showToast('Please enter a valid charge amount.', 'error');
           return;
         }
