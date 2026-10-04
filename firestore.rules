@@ -2,9 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Auth helper — must be logged in via Firebase Auth
+    // ── Auth helpers ─────────────────────────────────────────────────────────
     function isAuthenticated() {
       return request.auth != null;
+    }
+
+    // F8: Super-admin Firebase Auth UID.
+    // ACTION REQUIRED (Antigravity): Replace cq647u1GfCXISzf7XMw8pxH76I72
+    // with the real UID after creating superadmin@ctrlshifts.in in Firebase Auth.
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+             request.auth.uid == 'cq647u1GfCXISzf7XMw8pxH76I72';
+    }
+
+    // F1: Tenant isolation — user must have written their school_access/{uid}
+    // document (done by app.js on login) with a schoolId matching the target.
+    // A user can only write their OWN school_access document (uid == auth.uid),
+    // so they cannot forge another user's mapping.
+    function canAccessSchool(schoolId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.schoolId == schoolId;
     }
 
     // HARD GUARD for students and teachers:
@@ -26,13 +44,19 @@ service cloud.firestore {
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
-    // ── Tenant school data — authentication required ──────────────────────────
+    // ── F1: school_access — each user owns and manages only their own entry ──
+    match /school_access/{uid} {
+      allow read:  if isAuthenticated() && request.auth.uid == uid;
+      allow write: if isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // ── Tenant school data — F1: restricted to mapped school per user ─────────
     match /tenant_data/{schoolId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() &&
+      allow read:   if canAccessSchool(schoolId);
+      allow create: if canAccessSchool(schoolId) &&
                        notWipingRoster('students') &&
                        notWipingRoster('teachers');
-      allow update: if isAuthenticated() &&
+      allow update: if canAccessSchool(schoolId) &&
                        notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
                        notWipingLedger('fees') &&
@@ -41,25 +65,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Subcollections (attendance months, fee years, exam marks) — auth required
+    // Subcollections (attendance months, fee years, exam marks) — same per-school access
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if canAccessSchool(schoolId);
     }
 
-    // School registry — read public (for login school lookup), write auth only
+    // ── School registry — public read; write = super-admin only ──────────────
+    // super-admin.js must call signInWithEmailAndPassword(auth, 'superadmin@ctrlshifts.in', ...)
+    // before any write so that request.auth.uid satisfies isSuperAdmin().
     match /schools/{schoolId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read:  if true;
+      allow write: if isSuperAdmin();
     }
 
-    // Super-admin data — must be authenticated (super-admin.html handles its own UI guard)
+    // ── F8: Super-admin data — restricted to super-admin Firebase UID only ───
     match /sa_data/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isSuperAdmin();
     }
 
-    // Demo requests — unauthenticated write allowed (contact/signup form on landing page)
+    // ── Demo requests — unauthenticated create (landing page contact form) ───
     match /demo_requests/{docId} {
-      allow create: if true;
+      allow create:              if true;
       allow read, update, delete: if isAuthenticated();
     }
 

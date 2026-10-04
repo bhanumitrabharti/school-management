@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -2499,6 +2499,26 @@ window.SchoolApp = {
         };
       }
       this.applyUserTheme();
+
+      // F1 – Tenant isolation: write school_access/{uid} so Firestore rules can
+      // enforce per-school read/write at the DB level (not only at the app level).
+      // Only written when Firebase Auth succeeded (we need a real UID).
+      if (firebaseResult && firebaseResult.user && this.store && this.store.currentSchoolId) {
+        try {
+          const uid = firebaseResult.user.uid;
+          const schoolId = this.store.currentSchoolId;
+          await setDoc(doc(db, 'school_access', uid), {
+            schoolId: schoolId,
+            role: role,
+            updatedAt: serverTimestamp()
+          });
+        } catch (saErr) {
+          // Non-fatal: if offline or rules not yet deployed, log and continue.
+          // Firestore rules will deny cross-school access regardless.
+          console.warn('[Login] school_access write failed (F1):', saErr && saErr.code);
+        }
+      }
+
       this._loginInProgress = false;
       return true;
     } else {

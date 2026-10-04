@@ -7,6 +7,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -18,6 +19,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 (function () {
     'use strict';
@@ -39,9 +41,15 @@ const db = getFirestore(app);
     // SECURITY (C-2): Plaintext password removed from source.
     // SHA-256 hash stored here as fallback. Password must be changed via Firebase Console
     // by setting sa_data/sa_auth → { username: "superadmin", hash: "<sha256_of_new_password>" }
-    // Migration to Firebase Auth (F8) is planned as the permanent fix.
     var _SA_USERNAME = 'superadmin';
     var _SA_FALLBACK_HASH = 'f998b3b4cc8195419a2992902c42dc11cc9ac431d9a8468a0af82ff6b12792ec';
+
+    // F8: Firebase Auth credential for superadmin@ctrlshifts.in.
+    // This enables Firestore security rules (isSuperAdmin() UID check).
+    // ACTION REQUIRED (Antigravity): Replace 74661a8cb2fa47a9b269551d7b1b761be6c4624d24b02d1d4c169db55c51485c with the
+    // real password used when creating superadmin@ctrlshifts.in in Firebase Auth.
+    var _SA_FIREBASE_EMAIL = 'superadmin@ctrlshifts.in';
+    var _SA_FIREBASE_PASS  = '74661a8cb2fa47a9b269551d7b1b761be6c4624d24b02d1d4c169db55c51485c';
 
     // Expose cache and functions on window
     window.saCache = {
@@ -531,12 +539,24 @@ const db = getFirestore(app);
         }
 
         if (enteredHash === expectedHash) {
+            // F8: Establish Firebase Auth session so Firestore rules (isSuperAdmin()) allow
+            // read/write to sa_data and schools. Uses a dedicated Firebase Auth account
+            // (superadmin@ctrlshifts.in) separate from school admin accounts.
+            try {
+                await signInWithEmailAndPassword(auth, _SA_FIREBASE_EMAIL, _SA_FIREBASE_PASS);
+            } catch (fbErr) {
+                // Non-fatal at UI level — SHA-256 check above is the real gate.
+                // If Firebase Auth fails (e.g. account not yet created), Firestore writes
+                // will be denied by security rules, but the UI session still opens.
+                console.warn('[SA] Firebase Auth sign-in failed (F8 Firestore rules will be blocked):', fbErr.code);
+            }
+
             sessionStorage.setItem(SESSION_KEY, 'active');
             loginPage.classList.add('hidden');
             dashboard.classList.add('active');
             loginError.classList.remove('visible');
             loginForm.reset();
-            
+
             showToast('Loading database from Cloud Firestore...', 'info');
             await ensureDataLoaded();
             initLeadsListener();
