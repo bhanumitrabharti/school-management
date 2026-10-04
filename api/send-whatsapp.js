@@ -1,6 +1,18 @@
 'use strict';
 
 /**
+ * POST /api/send-whatsapp
+ * Sends a WhatsApp fee receipt via Meta Cloud API.
+ *
+ * SECURITY (SEC-05 + SEC-14):
+ *   - Requires a valid Firebase ID token in the Authorization header.
+ *     Frontend must call: fetch('/api/send-whatsapp', { headers: { 'Authorization': 'Bearer ' + idToken } ... })
+ *     Get idToken via: firebase.auth().currentUser.getIdToken()
+ *   - CORS restricted to ALLOWED_ORIGIN env var (default: https://www.ctrlshifts.in).
+ *     Set ALLOWED_ORIGIN in Vercel project settings.
+ *   - Requires FIREBASE_SERVICE_ACCOUNT env var (JSON content of service-account-key.json).
+ *     Set in Vercel: Settings → Environment Variables → FIREBASE_SERVICE_ACCOUNT
+ *
  * Steps to get permanent System User token:
  * 1. business.facebook.com → Settings → System Users
  * 2. Create System User → Add Assets → WhatsApp account
@@ -8,11 +20,47 @@
  * 4. Update WHATSAPP_ACCESS_TOKEN in Vercel env vars
  */
 
-module.exports = async function(req, res) {
-  // Allow CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+const admin = require('firebase-admin');
+
+// Lazy singleton — reused across warm serverless invocations
+function getAdminAuth() {
+  if (!admin.apps.length) {
+    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT env var is not set.');
+    admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+  }
+  return admin.auth();
+}
+
+// CORS helper — SEC-14: no wildcard; only configured production origin allowed
+function applyCors(req, res) {
+  const ALLOWED = [
+    process.env.ALLOWED_ORIGIN || 'https://www.ctrlshifts.in',
+    'https://ctrlshifts.in'
+  ];
+  const origin = req.headers.origin;
+  if (origin && ALLOWED.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+}
+
+// SEC-05: Verify Firebase ID token from Authorization: Bearer <token>
+async function verifyFirebaseToken(req) {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) return null;
+  const idToken = authHeader.slice(7);
+  try {
+    return await getAdminAuth().verifyIdToken(idToken);
+  } catch (e) {
+    return null;
+  }
+}
+
+module.exports = async function(req, res) {
+  applyCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -20,6 +68,12 @@ module.exports = async function(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  // SEC-05: Reject unauthenticated requests
+  const decoded = await verifyFirebaseToken(req);
+  if (!decoded) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
   try {
@@ -52,7 +106,7 @@ module.exports = async function(req, res) {
     }
 
     // Construct Hindi/English bilingual message
-    const messageText = 
+    const messageText =
       `Namaste! 🙏\n` +
       `Aapke bacche ${studentName} ki school fee jama ho gayi hai.\n\n` +
       `Jama ki gayi rashi (Amount): ₹${amount} via ${paymentMode || 'Cash'} ✅\n` +

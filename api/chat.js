@@ -1,10 +1,31 @@
 'use strict';
 
-module.exports = async function(req, res) {
-  // Allow CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
+/**
+ * POST /api/chat
+ * Gemini AI chatbot proxy for the Paathshala ERP.
+ *
+ * SECURITY (SEC-13 + SEC-14):
+ *   - SEC-13: error.stack removed from API responses (never expose server internals to clients).
+ *   - SEC-14: CORS restricted to ALLOWED_ORIGIN env var (default: https://www.ctrlshifts.in).
+ */
+
+// CORS helper — SEC-14: no wildcard; only configured production origin allowed
+function applyCors(req, res) {
+  const ALLOWED = [
+    process.env.ALLOWED_ORIGIN || 'https://www.ctrlshifts.in',
+    'https://ctrlshifts.in'
+  ];
+  const origin = req.headers.origin;
+  if (origin && ALLOWED.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+}
+
+module.exports = async function(req, res) {
+  applyCors(req, res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -75,7 +96,8 @@ module.exports = async function(req, res) {
     const reply = data.candidates[0].content.parts[0].text;
     return res.status(200).json({ reply });
   } catch (error) {
+    // SEC-13: Only log stack server-side; never expose it to the client.
     console.error("Gemini Fetch Error:", error.message, error.stack);
-    return res.status(500).json({ error: error.message || "Internal Server Error", stack: error.stack });
+    return res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 };

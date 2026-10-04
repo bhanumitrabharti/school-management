@@ -1,9 +1,33 @@
+/**
+ * POST /api/notify-lead
+ * Sends a new lead notification via Telegram Bot.
+ * Public endpoint — no auth required (called from the landing page contact form).
+ *
+ * SECURITY (SEC-14):
+ *   - CORS restricted to ALLOWED_ORIGIN env var (default: https://www.ctrlshifts.in).
+ *     Wildcard removed to prevent cross-origin abuse.
+ */
+
+// CORS helper — SEC-14: no wildcard; only configured production origin allowed
+function applyCors(req, res) {
+  const ALLOWED = [
+    process.env.ALLOWED_ORIGIN || 'https://www.ctrlshifts.in',
+    'https://ctrlshifts.in'
+  ];
+  const origin = req.headers.origin;
+  if (origin && ALLOWED.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+}
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  applyCors(req, res);
+
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") 
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
   const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -22,7 +46,7 @@ export default async function handler(req, res) {
   if (!body) {
     return res.status(400).json({ error: 'Request body is empty' });
   }
-  
+
   const message = `🔔 *NEW LEAD — Paathshala*
 
 🏫 School: ${body.schoolName || 'N/A'}
@@ -48,7 +72,7 @@ export default async function handler(req, res) {
         parse_mode: "Markdown"
       })
     });
-    
+
     const responseText = await response.text();
     console.log("Telegram API response raw:", responseText);
 
@@ -60,16 +84,16 @@ export default async function handler(req, res) {
     }
 
     console.log("Telegram response:", JSON.stringify(data));
-    
+
     if (!data.ok) {
       console.error("Telegram API error:", data.description);
-      return res.status(400).json({ 
-        error: data.description 
+      return res.status(400).json({
+        error: data.description
       });
     }
-    
+
     return res.status(200).json({ success: true });
-    
+
   } catch (err) {
     console.error("Telegram fetch error:", err.message);
     return res.status(500).json({ error: err.message });
