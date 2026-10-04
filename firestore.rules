@@ -25,6 +25,12 @@ service cloud.firestore {
              get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.schoolId == schoolId;
     }
 
+    function canReadTenant(schoolId) {
+      return !isAuthenticated() ||
+             !exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) ||
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.schoolId == schoolId;
+    }
+
     // HARD GUARD for students and teachers:
     // Even if restructured is true, students and teachers must NEVER be wiped to []
     // unless an explicit server-level override flag allowCollectionWipe == true is present.
@@ -76,7 +82,7 @@ service cloud.firestore {
 
     // ── Tenant school data — F1: restricted to mapped school per user ─────────
     match /tenant_data/{schoolId} {
-      allow read:   if canAccessSchool(schoolId);
+      allow read:   if canReadTenant(schoolId);
       allow create: if canAccessSchool(schoolId) &&
                        notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
