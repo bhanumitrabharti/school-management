@@ -519,7 +519,7 @@ window.SchoolApp = {
     if (!currentSchoolId) return [];
 
     // 1. If in local memory cache, return it
-    if (this._attendanceMonths[yearMonth]) {
+    if (this._attendanceMonths[yearMonth] && this._attendanceMonths[yearMonth].length > 0) {
       return this._attendanceMonths[yearMonth];
     }
 
@@ -581,7 +581,9 @@ window.SchoolApp = {
     // 4. Fallback: if not in subcollection or tenant not restructured, fall back to legacy array
     var legacy = (this.store && this.store.attendance) || [];
     var matched = legacy.filter(function(a) { return a.date && a.date.startsWith(yearMonth); });
-    this._attendanceMonths[yearMonth] = matched;
+    if (matched.length > 0) {
+      this._attendanceMonths[yearMonth] = matched;
+    }
     return matched;
   },
 
@@ -767,7 +769,7 @@ window.SchoolApp = {
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
     if (!currentSchoolId) return [];
 
-    if (this._feesYears[year]) {
+    if (this._feesYears[year] && this._feesYears[year].length > 0) {
       this._mergeFeesIntoStore(year, this._feesYears[year]);
       return this._feesYears[year];
     }
@@ -809,8 +811,10 @@ window.SchoolApp = {
     // Fallback: legacy array
     var legacy = (this.store && this.store.fees) || [];
     var matched = legacy.filter(function(f) { return f.date && String(f.date).startsWith(year); });
-    this._feesYears[year] = matched;
-    this._mergeFeesIntoStore(year, matched);
+    if (matched.length > 0) {
+      this._feesYears[year] = matched;
+      this._mergeFeesIntoStore(year, matched);
+    }
     return matched;
   },
 
@@ -2563,6 +2567,41 @@ window.SchoolApp = {
               role: role,
               updatedAt: serverTimestamp()
             });
+
+            // Clear pre-login poisoned caches
+            if (this._feesYears) this._feesYears = {};
+            if (this._attendanceMonths) this._attendanceMonths = {};
+
+            // Reload subcollection data now that school_access is written
+            if (this.isRestructured && this.isRestructured(schoolId)) {
+              var currentYM = new Date().toISOString().slice(0, 7);   // e.g. "2026-10"
+              var currentYr = String(new Date().getFullYear());        // e.g. "2026"
+              var self = this;
+              // Reload attendance month
+              if (typeof self.loadAttendanceMonth === 'function') {
+                self.loadAttendanceMonth(currentYM).then(function() {
+                  if (typeof self.listenToAttendanceMonth === 'function') {
+                    self.listenToAttendanceMonth(currentYM);
+                  }
+                  if (self.currentPage === 'attendance' && window.AttendanceModule 
+                      && typeof window.AttendanceModule.render === 'function') {
+                    window.AttendanceModule.render();
+                  }
+                }).catch(function(e) { console.warn('[F1] post-login attendance reload failed:', e); });
+              }
+              // Reload fees year
+              if (typeof self.loadFeesYear === 'function') {
+                self.loadFeesYear(currentYr).then(function() {
+                  if (typeof self.listenToFeesYear === 'function') {
+                    self.listenToFeesYear(currentYr);
+                  }
+                  if (self.currentPage === 'fees' && window.FeesModule 
+                      && typeof window.FeesModule.render === 'function') {
+                    window.FeesModule.render();
+                  }
+                }).catch(function(e) { console.warn('[F1] post-login fees reload failed:', e); });
+              }
+            }
           }
         } catch (saErr) {
           console.warn('[F1] school_access write failed:', saErr);
