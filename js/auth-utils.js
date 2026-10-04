@@ -80,7 +80,7 @@
                 return { success: false, message: 'Admin password not configured. Please contact your administrator.' };
             }
 
-            if (usernameOrEmail !== adminUser) {
+            if (usernameOrEmail !== adminUser && usernameOrEmail !== 'admin') {
                 return { success: false, message: 'Invalid admin username.' };
             }
 

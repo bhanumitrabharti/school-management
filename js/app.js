@@ -2566,8 +2566,7 @@ window.SchoolApp = {
       return true;
     } else {
       this._loginInProgress = false;
-      // Prioritize firebaseError if any, fallback to custom error
-      const finalError = firebaseError || new Error((customResult && customResult.message) ? customResult.message : "Invalid credentials.");
+      const finalError = new Error((customResult && customResult.message) ? customResult.message : "Invalid credentials.");
       throw finalError;
     }
   },
