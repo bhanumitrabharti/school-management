@@ -2545,20 +2545,27 @@ window.SchoolApp = {
 
       // F1 – Tenant isolation: write school_access/{uid} so Firestore rules can
       // enforce per-school read/write at the DB level (not only at the app level).
-      // Only written when Firebase Auth succeeded (we need a real UID).
-      if (firebaseResult && firebaseResult.user && this.store && this.store.currentSchoolId) {
+      if (this.store && this.store.currentSchoolId) {
         try {
-          const uid = firebaseResult.user.uid;
-          const schoolId = this.store.currentSchoolId;
-          await setDoc(doc(db, 'school_access', uid), {
-            schoolId: schoolId,
-            role: role,
-            updatedAt: serverTimestamp()
-          });
+          var fbUser = (firebaseResult && firebaseResult.user) ? firebaseResult.user : null;
+          // If no Firebase Auth user (school admin without Firebase account),
+          // sign in anonymously to get a real Firebase uid for Firestore rules
+          if (!fbUser) {
+            var { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js');
+            var anonResult = await signInAnonymously(auth);
+            fbUser = anonResult.user;
+          }
+          if (fbUser) {
+            var uid = fbUser.uid;
+            var schoolId = this.store.currentSchoolId;
+            await setDoc(doc(db, 'school_access', uid), {
+              schoolId: schoolId,
+              role: role,
+              updatedAt: serverTimestamp()
+            });
+          }
         } catch (saErr) {
-          // Non-fatal: if offline or rules not yet deployed, log and continue.
-          // Firestore rules will deny cross-school access regardless.
-          console.warn('[Login] school_access write failed (F1):', saErr && saErr.code);
+          console.warn('[F1] school_access write failed:', saErr);
         }
       }
 
