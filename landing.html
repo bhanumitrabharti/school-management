@@ -153,6 +153,17 @@
       color: var(--sky-l);
     }
 
+    .section-label {
+      color: #0EA5E9;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      font-family: var(--mono);
+      display: inline-block;
+    }
+
     h1, h2, h3 {
       font-family: var(--disp);
       line-height: 1.15;
@@ -201,7 +212,7 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, var(--blue), var(--blue-d));
+      background: linear-gradient(135deg, #2563EB 0%, #0EA5E9 100%);
       color: var(--white);
       box-shadow: 0 10px 20px -6px rgba(37, 99, 235, 0.4);
     }
@@ -398,10 +409,28 @@
 
     /* ============ HERO SECTION ============ */
     .hero {
-      background: var(--ink);
+      background: linear-gradient(135deg, #070D1F 0%, #0C1430 60%, #0d1f3c 100%);
       color: var(--white);
       padding: 180px 0 80px;
       position: relative;
+      overflow: hidden;
+    }
+
+    .hero-video-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+      opacity: 0.18;
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
     }
 
     .hero::before {
@@ -431,6 +460,7 @@
       font-weight: 800;
       margin-bottom: 24px;
       line-height: 1.1;
+      text-shadow: 0 2px 40px rgba(14, 165, 233, 0.3);
     }
 
     .hero .sub {
@@ -621,6 +651,55 @@
       50% { transform: translateY(-12px); }
     }
 
+    /* ============ STATS STRIP SECTION ============ */
+    .stats-strip {
+      background: linear-gradient(90deg, #0C1430, #0f1f45, #0C1430);
+      border-top: 1px solid rgba(37, 99, 235, 0.3);
+      border-bottom: 1px solid rgba(37, 99, 235, 0.3);
+    }
+    .stats-inner {
+      display: flex;
+      justify-content: center;
+      gap: 3rem;
+      flex-wrap: wrap;
+      padding: 2.5rem 2rem 1.5rem;
+    }
+    .stat-item {
+      text-align: center;
+      min-width: 140px;
+    }
+    .stat-icon {
+      font-size: 1.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .stat-number {
+      font-size: 2.8rem;
+      font-weight: 800;
+      font-family: 'Bricolage Grotesque', var(--disp);
+      color: #2563EB;
+      display: inline;
+    }
+    .stat-suffix {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #0EA5E9;
+      display: inline;
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: #94A3B8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0.3rem;
+    }
+    .stats-tagline {
+      text-align: center;
+      color: #94A3B8;
+      font-size: 0.9rem;
+      padding: 0 1.5rem 2rem;
+      margin: 0;
+    }
+
     /* ============ PROOF SECTION ============ */
     .proof {
       background: var(--ink);
@@ -733,6 +812,99 @@
       font-size: 14.5px;
       color: var(--slate);
       line-height: 1.6;
+    }
+
+    /* ============ ECOSYSTEM DIAGRAM SECTION ============ */
+    .ecosystem.dark {
+      background: #070D1F;
+      padding: 5rem 1.5rem;
+      text-align: center;
+      position: relative;
+    }
+    .ecosystem .section-label {
+      color: #0EA5E9;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      font-family: var(--mono);
+    }
+    .ecosystem .section-h {
+      font-family: var(--disp);
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+      color: #FFFFFF;
+    }
+    .ecosystem .section-sub {
+      color: #94A3B8;
+      font-size: 1.05rem;
+      max-width: 650px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .eco-diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      margin-top: 3rem;
+    }
+    .eco-hub {
+      background: linear-gradient(135deg, #2563EB, #0EA5E9);
+      border-radius: 50%;
+      width: 110px;
+      height: 110px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      color: #FFFFFF;
+      font-weight: 700;
+      box-shadow: 0 0 40px rgba(37, 99, 235, 0.4);
+    }
+    .eco-hub span {
+      font-size: 0.85rem;
+      font-family: var(--disp);
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+    .eco-spokes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      max-width: 760px;
+    }
+    .eco-node {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(37, 99, 235, 0.3);
+      border-radius: 16px;
+      padding: 1.2rem 1.5rem;
+      text-align: center;
+      color: #CBD5E1;
+      font-size: 0.9rem;
+      min-width: 130px;
+      transition: transform 0.3s, border-color 0.3s;
+    }
+    .eco-node:hover {
+      transform: translateY(-4px);
+      border-color: #2563EB;
+      box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.3);
+    }
+    .eco-node strong {
+      display: block;
+      color: #FFFFFF;
+      margin: 0.3rem 0;
+      font-size: 1rem;
+    }
+    .eco-node small {
+      color: #64748B;
+      font-size: 0.75rem;
+      display: block;
     }
 
     /* ============ FEATURES SECTION ============ */
@@ -857,6 +1029,89 @@
       font-size: 13.5px;
       color: var(--slate);
       line-height: 1.55;
+    }
+
+    /* ============ TESTIMONIALS SECTION ============ */
+    .testimonials {
+      padding: 90px 0;
+    }
+    .testimonials .section-inner {
+      text-align: center;
+    }
+    .testimonials .section-label {
+      color: #0EA5E9;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      font-family: var(--mono);
+    }
+    .testimonials .section-h {
+      font-family: var(--disp);
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+    .testimonial-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2.5rem;
+      text-align: left;
+    }
+    .tcard {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      padding: 1.8rem;
+      position: relative;
+      box-shadow: var(--shadow-sm);
+      transition: var(--transition);
+    }
+    .tcard:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-md);
+      border-color: rgba(37, 99, 235, 0.3);
+    }
+    .tcard-quote {
+      font-size: 4rem;
+      line-height: 1;
+      color: #2563EB;
+      opacity: 0.2;
+      font-family: 'Bricolage Grotesque', var(--disp);
+      position: absolute;
+      top: 1rem;
+      right: 1.5rem;
+    }
+    .tcard-text {
+      color: #0F172A;
+      line-height: 1.7;
+      font-size: 0.95rem;
+      margin-bottom: 1.2rem;
+    }
+    .tcard-author {
+      border-top: 1px solid #E2E8F0;
+      padding-top: 1rem;
+    }
+    .tcard-name {
+      font-weight: 700;
+      color: #070D1F;
+      font-size: 0.9rem;
+    }
+    .tcard-school {
+      color: #94A3B8;
+      font-size: 0.8rem;
+      margin-top: 0.2rem;
+    }
+    .dark .tcard {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    .dark .tcard-text {
+      color: #CBD5E1;
     }
 
     /* ============ CALCULATOR SECTION ============ */
@@ -1116,9 +1371,11 @@
       align-items: stretch;
     }
 
-    .plan {
+    .plan, .tier {
       background: var(--white);
-      border: 1px solid var(--line);
+      border: 1px solid rgba(37, 99, 235, 0.25);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       border-radius: 22px;
       padding: 36px 30px;
       display: flex;
@@ -1784,6 +2041,20 @@
         grid-template-columns: 1fr;
         gap: 32px;
       }
+
+      .stats-inner {
+        gap: 1.5rem;
+        padding: 2rem 1rem 1rem;
+      }
+
+      .eco-spokes {
+        gap: 0.75rem;
+      }
+
+      .eco-node {
+        min-width: 110px;
+        padding: 1rem 1.2rem;
+      }
     }
   </style>
 </head>
@@ -1835,7 +2106,8 @@
 </div>
 
 <section class="hero dark">
-  <div class="wrap">
+  <video class="hero-video-bg" autoplay muted loop playsinline poster="assets/dash-dark.jpg" src=""></video>
+  <div class="wrap hero-content">
     <div class="hero-grid">
       <div>
         <div class="eyebrow">Enterprise Grade School ERP</div>
@@ -1891,21 +2163,34 @@
   </div>
 </section>
 
-<section class="proof dark">
-  <div class="wrap">
-    <div class="proof-box rv">
-      <div class="proof-l">
-        <p>Built out of real empathy.<br>Refined natively to solve real-world administration barriers in private schools.</p>
-        <span>Tested live, powering daily academic and financial operations across Jharkhand.</span>
-      </div>
-      <div class="proof-stats">
-        <div class="pstat"><b data-count="289" data-suffix="+">289+</b><span>Students Monitored</span></div>
-        <div class="pstat"><b data-count="15" data-suffix="+">15+</b><span>Active Educators</span></div>
-        <div class="pstat"><b data-count="94" data-suffix="%">94%</b><span>Attendance Average</span></div>
-        <div class="pstat"><b>Nursery to Class 8</b><span>Classes</span></div>
-      </div>
+<section class="stats-strip dark">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-icon">🏫</div>
+      <div class="stat-number" data-count="289">0</div>
+      <div class="stat-suffix">+</div>
+      <div class="stat-label">Students Monitored</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-icon">👩‍🏫</div>
+      <div class="stat-number" data-count="15">0</div>
+      <div class="stat-suffix">+</div>
+      <div class="stat-label">Active Educators</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-icon">📊</div>
+      <div class="stat-number" data-count="94">0</div>
+      <div class="stat-suffix">%</div>
+      <div class="stat-label">Attendance Accuracy</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-icon">💰</div>
+      <div class="stat-number" data-count="423120">0</div>
+      <div class="stat-suffix">₹</div>
+      <div class="stat-label">Monthly Fees Processed</div>
     </div>
   </div>
+  <p class="stats-tagline">Built out of real empathy. Tested live, powering daily academic and financial operations across Jharkhand.</p>
 </section>
 
 <section class="problems ruled">
@@ -1922,6 +2207,27 @@
       <div class="prob rv"><span class="em">🗂️</span><h3>Zero Data Redundancy</h3><p>Relying fully on standalone hard-copy books where a single spill can wipe years of records.</p></div>
       <div class="prob rv"><span class="em">💸</span><h3>Unreconciled Cash Flows</h3><p>Trying to balance disjointed manual receipt papers against direct bank accounts safely.</p></div>
       <div class="prob rv"><span class="em">👩‍🏫</span><h3>Operational Bottlenecks</h3><p>School administrative frameworks stalling out completely when a single controller takes a day off.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ECOSYSTEM DIAGRAM SECTION ============ -->
+<section class="ecosystem dark">
+  <div class="wrap section-inner">
+    <div class="section-label">Platform Architecture</div>
+    <h2 class="section-h">One platform. Every stakeholder.</h2>
+    <p class="section-sub">Paathshala connects Admins, Teachers, Students, and Parents into a single live operational hub.</p>
+    <div class="eco-diagram">
+      <div class="eco-center">
+        <div class="eco-hub">🏫<br><span>Paathshala</span></div>
+      </div>
+      <div class="eco-spokes">
+        <div class="eco-node rv" style="--delay:0s">👨‍💼<br><strong>Admin</strong><br><small>Fees · Reports · Settings</small></div>
+        <div class="eco-node rv" style="--delay:0.1s">👩‍🏫<br><strong>Teachers</strong><br><small>Attendance · Marks · Notices</small></div>
+        <div class="eco-node rv" style="--delay:0.2s">📱<br><strong>Parents</strong><br><small>WhatsApp · Receipts · Updates</small></div>
+        <div class="eco-node rv" style="--delay:0.3s">🎒<br><strong>Students</strong><br><small>Results · Timetable · ID Cards</small></div>
+        <div class="eco-node rv" style="--delay:0.4s">💳<br><strong>Finance</strong><br><small>Auto-charge · Recovery · Audit</small></div>
+      </div>
     </div>
   </div>
 </section>
@@ -2036,6 +2342,40 @@
           </svg>
         </div>
         <div><b>Complimentary Portal</b><span>Every activation comes with a premium web domain node out-of-the-box.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TESTIMONIALS SECTION ============ -->
+<section class="testimonials ruled">
+  <div class="wrap section-inner">
+    <div class="section-label">What School Owners Say</div>
+    <h2 class="section-h">Real schools. Real results.</h2>
+    <div class="testimonial-cards">
+      <div class="tcard rv">
+        <div class="tcard-quote">"</div>
+        <p class="tcard-text">Fee collection jo pehle 3 din lagti thi ab 3 ghante me ho jaati hai. Parents ko WhatsApp pe receipt milti hai — trust badh gaya hai.</p>
+        <div class="tcard-author">
+          <div class="tcard-name">School Principal</div>
+          <div class="tcard-school">Shishu Vikash Mandir, Bokaro</div>
+        </div>
+      </div>
+      <div class="tcard rv">
+        <div class="tcard-quote">"</div>
+        <p class="tcard-text">Attendance register ka jhanjhat khatam. Ek click mein puri class ka data. Teachers bhi khush hain, management bhi.</p>
+        <div class="tcard-author">
+          <div class="tcard-name">School Administrator</div>
+          <div class="tcard-school">Pilot School, Jharkhand</div>
+        </div>
+      </div>
+      <div class="tcard rv">
+        <div class="tcard-quote">"</div>
+        <p class="tcard-text">Paathshala lene ke baad humne ek accountant ki salary bachaayi. System itna simple hai ki koi bhi chala sakta hai.</p>
+        <div class="tcard-author">
+          <div class="tcard-name">School Management</div>
+          <div class="tcard-school">Private School, Jharkhand</div>
+        </div>
       </div>
     </div>
   </div>
@@ -2349,6 +2689,7 @@
   const cio = new IntersectionObserver(entries => {
     entries.forEach(entry => {
       if (!entry.isIntersecting) return;
+      if (entry.target.classList.contains('stat-number')) return;
       cio.unobserve(entry.target);
       const el = entry.target;
       const end = parseInt(el.dataset.count);
@@ -2367,7 +2708,31 @@
       requestAnimationFrame(tick);
     });
   }, { threshold: 0.1 });
-  document.querySelectorAll('[data-count]').forEach(el => cio.observe(el));
+  document.querySelectorAll('[data-count]:not(.stat-number)').forEach(el => cio.observe(el));
+
+  // Stats Counter Animation
+  function animateCounters() {
+    document.querySelectorAll('.stat-number[data-count]').forEach(function(el) {
+      var target = parseInt(el.getAttribute('data-count'));
+      var duration = 2000;
+      var start = performance.now();
+      function update(now) {
+        var elapsed = now - start;
+        var progress = Math.min(elapsed / duration, 1);
+        var ease = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.floor(ease * target).toLocaleString('en-IN');
+        if (progress < 1) requestAnimationFrame(update);
+      }
+      requestAnimationFrame(update);
+    });
+  }
+  var statsObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting) { animateCounters(); statsObserver.disconnect(); }
+    });
+  }, { threshold: 0.3 });
+  var statsStrip = document.querySelector('.stats-strip');
+  if (statsStrip) statsObserver.observe(statsStrip);
 
   // FAQ Accordion Panel Handler
   document.querySelectorAll('.q button').forEach(button => {
