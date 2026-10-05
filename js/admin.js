@@ -2156,6 +2156,36 @@
     html += '    </div>';
     html += '  </div>';
 
+    // Card 4b: Automated Monthly Fee Settings
+    var isAutoChargeEnabled = !!settings.autoChargeEnabled;
+    var autoChargeDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
+    html += '  <div class="card fee-setup-card">';
+    html += '    <div class="card-header fee-setup-header" style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '      <h3><span class="material-icons-round">bolt</span> Automated Monthly Fee Settings</h3>';
+    html += '      <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:14px; color:var(--text-primary);">';
+    html += '        <input type="checkbox" id="setup-autocharge-enabled" ' + (isAutoChargeEnabled ? 'checked' : '') + ' style="width:18px; height:18px; cursor:pointer; accent-color:var(--accent-primary);"> Enable Auto-Charge';
+    html += '      </label>';
+    html += '    </div>';
+    html += '    <div class="card-body">';
+    html += '      <div class="admin-form-grid fee-setup-form-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:16px;">';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label">Auto-Charge Trigger Day of Month</label>';
+    html += '          <select class="form-select" id="setup-autocharge-trigger-date">';
+    [1, 5, 10, 15, 20, 25].forEach(function(d) {
+      html += '            <option value="' + d + '"' + (autoChargeDay === d ? ' selected' : '') + '>' + d + (d === 1 ? 'st' : 'th') + ' of each month</option>';
+    });
+    html += '          </select>';
+    html += '        </div>';
+    html += '      </div>';
+    html += '      <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:12px 16px; font-size:13px; color:var(--text-secondary); line-height:1.5;">';
+    html += '        <span class="material-icons-round" style="font-size:16px; color:#f59e0b; vertical-align:text-bottom;">info</span> <strong>Auto-Charge Day:</strong> System automatically generates dues for all students on this day each month. Do NOT click Generate Dues manually after setting this.';
+    html += '      </div>';
+    html += '    </div>';
+    html += '    <div class="card-footer fee-setup-actions" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
+    html += '      <button type="button" class="btn btn-primary" id="setup-save-autocharge-btn"><span class="material-icons-round">save</span> Save Auto-Charge Settings</button>';
+    html += '    </div>';
+    html += '  </div>';
+
     // Card 5: Auto-Fee Billing Engine Status & Dry-Run Preview
     var lastRunPeriod = settings.autoChargeLastRun || SchoolApp.store.lastAutomatedFeeRun || 'Not run yet';
     html += '  <div class="card fee-setup-card">';
@@ -3910,6 +3940,37 @@
 
         if (success) {
           SchoolApp.showToast("Automatic Late Fee settings saved successfully!", "success");
+        }
+      });
+    }
+
+    // Save Auto-Charge Settings Listener
+    var saveAutoChargeBtn = document.getElementById('setup-save-autocharge-btn');
+    if (saveAutoChargeBtn) {
+      saveAutoChargeBtn.addEventListener('click', async function() {
+        if (sessionStorage.getItem("isImpersonating") === "true") {
+          SchoolApp.showToast("View-only mode. Edits blocked during impersonation.", "warning");
+          return;
+        }
+
+        var isEnabled = document.getElementById('setup-autocharge-enabled') ? document.getElementById('setup-autocharge-enabled').checked : false;
+        var triggerDay = document.getElementById('setup-autocharge-trigger-date') ? (parseInt(document.getElementById('setup-autocharge-trigger-date').value, 10) || 1) : 1;
+
+        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+        SchoolApp.store.settings.autoChargeEnabled = isEnabled;
+        SchoolApp.store.settings.autoChargeTriggerDate = triggerDay;
+
+        saveAutoChargeBtn.disabled = true;
+        var origHTML = saveAutoChargeBtn.innerHTML;
+        saveAutoChargeBtn.innerHTML = '<span class="material-icons-round">sync</span> Saving...';
+
+        var success = await SchoolApp.save(true);
+
+        saveAutoChargeBtn.disabled = false;
+        saveAutoChargeBtn.innerHTML = origHTML;
+
+        if (success) {
+          SchoolApp.showToast("Auto-charge settings saved successfully.", "success");
         }
       });
     }

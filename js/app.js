@@ -1794,7 +1794,24 @@ window.SchoolApp = {
     // =========================================================================
     // 1. EVALUATE TUITION DUES
     // =========================================================================
+    var triggerDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
+    if (!options.forceRun) {
+      if (!settings.autoChargeEnabled) {
+        return result;
+      }
+      if (evalDay < triggerDay) {
+        return result; // Don't charge before trigger calendar day arrives
+      }
+    }
+
     var lastRun = settings.autoChargeLastRun || this.store.lastAutomatedFeeRun || '';
+    if (!lastRun) {
+      // Baseline to previous month if no prior run recorded so current month evaluates on/after triggerDay
+      var prevMonthNum = evalMonth === 1 ? 12 : evalMonth - 1;
+      var prevYearNum = evalMonth === 1 ? evalYear - 1 : evalYear;
+      lastRun = prevYearNum + '-' + (prevMonthNum < 10 ? '0' + prevMonthNum : prevMonthNum);
+    }
+
     if (lastRun && currentPeriod > lastRun) {
       var parts = lastRun.split('-');
       var lastYear = parseInt(parts[0], 10);
@@ -2324,13 +2341,10 @@ window.SchoolApp = {
       if (!this.store.settings) this.store.settings = {};
       var settings = this.store.settings;
 
-      // Baseline initialization if tracking key is empty
-      var isFirstInitialization = !settings.autoChargeLastRun && !this.store.lastAutomatedFeeRun;
-      if (isFirstInitialization) {
-        settings.autoChargeLastRun = currentPeriod;
-        this.store.lastAutomatedFeeRun = currentPeriod;
-        if (newDueTxns.length === 0) {
-          await this.save(true);
+      var triggerDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
+      var evalDay = (options && options.simulateDate) ? new Date(options.simulateDate).getDate() : new Date().getDate();
+      if (!options || !options.forceRun) {
+        if (!settings.autoChargeEnabled || evalDay < triggerDay) {
           return;
         }
       }

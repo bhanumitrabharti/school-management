@@ -3427,24 +3427,6 @@
     bodyHTML += '<input type="text" id="bulk-note" class="form-input" placeholder="e.g. Term charge or annual fine reason">';
     bodyHTML += '</div>';
 
-    // Auto Monthly Fee Controls
-    bodyHTML += '<div class="form-group full-width" style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 12px;">';
-    bodyHTML += '<h4 style="margin-bottom: 8px; font-size: 14px; font-weight: 600; color: var(--text-primary);">⚡ Automated Monthly Fee Settings</h4>';
-    bodyHTML += '<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">';
-    bodyHTML += '<label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; cursor: pointer;">';
-    bodyHTML += '<input type="checkbox" id="auto-charge-enabled"' + (settings.autoChargeEnabled ? ' checked' : '') + ' style="width: 16px; height: 16px; accent-color: var(--accent-primary);">';
-    bodyHTML += '<span>Enable Auto Monthly Fee Charge</span>';
-    bodyHTML += '</label>';
-    bodyHTML += '</div>';
-    bodyHTML += '<div class="form-group" style="margin-bottom: 0;">';
-    bodyHTML += '<label class="form-label">Auto-Charge Trigger Day of Month</label>';
-    bodyHTML += '<select id="auto-charge-trigger-date" class="form-select">';
-    [1, 5, 10, 15, 20, 25].forEach(function(d) {
-      bodyHTML += '<option value="' + d + '"' + ((settings.autoChargeTriggerDate || 1) == d ? ' selected' : '') + '>' + d + (d === 1 ? 'st' : 'th') + ' of the month</option>';
-    });
-    bodyHTML += '</select>';
-    bodyHTML += '</div></div>';
-
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -3460,13 +3442,6 @@
         var date = document.getElementById('bulk-date').value;
         var desc = document.getElementById('bulk-desc').value.trim();
         var note = document.getElementById('bulk-note') ? document.getElementById('bulk-note').value.trim() : '';
-
-        var autoEnabled = document.getElementById('auto-charge-enabled') ? document.getElementById('auto-charge-enabled').checked : false;
-        var triggerDay = document.getElementById('auto-charge-trigger-date') ? parseInt(document.getElementById('auto-charge-trigger-date').value, 10) : 1;
-
-        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
-        SchoolApp.store.settings.autoChargeEnabled = autoEnabled;
-        SchoolApp.store.settings.autoChargeTriggerDate = triggerDay;
 
         if (!date) {
           SchoolApp.showToast('Please select a billing date.', 'error');
@@ -3492,16 +3467,27 @@
         if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
 
         var chargedCount = 0;
+        var skippedCount = 0;
         var fh = getActiveFeeHeads().find(function(x) { return x.id === headId; });
         var feeHeadName = fh ? fh.name : headId;
         var adminName = SchoolApp.currentUser ? (SchoolApp.currentUser.username || SchoolApp.currentUser.firstName || 'admin') : 'admin';
 
-        SchoolApp.createRestorePoint('Auto-Backup before Bulk Fee Generation for Class ' + cls);
-
+        var existingFees = SchoolApp.store.fees || [];
         var generatedTxns = [];
+
         students.forEach(function(s) {
+          var alreadyCharged = existingFees.some(function(t) {
+            return t && t.studentId === s.id
+              && t.feeHeadId === headId
+              && t.type === 'due'
+              && t.date === date;
+          });
+          if (alreadyCharged) {
+            skippedCount++;
+            return;
+          }
+
           var defaultAmt = getFeeAmount(s.class, headId);
-          
           if (defaultAmt > 0) {
             var newTxn = {
               id: SchoolApp.generateId(),
@@ -3532,41 +3518,42 @@
           }
         });
 
-        if (chargedCount > 0) {
-          saveBtn.disabled = true;
-          saveBtn.textContent = 'Saving...';
-          SchoolApp.showLoader('Generating fee dues (' + chargedCount + ' students)...');
-          var success = false;
-          try {
-            if (typeof SchoolApp.saveFeeTransactions === 'function') {
-              success = await SchoolApp.saveFeeTransactions(generatedTxns, true);
-            } else {
-              success = await SchoolApp.save(true);
-            }
-          } finally {
-            SchoolApp.hideLoader();
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Generate Dues';
-          }
+        if (students.length > 0 && chargedCount === 0 && skippedCount > 0) {
+          SchoolApp.showToast('Ye students is date ke liye already charge ho chuke hain.', 'warning');
+          return;
+        }
 
-          if (success) {
-            SchoolApp.closeModal();
-            SchoolApp.showToast('Charged default fee dues to ' + chargedCount + ' students successfully!', 'success');
-            render();
+        if (chargedCount === 0) {
+          SchoolApp.showToast('No dues to generate (default fee amount is 0 for selected class).', 'info');
+          return;
+        }
+
+        SchoolApp.createRestorePoint('Auto-Backup before Bulk Fee Generation for Class ' + cls);
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        SchoolApp.showLoader('Generating fee dues (' + chargedCount + ' students)...');
+        var success = false;
+        try {
+          if (typeof SchoolApp.saveFeeTransactions === 'function') {
+            success = await SchoolApp.saveFeeTransactions(generatedTxns, true);
+          } else {
+            success = await SchoolApp.save(true);
           }
-        } else {
-          saveBtn.disabled = true;
-          saveBtn.textContent = 'Saving Settings...';
-          SchoolApp.showLoader('Saving settings...');
-          try {
-            await SchoolApp.save(true);
-          } finally {
-            SchoolApp.hideLoader();
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Generate Dues';
-          }
+        } finally {
+          SchoolApp.hideLoader();
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
+        }
+
+        if (success) {
           SchoolApp.closeModal();
-          SchoolApp.showToast('Auto-charge settings saved.', 'info');
+          var msg = 'Charged default fee dues to ' + chargedCount + ' students successfully!';
+          if (skippedCount > 0) {
+            msg += ' (' + skippedCount + ' already charged and skipped)';
+          }
+          SchoolApp.showToast(msg, 'success');
+          render();
         }
       });
     }
