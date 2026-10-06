@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v38 for Firebase Storage integration — student & parent photo uploads now live.
-const CACHE_NAME = 'erp-cache-v38';
+// Bumped to v39 for landing page v2 redesign.
+const CACHE_NAME = 'erp-cache-v39';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

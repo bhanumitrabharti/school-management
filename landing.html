@@ -1,2773 +1,922 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts</title>
-  <meta name="description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
-  <meta name="keywords" content="School ERP, School Management Software, Paathshala ERP, CtrlShifts, Bokaro School Software, Jharkhand School ERP, WhatsApp fee receipt">
-  <meta name="author" content="Ctrl Shift Solutions">
-  <meta name="robots" content="index, follow">
-  
-  <!-- Open Graph / Facebook / WhatsApp -->
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://ctrlshifts.in/">
-  <meta property="og:title" content="Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts">
-  <meta property="og:description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
-  <meta property="og:image" content="https://ctrlshifts.in/assets/dash-dark.jpg">
-  <meta property="og:locale" content="en_IN">
-  <meta property="og:site_name" content="Paathshala by Ctrl Shift Solutions">
-
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts">
-  <meta name="twitter:description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
-  <meta name="twitter:image" content="https://ctrlshifts.in/assets/dash-dark.jpg">
-
-  <link rel="icon" type="image/png" href="assets/favicon.png">
-  <link rel="preload" as="image" href="assets/dash-dark.jpg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  
-  <style>
-    /* ============ TOKENS & RESET ============ */
-    :root {
-      --ink: #070D1F;
-      --ink-2: #0C1430;
-      --ink-3: #111B3D;
-      --paper: #F8FAFC;
-      --white: #FFFFFF;
-      --blue: #2563EB;
-      --blue-d: #1D4ED8;
-      --sky: #0EA5E9;
-      --sky-l: #38BDF8;
-      --amber: #F59E0B;
-      --green: #10B981;
-      --wa: #22C55E;
-      --text: #0F172A;
-      --slate: #475569;
-      --slate-l: #94A3B8;
-      --line: #E2E8F0;
-      --line-dark: rgba(255, 255, 255, 0.08);
-      --radius: 16px;
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-      --shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      --disp: 'Bricolage Grotesque', sans-serif;
-      --body: 'Inter', sans-serif;
-      --mono: 'Space Grotesk', sans-serif;
-      --transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-      overflow-x: hidden;
-    }
-
-    body {
-      font-family: var(--body);
-      color: var(--text);
-      background: var(--paper);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
-    }
-
-    img {
-      max-width: 100%;
-      height: auto;
-      display: block;
-    }
-
-    a {
-      text-decoration: none;
-      color: inherit;
-    }
-
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    section {
-      position: relative;
-      overflow: hidden;
-    }
-
-    .ruled {
-      background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 47px, rgba(37, 99, 235, 0.04) 47px, rgba(37, 99, 235, 0.04) 48px);
-    }
-
-    .chalk {
-      position: relative;
-      white-space: nowrap;
-      isolation: isolate;
-      color: var(--sky-l);
-    }
-    
-    .chalk::after {
-      content: "";
-      position: absolute;
-      left: -2%;
-      right: -2%;
-      bottom: 0.04em;
-      height: 0.3em;
-      background: var(--amber);
-      opacity: 0.45;
-      border-radius: 3px;
-      transform: skewX(-12deg);
-      z-index: -1;
-    }
-
-    .eyebrow {
-      font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--blue);
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-
-    .eyebrow::before {
-      content: "";
-      width: 20px;
-      height: 2px;
-      background: var(--amber);
-      border-radius: 2px;
-    }
-
-    .dark .eyebrow {
-      color: var(--sky-l);
-    }
-
-    .section-label {
-      color: #0EA5E9;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.5rem;
-      font-family: var(--mono);
-      display: inline-block;
-    }
-
-    h1, h2, h3 {
-      font-family: var(--disp);
-      line-height: 1.15;
-      letter-spacing: -0.02em;
-    }
-
-    h2 {
-      font-size: clamp(28px, 4vw, 42px);
-      font-weight: 800;
-      color: var(--ink);
-    }
-
-    .dark h2 {
-      color: var(--white);
-    }
-
-    .sub {
-      color: var(--slate);
-      font-size: clamp(16px, 1.8vw, 18px);
-      max-width: 650px;
-      font-weight: 400;
-    }
-
-    .dark .sub {
-      color: var(--slate-l);
-    }
-
-    /* ============ BUTTONS & INTERACTIVES ============ */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      font-family: var(--body);
-      font-weight: 600;
-      font-size: 15px;
-      padding: 14px 28px;
-      border-radius: 12px;
-      border: 0;
-      cursor: pointer;
-      transition: var(--transition);
-    }
-
-    .btn:active {
-      transform: scale(0.97);
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #2563EB 0%, #0EA5E9 100%);
-      color: var(--white);
-      box-shadow: 0 10px 20px -6px rgba(37, 99, 235, 0.4);
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 15px 25px -4px rgba(37, 99, 235, 0.5);
-    }
-
-    .btn-wa {
-      background: var(--wa);
-      color: #064e3b;
-      box-shadow: 0 10px 20px -6px rgba(34, 197, 94, 0.3);
-    }
-
-    .btn-wa:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 15px 25px -4px rgba(34, 197, 94, 0.4);
-    }
-
-    .btn-ghost {
-      background: transparent;
-      color: var(--white);
-      border: 1.5px solid var(--line-dark);
-    }
-
-    .btn-ghost:hover {
-      border-color: rgba(255, 255, 255, 0.3);
-      background: rgba(255, 255, 255, 0.05);
-      transform: translateY(-2px);
-    }
-
-    .btn-ghost-l {
-      background: var(--white);
-      color: var(--text);
-      border: 1.5px solid var(--line);
-    }
-
-    .btn-ghost-l:hover {
-      border-color: #cbd5e1;
-      transform: translateY(-3px);
-      box-shadow: var(--shadow-md);
-    }
-
-    .wa-ic {
-      width: 18px;
-      height: 18px;
-      flex: none;
-    }
-
-    /* ============ HEADER ============ */
-    header {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 100;
-      transition: var(--transition);
-      padding: 18px 0;
-    }
-
-    header.scrolled {
-      background: rgba(7, 13, 31, 0.9);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      box-shadow: 0 1px 0 var(--line-dark);
-      padding: 12px 0;
-    }
-
-    .nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      background: rgba(255, 255, 255, 0.06);
-      padding: 6px 16px 6px 8px;
-      border-radius: 99px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      transition: var(--transition);
-    }
-
-    .brand:hover {
-      background: rgba(255, 255, 255, 0.12);
-      transform: translateY(-1px);
-    }
-
-    .brand img {
-      height: 32px;
-      width: auto;
-      background: rgba(255, 255, 255, 0.95) !important;
-      padding: 4px !important;
-      border-radius: 50% !important;
-      border: 1px solid rgba(255, 255, 255, 0.2) !important;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-    }
-
-    .brand-name {
-      font-family: var(--disp);
-      font-weight: 800;
-      font-size: 19px;
-      color: var(--white);
-      letter-spacing: -0.01em;
-    }
-
-    .brand-by {
-      display: block;
-      font-family: var(--mono);
-      font-size: 9px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--slate-l);
-      font-weight: 600;
-      margin-top: -1px;
-    }
-
-    .nav-links {
-      display: flex;
-      gap: 28px;
-      align-items: center;
-    }
-
-    .nav-links a {
-      color: #cbd5e1;
-      font-size: 14.5px;
-      font-weight: 500;
-      transition: var(--transition);
-      cursor: pointer;
-    }
-
-    .nav-links a:hover {
-      color: var(--white);
-    }
-
-    .head-phone {
-      font-family: var(--mono);
-      font-size: 14.5px;
-      font-weight: 700;
-      color: var(--white);
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(37, 99, 235, 0.15);
-      padding: 8px 18px;
-      border-radius: 99px;
-      border: 1px solid rgba(37, 99, 235, 0.25);
-      transition: var(--transition);
-    }
-
-    .head-phone:hover {
-      background: var(--blue);
-      border-color: var(--blue);
-      transform: translateY(-2px);
-    }
-
-    .head-phone svg {
-      width: 14px;
-      height: 14px;
-    }
-
-    .nav-cta {
-      padding: 10px 22px;
-      font-size: 14px;
-    }
-
-    .burger {
-      background: none;
-      border: 0;
-      cursor: pointer;
-      padding: 8px;
-      display: none;
-    }
-
-    .burger span {
-      display: block;
-      width: 24px;
-      height: 2px;
-      background: var(--white);
-      margin: 5px 0;
-      border-radius: 2px;
-      transition: 0.25s;
-    }
-
-    .mnav {
-      display: none;
-    }
-
-    /* ============ HERO SECTION ============ */
-    .hero {
-      background: linear-gradient(135deg, #070D1F 0%, #0C1430 60%, #0d1f3c 100%);
-      color: var(--white);
-      padding: 180px 0 80px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-video-bg {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      z-index: 0;
-      opacity: 0.18;
-      pointer-events: none;
-    }
-
-    .hero-content {
-      position: relative;
-      z-index: 1;
-    }
-
-    .hero::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: 
-        radial-gradient(1000px 500px at 80% -10%, rgba(37, 99, 235, 0.22), transparent 70%),
-        radial-gradient(700px 450px at 10% 20%, rgba(56, 189, 248, 0.1), transparent 60%);
-      pointer-events: none;
-    }
-
-    .hero .wrap {
-      position: relative;
-      z-index: 2;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 60px;
-      align-items: center;
-    }
-
-    .hero h1 {
-      font-size: clamp(38px, 5.2vw, 60px);
-      font-weight: 800;
-      margin-bottom: 24px;
-      line-height: 1.1;
-      text-shadow: 0 2px 40px rgba(14, 165, 233, 0.3);
-    }
-
-    .hero .sub {
-      margin-bottom: 36px;
-      font-size: 17.5px;
-      color: #cbd5e1;
-    }
-
-    .hero-ctas {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      margin-bottom: 32px;
-    }
-
-    .hero-chips {
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
-    }
-
-    .chip {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13.5px;
-      color: #cbd5e1;
-      font-weight: 500;
-    }
-
-    .chip svg {
-      width: 16px;
-      height: 16px;
-      color: var(--green);
-      flex: none;
-    }
-
-    /* ============ PREMIUM HERO IMAGE LAYOUT ============ */
-    .hero-visual {
-      position: relative;
-      padding: 40px 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .hero-dashboard-img {
-      width: 100%;
-      height: auto;
-      border-radius: 16px;
-      box-shadow: 0 35px 80px -15px rgba(0, 0, 0, 0.7);
-      display: block;
-      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .hero-dashboard-img:hover {
-      transform: translateY(-4px) scale(1.01);
-    }
-
-    /* Well-spaced floating cards */
-    .wa-card {
-      position: absolute;
-      right: -30px;
-      bottom: -15px;
-      width: min(290px, 80%);
-      background: #0f172a;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: 0 30px 60px -10px rgba(0, 0, 0, 0.6);
-      animation: float 6s ease-in-out infinite;
-      z-index: 10;
-    }
-
-    .wa-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .wa-ava {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: var(--wa);
-      display: grid;
-      place-items: center;
-      color: var(--white);
-      flex: none;
-    }
-
-    .wa-ava svg {
-      width: 18px;
-      height: 18px;
-    }
-
-    .wa-head b {
-      font-size: 13px;
-      color: #f8fafc;
-      display: block;
-      line-height: 1.25;
-    }
-
-    .wa-head span {
-      font-size: 11px;
-      color: var(--slate-l);
-    }
-
-    .wa-bubble {
-      background: #14532d;
-      border-radius: 4px 14px 14px 14px;
-      padding: 12px;
-      font-size: 12px;
-      line-height: 1.6;
-      color: #d1fae5;
-    }
-
-    .wa-bubble .amt {
-      color: #4ade80;
-      font-weight: 700;
-    }
-
-    .wa-time {
-      font-size: 10px;
-      color: #86efac;
-      text-align: right;
-      margin-top: 6px;
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 3px;
-    }
-
-    .wa-time svg {
-      width: 13px;
-      height: 13px;
-      color: var(--sky-l);
-    }
-
-    .stat-fab {
-      position: absolute;
-      left: -40px;
-      top: -10px;
-      background: var(--white);
-      color: var(--text);
-      border-radius: 16px;
-      padding: 14px 20px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      animation: float 7s ease-in-out infinite reverse;
-      z-index: 10;
-    }
-
-    .stat-fab .ic {
-      width: 38px;
-      height: 38px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #d1fae5, #a7f3d0);
-      display: grid;
-      place-items: center;
-      color: #047857;
-    }
-
-    .stat-fab .ic svg {
-      width: 18px;
-      height: 18px;
-    }
-
-    .stat-fab b {
-      font-family: var(--mono);
-      font-size: 16px;
-      display: block;
-      line-height: 1.2;
-    }
-
-    .stat-fab span {
-      font-size: 11px;
-      color: var(--slate);
-      font-weight: 500;
-    }
-
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-12px); }
-    }
-
-    /* ============ STATS STRIP SECTION ============ */
-    .stats-strip {
-      background: linear-gradient(90deg, #0C1430, #0f1f45, #0C1430);
-      border-top: 1px solid rgba(37, 99, 235, 0.3);
-      border-bottom: 1px solid rgba(37, 99, 235, 0.3);
-    }
-    .stats-inner {
-      display: flex;
-      justify-content: center;
-      gap: 3rem;
-      flex-wrap: wrap;
-      padding: 2.5rem 2rem 1.5rem;
-    }
-    .stat-item {
-      text-align: center;
-      min-width: 140px;
-    }
-    .stat-icon {
-      font-size: 1.8rem;
-      margin-bottom: 0.5rem;
-    }
-    .stat-number {
-      font-size: 2.8rem;
-      font-weight: 800;
-      font-family: 'Bricolage Grotesque', var(--disp);
-      color: #2563EB;
-      display: inline;
-    }
-    .stat-suffix {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: #0EA5E9;
-      display: inline;
-    }
-    .stat-label {
-      font-size: 0.8rem;
-      color: #94A3B8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-top: 0.3rem;
-    }
-    .stats-tagline {
-      text-align: center;
-      color: #94A3B8;
-      font-size: 0.9rem;
-      padding: 0 1.5rem 2rem;
-      margin: 0;
-    }
-
-    /* ============ PROOF SECTION ============ */
-    .proof {
-      background: var(--ink);
-      color: var(--white);
-      padding: 40px 0 80px;
-    }
-
-    .proof-box {
-      border: 1px solid var(--line-dark);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
-      border-radius: 24px;
-      padding: 40px 48px;
-      display: grid;
-      grid-template-columns: 1.1fr 1.9fr;
-      gap: 40px;
-      align-items: center;
-    }
-
-    .proof-l p {
-      font-family: var(--disp);
-      font-size: 23px;
-      font-weight: 700;
-      line-height: 1.35;
-    }
-
-    .proof-l span {
-      display: block;
-      font-size: 14px;
-      color: var(--slate-l);
-      font-weight: 400;
-      font-family: var(--body);
-      margin-top: 12px;
-    }
-
-    .proof-stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
-
-    .pstat {
-      text-align: center;
-      padding: 10px 6px;
-    }
-
-    .pstat b {
-      font-family: var(--mono);
-      font-size: clamp(26px, 3.2vw, 36px);
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--sky-l), var(--blue));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    .pstat span {
-      font-size: 12.5px;
-      color: var(--slate-l);
-      font-weight: 500;
-      line-height: 1.3;
-    }
-
-    /* ============ PROBLEMS SECTION ============ */
-    .problems {
-      padding: 110px 0;
-    }
-
-    .sec-head {
-      margin-bottom: 60px;
-    }
-
-    .prob-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-    }
-
-    .prob {
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 32px 28px;
-      transition: var(--transition);
-      position: relative;
-    }
-
-    .prob:hover {
-      transform: translateY(-8px);
-      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.06);
-      border-color: #cbd5e1;
-    }
-
-    .prob .em {
-      font-size: 28px;
-      margin-bottom: 16px;
-      display: block;
-    }
-
-    .prob h3 {
-      font-size: 18px;
-      font-weight: 700;
-      margin-bottom: 10px;
-      font-family: var(--body);
-      color: var(--ink);
-    }
-
-    .prob p {
-      font-size: 14.5px;
-      color: var(--slate);
-      line-height: 1.6;
-    }
-
-    /* ============ ECOSYSTEM DIAGRAM SECTION ============ */
-    .ecosystem.dark {
-      background: #070D1F;
-      padding: 5rem 1.5rem;
-      text-align: center;
-      position: relative;
-    }
-    .ecosystem .section-label {
-      color: #0EA5E9;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.5rem;
-      font-family: var(--mono);
-    }
-    .ecosystem .section-h {
-      font-family: var(--disp);
-      font-size: clamp(28px, 4vw, 42px);
-      font-weight: 800;
-      line-height: 1.2;
-      margin-bottom: 1rem;
-      color: #FFFFFF;
-    }
-    .ecosystem .section-sub {
-      color: #94A3B8;
-      font-size: 1.05rem;
-      max-width: 650px;
-      margin: 0 auto;
-      line-height: 1.6;
-    }
-    .eco-diagram {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2rem;
-      margin-top: 3rem;
-    }
-    .eco-hub {
-      background: linear-gradient(135deg, #2563EB, #0EA5E9);
-      border-radius: 50%;
-      width: 110px;
-      height: 110px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.8rem;
-      color: #FFFFFF;
-      font-weight: 700;
-      box-shadow: 0 0 40px rgba(37, 99, 235, 0.4);
-    }
-    .eco-hub span {
-      font-size: 0.85rem;
-      font-family: var(--disp);
-      letter-spacing: 0.5px;
-      margin-top: 2px;
-    }
-    .eco-spokes {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      justify-content: center;
-      max-width: 760px;
-    }
-    .eco-node {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(37, 99, 235, 0.3);
-      border-radius: 16px;
-      padding: 1.2rem 1.5rem;
-      text-align: center;
-      color: #CBD5E1;
-      font-size: 0.9rem;
-      min-width: 130px;
-      transition: transform 0.3s, border-color 0.3s;
-    }
-    .eco-node:hover {
-      transform: translateY(-4px);
-      border-color: #2563EB;
-      box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.3);
-    }
-    .eco-node strong {
-      display: block;
-      color: #FFFFFF;
-      margin: 0.3rem 0;
-      font-size: 1rem;
-    }
-    .eco-node small {
-      color: #64748B;
-      font-size: 0.75rem;
-      display: block;
-    }
-
-    /* ============ FEATURES SECTION ============ */
-    .features {
-      padding: 40px 0 80px;
-    }
-
-    .feat {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 72px;
-      align-items: center;
-      padding: 60px 0;
-    }
-
-    .feat:nth-child(even) .feat-txt {
-      order: 2;
-    }
-
-    .feat h3 {
-      font-size: clamp(24px, 2.8vw, 32px);
-      font-weight: 800;
-      color: var(--ink);
-      margin-bottom: 18px;
-    }
-
-    .feat p {
-      color: var(--slate);
-      font-size: 16px;
-      margin-bottom: 24px;
-    }
-
-    .feat ul {
-      list-style: none;
-    }
-
-    .feat li {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
-      font-size: 15px;
-      color: var(--text);
-      margin-bottom: 14px;
-      font-weight: 500;
-    }
-
-    .feat li svg {
-      width: 18px;
-      height: 18px;
-      color: var(--green);
-      flex: none;
-      margin-top: 3px;
-    }
-
-    .shot {
-      border-radius: 18px;
-      overflow: hidden;
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow-lg);
-      background: var(--white);
-      transition: var(--transition);
-    }
-
-    .shot:hover {
-      transform: scale(1.02) translateY(-4px);
-      box-shadow: var(--shadow-xl);
-    }
-
-    .shot img {
-      width: 100%;
-      display: block;
-    }
-
-    .mini-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      margin-top: 48px;
-    }
-
-    .mini {
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 26px;
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-      transition: var(--transition);
-    }
-
-    .mini:hover {
-      transform: translateY(-6px);
-      box-shadow: 0 15px 35px -10px rgba(0, 0, 0, 0.05);
-      border-color: #cbd5e1;
-    }
-
-    .mini .ic {
-      width: 42px;
-      height: 42px;
-      border-radius: 12px;
-      flex: none;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(135deg, #dbeafe, #e0f2fe);
-      color: var(--blue);
-    }
-
-    .mini .ic svg {
-      width: 20px;
-      height: 20px;
-    }
-
-    .mini b {
-      font-size: 15.5px;
-      display: block;
-      margin-bottom: 6px;
-      color: var(--ink);
-    }
-
-    .mini span {
-      font-size: 13.5px;
-      color: var(--slate);
-      line-height: 1.55;
-    }
-
-    /* ============ TESTIMONIALS SECTION ============ */
-    .testimonials {
-      padding: 90px 0;
-    }
-    .testimonials .section-inner {
-      text-align: center;
-    }
-    .testimonials .section-label {
-      color: #0EA5E9;
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 0.5rem;
-      font-family: var(--mono);
-    }
-    .testimonials .section-h {
-      font-family: var(--disp);
-      font-size: clamp(28px, 4vw, 42px);
-      font-weight: 800;
-      line-height: 1.2;
-      margin-bottom: 1rem;
-      color: var(--text);
-    }
-    .testimonial-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-      margin-top: 2.5rem;
-      text-align: left;
-    }
-    .tcard {
-      background: #F8FAFC;
-      border: 1px solid #E2E8F0;
-      border-radius: 16px;
-      padding: 1.8rem;
-      position: relative;
-      box-shadow: var(--shadow-sm);
-      transition: var(--transition);
-    }
-    .tcard:hover {
-      transform: translateY(-4px);
-      box-shadow: var(--shadow-md);
-      border-color: rgba(37, 99, 235, 0.3);
-    }
-    .tcard-quote {
-      font-size: 4rem;
-      line-height: 1;
-      color: #2563EB;
-      opacity: 0.2;
-      font-family: 'Bricolage Grotesque', var(--disp);
-      position: absolute;
-      top: 1rem;
-      right: 1.5rem;
-    }
-    .tcard-text {
-      color: #0F172A;
-      line-height: 1.7;
-      font-size: 0.95rem;
-      margin-bottom: 1.2rem;
-    }
-    .tcard-author {
-      border-top: 1px solid #E2E8F0;
-      padding-top: 1rem;
-    }
-    .tcard-name {
-      font-weight: 700;
-      color: #070D1F;
-      font-size: 0.9rem;
-    }
-    .tcard-school {
-      color: #94A3B8;
-      font-size: 0.8rem;
-      margin-top: 0.2rem;
-    }
-    .dark .tcard {
-      background: rgba(255, 255, 255, 0.04);
-      border-color: rgba(255, 255, 255, 0.08);
-    }
-    .dark .tcard-text {
-      color: #CBD5E1;
-    }
-
-    /* ============ CALCULATOR SECTION ============ */
-    .calc-section {
-      padding: 110px 0;
-      background: var(--white);
-      border-bottom: 1px solid var(--line);
-    }
-
-    .calc-card {
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: 24px;
-      padding: 48px;
-      box-shadow: var(--shadow-lg);
-      display: grid;
-      grid-template-columns: 0.95fr 1.05fr;
-      gap: 60px;
-      align-items: center;
-      transition: var(--transition);
-    }
-
-    .calc-card:hover {
-      box-shadow: 0 35px 80px -20px rgba(7, 13, 31, 0.1);
-    }
-
-    .calc-slider-box {
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
-    .calc-slider-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .calc-slider-header h3 {
-      font-family: var(--disp);
-      font-size: 26px;
-      color: var(--ink);
-    }
-
-    .calc-student-badge {
-      font-family: var(--mono);
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--blue);
-      background: #eff6ff;
-      padding: 6px 18px;
-      border-radius: 12px;
-      border: 1px solid rgba(37, 99, 235, 0.1);
-    }
-
-    .real-slider {
-      width: 100%;
-      height: 8px;
-      background: #e2e8f0;
-      border-radius: 99px;
-      appearance: none;
-      outline: none;
-      accent-color: var(--blue);
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .real-slider:hover {
-      background: #cbd5e1;
-    }
-
-    .calc-outputs {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 20px;
-    }
-
-    .output-node {
-      background: var(--paper);
-      border: 1px solid var(--line);
-      padding: 24px;
-      border-radius: 16px;
-      text-align: left;
-      transition: var(--transition);
-    }
-
-    .output-node:hover {
-      transform: translateY(-4px);
-      background: var(--white);
-      border-color: #cbd5e1;
-      box-shadow: var(--shadow-sm);
-    }
-
-    .output-node span {
-      display: block;
-      font-size: 12.5px;
-      color: var(--slate);
-      font-weight: 600;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .output-node b {
-      font-family: var(--mono);
-      font-size: 28px;
-      color: var(--ink);
-      display: block;
-    }
-
-    .output-node.green-node b {
-      color: var(--green);
-    }
-
-    .calc-recommendation {
-      grid-column: span 2;
-      background: #eff6ff;
-      border: 1px dashed rgba(37, 99, 235, 0.35);
-      padding: 16px 20px;
-      border-radius: 12px;
-      text-align: center;
-      font-weight: 600;
-      color: var(--blue-d);
-      font-size: 15px;
-      transition: var(--transition);
-    }
-
-    /* ============ WORKFLOW COMPARISON SECTION ============ */
-    .time {
-      background: var(--ink);
-      color: var(--white);
-      padding: 110px 0;
-    }
-
-    .time-rows {
-      margin: 48px 0 40px;
-      border: 1px solid var(--line-dark);
-      border-radius: 20px;
-      overflow: hidden;
-    }
-
-    .trow {
-      display: grid;
-      grid-template-columns: 1.6fr 1fr 1fr 1fr;
-      gap: 16px;
-      align-items: center;
-      padding: 20px 32px;
-      border-bottom: 1px solid var(--line-dark);
-      background: rgba(255, 255, 255, 0.015);
-      transition: var(--transition);
-    }
-
-    .trow:hover:not(.thead) {
-      background: rgba(255, 255, 255, 0.035);
-    }
-
-    .trow:last-child {
-      border-bottom: 0;
-    }
-
-    .trow.thead {
-      background: rgba(255, 255, 255, 0.05);
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--slate-l);
-      padding: 14px 32px;
-      font-weight: 600;
-    }
-
-    .trow .task {
-      font-weight: 600;
-      font-size: 15.5px;
-    }
-
-    .trow .old {
-      color: #fca5a5;
-      font-size: 14px;
-      font-family: var(--mono);
-    }
-
-    .trow .new {
-      color: #6ee7b7;
-      font-size: 14px;
-      font-family: var(--mono);
-      font-weight: 600;
-    }
-
-    .trow .save {
-      font-family: var(--mono);
-      font-weight: 700;
-      font-size: 15.5px;
-      color: var(--amber);
-    }
-
-    .time-total {
-      text-align: center;
-      font-family: var(--disp);
-      font-size: clamp(22px, 3.2vw, 30px);
-      font-weight: 700;
-    }
-
-    .time-total b {
-      color: var(--amber);
-    }
-
-    /* ============ PRICING SECTION ============ */
-    .pricing {
-      padding: 110px 0;
-    }
-
-    .toggle-row {
-      display: flex;
-      justify-content: center;
-      margin: 36px 0 48px;
-    }
-
-    .toggle {
-      display: inline-flex;
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: 99px;
-      padding: 5px;
-      gap: 4px;
-    }
-
-    .toggle button {
-      border: 0;
-      background: transparent;
-      font-family: var(--body);
-      font-weight: 600;
-      font-size: 14px;
-      padding: 9px 24px;
-      border-radius: 99px;
-      cursor: pointer;
-      color: var(--slate);
-      transition: var(--transition);
-    }
-
-    .toggle button.on {
-      background: var(--ink);
-      color: var(--white);
-    }
-
-    .toggle .save-tag {
-      font-size: 11px;
-      color: var(--green);
-      font-weight: 700;
-      margin-left: 6px;
-    }
-
-    .price-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 24px;
-      align-items: stretch;
-    }
-
-    .plan, .tier {
-      background: var(--white);
-      border: 1px solid rgba(37, 99, 235, 0.25);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-radius: 22px;
-      padding: 36px 30px;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      transition: var(--transition);
-    }
-
-    .plan:hover {
-      transform: translateY(-8px);
-      box-shadow: var(--shadow-lg);
-      border-color: #cbd5e1;
-    }
-
-    .plan.featured {
-      background: var(--ink);
-      color: var(--white);
-      border-color: var(--ink);
-      transform: scale(1.03);
-      box-shadow: 0 30px 60px -15px rgba(7, 13, 31, 0.4);
-      z-index: 2;
-    }
-
-    .plan.featured:hover {
-      transform: scale(1.03) translateY(-6px);
-      box-shadow: 0 40px 70px -15px rgba(7, 13, 31, 0.55);
-    }
-
-    .plan-badge {
-      position: absolute;
-      top: -13px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: linear-gradient(135deg, var(--amber), #fbbf24);
-      color: #451a03;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      padding: 6px 18px;
-      border-radius: 99px;
-      font-family: var(--mono);
-      white-space: nowrap;
-    }
-
-    .plan h3 {
-      font-family: var(--disp);
-      font-size: 22px;
-      font-weight: 800;
-      margin-bottom: 6px;
-      color: var(--ink);
-    }
-
-    .plan.featured h3 {
-      color: var(--white);
-    }
-
-    .plan .for {
-      font-size: 13.5px;
-      color: var(--slate);
-      margin-bottom: 24px;
-      line-height: 1.5;
-    }
-
-    .plan.featured .for {
-      color: var(--slate-l);
-    }
-
-    .plan .price {
-      font-family: var(--mono);
-      font-size: 44px;
-      font-weight: 700;
-      line-height: 1;
-      color: var(--ink);
-    }
-
-    .plan.featured .price {
-      color: var(--white);
-    }
-
-    .plan .price small {
-      font-size: 15px;
-      font-weight: 500;
-      color: var(--slate);
-    }
-
-    .plan.featured .price small {
-      color: var(--slate-l);
-    }
-
-    .plan .per-stu {
-      font-size: 12.5px;
-      color: var(--green);
-      font-weight: 600;
-      margin: 8px 0 4px;
-    }
-
-    .plan.featured .per-stu {
-      color: #6ee7b7;
-    }
-
-    .plan .yr-note {
-      font-size: 12px;
-      color: var(--slate);
-      margin: 0 0 20px;
-      font-weight: 500;
-    }
-
-    .plan.featured .yr-note {
-      color: var(--slate-l);
-    }
-
-    .plan ul {
-      list-style: none;
-      flex: 1;
-      margin-bottom: 30px;
-    }
-
-    .plan li {
-      display: flex;
-      gap: 10px;
-      font-size: 14px;
-      margin-bottom: 12px;
-      align-items: flex-start;
-      color: var(--slate);
-    }
-
-    .plan.featured li {
-      color: #cbd5e1;
-    }
-
-    .plan li svg {
-      width: 17px;
-      height: 17px;
-      color: var(--green);
-      flex: none;
-      margin-top: 2px;
-    }
-
-    .plan.featured li svg {
-      color: #6ee7b7;
-    }
-
-    .plan .btn {
-      justify-content: center;
-      width: 100%;
-    }
-
-    .price-trust {
-      display: flex;
-      justify-content: center;
-      gap: 24px;
-      flex-wrap: wrap;
-      margin-top: 44px;
-    }
-
-    .price-trust .chip {
-      color: var(--slate);
-    }
-
-    /* ============ FAQ SECTION (HINGLISH PRESERVED) ============ */
-    .faq {
-      padding: 40px 0 110px;
-    }
-
-    .faq-list {
-      max-width: 800px;
-      margin: 48px auto 0;
-    }
-
-    .q {
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      margin-bottom: 14px;
-      overflow: hidden;
-      transition: var(--transition);
-    }
-
-    .q:hover {
-      border-color: #cbd5e1;
-    }
-
-    .q button {
-      width: 100%;
-      border: 0;
-      background: none;
-      font-family: var(--body);
-      font-size: 16px;
-      font-weight: 600;
-      text-align: left;
-      padding: 20px 24px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      gap: 20px;
-      align-items: center;
-      color: var(--ink);
-    }
-
-    .q .plus {
-      width: 24px;
-      height: 24px;
-      flex: none;
-      border-radius: 50%;
-      background: #eff4ff;
-      color: var(--blue);
-      display: grid;
-      place-items: center;
-      font-size: 16px;
-      font-weight: 700;
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .q.open .plus {
-      transform: rotate(45deg);
-      background: var(--blue);
-      color: var(--white);
-    }
-
-    .q .ans {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease;
-    }
-
-    .q .ans p {
-      padding: 0 24px 22px;
-      font-size: 14.5px;
-      color: var(--slate);
-      line-height: 1.7;
-    }
-
-    /* ============ FINAL CTA SECTION ============ */
-    .final {
-      background: var(--ink);
-      color: var(--white);
-      padding: 120px 0;
-      text-align: center;
-      position: relative;
-    }
-
-    .final::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(800px 400px at 50% 120%, rgba(37, 99, 235, 0.28), transparent 65%);
-      pointer-events: none;
-    }
-
-    .final .wrap {
-      position: relative;
-      z-index: 2;
-    }
-
-    .final h2 {
-      font-size: clamp(32px, 4.4vw, 48px);
-      margin-bottom: 20px;
-    }
-
-    .final .sub {
-      margin: 0 auto 36px;
-      color: #cbd5e1;
-    }
-
-    .final-ctas {
-      display: flex;
-      gap: 16px;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-bottom: 24px;
-    }
-
-    /* ============ FOOTER SECTION ============ */
-    footer {
-      background: #030712;
-      color: #94a3b8;
-      padding: 64px 0 36px;
-      font-size: 14px;
-      border-top: 1px solid var(--line-dark);
-    }
-
-    .foot-grid {
-      display: grid;
-      grid-template-columns: 1.5fr 1fr 1fr 1.1fr;
-      gap: 40px;
-      margin-bottom: 48px;
-    }
-
-    .foot-grid img {
-      height: 48px;
-      width: auto;
-      margin-bottom: 16px;
-    }
-
-    .foot-grid h4 {
-      color: var(--white);
-      font-size: 13px;
-      font-family: var(--mono);
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      margin-bottom: 18px;
-      font-weight: 700;
-    }
-
-    .foot-grid a {
-      display: block;
-      margin-bottom: 12px;
-      transition: color 0.15s;
-    }
-
-    .foot-grid a:hover {
-      color: var(--white);
-    }
-
-    .foot-bottom {
-      border-top: 1px solid var(--line-dark);
-      padding-top: 28px;
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-      font-size: 13px;
-      color: #64748b;
-    }
-
-    /* ============ FLOATING WHATSAPP FAB ============ */
-    .fab {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      z-index: 90;
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background: var(--wa);
-      display: grid;
-      place-items: center;
-      box-shadow: 0 12px 28px -6px rgba(34, 197, 94, 0.45);
-      transition: var(--transition);
-    }
-
-    .fab:hover {
-      transform: scale(1.1) translateY(-2px);
-    }
-
-    .fab svg {
-      width: 32px;
-      height: 32px;
-      color: var(--white);
-    }
-
-    .fab::after {
-      content: "";
-      position: absolute;
-      inset: -6px;
-      border-radius: 50%;
-      border: 2px solid var(--wa);
-      opacity: 0.55;
-      animation: pulse 2.4s ease-out infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(0.9); opacity: 0.6; }
-      100% { transform: scale(1.35); opacity: 0; }
-    }
-
-    /* ============ MODAL SYSTEM ============ */
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(7, 13, 31, 0.8);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      z-index: 200;
-      display: none;
-      place-items: center;
-      padding: 24px;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-
-    .modal-overlay.active {
-      display: grid;
-      opacity: 1;
-    }
-
-    .modal-box {
-      background: var(--white);
-      border-radius: 20px;
-      max-width: 460px;
-      width: 100%;
-      padding: 40px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-      position: relative;
-      transform: translateY(30px) scale(0.96);
-      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-      max-height: 92vh;
-      overflow-y: auto;
-    }
-
-    .modal-overlay.active .modal-box {
-      transform: translateY(0) scale(1);
-    }
-
-    .modal-close {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: none;
-      border: 0;
-      font-size: 26px;
-      color: var(--slate);
-      cursor: pointer;
-      line-height: 1;
-      transition: color 0.2s;
-    }
-
-    .modal-close:hover {
-      color: var(--ink);
-    }
-
-    .modal-box h3 {
-      font-family: var(--disp);
-      font-size: 26px;
-      color: var(--ink);
-      margin-bottom: 8px;
-      font-weight: 800;
-    }
-
-    .modal-box p {
-      font-size: 14.5px;
-      color: var(--slate);
-      margin-bottom: 28px;
-    }
-
-    .form-group {
-      margin-bottom: 20px;
-      text-align: left;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 13.5px;
-      font-weight: 600;
-      color: var(--ink);
-      margin-bottom: 8px;
-    }
-
-    .form-control {
-      width: 100%;
-      padding: 12px 16px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      font-family: var(--body);
-      font-size: 15px;
-      outline: none;
-      transition: all 0.2s ease;
-      background: var(--paper);
-    }
-
-    .form-control:focus {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
-      background: var(--white);
-    }
-
-    /* ============ SCROLL REVEAL CLASS ============ */
-    .rv {
-      opacity: 0;
-      transform: translateY(30px) scale(0.98);
-      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .rv.in {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .rv {
-        opacity: 1;
-        transform: none;
-        transition: none;
-      }
-      .wa-card, .stat-fab {
-        animation: none;
-      }
-      .fab::after {
-        animation: none;
-      }
-      html {
-        scroll-behavior: auto;
-      }
-    }
-
-    /* ============ MOBILE RESPONSIVE ADAPTATIONS ============ */
-    @media (max-width: 980px) {
-      .hero-grid {
-        grid-template-columns: 1fr;
-        gap: 48px;
-      }
-
-      .proof-box {
-        grid-template-columns: 1fr;
-        gap: 30px;
-        padding: 32px 24px;
-      }
-
-      .prob-grid, .mini-grid, .price-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .calc-card {
-        grid-template-columns: 1fr;
-        gap: 36px;
-        padding: 30px;
-      }
-
-      .feat {
-        grid-template-columns: 1fr;
-        gap: 36px;
-        padding: 44px 0;
-      }
-
-      .feat:nth-child(even) .feat-txt {
-        order: 0;
-      }
-
-      .plan.featured {
-        transform: none;
-      }
-
-      .plan.featured:hover {
-        transform: translateY(-5px);
-      }
-
-      .nav-links, .head-phone {
-        display: none !important;
-      }
-
-      .burger {
-        display: block;
-      }
-
-      .mnav {
-        display: block;
-        position: fixed;
-        top: 0;
-        right: -100%;
-        width: min(320px, 85vw);
-        height: 100vh;
-        background: var(--ink-2);
-        z-index: 150;
-        padding: 90px 32px;
-        transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        box-shadow: -20px 0 60px rgba(0, 0, 0, 0.5);
-      }
-
-      .mnav.open {
-        right: 0;
-      }
-
-      .mnav a {
-        display: block;
-        color: #e2e8f0;
-        font-size: 18px;
-        font-weight: 600;
-        padding: 16px 0;
-        border-bottom: 1px solid var(--line-dark);
-      }
-
-      .mnav .mobile-phone-menu {
-        color: var(--sky-l) !important;
-        font-family: var(--mono);
-        margin: 20px 0 10px;
-        font-size: 17px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .mnav .btn {
-        margin-top: 24px;
-        width: 100%;
-        justify-content: center;
-      }
-
-      .mclose {
-        position: absolute;
-        top: 24px;
-        right: 24px;
-        background: none;
-        border: 0;
-        color: var(--white);
-        font-size: 32px;
-        cursor: pointer;
-      }
-    }
-
-    @media (max-width: 640px) {
-      .wrap {
-        padding: 0 20px;
-      }
-
-      .hero {
-        padding-top: 130px;
-      }
-
-      .hero-visual {
-        padding: 20px 0 40px;
-      }
-
-      .wa-card {
-        right: 0;
-        width: min(270px, 90%);
-        bottom: -20px;
-      }
-
-      .stat-fab {
-        left: 0;
-        top: -15px;
-        padding: 10px 14px;
-      }
-
-      .prob-grid, .mini-grid, .price-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .calc-outputs {
-        grid-template-columns: 1fr;
-      }
-
-      .calc-recommendation {
-        grid-column: span 1;
-      }
-
-      .proof-stats {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 20px;
-      }
-
-      .trow {
-        grid-template-columns: 1.4fr 1fr;
-        padding: 16px 20px;
-      }
-
-      .trow .old, .trow.thead .h-old, .trow .new, .trow.thead .h-new {
-        display: none;
-      }
-
-      .hero-ctas .btn {
-        width: 100%;
-        justify-content: center;
-      }
-
-      .final-ctas .btn {
-        width: 100%;
-        justify-content: center;
-      }
-
-      .foot-grid {
-        grid-template-columns: 1fr;
-        gap: 32px;
-      }
-
-      .stats-inner {
-        gap: 1.5rem;
-        padding: 2rem 1rem 1rem;
-      }
-
-      .eco-spokes {
-        gap: 0.75rem;
-      }
-
-      .eco-node {
-        min-width: 110px;
-        padding: 1rem 1.2rem;
-      }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts</title>
+<meta name="description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
+<meta name="keywords" content="School ERP, School Management Software, Paathshala ERP, CtrlShifts, Bokaro School Software, Jharkhand School ERP, WhatsApp fee receipt">
+<meta name="author" content="Ctrl Shift Solutions">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://ctrlshifts.in/">
+
+<!-- Open Graph / Facebook / WhatsApp -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ctrlshifts.in/">
+<meta property="og:title" content="Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts">
+<meta property="og:description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
+<meta property="og:image" content="https://ctrlshifts.in/assets/landing-v2/dash.jpg">
+<meta property="og:locale" content="en_IN">
+<meta property="og:site_name" content="Paathshala by Ctrl Shift Solutions">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts">
+<meta name="twitter:description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
+<meta name="twitter:image" content="https://ctrlshifts.in/assets/landing-v2/dash.jpg">
+
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preload" as="image" href="assets/landing-v2/dash.jpg" fetchpriority="high">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
+
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-E76LHV2WTZ"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-E76LHV2WTZ');
+</script>
+
+<style>
+/* Paathshala landing — single light look, built on the Ctrl Shift monogram's blues.
+   Display + body: Plus Jakarta Sans. Data + labels: JetBrains Mono. */
+:root{
+  --bg:#FFFFFF;--soft:#F4F7FD;--ink:#0A1638;--ink2:#33415F;--muted:#64708B;--line:#E3E9F5;
+  --blue:#0A66F0;--blue-d:#0747B8;--blue-dd:#062C73;--navy:#061233;--sky:#EAF2FF;--sky2:#D6E6FF;
+  --green:#0E9F6E;--green-l:#E4F7EE;--amber:#D98A04;--amber-l:#FEF3D7;--red:#E5484D;--red-l:#FDE8E8;
+  --wa:#E7FFDB;--wa-d:#0B7A55;
+  --f:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --m:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --hi:'Plus Jakarta Sans','Nirmala UI','Noto Sans Devanagari','Mangal',sans-serif;
+  --sh1:0 1px 2px rgba(10,22,56,.06),0 4px 14px rgba(10,22,56,.05);
+  --sh2:0 14px 34px -10px rgba(10,22,56,.18),0 2px 6px rgba(10,22,56,.05);
+  --sh3:0 50px 90px -30px rgba(6,44,115,.42),0 14px 30px -14px rgba(10,22,56,.2);
+  --ease:cubic-bezier(.16,1,.3,1);
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:84px}
+body{font-family:var(--f);font-size:16px;line-height:1.6;background:var(--bg);color:var(--ink);overflow-x:clip;-webkit-font-smoothing:antialiased}
+img{display:block;max-width:100%;height:auto}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+a{color:inherit}
+h1,h2,h3{line-height:1.12;letter-spacing:-.03em;text-wrap:balance;font-weight:800}
+h2{font-size:clamp(1.9rem,3.6vw,3rem)}
+h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
+.wrap{max-width:1180px;margin-inline:auto;padding-inline:20px}
+.sec{padding-block:clamp(64px,9vw,112px);position:relative}
+.soft{background:var(--soft)}
+.ico{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--m);font-size:.74rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--blue-d);margin-bottom:16px}
+.eyebrow i{width:18px;height:2px;background:var(--blue);border-radius:2px}
+.lead{color:var(--ink2);font-size:1.06rem;max-width:58ch;margin-top:14px}
+.hd{margin-bottom:clamp(32px,5vw,56px)}
+.hd.c{text-align:center}.hd.c .lead{margin-inline:auto}
+.grad{background:linear-gradient(100deg,var(--blue-dd),var(--blue) 55%,#4C96FF);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hi{font-family:var(--hi)}
+
+/* progress + nav */
+.prog{position:fixed;left:0;top:0;height:3px;width:100%;transform:scaleX(var(--p,0));transform-origin:0 50%;background:linear-gradient(90deg,var(--blue-dd),var(--blue),#5AA2FF);z-index:200}
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:100;background:rgba(255,255,255,.78);backdrop-filter:saturate(1.6) blur(16px);-webkit-backdrop-filter:saturate(1.6) blur(16px);border-bottom:1px solid transparent;transition:border-color .3s,box-shadow .3s,background .3s}
+.nav.sc{border-color:var(--line);box-shadow:0 8px 28px -18px rgba(10,22,56,.3);background:rgba(255,255,255,.92)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;gap:20px;height:68px}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none}
+.brand img{width:40px;height:auto;transition:transform .6s var(--ease)}
+.brand:hover img{transform:rotate(-8deg) scale(1.08)}
+.brand b{display:block;font-size:1.14rem;font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.brand small{display:block;font-size:.7rem;color:var(--muted);font-weight:500;letter-spacing:.01em}
+.links{display:flex;gap:6px;list-style:none}
+.links a{position:relative;display:block;padding:8px 13px;border-radius:99px;text-decoration:none;font-size:.92rem;font-weight:600;color:var(--ink2);transition:color .2s,background .2s}
+.links a:hover,.links a.act{color:var(--blue-d);background:var(--sky)}
+.nav-r{display:flex;align-items:center;gap:14px}
+.tel{font-family:var(--m);font-size:.84rem;font-weight:600;color:var(--ink2);white-space:nowrap;display:flex;align-items:center;gap:7px}
+.tel .ico{color:var(--blue)}
+
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:12px 20px;border-radius:12px;font-weight:700;font-size:.94rem;text-decoration:none;white-space:nowrap;overflow:hidden;transition:transform .25s var(--ease),box-shadow .25s,background .2s,border-color .2s,color .2s}
+.btn .ico{transition:transform .25s var(--ease)}
+.btn:hover .ico.go{transform:translateX(4px)}
+.btn-p{background:linear-gradient(180deg,#2079FF,#0A58DA);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 10px 22px -8px rgba(10,102,240,.6)}
+.btn-p::after{content:"";position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.38),transparent);transform:skewX(-20deg);transition:left .7s var(--ease)}
+.btn-p:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 16px 30px -10px rgba(10,102,240,.7)}
+.btn-p:hover::after{left:120%}
+.btn-s{background:#fff;color:var(--ink);border:1.5px solid var(--line);box-shadow:var(--sh1)}
+.btn-s:hover{border-color:var(--blue);color:var(--blue-d);background:var(--sky);transform:translateY(-2px)}
+.btn-lg{padding:15px 26px;font-size:1rem;border-radius:14px}
+.btn-w{background:#fff;color:var(--navy)}
+.btn-w:hover{transform:translateY(-2px);box-shadow:0 14px 30px -10px rgba(0,0,0,.5)}
+.btn:active{transform:translateY(0) scale(.98)}
+:focus-visible{outline:2.5px solid var(--blue);outline-offset:3px;border-radius:8px}
+
+/* hero */
+.hero{position:relative;padding-block:clamp(40px,6vw,76px) clamp(48px,6vw,84px);overflow:hidden;isolation:isolate;text-align:center}
+.hero::before{content:"";position:absolute;inset:0;z-index:-2;background-image:radial-gradient(rgba(10,102,240,.26) 1px,transparent 1.3px);background-size:26px 26px;-webkit-mask-image:radial-gradient(ellipse 72% 58% at 50% 26%,#000 15%,transparent 76%);mask-image:radial-gradient(ellipse 72% 58% at 50% 26%,#000 15%,transparent 76%)}
+.aur{position:absolute;z-index:-3;border-radius:50%;filter:blur(72px);pointer-events:none}
+.aur.a{width:540px;height:540px;left:-170px;top:-190px;background:#BCD7FF;opacity:.7;animation:drift 15s ease-in-out infinite alternate}
+.aur.b{width:460px;height:460px;right:-150px;top:60px;background:#CCDDFF;opacity:.75;animation:drift 19s ease-in-out infinite alternate-reverse}
+.aur.c{width:780px;height:360px;left:50%;margin-left:-390px;top:500px;background:#D9E8FF;opacity:.9}
+@keyframes drift{to{transform:translate(60px,44px) scale(1.14)}}
+.spot{position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(440px circle at var(--mx,50%) var(--my,18%),rgba(10,102,240,.11),transparent 62%)}
+.badge{display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 10px;border-radius:99px;background:#fff;border:1px solid var(--sky2);box-shadow:var(--sh1);font-size:.84rem;font-weight:600;color:var(--ink2)}
+.badge b{font-family:var(--m);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:var(--blue);padding:3px 8px;border-radius:99px;font-weight:600}
+.live{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 0 rgba(14,159,110,.5);animation:ping 2s infinite}
+@keyframes ping{70%{box-shadow:0 0 0 9px rgba(14,159,110,0)}100%{box-shadow:0 0 0 0 rgba(14,159,110,0)}}
+.hero h1{font-size:clamp(2.5rem,7vw,5.1rem);letter-spacing:-.045em;line-height:1.02;margin:22px auto 0}
+.hero h1 .w{display:inline-block;animation:rise .9s var(--ease) both;animation-delay:calc(var(--i)*70ms + 80ms)}
+@keyframes rise{from{opacity:0;transform:translateY(.55em) rotate(3deg);filter:blur(6px)}}
+.und{position:relative;white-space:nowrap}
+.und svg{position:absolute;left:-2%;bottom:-.16em;width:104%;height:.3em;overflow:visible}
+.und path{fill:none;stroke:var(--blue);stroke-width:5;stroke-linecap:round;stroke-dasharray:420;stroke-dashoffset:420;animation:draw 1.1s .9s var(--ease) forwards;opacity:.9}
+@keyframes draw{to{stroke-dashoffset:0}}
+.hero .sub{font-size:clamp(1.02rem,1.6vw,1.2rem);color:var(--ink2);max-width:60ch;margin:26px auto 0;animation:fade .9s .5s both}
+.hero .sub b{color:var(--blue-d);font-weight:700}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:30px;animation:fade .9s .65s both}
+.trust{display:flex;gap:10px 22px;justify-content:center;flex-wrap:wrap;margin-top:22px;font-size:.88rem;font-weight:600;color:var(--ink2);animation:fade .9s .8s both}
+.trust span{display:inline-flex;align-items:center;gap:7px}
+.trust .ico{color:var(--green);stroke-width:3}
+@keyframes fade{from{opacity:0;transform:translateY(14px)}}
+
+.stage{position:relative;max-width:1080px;margin:clamp(40px,6vw,64px) auto 0;padding-inline:20px;perspective:1700px;animation:fade 1.1s .7s both}
+.frame{background:#fff;border:1px solid #D5DEEF;border-radius:16px;box-shadow:var(--sh3);overflow:hidden;text-align:left}
+.stage .frame{transform:rotateX(var(--rx,9deg)) scale(var(--sc,.965));transform-origin:50% 0;will-change:transform}
+.fbar{display:flex;align-items:center;gap:7px;height:40px;padding-inline:14px;background:linear-gradient(#FBFCFF,#F2F5FB);border-bottom:1px solid var(--line)}
+.fbar i{width:10px;height:10px;border-radius:50%;background:#D5DCEA}
+.fbar i:nth-child(1){background:#FF6B60}.fbar i:nth-child(2){background:#FFBE2E}.fbar i:nth-child(3){background:#2ACB4A}
+.furl{margin-inline:auto;display:flex;align-items:center;gap:7px;min-width:0;max-width:70%;padding:4px 14px;border-radius:8px;background:#fff;border:1px solid var(--line);font-family:var(--m);font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.furl .ico{color:var(--green);width:12px;height:12px}
+.fbar::after{content:"";width:44px}
+.float{position:absolute;z-index:3;text-align:left;transform:translate(calc(var(--px,0)*var(--k,10px)),calc(var(--py,0)*var(--k,10px)));transition:transform .5s var(--ease)}
+.wa{left:-18px;bottom:9%;width:300px;--k:16px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh2);padding:12px;animation:bob 6s ease-in-out infinite}
+.wa-h{display:flex;align-items:center;gap:10px;padding:2px 4px 10px}
+.wa-av{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#25C685,#0B8F63);color:#fff;display:grid;place-items:center}
+.wa-h b{display:block;font-size:.86rem;line-height:1.2}
+.wa-h small{font-size:.72rem;color:var(--muted)}
+.bub{background:var(--wa);border-radius:4px 14px 14px 14px;padding:10px 12px 6px;font-size:.84rem;line-height:1.5;color:#10321F}
+.bub b{font-weight:700}
+.bub .amt{display:block;margin:6px 0;font-size:.92rem}
+.meta{display:flex;justify-content:flex-end;align-items:center;gap:5px;font-size:.66rem;color:#5E8571;margin-top:2px}
+.tick{width:17px;height:11px;fill:none;stroke:#8AA596;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:stroke .4s}
+.tick.read{stroke:#2A9DF4}
+.wa .tick{animation:read 6s 2.4s infinite}
+@keyframes read{0%,12%{stroke:#8AA596}20%,100%{stroke:#2A9DF4}}
+.chip{right:-22px;top:17%;--k:-14px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh2);padding:13px 16px;animation:bob 7s -2s ease-in-out infinite}
+.chip small{display:block;font-family:var(--m);font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.chip b{display:block;font-size:1.5rem;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.chip svg{display:block;width:150px;height:30px;margin-top:4px}
+.chip2{right:5%;bottom:-18px;--k:10px;display:flex;align-items:center;gap:10px;background:var(--navy);color:#fff;border-radius:14px;padding:11px 15px;font-size:.84rem;font-weight:600;box-shadow:var(--sh2);animation:bob 5.5s -1s ease-in-out infinite}
+.chip2 .ok{width:24px;height:24px;border-radius:50%;background:var(--green);display:grid;place-items:center}
+.chip2 .ok .ico{width:13px;height:13px;stroke-width:3.2}
+@keyframes bob{50%{translate:0 -9px}}
+
+/* marquee */
+.mq{border-block:1px solid var(--line);background:#fff;overflow:hidden;padding-block:16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.mq-t{display:flex;gap:44px;width:max-content;animation:mq 38s linear infinite}
+.mq:hover .mq-t{animation-play-state:paused}
+.mq-t span{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:.95rem;color:var(--ink2);white-space:nowrap}
+.mq-t .ico{color:var(--blue)}
+@keyframes mq{to{transform:translateX(-50%)}}
+
+/* stats band */
+.band{background:var(--navy);color:#fff;position:relative;overflow:hidden;padding-block:clamp(56px,7vw,88px)}
+.band::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);background-size:56px 56px;-webkit-mask-image:radial-gradient(ellipse 80% 90% at 50% 50%,#000,transparent 80%);mask-image:radial-gradient(ellipse 80% 90% at 50% 50%,#000,transparent 80%)}
+.band::after{content:"";position:absolute;width:620px;height:620px;border-radius:50%;right:-180px;top:-260px;background:radial-gradient(circle,rgba(10,102,240,.55),transparent 65%)}
+.band .wrap{position:relative;z-index:1}
+.band-top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:18px 40px;margin-bottom:40px}
+.band h2{max-width:18ch}
+.band h2 em{font-style:normal;color:#7DB4FF}
+.band-top p{color:#B3C2E3;max-width:44ch;font-size:1.02rem}
+.band .eyebrow{color:#8FBEFF}.band .eyebrow i{background:#5AA2FF}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid rgba(255,255,255,.12);border-radius:20px;overflow:hidden;background:rgba(255,255,255,.035);backdrop-filter:blur(4px)}
+.stat{padding:28px 24px;border-right:1px solid rgba(255,255,255,.12);transition:background .3s}
+.stat:last-child{border-right:0}
+.stat:hover{background:rgba(90,162,255,.12)}
+.stat .n{font-size:clamp(1.9rem,3.6vw,3rem);font-weight:800;letter-spacing:-.04em;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat .n sup{font-size:.5em;color:#7DB4FF;vertical-align:top;margin-left:2px}
+.stat .l{font-family:var(--m);font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:#9FB2D9;margin-top:12px}
+.stat .bar{height:3px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:16px;overflow:hidden}
+.stat .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#5AA2FF,#fff);border-radius:3px;transition:width 1.6s var(--ease) .2s}
+.in .stat .bar i,.stat.in .bar i{width:var(--w)}
+
+/* time saved */
+.time{display:grid;grid-template-columns:.85fr 1.15fr;gap:clamp(32px,5vw,72px);align-items:start}
+.time-l{position:sticky;top:110px}
+.big{display:flex;gap:28px;flex-wrap:wrap;margin-top:30px}
+.big div{padding-left:16px;border-left:3px solid var(--blue)}
+.big b{display:block;font-size:clamp(2rem,3.4vw,2.8rem);font-weight:800;letter-spacing:-.04em;line-height:1}
+.big span{font-size:.88rem;color:var(--muted);font-weight:600}
+.rows{display:grid;gap:14px}
+.row{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;transition:transform .35s var(--ease),box-shadow .35s,border-color .35s}
+.row:hover{transform:translateX(6px);box-shadow:var(--sh2);border-color:var(--sky2)}
+.row-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.row-h b{font-size:1rem}
+.save{font-family:var(--m);font-size:.72rem;font-weight:600;color:var(--wa-d);background:var(--green-l);padding:4px 10px;border-radius:99px;white-space:nowrap}
+.cmp{display:grid;grid-template-columns:86px 1fr;gap:7px 12px;align-items:center;font-size:.8rem}
+.cmp span{font-family:var(--m);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.trk{display:flex;align-items:center;gap:10px;min-width:0}
+.trk i{display:block;height:12px;border-radius:99px;width:0;min-width:0;transition:width 1.3s var(--ease)}
+.trk.old i{background:repeating-linear-gradient(-45deg,#C9D2E4 0 6px,#DDE3F0 6px 12px)}
+.trk.new i{background:linear-gradient(90deg,var(--blue-dd),var(--blue));transition-delay:.5s;box-shadow:0 4px 10px -3px rgba(10,102,240,.6)}
+.trk em{font-style:normal;font-weight:700;white-space:nowrap}
+.trk.new em{color:var(--blue-d)}
+.row.in .trk.old i{width:var(--o,78%)}
+.row.in .trk.new i{width:max(var(--n),10px)}
+.note{font-size:.8rem;color:var(--muted);margin-top:14px}
+
+/* product tour */
+.tour{display:grid;grid-template-columns:340px 1fr;gap:28px;align-items:start}
+.tabs{display:grid;gap:10px}
+.tab{position:relative;display:flex;gap:14px;text-align:left;padding:16px;border-radius:16px;border:1px solid transparent;overflow:hidden;transition:background .3s,border-color .3s,box-shadow .3s}
+.tab:hover{background:#fff;border-color:var(--line)}
+.tab.on{background:#fff;border-color:var(--sky2);box-shadow:var(--sh2)}
+.ti{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--sky);color:var(--blue-d);flex:none;transition:background .3s,color .3s,transform .4s var(--ease)}
+.tab.on .ti{background:var(--blue);color:#fff;transform:scale(1.06) rotate(-4deg)}
+.tt{min-width:0}
+.tt b{display:block;font-size:1rem;font-weight:700}
+.td{display:grid;grid-template-rows:0fr;transition:grid-template-rows .45s var(--ease);font-size:.9rem;color:var(--ink2)}
+.td>span{overflow:hidden}
+.tab.on .td{grid-template-rows:1fr;margin-top:4px}
+.tp{position:absolute;left:0;bottom:0;height:3px;width:100%;background:var(--blue);transform:scaleX(0);transform-origin:0 50%}
+.tab.on .tp{animation:tp 6.5s linear forwards}
+.tour.pause .tab.on .tp{animation-play-state:paused}
+@keyframes tp{to{transform:scaleX(1)}}
+.tview{box-shadow:var(--sh2);transition:transform .5s var(--ease),box-shadow .5s}
+.tview:hover{transform:translateY(-4px);box-shadow:var(--sh3)}
+.shots{position:relative;aspect-ratio:1440/836;background:#F4F5F7}
+.shots img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;opacity:0;transform:scale(1.025);transition:opacity .6s,transform .9s var(--ease)}
+.shots img.on{opacity:1;transform:none}
+.tcap{display:none}
+
+/* live demos */
+.demos{display:grid;grid-template-columns:1.12fr .88fr;gap:22px;align-items:stretch}
+.demo{background:#fff;border:1px solid var(--line);border-radius:22px;box-shadow:var(--sh1);padding:22px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.demo-h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.demo-h h3{display:flex;align-items:center;gap:9px}
+.demo-h h3 .ico{color:var(--blue)}
+.tag{font-family:var(--m);font-size:.68rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--blue-d);background:var(--sky);padding:4px 10px;border-radius:99px;white-space:nowrap}
+.bulk{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bulk .cls{font-weight:700;font-size:.9rem;margin-right:auto}
+.bulk .cls small{font-weight:500;color:var(--muted)}
+.mini{padding:7px 12px;border-radius:10px;font-size:.8rem;font-weight:700;border:1px solid var(--line);background:#fff;transition:transform .2s,background .2s,border-color .2s}
+.mini:hover{transform:translateY(-2px)}
+.mini.g{background:var(--green-l);color:var(--wa-d);border-color:#BFE8D6}
+.mini.r{background:var(--red-l);color:#B4232A;border-color:#F6C8C9}
+.studs{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stu{border:1px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center;transition:border-color .25s,background .25s,transform .25s var(--ease)}
+.stu:hover{transform:translateY(-3px)}
+.stu[data-v="A"]{background:#FFF7F7;border-color:#F6C8C9}
+.stu[data-v="L"]{background:#FFFBEF;border-color:#F4DEA3}
+.av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;margin:0 auto 6px;color:#fff;font-weight:700;font-size:.78rem;background:linear-gradient(135deg,#6C7CFF,#9A6BFF)}
+.av.c1{background:linear-gradient(135deg,#FF6B8B,#E5484D)}.av.c2{background:linear-gradient(135deg,#22C3E6,#0A8FD1)}.av.c3{background:linear-gradient(135deg,#3B82F6,#0A58DA)}.av.c4{background:linear-gradient(135deg,#19C58A,#0B8F63)}.av.c5{background:linear-gradient(135deg,#FFB020,#F08C00)}
+.stu b{display:block;font-size:.82rem;font-weight:700;line-height:1.25}
+.stu small{display:block;font-family:var(--m);font-size:.62rem;color:var(--muted);margin:2px 0 8px}
+.pal{display:flex;justify-content:center;gap:5px}
+.pal button{width:27px;height:27px;border-radius:50%;font-size:.72rem;font-weight:800;border:1.5px solid;background:#fff;transition:transform .2s var(--ease),background .2s,color .2s,box-shadow .2s}
+.pal button:hover{transform:scale(1.15)}
+.pal [data-v=P]{color:var(--green);border-color:#A9E3CD}.pal [data-v=A]{color:var(--red);border-color:#F4B6B8}.pal [data-v=L]{color:var(--amber);border-color:#F1D48B}
+.pal .on[data-v=P]{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 5px 12px -3px rgba(14,159,110,.6)}
+.pal .on[data-v=A]{background:var(--red);color:#fff;border-color:var(--red);box-shadow:0 5px 12px -3px rgba(229,72,77,.6)}
+.pal .on[data-v=L]{background:#F0A000;color:#fff;border-color:#F0A000;box-shadow:0 5px 12px -3px rgba(240,160,0,.6)}
+.sum{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;background:var(--soft);border-radius:14px;padding:12px 14px;font-size:.84rem;font-weight:600}
+.sum .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.sum .pb{flex:1 1 120px;height:8px;border-radius:99px;background:#DCE4F3;overflow:hidden}
+.sum .pb i{display:block;height:100%;background:linear-gradient(90deg,var(--green),#38D39F);border-radius:99px;transition:width .5s var(--ease)}
+.sum .pc{font-family:var(--m);font-weight:600;font-variant-numeric:tabular-nums;min-width:4ch;text-align:right}
+.res{border:1px dashed #BFD3F7;background:#F8FBFF;border-radius:14px;padding:12px 14px;font-size:.86rem;display:grid;gap:8px;animation:pop .45s var(--ease)}
+.res-t{display:flex;align-items:center;gap:8px;font-weight:700}
+.res-t .ico{color:var(--green);stroke-width:3}
+.res ul{list-style:none;display:grid;gap:6px}
+.res li{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.res li button{padding:5px 11px;border-radius:99px;font-size:.76rem;font-weight:700;background:var(--green-l);color:var(--wa-d);transition:background .2s,transform .2s}
+.res li button:hover{transform:translateY(-1px)}
+.res li button.sent{background:var(--green);color:#fff}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}}
+.fee{display:grid;grid-template-columns:1fr;gap:14px}
+.fld label,.fld .lb{display:block;font-family:var(--m);font-size:.66rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.who{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:9px 12px;font-weight:700;font-size:.92rem}
+.who small{display:block;font-weight:500;color:var(--muted);font-size:.78rem}
+.who .av{margin:0;width:32px;height:32px;font-size:.7rem}
+.amtbox{display:flex;align-items:center;border:1.5px solid var(--line);border-radius:12px;padding-inline:12px;transition:border-color .2s,box-shadow .2s}
+.amtbox:focus-within{border-color:var(--blue);box-shadow:0 0 0 4px rgba(10,102,240,.12)}
+.amtbox span{font-weight:800;font-size:1.1rem;color:var(--muted)}
+.amtbox input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-weight:800;font-size:1.2rem;padding:9px 8px;color:var(--ink);font-variant-numeric:tabular-nums}
+.modes{display:flex;gap:7px;flex-wrap:wrap}
+.modes button{padding:7px 12px;border-radius:99px;border:1.5px solid var(--line);font-size:.8rem;font-weight:700;color:var(--ink2);transition:all .2s}
+.modes button:hover{border-color:var(--blue)}
+.modes button.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.phone{border-radius:18px;overflow:hidden;border:1px solid var(--line);background:#EFE9E0;display:flex;flex-direction:column;flex:1;min-height:210px}
+.ph-h{display:flex;align-items:center;gap:10px;background:#0B7A55;color:#fff;padding:9px 12px}
+.ph-h .wa-av{width:30px;height:30px;background:rgba(255,255,255,.22)}
+.ph-h b{font-size:.86rem;display:block;line-height:1.2}.ph-h small{font-size:.7rem;opacity:.8}
+.chat{flex:1;padding:12px;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;background-image:radial-gradient(rgba(0,0,0,.045) 1px,transparent 1.2px);background-size:14px 14px}
+.chat .hint{align-self:center;font-size:.76rem;color:#7A7468;background:rgba(255,255,255,.75);padding:5px 12px;border-radius:99px}
+.chat .bub{max-width:92%;box-shadow:0 1px 1px rgba(0,0,0,.08);animation:pop .4s var(--ease)}
+.typing{display:inline-flex;gap:4px;padding:12px 14px;background:var(--wa);border-radius:4px 14px 14px 14px;align-self:flex-start}
+.typing i{width:6px;height:6px;border-radius:50%;background:#6BA487;animation:ty 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes ty{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+.rcp{font-family:var(--m);font-size:.74rem;color:var(--muted);min-height:1.2em}
+
+/* bento */
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+.card{--x:50%;--y:50%;position:relative;grid-column:span 2;background:#fff;border:1px solid var(--line);border-radius:22px;padding:22px;overflow:hidden;display:flex;flex-direction:column;gap:8px;min-width:0;transition:transform .4s var(--ease),box-shadow .4s,border-color .4s}
+.card.w3{grid-column:span 3}
+.card::before{content:"";position:absolute;inset:0;background:radial-gradient(340px circle at var(--x) var(--y),rgba(10,102,240,.13),transparent 60%);opacity:0;transition:opacity .35s;pointer-events:none}
+.card:hover{transform:translateY(-5px);box-shadow:var(--sh2);border-color:#BBD3FB}
+.card:hover::before{opacity:1}
+.card>*{position:relative}
+.ci{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--sky);color:var(--blue-d);margin-bottom:6px;transition:transform .5s var(--ease),background .3s,color .3s}
+.card:hover .ci{background:var(--blue);color:#fff;transform:rotate(-8deg) scale(1.08)}
+.card p{font-size:.92rem;color:var(--ink2)}
+.viz{margin-top:auto;padding-top:14px;min-height:96px;display:flex;align-items:flex-end}
+.paper{position:relative;width:150px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--sh2);padding:12px;transform:rotate(-5deg) translateY(10px);transition:transform .6s var(--ease);margin-left:6px}
+.card:hover .paper{transform:rotate(0) translateY(0)}
+.paper::before{content:"";display:block;height:8px;width:70%;background:var(--blue);border-radius:3px;margin:0 auto 9px}
+.paper i{display:block;height:5px;background:#E6EBF5;border-radius:3px;margin-bottom:6px}
+.paper i:nth-of-type(2){width:80%}.paper i:nth-of-type(3){width:92%}.paper i:nth-of-type(4){width:60%}
+.grades{display:flex;gap:6px;flex-wrap:wrap;margin-left:18px;align-self:center}
+.grades span{font-family:var(--m);font-size:.74rem;font-weight:600;padding:5px 9px;border-radius:8px;background:var(--soft);border:1px solid var(--line);transition:transform .4s var(--ease),background .3s,color .3s;transition-delay:calc(var(--d)*45ms)}
+.card:hover .grades span{transform:translateY(-4px);background:var(--sky);color:var(--blue-d)}
+.radar{position:relative;width:104px;height:104px;border-radius:50%;background:radial-gradient(circle,rgba(10,102,240,.16),rgba(10,102,240,.03) 70%);border:1px dashed #A9C8FA;display:grid;place-items:center;color:var(--blue);flex:none}
+.radar::before,.radar::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--blue);opacity:0;animation:radar 2.6s ease-out infinite}
+.radar::after{animation-delay:1.3s}
+@keyframes radar{0%{transform:scale(.25);opacity:.7}100%{transform:scale(1.05);opacity:0}}
+.radar .ico{width:26px;height:26px;fill:var(--sky)}
+.geo{margin-left:16px;align-self:center;display:grid;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:.8rem;font-weight:700;padding:7px 12px;border-radius:99px;background:var(--green-l);color:var(--wa-d);width:max-content;max-width:100%}
+.pill.b{background:var(--sky);color:var(--blue-d)}
+.tgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:100%}
+.tgrid i{height:16px;border-radius:5px;background:var(--sky);transition:background .4s,transform .4s var(--ease);transition-delay:calc(var(--d)*18ms)}
+.tgrid i:nth-child(3n){background:#BBD6FF}.tgrid i:nth-child(4n+1){background:#7DB1FF}.tgrid i:nth-child(7n){background:var(--blue)}
+.card:hover .tgrid i:nth-child(odd){background:#7DB1FF;transform:scale(.9)}
+.card:hover .tgrid i:nth-child(5n){background:var(--blue-dd)}
+.aud{display:flex;gap:7px;flex-wrap:wrap}
+.aud span{font-size:.78rem;font-weight:700;padding:6px 11px;border-radius:99px;border:1.5px solid var(--line);transition:all .3s;transition-delay:calc(var(--d)*70ms)}
+.card:hover .aud span{border-color:var(--blue);background:var(--sky);color:var(--blue-d)}
+.xl{display:flex;align-items:center;gap:10px;font-family:var(--m);font-size:.78rem;font-weight:600;flex-wrap:wrap}
+.xl span{padding:7px 10px;border-radius:9px;background:var(--green-l);color:var(--wa-d)}
+.xl span:last-child{background:var(--sky);color:var(--blue-d)}
+.xl .ico{color:var(--muted);transition:transform .4s var(--ease)}
+.card:hover .xl .ico{transform:translateX(5px);color:var(--blue)}
+.url{display:flex;align-items:center;gap:8px;font-family:var(--m);font-size:.8rem;font-weight:600;padding:9px 12px;border-radius:11px;border:1px solid var(--line);background:var(--soft);width:100%;min-width:0;white-space:nowrap;overflow:hidden}
+.url .ico{color:var(--green)}
+.url em{font-style:normal;color:var(--blue-d)}
+.url::after{content:"";width:2px;height:1.1em;background:var(--blue);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.q{display:flex;gap:7px;flex-wrap:wrap}
+.q span{font-size:.78rem;font-weight:600;padding:6px 11px;border-radius:12px 12px 12px 3px;background:var(--soft);border:1px solid var(--line);transition:transform .4s var(--ease),background .3s;transition-delay:calc(var(--d)*80ms)}
+.card:hover .q span{transform:translateY(-3px);background:var(--sky)}
+.rst{display:flex;align-items:center;gap:10px;font-size:.84rem;font-weight:700;color:var(--ink2)}
+.rst .ico{width:34px;height:34px;padding:8px;border-radius:50%;background:var(--sky);color:var(--blue-d);transition:transform .9s var(--ease)}
+.card:hover .rst .ico{transform:rotate(-360deg)}
+
+/* ecosystem */
+.orbit{position:relative;max-width:920px;margin-inline:auto;aspect-ratio:2/1}
+.orbit>svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.orbit .ln{fill:none;stroke:#B9CFF6;stroke-width:.5;stroke-dasharray:1.6 1.6;animation:flow 1.4s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-3.2}}
+.orbit .ring{fill:none;stroke:#D6E3FA;stroke-width:.35}
+.orbit .ring.d{stroke-dasharray:1 2;transform-origin:100px 50px;animation:spin 60s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.orbit .pk{fill:var(--blue)}
+.hub{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:132px;height:132px;border-radius:50%;background:#fff;border:1px solid var(--sky2);display:grid;place-items:center;box-shadow:0 0 0 12px rgba(10,102,240,.07),0 0 0 28px rgba(10,102,240,.04),var(--sh2);z-index:2}
+.hub img{width:66px;animation:bob 5s ease-in-out infinite}
+.node{position:absolute;left:var(--l);top:var(--t);transform:translate(-50%,-50%);width:184px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--sh1);z-index:2;transition:transform .4s var(--ease),box-shadow .4s,border-color .4s}
+.node:hover{transform:translate(-50%,-50%) scale(1.06);box-shadow:var(--sh2);border-color:var(--blue)}
+.node-h{display:flex;align-items:center;gap:9px;font-weight:800;font-size:.98rem}
+.node-h .ico{width:30px;height:30px;padding:6px;border-radius:9px;background:var(--sky);color:var(--blue-d);transition:background .3s,color .3s}
+.node:hover .node-h .ico{background:var(--blue);color:#fff}
+.node p{font-size:.8rem;color:var(--muted);margin-top:6px}
+
+/* calculator */
+.calc{display:grid;grid-template-columns:1fr 1.1fr;background:#fff;border:1px solid var(--line);border-radius:26px;box-shadow:var(--sh2);overflow:hidden}
+.calc-l{padding:clamp(22px,3.4vw,40px);display:flex;flex-direction:column;gap:18px}
+.calc-n{display:flex;align-items:baseline;gap:10px}
+.calc-n b{font-size:clamp(3rem,6vw,4.4rem);font-weight:800;letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums}
+.calc-n span{font-weight:700;color:var(--muted)}
+.rng{-webkit-appearance:none;appearance:none;width:100%;height:10px;border-radius:99px;background:linear-gradient(90deg,var(--blue) var(--f,16%),#DCE4F3 var(--f,16%));outline-offset:6px;cursor:pointer}
+.rng::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:#fff;border:3px solid var(--blue);box-shadow:0 6px 14px -4px rgba(10,102,240,.7);transition:transform .2s}
+.rng::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--blue);box-shadow:0 6px 14px -4px rgba(10,102,240,.7)}
+.rng:active::-webkit-slider-thumb{transform:scale(1.18)}
+.rng-s{display:flex;justify-content:space-between;font-family:var(--m);font-size:.72rem;color:var(--muted)}
+.roi{display:flex;align-items:center;gap:16px;margin-top:auto;padding-top:8px}
+.roi b{font-size:clamp(2.4rem,4.4vw,3.4rem);font-weight:800;letter-spacing:-.05em;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.roi span{font-size:.92rem;color:var(--ink2);font-weight:500;max-width:26ch}
+.roi em{font-style:normal;font-weight:700;color:var(--ink)}
+.rec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:var(--sky);font-size:.9rem;font-weight:600;color:var(--blue-dd)}
+.rec b{background:var(--blue);color:#fff;padding:3px 10px;border-radius:99px;font-size:.8rem}
+.calc-r{background:var(--navy);color:#fff;padding:clamp(22px,3.4vw,40px);display:grid;grid-template-columns:1fr 1fr;gap:14px;position:relative;overflow:hidden}
+.calc-r::before{content:"";position:absolute;width:420px;height:420px;border-radius:50%;right:-160px;top:-180px;background:radial-gradient(circle,rgba(10,102,240,.6),transparent 65%)}
+.out{position:relative;border:1px solid rgba(255,255,255,.13);border-radius:16px;padding:18px;background:rgba(255,255,255,.04);transition:background .3s,transform .3s var(--ease)}
+.out:hover{background:rgba(255,255,255,.09);transform:translateY(-3px)}
+.out.x{grid-column:1/-1}
+.out small{display:block;font-family:var(--m);font-size:.68rem;letter-spacing:.09em;text-transform:uppercase;color:#9FB2D9}
+.out b{display:block;font-size:clamp(1.5rem,2.8vw,2.2rem);font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;margin-top:6px;white-space:nowrap}
+.out.x b{font-size:clamp(2.2rem,4.6vw,3.4rem);color:#8FBEFF}
+.asm{grid-column:1/-1;position:relative;font-size:.78rem;color:#9FB2D9}
+
+/* pricing */
+.seg{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;background:#fff;border:1px solid var(--line);border-radius:99px;padding:5px;box-shadow:var(--sh1);margin-top:26px}
+.seg button{position:relative;z-index:1;padding:9px 20px;border-radius:99px;font-weight:700;font-size:.9rem;color:var(--ink2);transition:color .3s;display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+.seg button.on{color:#fff}
+.seg::before{content:"";position:absolute;top:5px;bottom:5px;left:5px;width:calc(50% - 5px);border-radius:99px;background:var(--ink);transition:transform .45s var(--ease)}
+.seg.y::before{transform:translateX(100%)}
+.seg em{font-style:normal;font-size:.68rem;font-family:var(--m);background:var(--green);color:#fff;padding:2px 7px;border-radius:99px}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}
+.plan{position:relative;background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;display:flex;flex-direction:column;transition:transform .4s var(--ease),box-shadow .4s,border-color .4s}
+.plan:hover{transform:translateY(-8px);box-shadow:var(--sh2);border-color:#BBD3FB}
+.plan.pop{background:var(--navy);color:#fff;border-color:var(--navy);box-shadow:var(--sh3)}
+.plan.pop::before{content:"";position:absolute;inset:-2px;border-radius:26px;padding:2px;background:conic-gradient(from var(--a,0deg),#0A66F0,#7DB4FF,#fff,#0A66F0);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:rot 5s linear infinite;pointer-events:none}
+@property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
+@keyframes rot{to{--a:360deg}}
+.plan.hl{box-shadow:0 0 0 4px rgba(10,102,240,.35),var(--sh2)}
+.ribbon{position:absolute;top:18px;right:18px;font-family:var(--m);font-size:.66rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;background:var(--blue);color:#fff;padding:4px 10px;border-radius:99px}
+.plan h3{font-size:1.2rem}
+.plan .for{font-size:.9rem;color:var(--muted);margin-top:4px}
+.plan.pop .for{color:#A9BADF}
+.price{display:flex;align-items:baseline;gap:4px;margin-top:22px;font-weight:800;letter-spacing:-.05em;line-height:1}
+.price .cur{font-size:1.5rem}
+.price .pv{font-size:3.3rem;font-variant-numeric:tabular-nums;display:inline-block}
+.price .pv.flip{animation:flip .5s var(--ease)}
+@keyframes flip{from{opacity:0;transform:translateY(-.35em) rotateX(60deg)}}
+.price small{font-size:.95rem;font-weight:600;letter-spacing:0;color:var(--muted)}
+.plan.pop .price small{color:#A9BADF}
+.bill{font-size:.84rem;color:var(--muted);margin-top:8px;min-height:2.7em}
+.plan.pop .bill{color:#A9BADF}
+.bill b{color:var(--blue-d);font-family:var(--m);font-weight:600}
+.plan.pop .bill b{color:#8FBEFF}
+.plan ul{list-style:none;display:grid;gap:10px;margin:20px 0 26px;padding-top:20px;border-top:1px solid var(--line);flex:1;align-content:start}
+.plan.pop ul{border-color:rgba(255,255,255,.14)}
+.plan li{display:flex;gap:10px;font-size:.92rem;align-items:flex-start}
+.plan li .ico{color:var(--blue);stroke-width:3;margin-top:.22em;width:1em;height:1em}
+.plan.pop li .ico{color:#7DB4FF}
+.plan .btn{width:100%}
+.guar{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:28px}
+.guar span{display:inline-flex;align-items:center;gap:8px;font-size:.86rem;font-weight:600;padding:8px 14px;border-radius:99px;background:#fff;border:1px solid var(--line)}
+.guar .ico{color:var(--green);stroke-width:3}
+
+/* faq */
+.faq{display:grid;grid-template-columns:.8fr 1.2fr;gap:clamp(28px,5vw,72px);align-items:start}
+.faq-l{position:sticky;top:110px}
+.own{margin-top:26px;padding:18px 20px;border-radius:18px;background:var(--sky);border:1px solid var(--sky2);font-size:.98rem;font-weight:600;color:var(--blue-dd)}
+.own small{display:block;font-family:var(--m);font-size:.66rem;letter-spacing:.09em;text-transform:uppercase;color:var(--blue-d);margin-bottom:6px;font-weight:600}
+.qa{border-bottom:1px solid var(--line)}
+.qa button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;text-align:left;padding:20px 4px;font-weight:700;font-size:1.04rem;transition:color .2s}
+.qa button:hover{color:var(--blue-d)}
+.qa .pm{position:relative;width:30px;height:30px;border-radius:50%;background:var(--soft);flex:none;transition:background .3s,transform .45s var(--ease)}
+.qa .pm::before,.qa .pm::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:2px;margin:-1px 0 0 -6px;background:var(--ink);border-radius:2px;transition:background .3s}
+.qa .pm::after{transform:rotate(90deg)}
+.qa.open .pm{background:var(--blue);transform:rotate(135deg)}
+.qa.open .pm::before,.qa.open .pm::after{background:#fff}
+.ans{display:grid;grid-template-rows:0fr;transition:grid-template-rows .45s var(--ease)}
+.ans>div{overflow:hidden}
+.ans p{padding:0 44px 22px 4px;color:var(--ink2)}
+.qa.open .ans{grid-template-rows:1fr}
+
+/* cta + form */
+.final{padding-block:0 clamp(64px,8vw,104px)}
+.fin{position:relative;overflow:hidden;background:var(--navy);color:#fff;border-radius:30px;padding:clamp(26px,5vw,60px);display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(24px,4vw,56px);align-items:center}
+.fin::before{content:"";position:absolute;width:640px;height:640px;border-radius:50%;left:-220px;bottom:-320px;background:radial-gradient(circle,rgba(10,102,240,.7),transparent 65%)}
+.fin::after{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.13) 1px,transparent 1.2px);background-size:24px 24px;-webkit-mask-image:linear-gradient(120deg,transparent 30%,#000);mask-image:linear-gradient(120deg,transparent 30%,#000)}
+.fin>*{position:relative;z-index:1;min-width:0}
+.fin h2 em{font-style:normal;color:#8FBEFF}
+.fin p{color:#B3C2E3;margin-top:14px;max-width:46ch}
+.ct{display:grid;gap:10px;margin-top:26px}
+.ct div{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-family:var(--m);font-size:.92rem;user-select:all}
+.ct .ico{color:#8FBEFF}
+.cp{user-select:none;font-family:var(--f);font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:99px;border:1px solid rgba(255,255,255,.25);color:#fff;transition:background .2s}
+.cp:hover{background:rgba(255,255,255,.14)}
+.form{background:#fff;color:var(--ink);border-radius:22px;padding:clamp(20px,3vw,30px);box-shadow:0 30px 60px -20px rgba(0,0,0,.6);display:grid;gap:14px}
+.form h3{font-size:1.3rem}
+.form .hint{font-size:.88rem;color:var(--muted);margin-top:-8px}
+.form label{display:grid;gap:6px;font-size:.82rem;font-weight:700}
+.form input{font:inherit;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--soft);color:var(--ink);outline:0;min-width:0;transition:border-color .2s,box-shadow .2s,background .2s}
+.form input:focus{border-color:var(--blue);background:#fff;box-shadow:0 0 0 4px rgba(10,102,240,.13)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fnote{font-size:.84rem;font-weight:600;padding:11px 13px;border-radius:12px;background:var(--amber-l);color:#7A4B00;animation:pop .4s var(--ease)}
+
+/* footer */
+.foot{background:var(--soft);border-top:1px solid var(--line);padding-block:44px 30px}
+.foot-g{display:flex;flex-wrap:wrap;justify-content:space-between;gap:28px 48px}
+.foot .brand img{width:46px}
+.foot p{color:var(--muted);font-size:.92rem;max-width:38ch;margin-top:12px}
+.fl{display:flex;gap:10px 26px;flex-wrap:wrap;align-content:start;list-style:none;font-weight:600;font-size:.92rem}
+.fl a{text-decoration:none;color:var(--ink2);transition:color .2s}.fl a:hover{color:var(--blue)}
+.cr{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;margin-top:30px;padding-top:20px;border-top:1px solid var(--line);font-size:.84rem;color:var(--muted)}
+.cr b{font-family:var(--m);font-weight:600;color:var(--blue-d);letter-spacing:.02em}
+.fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;align-items:center;gap:9px;padding:13px 16px;border-radius:99px;background:#0E9F6E;color:#fff;font-weight:700;font-size:.9rem;text-decoration:none;box-shadow:0 14px 30px -8px rgba(14,159,110,.7);transition:transform .3s var(--ease)}
+.fab::before{content:"";position:absolute;inset:0;border-radius:99px;border:2px solid #0E9F6E;animation:radar 2.4s ease-out infinite}
+.fab:hover{transform:translateY(-3px) scale(1.04)}
+.fab .ico{width:20px;height:20px}
+
+/* reveal */
+.js .rv{opacity:0;transform:translateY(28px);transition:opacity .8s var(--ease),transform .8s var(--ease);transition-delay:calc(var(--d,0)*90ms)}
+.js .rv.in{opacity:1;transform:none}
+
+/* responsive */
+@media(max-width:1000px){
+  .links,.tel{display:none}
+  .time,.faq,.fin,.calc,.demos{grid-template-columns:1fr}
+  .time-l,.faq-l{position:static}
+  .tour{grid-template-columns:1fr}
+  .tabs{grid-template-columns:repeat(4,1fr);gap:8px}
+  .tab{flex-direction:column;align-items:center;text-align:center;gap:8px;padding:12px 6px}
+  .tab .td{display:none}.tab .tt b{font-size:.84rem}
+  .tcap{display:block;margin-top:16px;color:var(--ink2);font-size:.96rem;text-align:center}
+  .bento{grid-template-columns:repeat(2,1fr)}.card,.card.w3{grid-column:span 1}
+  .plans{grid-template-columns:1fr;max-width:520px;margin-inline:auto}
+  .float{position:static;transform:none;animation:none;width:auto}
+  .floats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;align-items:start}
+  .wa{grid-row:span 2}
+  .stage .frame{transform:none}
+}
+@media(max-width:760px){
+  .stats{grid-template-columns:1fr 1fr}
+  .stat:nth-child(2){border-right:0}.stat:nth-child(-n+2){border-bottom:1px solid rgba(255,255,255,.12)}
+  .orbit{aspect-ratio:auto;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .orbit>svg{display:none}
+  .hub{position:static;transform:none;grid-column:1/-1;margin:0 auto 10px;width:110px;height:110px}
+  .node{position:static;transform:none;width:auto}.node:hover{transform:translateY(-3px)}
+  .node:last-child{grid-column:1/-1}
+  .studs{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:560px){
+  .brand small{display:none}
+  .nav .btn{padding:10px 14px;font-size:.86rem}
+  .cta .btn{width:100%}
+  .floats{grid-template-columns:1fr}.wa{grid-row:auto}
+  .bento{grid-template-columns:1fr}
+  .calc-r{grid-template-columns:1fr}
+  .two{grid-template-columns:1fr}
+  .tab .tt b{font-size:.74rem}.ti{width:34px;height:34px}
+  .cmp{grid-template-columns:64px 1fr}
+  .stage .frame{overflow:hidden}.stage .frame img{width:168%;max-width:none}
+  .shots{aspect-ratio:1/.86}.shots img{object-position:left top}
+  .fab span{display:none}.fab{padding:14px}
+  .ans p{padding-right:8px}
+  .seg button{padding:9px 13px;font-size:.84rem}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  html{scroll-behavior:auto}
+  .js .rv{opacity:1;transform:none}
+  .und path{stroke-dashoffset:0}
+  .stage .frame{transform:none}
+}
+</style>
 </head>
 <body>
 
-<header id="hd">
-  <div class="wrap nav">
-    <a href="#" class="brand">
-      <img src="assets/monogram.png" alt="Ctrl Shift Solutions">
-      <span>
-        <span class="brand-name">Paathshala</span>
-        <span class="brand-by">by Ctrl Shift Solutions</span>
-      </span>
-    </a>
-    <nav class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#savings">Calculator</a>
-      <a href="#pricing">Pricing</a>
-      
-      <a href="tel:+919155515505" class="head-phone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-        </svg>
-        +91 91555 15505
-      </a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-go" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-rupee" viewBox="0 0 24 24"><path d="M6 3h12M6 8h12M6 13l8.5 8M6 13h3a5 5 0 0 0 0-10"/></symbol>
+<symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+<symbol id="i-horn" viewBox="0 0 24 24"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 0 20M12 2a15.3 15.3 0 0 0 0 20"/></symbol>
+<symbol id="i-sheet" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/></symbol>
+<symbol id="i-rot" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+<symbol id="i-cap" viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2.5 9 2.5 12 0v-5"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-12.7 7.4L3 21l2.1-5.3A8.5 8.5 0 1 1 21 11.5z"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+</defs></svg>
 
-      <button class="btn btn-wa nav-cta open-modal-btn">
-        <svg class="wa-ic" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.1 3.2 5.1 4.49.71.3 1.27.49 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01c-1.8 0-3.55-.48-5.08-1.39l-.36-.22-3.78.99 1.01-3.68-.24-.38a9.93 9.93 0 0 1-1.52-5.3c0-5.5 4.48-9.97 9.99-9.97 2.67 0 5.17 1.04 7.05 2.93a9.9 9.9 0 0 1 2.92 7.05c0 5.5-4.48 9.97-9.98 9.97zm8.5-18.46A11.86 11.86 0 0 0 12.04 0C5.46 0 .1 5.35.1 11.92c0 2.1.55 4.15 1.6 5.96L0 24l6.27-1.64a11.93 11.93 0 0 0 5.76 1.47h.01c6.58 0 11.93-5.35 11.93-11.92 0-3.18-1.24-6.17-3.48-8.42z"/>
-        </svg>
-        Request Demo
-      </button>
-    </nav>
-    <button class="burger" id="burger" aria-label="Menu">
-      <span></span><span></span><span></span>
-    </button>
+<div class="prog" id="prog"></div>
+
+<nav class="nav" id="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><img src="assets/landing-v2/logo.png" alt="Ctrl Shift Solutions" width="40" height="41"><span><b>Paathshala</b><small>by Ctrl Shift Solutions</small></span></a>
+    <ul class="links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#try">Live Demo</a></li>
+      <li><a href="#savings">Calculator</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <div class="nav-r">
+      <span class="tel"><svg class="ico"><use href="#i-phone"/></svg>+91 91555 15505</span>
+      <a class="btn btn-p" href="#demo">Book Free Demo</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="aur a"></div><div class="aur b"></div><div class="aur c"></div><div class="spot"></div>
+  <div class="wrap">
+    <span class="badge"><b>School ERP</b><span class="live"></span>Live at Shishu Vikash Mandir, Bokaro</span>
+    <h1><span class="w" style="--i:0">Your</span> <span class="w" style="--i:1">whole</span> <span class="w" style="--i:2">school,</span><br><span class="w und" style="--i:4"><span class="grad">on your phone.</span><svg viewBox="0 0 400 20" preserveAspectRatio="none" aria-hidden="true"><path d="M4 13C70 3 150 2 220 8s130 6 176-2"/></svg></span></h1>
+    <p class="sub">Manage fees, attendance, report cards and notices in one single dashboard. <b>Running a school just got easier.</b> Save up to 2 hours every day with automatic parent updates on WhatsApp.</p>
+    <div class="cta">
+      <a class="btn btn-p btn-lg" href="#demo">Start 30-Day Free Trial <svg class="ico go"><use href="#i-go"/></svg></a>
+      <a class="btn btn-s btn-lg" href="#try">Try it right here</a>
+    </div>
+    <div class="trust">
+      <span><svg class="ico"><use href="#i-check"/></svg>30-Day Free Trial</span>
+      <span><svg class="ico"><use href="#i-check"/></svg>No Credit Card Required</span>
+      <span><svg class="ico"><use href="#i-check"/></svg>Bilingual: Hindi + English</span>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="frame">
+      <div class="fbar"><i></i><i></i><i></i><span class="furl"><svg class="ico"><use href="#i-lock"/></svg>Paathshala · Shishu Vikash Mandir (Bokaro)</span></div>
+      <img src="assets/landing-v2/dash.jpg" width="1440" height="834" fetchpriority="high" alt="Paathshala dashboard at Shishu Vikash Mandir: 289 students, 15 teachers, 96% attendance today, notice board, attendance overview and class distribution">
+    </div>
+    <div class="floats">
+      <div class="float wa">
+        <div class="wa-h"><span class="wa-av"><svg class="ico"><use href="#i-chat"/></svg></span><span><b>Parent — Ravi's Father</b><small>WhatsApp receipt</small></span></div>
+        <div class="bub">Namaste! 🙏 Aapke bacche <b>Ravi Sharma</b> (Class 5-A) ki school fee jama ho gayi hai.<span class="amt">Jama rashi: <b>₹2,500 ✅</b></span>Dhanyawad! — Aapka School 🏫
+          <div class="meta">11:42 AM <svg class="tick" viewBox="0 0 18 11"><path d="M1 6l3.5 3.5L11 2M7 6l3.5 3.5L17 2"/></svg></div>
+        </div>
+      </div>
+      <div class="float chip">
+        <small>Fees collected this term</small>
+        <b>₹4,23,120</b>
+        <svg viewBox="0 0 150 30" aria-hidden="true"><path d="M0 26 L18 22 36 24 54 16 72 18 90 10 108 12 126 5 150 3 V30 H0Z" fill="#EAF2FF"/><path d="M0 26 L18 22 36 24 54 16 72 18 90 10 108 12 126 5 150 3" fill="none" stroke="#0A66F0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="float chip2"><span class="ok"><svg class="ico"><use href="#i-check"/></svg></span>Attendance submitted · Class 2-A</div>
+    </div>
   </div>
 </header>
 
-<div class="mnav" id="mnav">
-  <button class="mclose" id="mclose" aria-label="Close">×</button>
-  <a href="#features">Features</a>
-  <a href="#savings">Calculator</a>
-  <a href="#pricing">Pricing</a>
-  <a href="tel:+919155515505" class="mobile-phone-menu">
-    <span>📞</span> +91 91555 15505
-  </a>
-  <button class="btn btn-wa open-modal-btn">Book Free Demo</button>
-</div>
+<div class="mq" aria-hidden="true"><div class="mq-t" id="mq">
+  <span><svg class="ico"><use href="#i-rupee"/></svg>Smart Fees</span>
+  <span><svg class="ico"><use href="#i-chat"/></svg>WhatsApp Receipts</span>
+  <span><svg class="ico"><use href="#i-cal"/></svg>Attendance</span>
+  <span><svg class="ico"><use href="#i-pin"/></svg>GPS Staff Punch-in</span>
+  <span><svg class="ico"><use href="#i-file"/></svg>Report Cards</span>
+  <span><svg class="ico"><use href="#i-clock"/></svg>Timetable Generator</span>
+  <span><svg class="ico"><use href="#i-horn"/></svg>Notice Board</span>
+  <span><svg class="ico"><use href="#i-sheet"/></svg>Excel Import / Export</span>
+  <span><svg class="ico"><use href="#i-rot"/></svg>Recovery Center</span>
+  <span><svg class="ico"><use href="#i-globe"/></svg>School Website</span>
+  <span><svg class="ico"><use href="#i-spark"/></svg>AI Helper</span>
+</div></div>
 
-<section class="hero dark">
-  <video class="hero-video-bg" autoplay muted loop playsinline poster="assets/dash-dark.jpg" src=""></video>
-  <div class="wrap hero-content">
-    <div class="hero-grid">
-      <div>
-        <div class="eyebrow">Enterprise Grade School ERP</div>
-        <h1>Your whole school,<br>on your <span class="chalk">phone.</span></h1>
-        <p class="sub">Manage fees, attendance, report cards, and notices seamlessly in one single dashboard. <b>अब स्कूल चलाना होगा और भी आसान!</b> Save up to 2 hours every day with automated parental updates and beautiful print-ready sheets.</p>
-        <div class="hero-ctas">
-          <button class="btn btn-primary open-modal-btn">Start 30-Day Free Trial →</button>
-          <button class="btn btn-ghost open-modal-btn">Book 30-min Virtual Demo</button>
-        </div>
-        <div class="hero-chips">
-          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>30-Day Free Trial</span>
-          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>No Credit Card Required</span>
-          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Bilingual: Hindi + English</span>
-        </div>
+<section class="band">
+  <div class="wrap">
+    <div class="band-top rv">
+      <div><span class="eyebrow"><i></i>Tested live, not in a lab</span><h2>Built out of <em>real empathy.</em></h2></div>
+      <p>Refined on the campus of Shishu Vikash Mandir, Bokaro — Nursery to Class 12 — and now powering daily academic and financial operations across Jharkhand.</p>
+    </div>
+    <div class="stats rv">
+      <div class="stat" style="--w:72%"><div class="n"><span data-count="289">289</span><sup>+</sup></div><div class="l">Students monitored</div><div class="bar"><i></i></div></div>
+      <div class="stat" style="--w:48%"><div class="n"><span data-count="15">15</span><sup>+</sup></div><div class="l">Active educators</div><div class="bar"><i></i></div></div>
+      <div class="stat" style="--w:94%"><div class="n"><span data-count="94">94</span><sup>%</sup></div><div class="l">Attendance accuracy</div><div class="bar"><i></i></div></div>
+      <div class="stat" style="--w:84%"><div class="n">₹<span data-count="423120">4,23,120</span></div><div class="l">Fees collected this term</div><div class="bar"><i></i></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap time">
+    <div class="time-l rv">
+      <span class="eyebrow"><i></i>Register vs Paathshala</span>
+      <h2>Stop wasting hours on <span class="grad">manual paperwork.</span></h2>
+      <p class="lead">Work that takes hours in registers and Excel takes minutes here. Same work, measured side by side.</p>
+      <div class="big">
+        <div><b>2+ hrs</b><span>saved every day</span></div>
+        <div><b>700+ hrs</b><span>recovered every year</span></div>
       </div>
-      
-      <div class="hero-visual rv">
-        <div class="stat-fab">
-          <div class="ic">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-              <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
+    </div>
+    <div>
+      <div class="rows">
+        <div class="row rv" style="--n:13%"><div class="row-h"><b>Daily roster updates</b><span class="save">Saves 25 mins / day</span></div><div class="cmp"><span>Before</span><div class="trk old"><i></i><em>30 mins</em></div><span>Now</span><div class="trk new"><i></i><em>5 mins</em></div></div></div>
+        <div class="row rv" style="--n:13%"><div class="row-h"><b>Fee receipts &amp; ledger entries</b><span class="save">Saves 50 mins / day</span></div><div class="cmp"><span>Before</span><div class="trk old"><i></i><em>60 mins</em></div><span>Now</span><div class="trk new"><i></i><em>10 mins</em></div></div></div>
+        <div class="row rv" style="--n:.65%"><div class="row-h"><b>Overdue / defaulter list</b><span class="save">Saves 2 hours / month</span></div><div class="cmp"><span>Before</span><div class="trk old"><i></i><em>2 hours</em></div><span>Now</span><div class="trk new"><i></i><em>1 min</em></div></div></div>
+        <div class="row rv" style="--n:5.8%"><div class="row-h"><b>Report cards &amp; result compilation</b><span class="save">Saves 12 days / term</span></div><div class="cmp"><span>Before</span><div class="trk old"><i></i><em>12–15 days</em></div><span>Now</span><div class="trk new"><i></i><em>1 day</em></div></div></div>
+        <div class="row rv" style="--n:2%"><div class="row-h"><b>New session rollover</b><span class="save">Saves 2.5 days / year</span></div><div class="cmp"><span>Before</span><div class="trk old"><i></i><em>2–3 days</em></div><span>Now</span><div class="trk new"><i></i><em>30 mins</em></div></div></div>
+      </div>
+      <p class="note">Each row is drawn on its own scale: the blue bar is Paathshala's time as a share of the old way.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sec soft" id="features">
+  <div class="wrap">
+    <div class="hd rv"><span class="eyebrow"><i></i>Product tour · real screens</span><h2>Everything you do on paper, <span class="grad">now in 5 minutes.</span></h2><p class="lead">These are not mockups — they are the same screens a school runs on every day.</p></div>
+    <div class="tour rv" id="tour">
+      <div class="tabs" role="tablist" aria-label="Product screens">
+        <button class="tab on" role="tab" aria-selected="true" data-title="Dashboard" data-cap="Total students, teachers, today's attendance and the notice board on one screen. Press Ctrl + K to search anything."><span class="ti"><svg class="ico"><use href="#i-grid"/></svg></span><span class="tt"><b>Dashboard</b><span class="td"><span>Total students, teachers, today's attendance and the notice board on one screen. Press Ctrl + K to search anything.</span></span></span><i class="tp"></i></button>
+        <button class="tab" role="tab" aria-selected="false" data-title="Attendance" data-cap="One tap marks “All Present”, then mark only the exceptions. Parents of absent students get a WhatsApp intimation right away."><span class="ti"><svg class="ico"><use href="#i-cal"/></svg></span><span class="tt"><b>Attendance</b><span class="td"><span>One tap marks “All Present”, then mark only the exceptions. Parents of absent students get a WhatsApp intimation right away.</span></span></span><i class="tp"></i></button>
+        <button class="tab" role="tab" aria-selected="false" data-title="Teachers" data-cap="Every teacher's class assignment, qualification and contact in one place. Staff punch their own attendance from inside the GPS geofence."><span class="ti"><svg class="ico"><use href="#i-users"/></svg></span><span class="tt"><b>Staff directory</b><span class="td"><span>Every teacher's class assignment, qualification and contact in one place. Staff punch their own attendance from inside the GPS geofence.</span></span></span><i class="tp"></i></button>
+        <button class="tab" role="tab" aria-selected="false" data-title="Admin Panel" data-cap="Fee setup, examinations, class promotion, notice board and Recovery Center — your school, your rules, no developer needed."><span class="ti"><svg class="ico"><use href="#i-gear"/></svg></span><span class="tt"><b>Admin panel</b><span class="td"><span>Fee setup, examinations, class promotion, notice board and Recovery Center — your school, your rules, no developer needed.</span></span></span><i class="tp"></i></button>
+      </div>
+      <div>
+        <div class="frame tview">
+          <div class="fbar"><i></i><i></i><i></i><span class="furl"><svg class="ico"><use href="#i-lock"/></svg>Paathshala · <span id="ftitle">Dashboard</span></span></div>
+          <div class="shots">
+            <img class="on" src="assets/landing-v2/dash.jpg" alt="Dashboard screen" width="1440" height="834">
+            <img src="assets/landing-v2/attendance.jpg" alt="Attendance tracking screen with P / A / L marking for each student" width="1440" height="837" loading="lazy">
+            <img src="assets/landing-v2/teachers.jpg" alt="Teacher management screen with staff cards" width="1440" height="837" loading="lazy">
+            <img src="assets/landing-v2/admin.jpg" alt="Admin panel with school settings" width="1440" height="835" loading="lazy">
           </div>
-          <div><b>₹4,23,120</b><span>Fees collected this term</span></div>
         </div>
-        
-        <!-- Flat screenshot with premium drop shadow, no simulated browser frame -->
-        <img src="assets/dash-dark.jpg" class="hero-dashboard-img" alt="Paathshala school ERP dashboard" width="1680" height="999">
-        
-        <div class="wa-card">
-          <div class="wa-head">
-            <span class="wa-ava">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.1 3.2 5.1 4.49.71.3 1.27.49 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01c-1.8 0-3.55-.48-5.08-1.39l-.36-.22-3.78.99 1.01-3.68-.24-.38a9.93 9.93 0 0 1-1.52-5.3c0-5.5 4.48-9.97 9.99-9.97 2.67 0 5.17 1.04 7.05 2.93a9.9 9.9 0 0 1 2.92 7.05c0 5.5-4.48 9.97-9.98 9.97zm8.5-18.46A11.86 11.86 0 0 0 12.04 0C5.46 0 .1 5.35.1 11.92c0 2.1.55 4.15 1.6 5.96L0 24l6.27-1.64a11.93 11.93 0 0 0 5.76 1.47h.01c6.58 0 11.93-5.35 11.93-11.92 0-3.18-1.24-6.17-3.48-8.42z"/>
-              </svg>
-            </span>
-            <div><b>Parent — Ravi ke Papa</b><span>WhatsApp receipt</span></div>
-          </div>
-          <div class="wa-bubble">
-            Namaste! 🙏 Aapke bacche <b>Ravi Sharma</b> (Class 5-A) ki school fee jama ho gayi hai.<br>
-            Jama rashi: <span class="amt">₹2,500 ✅</span><br>
-            Dhanyawad! — <b>Aapka School 🏫</b>
-            <div class="wa-time">
-              11:42 AM 
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18 7l-8 8-4-4-1.5 1.5L10 18l9.5-9.5L18 7zm-5.5 8L14 16.5 23.5 7 22 5.5 12.5 15z"/>
-              </svg>
-            </div>
-          </div>
-        </div>
+        <p class="tcap" id="tcap">Total students, teachers, today's attendance and the notice board on one screen. Press Ctrl + K to search anything.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section class="stats-strip dark">
-  <div class="stats-inner">
-    <div class="stat-item">
-      <div class="stat-icon">🏫</div>
-      <div class="stat-number" data-count="289">0</div>
-      <div class="stat-suffix">+</div>
-      <div class="stat-label">Students Monitored</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-icon">👩‍🏫</div>
-      <div class="stat-number" data-count="15">0</div>
-      <div class="stat-suffix">+</div>
-      <div class="stat-label">Active Educators</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-icon">📊</div>
-      <div class="stat-number" data-count="94">0</div>
-      <div class="stat-suffix">%</div>
-      <div class="stat-label">Attendance Accuracy</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-icon">💰</div>
-      <div class="stat-number" data-count="423120">0</div>
-      <div class="stat-suffix">₹</div>
-      <div class="stat-label">Monthly Fees Processed</div>
-    </div>
-  </div>
-  <p class="stats-tagline">Built out of real empathy. Tested live, powering daily academic and financial operations across Jharkhand.</p>
-</section>
-
-<section class="problems ruled">
+<section class="sec" id="try">
   <div class="wrap">
-    <div class="sec-head rv">
-      <div class="eyebrow">The Administrative Burden</div>
-      <h2>Stop wasting valuable hours on <span class="chalk">manual paperwork.</span></h2>
-      <p class="sub" style="margin-top:14px">Traditional manual processing costs private school administrators extensive operational hours and predictable loss in collection efficiency.</p>
-    </div>
-    <div class="prob-grid">
-      <div class="prob rv"><span class="em">📋</span><h3>Complex Fee Tracking</h3><p>Sifting through layered billing ledgers endlessly just to spot month-end default lists.</p></div>
-      <div class="prob rv"><span class="em">📝</span><h3>Delayed Academic Results</h3><p>Manually compiling marks, computing cumulative ranks, and assembling transcripts manually.</p></div>
-      <div class="prob rv"><span class="em">📞</span><h3>Constant Inbound Queries</h3><p>Answering repeating calls from guardians looking for fundamental ledger balances or records.</p></div>
-      <div class="prob rv"><span class="em">🗂️</span><h3>Zero Data Redundancy</h3><p>Relying fully on standalone hard-copy books where a single spill can wipe years of records.</p></div>
-      <div class="prob rv"><span class="em">💸</span><h3>Unreconciled Cash Flows</h3><p>Trying to balance disjointed manual receipt papers against direct bank accounts safely.</p></div>
-      <div class="prob rv"><span class="em">👩‍🏫</span><h3>Operational Bottlenecks</h3><p>School administrative frameworks stalling out completely when a single controller takes a day off.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ ECOSYSTEM DIAGRAM SECTION ============ -->
-<section class="ecosystem dark">
-  <div class="wrap section-inner">
-    <div class="section-label">Platform Architecture</div>
-    <h2 class="section-h">One platform. Every stakeholder.</h2>
-    <p class="section-sub">Paathshala connects Admins, Teachers, Students, and Parents into a single live operational hub.</p>
-    <div class="eco-diagram">
-      <div class="eco-center">
-        <div class="eco-hub">🏫<br><span>Paathshala</span></div>
+    <div class="hd c rv"><span class="eyebrow"><i></i>Live demo · sample data</span><h2>Don't read about it. <span class="grad">Try it.</span></h2><p class="lead">Both cards are real workflows — go ahead and click. If your staff can use WhatsApp, they can use this.</p></div>
+    <div class="demos">
+      <div class="demo rv">
+        <div class="demo-h"><h3><svg class="ico"><use href="#i-cal"/></svg>Mark Attendance</h3><span class="tag">Tap P · A · L</span></div>
+        <div class="bulk"><span class="cls">Class 2-A <small>· 8 students</small></span><button class="mini g" id="allP">All Present</button><button class="mini r" id="allA">All Absent</button><button class="mini" id="rst">Reset</button></div>
+        <div class="studs" id="studs"></div>
+        <div class="sum"><span><i class="dot" style="background:var(--green)"></i><b id="cP">0</b> Present</span><span><i class="dot" style="background:var(--red)"></i><b id="cA">0</b> Absent</span><span><i class="dot" style="background:#F0A000"></i><b id="cL">0</b> Late</span><div class="pb"><i id="pb"></i></div><span class="pc" id="pc">0%</span></div>
+        <button class="btn btn-p" id="subAtt">Submit Attendance</button>
+        <div id="attRes"></div>
       </div>
-      <div class="eco-spokes">
-        <div class="eco-node rv" style="--delay:0s">👨‍💼<br><strong>Admin</strong><br><small>Fees · Reports · Settings</small></div>
-        <div class="eco-node rv" style="--delay:0.1s">👩‍🏫<br><strong>Teachers</strong><br><small>Attendance · Marks · Notices</small></div>
-        <div class="eco-node rv" style="--delay:0.2s">📱<br><strong>Parents</strong><br><small>WhatsApp · Receipts · Updates</small></div>
-        <div class="eco-node rv" style="--delay:0.3s">🎒<br><strong>Students</strong><br><small>Results · Timetable · ID Cards</small></div>
-        <div class="eco-node rv" style="--delay:0.4s">💳<br><strong>Finance</strong><br><small>Auto-charge · Recovery · Audit</small></div>
+      <div class="demo rv" style="--d:1">
+        <div class="demo-h"><h3><svg class="ico"><use href="#i-rupee"/></svg>Record a Fee</h3><span class="tag">Receipt on WhatsApp</span></div>
+        <div class="fee">
+          <div class="fld"><span class="lb">Student</span><div class="who"><span class="av c3">RS</span><span>Ravi Sharma<small>Class 5-A · Parent: Ravi's Father</small></span></div></div>
+          <div class="fld"><label for="amt">Amount</label><div class="amtbox"><span>₹</span><input id="amt" type="number" inputmode="numeric" min="100" max="99999" step="100" value="2500"></div></div>
+          <div class="fld"><span class="lb">Payment mode</span><div class="modes" id="modes"><button class="on">Cash</button><button>Online / UPI</button><button>Cheque</button><button>Bank Transfer</button></div></div>
+          <button class="btn btn-p" id="pay">Record Payment <svg class="ico go"><use href="#i-go"/></svg></button>
+          <div class="rcp" id="rcp"></div>
+        </div>
+        <div class="phone">
+          <div class="ph-h"><span class="wa-av"><svg class="ico"><use href="#i-chat"/></svg></span><span><b>Ravi's Father</b><small>Parent · WhatsApp</small></span></div>
+          <div class="chat" id="chat"><span class="hint">The receipt lands here the moment you record a payment</span></div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="features" id="features">
+<section class="sec soft" id="modules">
   <div class="wrap">
-    <div class="sec-head rv">
-      <div class="eyebrow">All-In-One Dashboard</div>
-      <h2>Everything you do on paper,<br>now optimized in <span class="chalk">5 minutes.</span></h2>
-    </div>
-
-    <div class="feat">
-      <div class="feat-txt rv">
-        <h3>Smart Fees & Instant WhatsApp Ledger Updates</h3>
-        <p>Record transactions seamlessly whether through liquid cash or direct UPI. The engine immediately generates and dispatches a verified bilingual receipt token over WhatsApp straight to the guardian's terminal device.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Bilingual output with native institutional branding</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Automated periodic invoicing rules engine</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>One-click global broadcast reminders to overdue slots</li>
-        </ul>
-      </div>
-      <div class="rv"><div class="shot"><img src="assets/dash-light.jpg" alt="Dashboard metrics view" loading="lazy"></div></div>
-    </div>
-
-    <div class="feat">
-      <div class="feat-txt rv">
-        <h3>Effortless Attendance Management Tracking</h3>
-        <p>Teachers log directly from mobile handheld browsers. Use the one-tap macro to set standard baselines and focus input tracking exclusively on tracking the exceptions.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Log presents, absents, or delayed arrivals in seconds</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Instant automated roll computation averages</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Historical lookup logs pulling up in 5 seconds flat</li>
-        </ul>
-      </div>
-      <div class="rv"><div class="shot"><img src="assets/attendance-light.jpg" alt="Attendance management tracking interface" loading="lazy"></div></div>
-    </div>
-
-    <div class="feat">
-      <div class="feat-txt rv">
-        <h3>Secure Role-Based Staff & Faculty Directories</h3>
-        <p>Map out class assignments, professional contact information, credentials, and track daily milestones cleanly. Granite access permissions isolate views cleanly by role parameters.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Custom enterprise internal email mapping tags</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Dynamic structural institutional matrix mapping</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Decentralized admin privileges for smooth coverage</li>
-        </ul>
-      </div>
-      <div class="rv"><div class="shot"><img src="assets/teachers-light.jpg" alt="Staff logs panel view" loading="lazy"></div></div>
-    </div>
-
-    <div class="feat">
-      <div class="feat-txt rv">
-        <h3>Granular Enterprise Control Panel Customization</h3>
-        <p>Fine-tune underlying operational parameters, financial structures, academic terms, and visualization configurations instantly via our central global setup platform.</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Native responsive layout support</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Batch session rollover processing under 30 minutes</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Continuous immutable disaster recovery nodes</li>
-        </ul>
-      </div>
-      <div class="rv"><div class="shot"><img src="assets/admin-light.jpg" alt="Global control hub configurations" loading="lazy"></div></div>
-    </div>
-
-    <div class="mini-grid">
-      <div class="mini rv">
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
-          </svg>
-        </div>
-        <div><b>Automated Report Cards</b><span>Generate verified A4 print PDFs containing weights, tallies, and rankings instantly.</span></div>
-      </div>
-      <div class="mini rv">
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 11l18-8-8 18-2.5-7.5L3 11z"/>
-          </svg>
-        </div>
-        <div><b>Digital Notice Logs</b><span>Push immediate policy updates onto target dashboard panels dynamically.</span></div>
-      </div>
-      <div class="mini rv">
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 6v6l4 2"/>
-          </svg>
-        </div>
-        <div><b>Dynamic Timetables</b><span>Map schedules visually with active automated teacher conflict filters.</span></div>
-      </div>
-      <div class="mini rv">
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-          </svg>
-        </div>
-        <div><b>Term Multi-Mapping</b><span>Configure distinct seasonal configurations over academic partitions.</span></div>
-      </div>
-      <div class="mini rv">
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 12a9 9 0 1 0 9-9M3 3v6h6"/>
-          </svg>
-        </div>
-        <div><b>Recovery Center Hub</b><span>Safeguard setups with continuous incremental rolling backups.</span></div>
-      </div>
-      <div class="mini rv">
-        <div class="ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2"/>
-            <path d="M8 21h8M12 17v4"/>
-          </svg>
-        </div>
-        <div><b>Complimentary Portal</b><span>Every activation comes with a premium web domain node out-of-the-box.</span></div>
-      </div>
+    <div class="hd rv"><span class="eyebrow"><i></i>And a lot more</span><h2>One subscription. <span class="grad">Every module included.</span></h2></div>
+    <div class="bento">
+      <div class="card w3 rv"><span class="ci"><svg class="ico"><use href="#i-file"/></svg></span><h3>Automated Report Cards</h3><p>Enter marks — totals, percentage, grade and rank calculate themselves. Preview live in the designer, then print A4-ready PDFs for one student or a whole class.</p><div class="viz"><div class="paper"><i></i><i></i><i></i><i></i></div><div class="grades"><span style="--d:0">A1</span><span style="--d:1">A2</span><span style="--d:2">B1</span><span style="--d:3">B2</span><span style="--d:4">C1</span><span style="--d:5">Rank 3</span></div></div></div>
+      <div class="card w3 rv" style="--d:1"><span class="ci"><svg class="ico"><use href="#i-pin"/></svg></span><h3>GPS Staff Attendance</h3><p>Teachers punch in from their own phone — only inside the school's geofence. On Time, Late or Half Day is recorded automatically.</p><div class="viz"><div class="radar"><svg class="ico"><use href="#i-pin"/></svg></div><div class="geo"><span class="pill"><span class="live"></span>Within Geofence · 42 m</span><span class="pill b"><svg class="ico"><use href="#i-clock"/></svg>Punch In · On Time</span></div></div></div>
+      <div class="card rv"><span class="ci"><svg class="ico"><use href="#i-clock"/></svg></span><h3>Auto Timetable</h3><p>A draft in one click — no teacher or room is ever double-booked.</p><div class="viz"><div class="tgrid" id="tgrid"></div></div></div>
+      <div class="card rv" style="--d:1"><span class="ci"><svg class="ico"><use href="#i-horn"/></svg></span><h3>Digital Notice Board</h3><p>Write a notice and choose who sees it.</p><div class="viz"><div class="aud"><span style="--d:0">Everyone</span><span style="--d:1">Teachers Only</span><span style="--d:2">Students Only</span></div></div></div>
+      <div class="card rv" style="--d:2"><span class="ci"><svg class="ico"><use href="#i-sheet"/></svg></span><h3>Excel Import &amp; Export</h3><p>Bring your whole student list in from one .xlsx, export any report in one click.</p><div class="viz"><div class="xl"><span>students.xlsx</span><svg class="ico"><use href="#i-go"/></svg><span>289 records</span></div></div></div>
+      <div class="card rv"><span class="ci"><svg class="ico"><use href="#i-globe"/></svg></span><h3>Free School Website</h3><p>Every plan comes with your school's own web address.</p><div class="viz"><div class="url"><svg class="ico"><use href="#i-lock"/></svg><span><em>yourschool</em>.ctrlshifts.in</span></div></div></div>
+      <div class="card rv" style="--d:1"><span class="ci"><svg class="ico"><use href="#i-spark"/></svg></span><h3>Paathshala AI Helper</h3><p>Staff ask in Hindi or English, the helper points them to the right screen.</p><div class="viz"><div class="q"><span style="--d:0">How to collect fees?</span><span style="--d:1">How to mark attendance?</span></div></div></div>
+      <div class="card rv" style="--d:2"><span class="ci"><svg class="ico"><use href="#i-rot"/></svg></span><h3>Recovery Center</h3><p>A student, teacher or notice deleted by mistake comes back in one click.</p><div class="viz"><div class="rst"><svg class="ico"><use href="#i-rot"/></svg>Restore deleted records</div></div></div>
     </div>
   </div>
 </section>
 
-<!-- ============ TESTIMONIALS SECTION ============ -->
-<section class="testimonials ruled">
-  <div class="wrap section-inner">
-    <div class="section-label">What School Owners Say</div>
-    <h2 class="section-h">Real schools. Real results.</h2>
-    <div class="testimonial-cards">
-      <div class="tcard rv">
-        <div class="tcard-quote">"</div>
-        <p class="tcard-text">Fee collection jo pehle 3 din lagti thi ab 3 ghante me ho jaati hai. Parents ko WhatsApp pe receipt milti hai — trust badh gaya hai.</p>
-        <div class="tcard-author">
-          <div class="tcard-name">School Principal</div>
-          <div class="tcard-school">Shishu Vikash Mandir, Bokaro</div>
-        </div>
-      </div>
-      <div class="tcard rv">
-        <div class="tcard-quote">"</div>
-        <p class="tcard-text">Attendance register ka jhanjhat khatam. Ek click mein puri class ka data. Teachers bhi khush hain, management bhi.</p>
-        <div class="tcard-author">
-          <div class="tcard-name">School Administrator</div>
-          <div class="tcard-school">Pilot School, Jharkhand</div>
-        </div>
-      </div>
-      <div class="tcard rv">
-        <div class="tcard-quote">"</div>
-        <p class="tcard-text">Paathshala lene ke baad humne ek accountant ki salary bachaayi. System itna simple hai ki koi bhi chala sakta hai.</p>
-        <div class="tcard-author">
-          <div class="tcard-name">School Management</div>
-          <div class="tcard-school">Private School, Jharkhand</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ INTERACTIVE SAVINGS CALCULATOR ============ -->
-<section class="calc-section ruled" id="savings">
+<section class="sec" id="ecosystem">
   <div class="wrap">
-    <div class="sec-head rv" style="text-align:center; margin-bottom:48px;">
-      <div class="eyebrow" style="justify-content:center;">ROI Evaluation</div>
-      <h2>Calculate your exact administrative <span class="chalk">savings.</span></h2>
-      <p class="sub" style="margin-top:14px; margin: 0 auto;">Slide the metric bar to calculate custom resource recovery indexes based on your enrollment count.</p>
+    <div class="hd c rv"><span class="eyebrow"><i></i>Platform architecture</span><h2>One platform. <span class="grad">Every stakeholder.</span></h2><p class="lead">Paathshala connects Admins, Teachers, Students and Parents into a single live operational hub.</p></div>
+    <div class="orbit rv">
+      <svg viewBox="0 0 200 100" aria-hidden="true">
+        <circle class="ring" cx="100" cy="50" r="24"/><circle class="ring d" cx="100" cy="50" r="40"/>
+        <path class="ln" id="p1" d="M100 50 L100 10"/><path class="ln" id="p2" d="M100 50 Q62 30 30 32"/><path class="ln" id="p3" d="M100 50 Q138 30 170 32"/><path class="ln" id="p4" d="M100 50 Q70 78 48 84"/><path class="ln" id="p5" d="M100 50 Q130 78 152 84"/>
+        <circle class="pk" r="1.1"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#p1"/></animateMotion></circle>
+        <circle class="pk" r="1.1"><animateMotion dur="3.1s" begin=".4s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath href="#p2"/></animateMotion></circle>
+        <circle class="pk" r="1.1"><animateMotion dur="2.8s" begin=".9s" repeatCount="indefinite"><mpath href="#p3"/></animateMotion></circle>
+        <circle class="pk" r="1.1"><animateMotion dur="3.3s" begin=".2s" repeatCount="indefinite"><mpath href="#p4"/></animateMotion></circle>
+        <circle class="pk" r="1.1"><animateMotion dur="2.9s" begin="1.2s" repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear"><mpath href="#p5"/></animateMotion></circle>
+      </svg>
+      <div class="hub"><img src="assets/landing-v2/logo.png" alt="Paathshala by Ctrl Shift Solutions" width="66" height="67"></div>
+      <div class="node" style="--l:50%;--t:10%"><div class="node-h"><svg class="ico"><use href="#i-shield"/></svg>Admin</div><p>Fees · Reports · Settings</p></div>
+      <div class="node" style="--l:15%;--t:32%"><div class="node-h"><svg class="ico"><use href="#i-users"/></svg>Teachers</div><p>Attendance · Marks · Notices</p></div>
+      <div class="node" style="--l:85%;--t:32%"><div class="node-h"><svg class="ico"><use href="#i-chat"/></svg>Parents</div><p>WhatsApp · Receipts · Updates</p></div>
+      <div class="node" style="--l:24%;--t:84%"><div class="node-h"><svg class="ico"><use href="#i-cap"/></svg>Students</div><p>Results · Timetable · ID Cards</p></div>
+      <div class="node" style="--l:76%;--t:84%"><div class="node-h"><svg class="ico"><use href="#i-rupee"/></svg>Finance</div><p>Auto-charge · Recovery · Audit</p></div>
     </div>
-    
-    <div class="calc-card rv">
-      <div class="calc-slider-box">
-        <div class="calc-slider-header">
-          <h3>School Capacity</h3>
-          <div class="calc-student-badge"><span id="calc-count">200</span> Students</div>
-        </div>
-        <p style="font-size: 14.5px; color: var(--slate); margin-top:-10px;">Adjust the tracking metric slider to analyze custom overhead offsets.</p>
-        <input type="range" id="calc-range" min="50" max="1000" step="10" value="200" class="real-slider">
-        <p style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--slate-l); font-weight:600;"><span>50 Students</span><span>1,000 Students</span></p>
+  </div>
+</section>
+
+<section class="sec soft" id="savings">
+  <div class="wrap">
+    <div class="hd rv"><span class="eyebrow"><i></i>ROI calculator</span><h2>How much will <span class="grad">your school save?</span></h2><p class="lead">Move the slider to your student count. The numbers update instantly.</p></div>
+    <div class="calc rv">
+      <div class="calc-l">
+        <span class="eyebrow" style="margin:0"><i></i>School capacity</span>
+        <div class="calc-n"><b id="cn">200</b><span>students</span></div>
+        <input class="rng" id="rng" type="range" min="50" max="1000" step="10" value="200" aria-label="Number of students">
+        <div class="rng-s"><span>50</span><span>1,000</span></div>
+        <div class="roi"><b class="grad" id="roiX">17.6×</b><span>back in savings on the <em id="roiP">Growth</em> plan's yearly fee (<em id="roiC">₹7,999</em>).</span></div>
+        <div class="rec">Recommended plan <b id="recT">Growth</b> <span id="recS">Up to 400 students</span></div>
       </div>
-      
-      <div class="calc-outputs">
-        <div class="output-node">
-          <span>Monthly Overhead Saved</span>
-          <b id="out-month">₹11,760</b>
-        </div>
-        <div class="output-node green-node">
-          <span>Net Annualized Recovery</span>
-          <b id="out-year">₹1,41,120</b>
-        </div>
-        <div class="output-node">
-          <span>Operational Hours Saved</span>
-          <b id="out-hours">68 hrs</b>
-        </div>
-        <div class="output-node">
-          <span>Staff Resource Offset</span>
-          <b id="out-staff">0.4 Staff</b>
-        </div>
-        <div class="calc-recommendation" id="calc-rec">
-          Recommended Activation Base: <strong>Paathshala Growth Tier</strong> (Up to 400 Students - Highly Recommended)
-        </div>
+      <div class="calc-r">
+        <div class="out x"><small>Net annual recovery</small><b id="oY">₹1,41,120</b></div>
+        <div class="out"><small>Saved every month</small><b id="oM">₹11,760</b></div>
+        <div class="out"><small>Admin hours saved / month</small><b id="oH">68 hrs</b></div>
+        <div class="out"><small>Staff time freed</small><b id="oS">0.4 staff</b></div>
+        <div class="out"><small>Paper &amp; printing saved</small><b id="oP">₹3,600</b></div>
+        <p class="asm">Assumptions: admin time at ₹120 / hour, paper and printing at ₹18 per student per month, one staff member = 160 working hours a month.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section class="time dark">
+<section class="sec" id="pricing">
   <div class="wrap">
-    <div class="sec-head rv">
-      <div class="eyebrow">Data-Driven Metrics</div>
-      <h2>Engineered to return missing <span class="chalk" style="color:var(--amber);">operational hours.</span></h2>
-      <p class="sub" style="margin-top:14px">Empirically evaluated logs across long structural operational timelines.</p>
+    <div class="hd c rv"><span class="eyebrow"><i></i>Pricing</span><h2>Transparent tiers. <span class="grad">No hidden fees.</span></h2>
+      <div><div class="seg y" id="seg"><button id="bm">Monthly</button><button id="by" class="on">Yearly <em>2 months free</em></button></div></div>
     </div>
-    <div class="time-rows rv">
-      <div class="trow thead"><span>Workflow Assignment</span><span class="h-old">Legacy Systems</span><span class="h-new">Paathshala Stack</span><span>Net Resource Savings</span></div>
-      <div class="trow"><span class="task">Global Roster Updates</span><span class="old">30 mins</span><span class="new">5 mins</span><span class="save">25 mins / day</span></div>
-      <div class="trow"><span class="task">Invoicing Ledger Dispatches</span><span class="old">60 mins</span><span class="new">10 mins</span><span class="save">50 mins / day</span></div>
-      <div class="trow"><span class="task">Overdue Filter Compilation</span><span class="old">2 hours</span><span class="new">1 min</span><span class="save">2 hours / month</span></div>
-      <div class="trow"><span class="task">Transcript Computations</span><span class="old">12–15 days</span><span class="new">1 day</span><span class="save">12 days / term</span></div>
-      <div class="trow"><span class="task">Structural Session Rolling</span><span class="old">2–3 days</span><span class="new">30 mins</span><span class="save">2.5 days / year</span></div>
+    <div class="plans">
+      <div class="plan rv" data-tier="Starter"><h3>Starter</h3><p class="for">For schools up to 150 students.</p>
+        <div class="price"><span class="cur">₹</span><span class="pv" data-m="399" data-y="333">333</span><small>/month</small></div>
+        <p class="bill" data-y="&lt;b&gt;₹3,999 / year&lt;/b&gt; billed annually · ₹2.22 per student / month" data-m="Billed monthly. Switch to yearly for 2 months free."></p>
+        <ul><li><svg class="ico"><use href="#i-check"/></svg>Up to 150 students</li><li><svg class="ico"><use href="#i-check"/></svg>Fee ledgers + tracking</li><li><svg class="ico"><use href="#i-check"/></svg>Bilingual WhatsApp receipts</li><li><svg class="ico"><use href="#i-check"/></svg>Report cards + notice board</li><li><svg class="ico"><use href="#i-check"/></svg>Free school subdomain</li><li><svg class="ico"><use href="#i-check"/></svg>Standard ticket support</li></ul>
+        <a class="btn btn-s" href="#demo">Start Free Trial</a></div>
+      <div class="plan pop rv" data-tier="Growth" style="--d:1"><span class="ribbon">Most popular</span><h3>Growth</h3><p class="for">For schools up to 400 students.</p>
+        <div class="price"><span class="cur">₹</span><span class="pv" data-m="799" data-y="667">667</span><small>/month</small></div>
+        <p class="bill" data-y="&lt;b&gt;₹7,999 / year&lt;/b&gt; billed annually · ₹1.67 per student / month" data-m="Billed monthly. Switch to yearly for 2 months free."></p>
+        <ul><li><svg class="ico"><use href="#i-check"/></svg>Up to 400 students</li><li><svg class="ico"><use href="#i-check"/></svg>Everything in Starter</li><li><svg class="ico"><use href="#i-check"/></svg>Automatic monthly fee charging</li><li><svg class="ico"><use href="#i-check"/></svg>Advanced analytics + defaulter reports</li><li><svg class="ico"><use href="#i-check"/></svg>Class promotion / session rollover</li><li><svg class="ico"><use href="#i-check"/></svg>Priority support</li></ul>
+        <a class="btn btn-p" href="#demo">Start Free Trial <svg class="ico go"><use href="#i-go"/></svg></a></div>
+      <div class="plan rv" data-tier="Enterprise" style="--d:2"><h3>Enterprise</h3><p class="for">For schools up to 800 students.</p>
+        <div class="price"><span class="cur">₹</span><span class="pv" data-m="1,499" data-y="1,250">1,250</span><small>/month</small></div>
+        <p class="bill" data-y="&lt;b&gt;₹14,999 / year&lt;/b&gt; billed annually · ₹1.56 per student / month" data-m="Billed monthly. Switch to yearly for 2 months free."></p>
+        <ul><li><svg class="ico"><use href="#i-check"/></svg>Up to 800 students</li><li><svg class="ico"><use href="#i-check"/></svg>Everything in Growth</li><li><svg class="ico"><use href="#i-check"/></svg>Your own custom domain</li><li><svg class="ico"><use href="#i-check"/></svg>Multi-role admin controls</li><li><svg class="ico"><use href="#i-check"/></svg>Dedicated training sessions</li><li><svg class="ico"><use href="#i-check"/></svg>On-site support</li></ul>
+        <a class="btn btn-s" href="#demo">Start Free Trial</a></div>
     </div>
-    <p class="time-total rv">Total: Over 2 Hours Saved Daily. <b>Recover 700+ Hours Yearly.</b></p>
-  </div>
-</section>
-
-<section class="pricing ruled" id="pricing">
-  <div class="wrap">
-    <div class="sec-head rv" style="text-align:center;margin-bottom:0">
-      <div class="eyebrow" style="justify-content:center;">Predictable Subscriptions</div>
-      <h2>Transparent tiers. No hidden compliance fees.</h2>
-    </div>
-    <div class="toggle-row rv">
-      <div class="toggle">
-        <button id="tg-m">Monthly</button>
-        <button id="tg-y" class="on">Yearly <span class="save-tag">2 Months Free</span></button>
-      </div>
-    </div>
-    <div class="price-grid">
-      <div class="plan rv">
-        <h3>Starter Tier</h3>
-        <p class="for">Optimized configuration metrics for up to 150 students.</p>
-        <div class="price">₹<span class="pv" data-m="399" data-y="333">333</span><small>/month</small></div>
-        <p class="per-stu" data-m="₹2.66 / student / month" data-y="₹2.22 / student / month">₹2.22 / student / month</p>
-        <p class="yr-note">₹3,999/year billed annually</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Up to 150 student directories</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Granular fee ledgers + tracking</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Bilingual WhatsApp output receipts</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Transcript generation + notice panels</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Complimentary subdomain node activation</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Standard digital ticketing pipelines</li>
-        </ul>
-        <button class="btn btn-ghost-l open-modal-btn">Initiate Free Evaluation</button>
-      </div>
-
-      <div class="plan featured rv">
-        <span class="plan-badge">⭐ Most Popular</span>
-        <h3>Growth Tier</h3>
-        <p class="for">Full operational acceleration for up to 400 students.</p>
-        <div class="price">₹<span class="pv" data-m="799" data-y="667">667</span><small>/month</small></div>
-        <p class="per-stu" data-m="₹2.00 / student / month" data-y="₹1.67 / student / month">₹1.67 / student / month</p>
-        <p class="yr-note">₹7,999/year billed annually</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Up to 400 student directories</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Everything inside Starter included</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Automated rules invoicing pipelines</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Advanced analytics default reporting</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Granular roll transition processing</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Priority technical response routing</li>
-        </ul>
-        <button class="btn btn-primary open-modal-btn">Initiate Free Evaluation</button>
-      </div>
-
-      <div class="plan rv">
-        <h3>Enterprise Tier</h3>
-        <p class="for">Enterprise scaling parameters for up to 800 students.</p>
-        <div class="price">₹<span class="pv" data-m="1499" data-y="1250">1250</span><small>/month</small></div>
-        <p class="per-stu" data-m="₹1.87 / student / month" data-y="₹1.56 / student / month">₹1.56 / student / month</p>
-        <p class="yr-note">₹14,999/year billed annually</p>
-        <ul>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Up to 800 student directories</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Everything inside Growth included</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Native top-level custom domain support</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Cascading multi-role admin controls</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Dedicated training sync cycles</li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>On-site architectural engineering support</li>
-        </ul>
-        <button class="btn btn-ghost-l open-modal-btn">Initiate Free Evaluation</button>
-      </div>
-    </div>
-    <div class="price-trust rv">
-      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>30-day structural guarantee matrix</span>
-      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Complimentary full legacy records ingestion</span>
-      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Elastic billing frames. Terminate at will</span>
-      <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Multi-campus bundle discount rules available</span>
+    <div class="guar rv">
+      <span><svg class="ico"><use href="#i-check"/></svg>30-day free trial</span>
+      <span><svg class="ico"><use href="#i-check"/></svg>Free migration of old records</span>
+      <span><svg class="ico"><use href="#i-check"/></svg>Cancel anytime</span>
+      <span><svg class="ico"><use href="#i-check"/></svg>Multi-campus discounts available</span>
     </div>
   </div>
 </section>
 
-<!-- ============ FAQ SECTION (HINGLISH PRESERVED) ============ -->
-<section class="faq" id="faq">
-  <div class="wrap">
-    <div class="sec-head rv" style="text-align:center;margin-bottom:0">
-      <div class="eyebrow" style="justify-content:center">Aapke sawaal</div>
-      <h2>Jo har school owner <span class="chalk">poochta hai.</span></h2>
+<section class="sec soft" id="faq">
+  <div class="wrap faq">
+    <div class="faq-l rv">
+      <span class="eyebrow"><i></i>Your questions</span>
+      <h2>What every school owner <span class="grad">asks.</span></h2>
+      <div class="own"><small>From our own school</small>Teachers aged 50+ use it every day. One hour of training, in Hindi, for the whole staff.</div>
     </div>
-    <div class="faq-list">
-      <div class="q rv">
-        <button>Mere teachers technology mein kamzor hain — use kar paayenge?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Agar WhatsApp use kar lete hain, toh yeh bhi kar lenge — same simplicity hai. Hum 1 ghante ki training dete hain, Hindi mein, sab staff ke liye. Hamare apne school mein 50+ saal ki teachers roz use karti hain. Phir bhi atak jaayein toh WhatsApp support hamesha hai.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Purana data registers/Excel mein hai — kaise aayega?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Aap apna Excel ya register ka photo hamein bhejein. Hum 24–48 ghante mein pura data system mein daal denge — bilkul free, har plan mein. Aapko kuch typing nahi karni.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Internet slow hai hamare yahan — chalega?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Haan. System local cache use karta hai — internet slow ho ya thodi der gayab, kaam chalta rehta hai aur connection aate hi sync ho jaata hai. 2G/3G pe bhi smooth chalta hai.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Data safe rahega? Kahin leak toh nahi hoga?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Data Google ke Firebase cloud par encrypted stored hota hai — wahi infrastructure jo Gmail use karta hai. Roz automatic backup hota hai, aur Recovery Center se 30 din tak ka data restore ho sakta hai. Sirf aapke authorized users access kar sakte hain.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Free trial ke baad kya hoga? Automatic paisa katega?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Nahi. Trial ke liye card details hi nahi lete, toh automatic charge ka sawaal hi nahi. 30 din baad pasand aaye toh subscription start karein. Nahi aaye toh data export karke le jaayein — koi force nahi.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Parents bhi dekh paayenge apne bacche ka record?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Abhi parents ko WhatsApp pe receipts aur updates milte hain. Dedicated parent portal roadmap pe hai — jab aayega, existing customers ko free milega.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Saal ke beech mein shift kar sakte hain?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Bilkul — balki mid-session shift aasaan hota hai, kam data migrate karna padta hai. Current session ka data hum daal denge, agle din se normal kaam shuru.</p>
-        </div>
-      </div>
-      <div class="q rv">
-        <button>Yeh itna sasta kyon hai? Koi catch?<span class="plus">+</span></button>
-        <div class="ans">
-          <p>Koi catch nahi. Hum dedicated team hain — koi badi sales team nahi, koi excessive office overhead nahi, koi investor pressure nahi. Goal hai India ke hazaaron chhote aur medium schools tak pahunchna, isliye pricing wahi rakhi jo schools aaram se de sakein. Existing customers ka price kabhi nahi badhta.</p>
-        </div>
-      </div>
+    <div class="rv" id="qas">
+      <div class="qa open"><button aria-expanded="true">Mere teachers technology mein kamzor hain — use kar paayenge?<span class="pm"></span></button><div class="ans"><div><p>Agar WhatsApp use kar lete hain, toh yeh bhi kar lenge — same simplicity hai. Hum 1 ghante ki training dete hain, Hindi mein, sab staff ke liye. Hamare apne school mein 50+ saal ki teachers roz use karti hain. Phir bhi atak jaayein toh WhatsApp support hamesha hai.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Our old data is in registers and Excel — how will it come in?<span class="pm"></span></button><div class="ans"><div><p>Send us your Excel file or a photo of your register. We load all of it into the system within 24–48 hours — completely free, on every plan. You don't have to type anything.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Internet slow hai hamare yahan — chalega?<span class="pm"></span></button><div class="ans"><div><p>Haan. System local cache use karta hai — internet slow ho ya thodi der gayab, kaam chalta rehta hai aur connection aate hi sync ho jaata hai. 2G/3G pe bhi smooth chalta hai.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Will our data be safe? Could it leak?<span class="pm"></span></button><div class="ans"><div><p>Your data is stored encrypted on Google's Firebase cloud — the same infrastructure Gmail runs on. It is backed up automatically every day, and the Recovery Center can restore data from up to 30 days back. Only your authorised users can access it.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Free trial ke baad kya hoga? Automatic paisa katega?<span class="pm"></span></button><div class="ans"><div><p>Nahi. Trial ke liye card details hi nahi lete, toh automatic charge ka sawaal hi nahi. 30 din baad pasand aaye toh subscription start karein. Nahi aaye toh data export karke le jaayein — koi force nahi.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Can parents see their child's records too?<span class="pm"></span></button><div class="ans"><div><p>Right now parents get receipts and updates on WhatsApp. A dedicated parent portal is on the roadmap — when it arrives, existing customers get it free.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Can we switch in the middle of the year?<span class="pm"></span></button><div class="ans"><div><p>Absolutely — a mid-session switch is actually easier, because there is less data to migrate. We load the current session's data and you start normal work the next day.</p></div></div></div>
+      <div class="qa"><button aria-expanded="false">Yeh itna sasta kyon hai? Koi catch?<span class="pm"></span></button><div class="ans"><div><p>Koi catch nahi. Hum solo-founder company hain — koi badi sales team nahi, koi office overhead nahi, koi investor pressure nahi. Goal hai India ke hazaaron chhote schools tak pahunchna, isliye pricing wahi rakhi jo schools aaram se de sakein. Existing customers ka price kabhi nahi badhta.</p></div></div></div>
     </div>
   </div>
 </section>
 
-<section class="final dark">
+<section class="sec final soft" id="demo">
   <div class="wrap">
-    <div class="eyebrow rv" style="justify-content:center;">Deployment Phase</div>
-    <h2 class="rv">Upgrade your institutional infrastructure today.</h2>
-    <p class="sub rv" style="text-align:center;">Gain instant access to comprehensive evaluation sandboxes for 30 days. No financial commitment required upfront.</p>
-    <div class="final-ctas rv">
-      <button class="btn btn-primary open-modal-btn">Initiate Sandbox Setup</button>
-      <button class="btn btn-ghost open-modal-btn">Schedule Discovery Sync</button>
-    </div>
-  </div>
-</section>
-
-<footer>
-  <div class="wrap">
-    <div class="foot-grid">
+    <div class="fin rv">
       <div>
-        <img src="assets/logo.png" alt="Ctrl Shift Solutions">
-        <p style="margin-top:12px;">Paathshala — Premium architectural ERP standard for next-generation private educational campuses. Built by Ctrl Shift Solutions.</p>
+        <span class="eyebrow" style="color:#8FBEFF"><i style="background:#5AA2FF"></i>30 days free · no card</span>
+        <h2>Try it first. <em>Subscribe only if you like it.</em></h2>
+        <p>Book a 30-minute virtual demo. We load your old records for you — within 24 to 48 hours, completely free.</p>
+        <div class="ct">
+          <div><svg class="ico"><use href="#i-phone"/></svg><a href="tel:+919155515505" style="text-decoration:none;">+91 91555 15505</a><button class="cp" data-copy="+919155515505">Copy</button></div>
+          <div><svg class="ico"><use href="#i-mail"/></svg><a href="mailto:ctrlshifts.in@gmail.com" style="text-decoration:none;">ctrlshifts.in@gmail.com</a><button class="cp" data-copy="ctrlshifts.in@gmail.com">Copy</button></div>
+        </div>
       </div>
-      <div>
-        <h4>Platform Architectures</h4>
-        <a href="#features">Feature Modules</a>
-        <a href="#pricing">Price Indexing</a>
-        <a href="#savings">ROI Metrics</a>
-        <a href="#faq">Knowledge Base</a>
-      </div>
-      <div>
-        <h4>Company Identity</h4>
-        <button class="open-modal-btn" style="background:none; border:0; padding:0; color:inherit; font:inherit; cursor:pointer; text-align:left; display:block; margin-bottom:10px;">Contact Sync</button>
-        <a href="#">Privacy Framework</a>
-        <a href="#">Terms of Deployment</a>
-      </div>
-      <div>
-        <h4>Communications Hub</h4>
-        <a href="mailto:ctrlshifts.in@gmail.com">ctrlshifts.in@gmail.com</a>
-        <br><br>
-        <a href="tel:+919155515505" style="color:var(--sky-l); font-weight:600;">+91 91555 15505</a>
-      </div>
+      <form class="form" id="form" novalidate>
+        <h3>Book Your Free Demo</h3>
+        <p class="hint">See Paathshala in action on your own school's numbers.</p>
+        <label>School Name<input name="school" autocomplete="organization" placeholder="e.g. Shishu Vikash Mandir" required></label>
+        <div class="two">
+          <label>Your Name<input name="name" autocomplete="name" placeholder="Your name" required></label>
+          <label>Phone Number<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile" required></label>
+        </div>
+        <label>Approximate Student Count<input name="count" type="number" inputmode="numeric" min="1" placeholder="e.g. 250"></label>
+        <button class="btn btn-p btn-lg" type="submit">Submit Demo Request <svg class="ico go"><use href="#i-go"/></svg></button>
+        <div id="fnote"></div>
+      </form>
     </div>
-    <div class="foot-bottom">
-      <span>© 2026 Ctrl Shift Solutions. All rights reserved.</span>
-      <span>Control Today. Shift Tomorrow.</span>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-g">
+      <div><a class="brand" href="#top"><img src="assets/landing-v2/logo.png" alt="Ctrl Shift Solutions" width="46" height="47"><span><b>Paathshala</b><small>by Ctrl Shift Solutions</small></span></a><p>School ERP for private schools — fees, attendance, report cards and notices, on any phone.</p></div>
+      <ul class="fl"><li><a href="#features">Features</a></li><li><a href="#try">Live Demo</a></li><li><a href="#modules">Modules</a></li><li><a href="#savings">Calculator</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#faq">FAQ</a></li></ul>
     </div>
+    <div class="cr"><span>© 2026 Ctrl Shift Solutions. All rights reserved.</span><b>Control Today. Shift Tomorrow.</b></div>
   </div>
 </footer>
 
-<!-- Global Floating WhatsApp FAB -->
-<a class="fab" href="https://wa.me/919155515505?text=Namaste!%20Paathshala%20ke%20baare%20mein%20jaanna%20hai." target="_blank" rel="noopener" aria-label="WhatsApp Support">
-  <svg viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17.5 14.4c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.1 3.2 5.1 4.49.71.3 1.27.49 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.41.25-.7.25-1.29.18-1.41-.08-.13-.28-.2-.58-.35zM12.04 21.5h-.01c-1.8 0-3.55-.48-5.08-1.39l-.36-.22-3.78.99 1.01-3.68-.24-.38a9.93 9.93 0 0 1-1.52-5.3c0-5.5 4.48-9.97 9.99-9.97 2.67 0 5.17 1.04 7.05 2.93a9.9 9.9 0 0 1 2.92 7.05c0 5.5-4.48 9.97-9.98 9.97zm8.5-18.46A11.86 11.86 0 0 0 12.04 0C5.46 0 .1 5.35.1 11.92c0 2.1.55 4.15 1.6 5.96L0 24l6.27-1.64a11.93 11.93 0 0 0 5.76 1.47h.01c6.58 0 11.93-5.35 11.93-11.92 0-3.18-1.24-6.17-3.48-8.42z"/>
-  </svg>
-</a>
+<a class="fab" href="https://wa.me/919155515505?text=Namaste!%20Paathshala%20ke%20baare%20mein%20jaanna%20hai." target="_blank" rel="noopener" aria-label="Chat on WhatsApp"><svg class="ico"><use href="#i-chat"/></svg><span>WhatsApp</span></a>
 
-<!-- High-Converting Lead Generation Modal Popup Form -->
-<div class="modal-overlay" id="lead-modal">
-  <div class="modal-box">
-    <button class="modal-close" id="modal-close-btn">×</button>
-    <h3>Book Your Free Demo</h3>
-    <p>See Paathshala in action. Input your school metrics to initialize your 30-day sandbox evaluation.</p>
-    <form action="#" method="POST" id="demo-form">
-      <div class="form-group">
-        <label for="modal-school">School Name</label>
-        <input type="text" id="modal-school" name="school_name" class="form-control" placeholder="e.g. Green Valley Public School" required>
-      </div>
-      <div class="form-group">
-        <label for="modal-name">Your Name</label>
-        <input type="text" id="modal-name" name="owner_name" class="form-control" placeholder="e.g. Amit Kumar" required>
-      </div>
-      <div class="form-group">
-        <label for="modal-phone">Phone Number</label>
-        <input type="tel" id="modal-phone" name="phone" class="form-control" placeholder="e.g. 9876543210 (10 digits)" required>
-      </div>
-      <div class="form-group">
-        <label for="modal-students">Approximate Student Count</label>
-        <input type="number" id="modal-students" name="students" class="form-control" placeholder="e.g. 250" required>
-      </div>
-      <!-- Hidden Destination Email -->
-      <input type="hidden" name="destination_email" value="ctrlshifts.in@gmail.com">
-      <button type="submit" id="demo-submit-btn" class="btn btn-primary" style="width:100%; justify-content:center; margin-top:10px;">Submit Demo Request</button>
-    </form>
-  </div>
-</div>
 
-<script>
-  // Header scroll state
-  const hd = document.getElementById('hd');
-  window.addEventListener('scroll', () => hd.classList.toggle('scrolled', window.scrollY > 30), { passive: true });
-  hd.classList.toggle('scrolled', window.scrollY > 30);
 
-  // Mobile navigation drawer toggle
-  const mnav = document.getElementById('mnav');
-  document.getElementById('burger').onclick = () => mnav.classList.add('open');
-  document.getElementById('mclose').onclick = () => mnav.classList.remove('open');
-  mnav.querySelectorAll('a').forEach(a => a.onclick = () => mnav.classList.remove('open'));
-
-  // Cubic-bezier reveal scroll animations
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('in');
-        io.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.12 });
-  document.querySelectorAll('.rv').forEach(el => io.observe(el));
-
-  // Animated numbers inside proof strip
-  const cio = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      if (entry.target.classList.contains('stat-number')) return;
-      cio.unobserve(entry.target);
-      const el = entry.target;
-      const end = parseInt(el.dataset.count);
-      const suffix = el.dataset.suffix || '';
-      const t0 = performance.now();
-      const duration = 1400;
-      
-      const tick = (now) => {
-        const progress = Math.min((now - t0) / duration, 1);
-        const easeOutVal = Math.round(end * (1 - Math.pow(1 - progress, 3)));
-        el.textContent = easeOutVal + suffix;
-        if (progress < 1) {
-          requestAnimationFrame(tick);
-        }
-      };
-      requestAnimationFrame(tick);
-    });
-  }, { threshold: 0.1 });
-  document.querySelectorAll('[data-count]:not(.stat-number)').forEach(el => cio.observe(el));
-
-  // Stats Counter Animation
-  function animateCounters() {
-    document.querySelectorAll('.stat-number[data-count]').forEach(function(el) {
-      var target = parseInt(el.getAttribute('data-count'));
-      var duration = 2000;
-      var start = performance.now();
-      function update(now) {
-        var elapsed = now - start;
-        var progress = Math.min(elapsed / duration, 1);
-        var ease = 1 - Math.pow(1 - progress, 3);
-        el.textContent = Math.floor(ease * target).toLocaleString('en-IN');
-        if (progress < 1) requestAnimationFrame(update);
-      }
-      requestAnimationFrame(update);
-    });
-  }
-  var statsObserver = new IntersectionObserver(function(entries) {
-    entries.forEach(function(e) {
-      if (e.isIntersecting) { animateCounters(); statsObserver.disconnect(); }
-    });
-  }, { threshold: 0.3 });
-  var statsStrip = document.querySelector('.stats-strip');
-  if (statsStrip) statsObserver.observe(statsStrip);
-
-  // FAQ Accordion Panel Handler
-  document.querySelectorAll('.q button').forEach(button => {
-    button.onclick = () => {
-      const parent = button.parentElement;
-      const answer = parent.querySelector('.ans');
-      const isOpen = parent.classList.contains('open');
-      
-      document.querySelectorAll('.q.open').forEach(openItem => {
-        openItem.classList.remove('open');
-        openItem.querySelector('.ans').style.maxHeight = 0;
-      });
-      
-      if (!isOpen) {
-        parent.classList.add('open');
-        answer.style.maxHeight = answer.scrollHeight + 'px';
-      }
-    };
-  });
-
-  // Pricing Model State Handler (Monthly / Yearly Toggling)
-  const tm = document.getElementById('tg-m');
-  const ty = document.getElementById('tg-y');
-  function setPrice(yearly) {
-    tm.classList.toggle('on', !yearly);
-    ty.classList.toggle('on', yearly);
-    document.querySelectorAll('.pv').forEach(p => p.textContent = yearly ? p.dataset.y : p.dataset.m);
-    document.querySelectorAll('.per-stu').forEach(p => p.textContent = yearly ? p.dataset.y : p.dataset.m);
-    document.querySelectorAll('.yr-note').forEach(note => note.style.display = yearly ? 'block' : 'none');
-  }
-  tm.onclick = () => setPrice(false);
-  ty.onclick = () => setPrice(true);
-
-  // ============ FIREBASE APP COMPAT CONFIGURATION ============
-</script>
+<!-- Firebase SDKs for Lead Capture -->
 <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
 <script>
@@ -2781,191 +930,280 @@
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+</script>
 
-  // ============ LEAD MODAL REGISTRATION SYSTEM ============
-  const modal = document.getElementById('lead-modal');
-  let originalBoxContent = '';
+<script>
 
-  function bindModalEvents() {
-    const modalBox = document.querySelector('#lead-modal .modal-box');
-    if (!originalBoxContent) {
-      originalBoxContent = modalBox.innerHTML;
-    }
+(() => {
+  const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const inr = n => Math.round(n).toLocaleString('en-IN');
+  const root = document.documentElement;
+  root.classList.add('js');
 
-    const closeBtn = document.getElementById('modal-close-btn');
-    if (closeBtn) {
-      closeBtn.onclick = () => modal.classList.remove('active');
-    }
+  /* reveal on scroll */
+  const rvs = $$('.rv');
+  if ('IntersectionObserver' in window && !RM) {
+    const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .14, rootMargin: '0px 0px -6% 0px' });
+    rvs.forEach(el => io.observe(el));
+  } else rvs.forEach(el => el.classList.add('in'));
 
-    const form = document.getElementById('demo-form');
-    if (form) {
-      form.onsubmit = (e) => {
-        e.preventDefault();
-        
-        const submitBtn = document.getElementById('demo-submit-btn');
-        const schoolName = document.getElementById('modal-school').value;
-        const ownerName = document.getElementById('modal-name').value;
-        const phoneInput = document.getElementById('modal-phone');
-        const studentCount = parseInt(document.getElementById('modal-students').value);
-
-        // Sanitize phone to exactly 10 digits
-        let cleanPhone = phoneInput.value.replace(/\D/g, '');
-        if (cleanPhone.startsWith('91') && cleanPhone.length > 10) {
-          cleanPhone = cleanPhone.substring(2);
-        }
-        if (cleanPhone.length !== 10) {
-          alert("Please enter a valid 10-digit phone number.");
-          return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.innerText = "Submitting...";
-
-        const leadData = {
-          schoolName,
-          ownerName,
-          phone: cleanPhone,
-          studentCount,
-          // Defaults for omitted fields to prevent schema breakages
-          city: "Not specified",
-          board: "Not specified",
-          currentMethod: "Not specified",
-          bestTimeToCall: "Not specified",
-          message: "Submitted from upgraded landing page",
-          status: "new",
-          source: "landing_page",
-          submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          createdAt: new Date().toISOString()
-        };
-
-        db.collection('demo_requests').add(leadData)
-          .then(async (docRef) => {
-            // Serverless Telegram notification route call
-            try {
-              const notifyResponse = await fetch('/api/notify-lead', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  schoolName, ownerName, phone: cleanPhone, studentCount,
-                  city: "Not specified", board: "Not specified", currentMethod: "Not specified", bestTimeToCall: "Not specified", message: "Submitted from upgraded landing page"
-                })
-              });
-              const notifyResult = await notifyResponse.json();
-              console.log("Telegram alert dispatch state:", notifyResult);
-            } catch (err) {
-              console.error("Telegram Notification Error:", err);
-            }
-
-            // Success Display State
-            modalBox.innerHTML = `
-              <button class="modal-close" id="modal-success-close">×</button>
-              <div style="text-align: center; padding: 24px 0;">
-                <div style="font-size: 60px; margin-bottom: 24px;">✅</div>
-                <h3 style="margin-bottom: 12px; color: var(--ink); font-weight: 800;">Request Submitted!</h3>
-                <p style="font-size: 15px; color: var(--slate); line-height: 1.6; margin-bottom: 0;">We have logged your request. Our product architect will reach out within 2 hours at <strong>+91 ${cleanPhone}</strong>.</p>
-              </div>
-            `;
-
-            const successCloseBtn = document.getElementById('modal-success-close');
-            const resetAndClose = () => {
-              modal.classList.remove('active');
-              setTimeout(() => {
-                modalBox.innerHTML = originalBoxContent;
-                bindModalEvents();
-              }, 400);
-            };
-
-            if (successCloseBtn) {
-              successCloseBtn.onclick = resetAndClose;
-            }
-
-            const autoCloseTimer = setTimeout(resetAndClose, 4000);
-
-            const outsideClickReset = (event) => {
-              if (event.target === modal) {
-                clearTimeout(autoCloseTimer);
-                resetAndClose();
-              }
-            };
-            modal.addEventListener('click', outsideClickReset, { once: true });
-          })
-          .catch((error) => {
-            console.error("Firestore Upload Error:", error);
-            alert("Something went wrong. Please connect over WhatsApp: +91 91555 15505");
-            submitBtn.disabled = false;
-            submitBtn.innerText = "Submit Demo Request";
-          });
-      };
-    }
+  /* tween helper */
+  function tween(el, to, fmt, ms = 900) {
+    if (RM) { el.textContent = fmt(to); return; }
+    const from = +el.dataset.v || 0, t0 = performance.now();
+    el.dataset.v = to;
+    (function f(t) { const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 4); el.textContent = fmt(from + (to - from) * e); if (p < 1) requestAnimationFrame(f); })(t0);
   }
 
-  document.querySelectorAll('.open-modal-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      modal.classList.add('active');
-    }
+  /* stat counters */
+  const counts = $$('[data-count]');
+  if ('IntersectionObserver' in window && !RM) {
+    const co = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.dataset.v = 0; tween(e.target, +e.target.dataset.count, inr, 1800); co.unobserve(e.target); } }), { threshold: .6 });
+    counts.forEach(c => co.observe(c));
+  }
+
+  /* nav, progress, hero flatten */
+  const nav = $('#nav'), prog = $('#prog'), stage = $('#stage');
+  function onScroll() {
+    const y = scrollY, h = root.scrollHeight - innerHeight;
+    nav.classList.toggle('sc', y > 8);
+    prog.style.setProperty('--p', h > 0 ? Math.min(1, y / h) : 0);
+    if (!RM && innerWidth > 1000) { const p = Math.min(1, y / 460); stage.style.setProperty('--rx', (9 * (1 - p)).toFixed(2) + 'deg'); stage.style.setProperty('--sc', (.965 + .035 * p).toFixed(4)); }
+  }
+  addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+  /* active nav link */
+  const links = $$('.links a');
+  if ('IntersectionObserver' in window) {
+    const so = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) links.forEach(a => a.classList.toggle('act', a.getAttribute('href') === '#' + e.target.id)); }), { rootMargin: '-45% 0px -50% 0px' });
+    links.forEach(a => { const s = $(a.getAttribute('href')); if (s) so.observe(s); });
+  }
+
+  /* hero spotlight + parallax */
+  const hero = $('.hero');
+  if (!RM) hero.addEventListener('pointermove', e => {
+    const r = hero.getBoundingClientRect();
+    hero.style.setProperty('--mx', (e.clientX - r.left) + 'px'); hero.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    stage.style.setProperty('--px', ((e.clientX - r.left) / r.width - .5).toFixed(3)); stage.style.setProperty('--py', ((e.clientY - r.top) / r.height - .5).toFixed(3));
   });
 
-  modal.onclick = (e) => {
-    if (e.target === modal) {
-      modal.classList.remove('active');
-    }
+  /* marquee: duplicate once for a seamless loop */
+  const mq = $('#mq'); mq.innerHTML += mq.innerHTML;
+
+  /* card spotlight */
+  $$('.card').forEach(c => c.addEventListener('pointermove', e => { const r = c.getBoundingClientRect(); c.style.setProperty('--x', (e.clientX - r.left) + 'px'); c.style.setProperty('--y', (e.clientY - r.top) + 'px'); }));
+
+  /* timetable cells */
+  const tg = $('#tgrid'); for (let i = 0; i < 24; i++) { const c = document.createElement('i'); c.style.setProperty('--d', i); tg.appendChild(c); }
+
+  /* product tour */
+  const tour = $('#tour'), tabs = $$('.tab', tour), shots = $$('.shots img', tour), cap = $('#tcap'), ftitle = $('#ftitle');
+  function setTab(i) {
+    tabs.forEach((t, k) => { t.classList.toggle('on', k === i); t.setAttribute('aria-selected', k === i); });
+    shots.forEach((s, k) => s.classList.toggle('on', k === i));
+    cap.textContent = tabs[i].dataset.cap; ftitle.textContent = tabs[i].dataset.title;
+  }
+  tabs.forEach((t, k) => {
+    t.addEventListener('click', () => setTab(k));
+    $('.tp', t).addEventListener('animationend', () => setTab((k + 1) % tabs.length));
+  });
+  const hov = matchMedia('(hover: hover)').matches;
+  (hov ? ['mouseenter', 'focusin'] : ['focusin']).forEach(ev => tour.addEventListener(ev, () => tour.classList.add('pause')));
+  (hov ? ['mouseleave', 'focusout'] : ['focusout']).forEach(ev => tour.addEventListener(ev, () => tour.classList.remove('pause')));
+
+  /* attendance demo */
+  const studs = [['Kabir Roy', 'KR'], ['Riya Sen', 'RS'], ['Rohan Trivedi', 'RT'], ['Aanya Kumar', 'AK'], ['Karan Bhat', 'KB'], ['Ananya Sharma', 'AS'], ['Vikram Kumar', 'VK'], ['Vihaan Nair', 'VN']];
+  const start = ['P', 'P', 'P', 'A', 'A', 'P', 'P', 'P'];
+  let st = start.slice();
+  const grid = $('#studs'), res = $('#attRes');
+  grid.innerHTML = studs.map((s, i) => `<div class="stu" data-i="${i}"><span class="av c${i % 6}">${s[1]}</span><b>${s[0]}</b><small>Roll #${20260501 + i}</small><div class="pal">${['P', 'A', 'L'].map(v => `<button data-v="${v}" aria-label="${s[0]}: ${{ P: 'Present', A: 'Absent', L: 'Late' }[v]}">${v}</button>`).join('')}</div></div>`).join('');
+  function paint() {
+    $$('.stu', grid).forEach((el, i) => { el.dataset.v = st[i]; $$('button', el).forEach(b => b.classList.toggle('on', b.dataset.v === st[i])); });
+    const c = v => st.filter(x => x === v).length, P = c('P'), A = c('A'), L = c('L'), pct = Math.round((P + L) / st.length * 100);
+    $('#cP').textContent = P; $('#cA').textContent = A; $('#cL').textContent = L;
+    $('#pb').style.width = pct + '%'; $('#pc').textContent = pct + '%';
+    res.innerHTML = '';
+  }
+  grid.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; st[+b.closest('.stu').dataset.i] = b.dataset.v; paint(); });
+  $('#allP').onclick = () => { st = st.map(() => 'P'); paint(); };
+  $('#allA').onclick = () => { st = st.map(() => 'A'); paint(); };
+  $('#rst').onclick = () => { st = start.slice(); paint(); };
+  $('#subAtt').onclick = () => {
+    const abs = studs.filter((s, i) => st[i] === 'A');
+    res.innerHTML = `<div class="res"><div class="res-t"><svg class="ico"><use href="#i-check"/></svg>Attendance saved for Class 2-A</div>${abs.length
+      ? `<span>${abs.length} absent — send a WhatsApp intimation to parents:</span><ul>${abs.map(s => `<li><span>${s[0]}</span><button>WhatsApp</button></li>`).join('')}</ul>`
+      : `<span>Everyone is present — no intimation needed.</span>`}</div>`;
+  };
+  res.addEventListener('click', e => { const b = e.target.closest('li button'); if (b && !b.classList.contains('sent')) { b.classList.add('sent'); b.textContent = '✓ WhatsApp Sent'; } });
+  paint();
+
+  /* fee demo */
+  const chat = $('#chat'), pay = $('#pay'), amt = $('#amt'), rcp = $('#rcp'), modes = $('#modes');
+  modes.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $$('button', modes).forEach(x => x.classList.toggle('on', x === b)); });
+  const tickSvg = '<svg class="tick" viewBox="0 0 18 11"><path d="M1 6l3.5 3.5L11 2M7 6l3.5 3.5L17 2"/></svg>';
+  let busy = false;
+  pay.onclick = () => {
+    if (busy) return;
+    const v = Math.max(100, Math.min(99999, Math.round(+amt.value || 0))); amt.value = v;
+    busy = true; pay.firstChild.textContent = 'Recording… ';
+    const mode = $('button.on', modes).textContent, wait = RM ? 0 : 1;
+    setTimeout(() => {
+      rcp.textContent = `Receipt No. RCP-SVM-${String(Date.now()).slice(-8)} · ${mode} · saved`;
+      chat.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+      setTimeout(() => {
+        const now = new Date().toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase();
+        chat.innerHTML = `<div class="bub">Namaste! 🙏 Aapke bacche <b>Ravi Sharma</b> (Class 5-A) ki school fee jama ho gayi hai.<span class="amt">Jama rashi: <b>₹${inr(v)} ✅</b></span>Dhanyawad! — Aapka School 🏫<div class="meta">${now} ${tickSvg}</div></div>`;
+        setTimeout(() => { const t = $('.tick', chat); if (t) t.classList.add('read'); }, 900 * wait);
+        pay.firstChild.textContent = 'Record Another Payment '; busy = false;
+      }, 1100 * wait);
+    }, 600 * wait);
   };
 
-  bindModalEvents();
+  /* savings calculator — same formula the live site uses */
+  const rng = $('#rng');
+  function calc() {
+    const n = +rng.value;
+    const hours = Math.round(45 + Math.max(0, (n - 50) * .15));
+    const paper = n * 18, month = hours * 120 + paper;
+    rng.style.setProperty('--f', ((n - 50) / 950 * 100) + '%');
+    $('#cn').textContent = inr(n);
+    tween($('#oM'), month, v => '₹' + inr(v), 450);
+    tween($('#oY'), month * 12, v => '₹' + inr(v), 450);
+    tween($('#oH'), hours, v => inr(v) + ' hrs', 450);
+    tween($('#oP'), paper, v => '₹' + inr(v), 450);
+    $('#oS').textContent = (hours / 160).toFixed(1) + ' staff';
+    const tier = n <= 150 ? ['Starter', 'Up to 150 students'] : n <= 400 ? ['Growth', 'Up to 400 students'] : ['Enterprise', 'Up to 800 students'];
+    $('#recT').textContent = tier[0]; $('#recS').textContent = tier[1];
+    const cost = { Starter: 3999, Growth: 7999, Enterprise: 14999 }[tier[0]];
+    $('#roiX').textContent = (month * 12 / cost).toFixed(1) + '×'; $('#roiP').textContent = tier[0]; $('#roiC').textContent = '₹' + inr(cost);
+    $$('.plan').forEach(p => p.classList.toggle('hl', calcTouched && p.dataset.tier === tier[0]));
+  }
+  let calcTouched = false;
+  ['oM', 'oY', 'oH', 'oP'].forEach(id => $('#' + id).dataset.v = { oM: 11760, oY: 141120, oH: 68, oP: 3600 }[id]);
+  rng.addEventListener('input', () => { calcTouched = true; calc(); });
+  rng.style.setProperty('--f', ((200 - 50) / 950 * 100) + '%');
 
-  // ============ DYNAMIC RESPONSIVE SAVINGS CALCULATOR ============
-  const rangeInput = document.getElementById('calc-range');
-  const countDisplay = document.getElementById('calc-count');
-  const outMonth = document.getElementById('out-month');
-  const outYear = document.getElementById('out-year');
-  const outHours = document.getElementById('out-hours');
-  const outStaff = document.getElementById('out-staff');
-  const calcRec = document.getElementById('calc-rec');
+  /* pricing toggle */
+  const seg = $('#seg'), bm = $('#bm'), by = $('#by');
+  function setBill(y) {
+    seg.classList.toggle('y', y); bm.classList.toggle('on', !y); by.classList.toggle('on', y);
+    $$('.pv').forEach(p => { p.textContent = y ? p.dataset.y : p.dataset.m; p.classList.remove('flip'); void p.offsetWidth; p.classList.add('flip'); });
+    $$('.bill').forEach(b => b.innerHTML = y ? b.dataset.y : b.dataset.m);
+  }
+  bm.onclick = () => setBill(false); by.onclick = () => setBill(true);
+  $$('.bill').forEach(b => b.innerHTML = b.dataset.y);
 
-  function updateCalculator() {
-    if (!rangeInput) return;
-    const students = parseInt(rangeInput.value, 10) || 200;
-    if (countDisplay) countDisplay.textContent = students;
+  /* faq */
+  $('#qas').addEventListener('click', e => {
+    const b = e.target.closest('.qa > button'); if (!b) return;
+    const q = b.parentElement, open = !q.classList.contains('open');
+    $$('.qa').forEach(x => { x.classList.remove('open'); $('button', x).setAttribute('aria-expanded', 'false'); });
+    if (open) { q.classList.add('open'); b.setAttribute('aria-expanded', 'true'); }
+  });
 
-    // Admin time saved: ~45 hrs/month base + 0.15 hrs per student above 50
-    const baseHours = 45;
-    const extraHours = Math.max(0, (students - 50) * 0.15);
-    const hoursSaved = Math.round(baseHours + extraHours);
+  /* copy buttons */
+  $$('.cp').forEach(b => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Copied'; }
+    catch { const r = document.createRange(); r.selectNodeContents(b.previousElementSibling); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Selected'; }
+    setTimeout(() => b.textContent = 'Copy', 1600);
+  }));
 
-    // Overhead savings: ₹120/hr for admin staff (Tier-2 city rate)
-    const adminSavedRs = hoursSaved * 120;
+    /* demo form — wired to Firestore demo_requests & Telegram alert */
+  const leadForm = $('#form');
+  if (leadForm) {
+    leadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const schoolName = (f.school && f.school.value || '').trim();
+      const ownerName = (f.name && f.name.value || '').trim();
+      const phoneRaw = (f.phone && f.phone.value || '').trim();
+      const countVal = parseInt(f.count && f.count.value, 10);
+      const studentCount = isNaN(countVal) ? 0 : countVal;
+      const fnote = $('#fnote');
 
-    // Paper/printing savings: ₹18 per student per month
-    const paperSaved = students * 18;
-
-    // Total monthly savings
-    const totalSaved = adminSavedRs + paperSaved;
-    const netAnnualizedRecovery = totalSaved * 12;
-
-    // Staff equivalent offset (based on ~160 working hours/month per admin staff)
-    const staffOffset = (hoursSaved / 160).toFixed(1);
-
-    if (outMonth) outMonth.textContent = '₹' + totalSaved.toLocaleString('en-IN');
-    if (outYear) outYear.textContent = '₹' + netAnnualizedRecovery.toLocaleString('en-IN');
-    if (outHours) outHours.textContent = hoursSaved.toLocaleString('en-IN') + ' hrs';
-    if (outStaff) outStaff.textContent = staffOffset + ' Staff';
-
-    if (calcRec) {
-      if (students <= 150) {
-        calcRec.innerHTML = 'Recommended Activation Base: <strong>Paathshala Starter Tier</strong> (Up to 150 Students)';
-      } else if (students <= 400) {
-        calcRec.innerHTML = 'Recommended Activation Base: <strong>Paathshala Growth Tier</strong> (Up to 400 Students - Highly Recommended)';
-      } else {
-        calcRec.innerHTML = 'Recommended Activation Base: <strong>Paathshala Enterprise Tier</strong> (Up to 800 Students)';
+      if (!schoolName) {
+        fnote.innerHTML = '<div class="fnote">Please enter your school name.</div>';
+        if (f.school) f.school.focus();
+        return;
       }
-    }
+      if (!ownerName) {
+        fnote.innerHTML = '<div class="fnote">Please enter your name.</div>';
+        if (f.name) f.name.focus();
+        return;
+      }
+      let cleanPhone = phoneRaw.replace(/\D/g, '');
+      if (cleanPhone.startsWith('91') && cleanPhone.length > 10) {
+        cleanPhone = cleanPhone.substring(2);
+      }
+      if (cleanPhone.length !== 10) {
+        fnote.innerHTML = '<div class="fnote">Please enter a valid 10-digit mobile number.</div>';
+        if (f.phone) f.phone.focus();
+        return;
+      }
+
+      const submitBtn = f.querySelector('button[type="submit"]');
+      const origBtnContent = submitBtn ? submitBtn.innerHTML : 'Submit Demo Request';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+      }
+
+      const leadData = {
+        schoolName,
+        ownerName,
+        phone: cleanPhone,
+        studentCount,
+        city: 'Not specified',
+        board: 'Not specified',
+        currentMethod: 'Not specified',
+        bestTimeToCall: 'Not specified',
+        message: 'Submitted from landing v2 page',
+        status: 'new',
+        source: 'landing_page_v2',
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        const docRef = await db.collection('demo_requests').add(leadData);
+        console.log('Lead submitted successfully! Doc ID:', docRef.id);
+
+        try {
+          await fetch('/api/notify-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              schoolName,
+              ownerName,
+              phone: cleanPhone,
+              studentCount,
+              city: 'Not specified',
+              board: 'Not specified',
+              currentMethod: 'Not specified',
+              bestTimeToCall: 'Not specified',
+              message: 'Submitted from landing v2 page'
+            })
+          });
+        } catch (teleErr) {
+          console.error('Telegram notification error:', teleErr);
+        }
+
+        fnote.innerHTML = '<div class="fnote" style="background:var(--green-l);color:#065F46;border:1px solid #A7F3D0;">✅ Request received! We will reach out within 2 hours at <b>+91 ' + cleanPhone + '</b>.</div>';
+        f.reset();
+      } catch (err) {
+        console.error('Firestore upload error:', err);
+        fnote.innerHTML = '<div class="fnote">Something went wrong. Please connect over WhatsApp: <a href="https://wa.me/919155515505" target="_blank" style="text-decoration:underline;font-weight:700;">+91 91555 15505</a></div>';
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origBtnContent;
+        }
+      }
+    });
   }
-  if (rangeInput) {
-    rangeInput.addEventListener('input', updateCalculator);
-    rangeInput.addEventListener('change', updateCalculator);
-    updateCalculator();
-  }
+})();
+
 </script>
 </body>
 </html>
