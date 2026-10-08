@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v39 for landing page v2 redesign.
-const CACHE_NAME = 'erp-cache-v39';
+// Bumped to v40 for disabling destructive restore buttons in admin.js.
+const CACHE_NAME = 'erp-cache-v40';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

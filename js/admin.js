@@ -2438,7 +2438,7 @@
     // Export section
     html += '<div><h4 style="margin-bottom:12px;color:var(--accent-primary-light)"><span class="material-icons-round" style="font-size:18px;vertical-align:middle">download</span> Export Data</h4>';
     html += '<div style="display:flex;flex-direction:column;gap:8px">';
-    html += '<button class="btn btn-secondary w-full" id="export-json-btn"><span class="material-icons-round">code</span> Export Complete Backup (Students, Fees, Exams, Attendance — everything)</button>';
+    html += '<button class="btn btn-secondary w-full" id="export-json-btn"><span class="material-icons-round">code</span> Export Backup (students, staff, settings)</button>';
     html += '<button class="btn btn-secondary w-full" id="export-students-btn"><span class="material-icons-round">groups</span> Export Students (Excel)</button>';
     html += '<button class="btn btn-secondary w-full" id="export-teachers-btn"><span class="material-icons-round">person</span> Export Teachers (Excel)</button>';
     html += '<button class="btn btn-secondary w-full" id="export-attendance-btn"><span class="material-icons-round">fact_check</span> Export Attendance (Excel)</button>';
@@ -2447,7 +2447,8 @@
     // Import section
     html += '<div><h4 style="margin-bottom:12px;color:var(--accent-secondary)"><span class="material-icons-round" style="font-size:18px;vertical-align:middle">upload</span> Import Data</h4>';
     html += '<div style="display:flex;flex-direction:column;gap:8px">';
-    html += '<button class="btn btn-secondary w-full" id="import-json-btn"><span class="material-icons-round">restore</span> Restore from Backup (JSON)</button>';
+    html += '<button class="btn btn-secondary w-full" id="import-json-btn" disabled style="opacity:0.6;cursor:not-allowed;" title="Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support."><span class="material-icons-round">restore</span> Restore from Backup (JSON)</button>';
+    html += '<p style="color:var(--text-secondary);font-size:11px;margin:2px 0 0;line-height:1.3;">Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support.</p>';
     html += '<button class="btn btn-secondary w-full" id="import-students-btn"><span class="material-icons-round">groups</span> Import Students (Excel)</button>';
     html += '<input type="file" id="admin-json-input" accept=".json" style="display:none">';
     html += '<input type="file" id="admin-excel-input" accept=".xlsx,.xls,.csv" style="display:none">';
@@ -2545,6 +2546,7 @@
     html += '<button class="btn btn-primary btn-sm" id="create-manual-rp-btn"><span class="material-icons-round">add</span> Create Snapshot</button>';
     html += '</div><div class="card-body">';
     html += '<p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">Before performing destructive database resets or restoring backups, the system automatically takes snapshots of your state.</p>';
+    html += '<div style="background:rgba(245,158,11,0.1);border-left:3px solid #f59e0b;padding:8px 12px;border-radius:4px;margin-bottom:14px;font-size:12px;color:var(--text-secondary);"><span class="material-icons-round" style="font-size:15px;vertical-align:middle;color:#f59e0b;">info</span> <strong>Note:</strong> Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support.</div>';
 
     if (restorePoints.length > 0) {
       html += '<div class="table-container" style="max-height: 400px; overflow-y: auto;"><table class="data-table recovery-table"><thead><tr>';
@@ -2570,7 +2572,7 @@
         html += '<td data-label="Item"><strong>' + rp.description + '</strong><br><span style="font-size:11px;color:var(--text-muted)">' + sCount + ' Students · ' + tCount + ' Teachers · ' + aCount + ' Attendance</span></td>';
         html += '<td data-label="Deleted" style="font-size:12px">' + formattedDate + '</td>';
         html += '<td data-label="Action"><div class="table-actions">';
-        html += '<button class="btn btn-secondary btn-sm rollback-rp-btn" data-id="' + rp.id + '" title="Restore entire database to this point"><span class="material-icons-round" style="font-size:16px">settings_backup_restore</span> Rollback</button>';
+        html += '<button class="btn btn-secondary btn-sm rollback-rp-btn" data-id="' + rp.id + '" disabled style="opacity:0.6;cursor:not-allowed;" title="Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support."><span class="material-icons-round" style="font-size:16px">settings_backup_restore</span> Rollback</button>';
         html += '<button class="btn-icon delete-rp-btn" data-id="' + rp.id + '" title="Delete Snapshot" style="color:var(--danger)"><span class="material-icons-round" style="font-size:16px">delete</span></button>';
         html += '</div></td>';
         html += '</tr>';
@@ -4405,14 +4407,19 @@
     // Import JSON
     var importJsonBtn = document.getElementById('import-json-btn');
     if (importJsonBtn) {
-      importJsonBtn.addEventListener('click', function() {
-        document.getElementById('admin-json-input').click();
+      importJsonBtn.addEventListener('click', function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        SchoolApp.showToast('Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support.', 'warning');
+        return false;
       });
     }
 
     var jsonInput = document.getElementById('admin-json-input');
     if (jsonInput) {
       jsonInput.addEventListener('change', function() {
+        SchoolApp.showToast('Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support.', 'warning');
+        this.value = '';
+        return false;
         if (!this.files[0]) return;
         var file = this.files[0];
         SchoolApp.showConfirm('Restoring from backup will OVERWRITE all current data. Continue?', function() {
@@ -4689,7 +4696,10 @@
 
     // Rollback to Snapshot
     document.querySelectorAll('.rollback-rp-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
+      btn.addEventListener('click', function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        SchoolApp.showToast('Restore is temporarily disabled to protect your fees and attendance records. Contact Paathshala support.', 'warning');
+        return false;
         var id = this.getAttribute('data-id');
         var existing = localStorage.getItem('shishuvikash_restore_points');
         if (!existing) return;
