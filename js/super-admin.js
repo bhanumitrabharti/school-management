@@ -6,7 +6,7 @@
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -2002,32 +2002,71 @@ const auth = getAuth(app);
                 }
                 var tenantData = tenantSnap.data();
 
-                // Create Restore Point BEFORE cascade executes
-                if (!tenantData.trash) tenantData.trash = [];
-                var restorePointId = 'rp_' + Date.now().toString(36);
-                tenantData.trash.unshift({
-                    id: restorePointId,
-                    timestamp: new Date().toISOString(),
-                    description: "Auto-Backup before renaming class '" + oldClass + "' to '" + cleanNew + "' in " + schoolName,
-                    type: 'restore_point',
-                    schoolId: schoolId,
-                    snapshot: JSON.parse(JSON.stringify(tenantData))
-                });
-                if (tenantData.trash.length > 10) tenantData.trash = tenantData.trash.slice(0, 10);
+                // Pre-migration count and backup capture across root and subcollections
+                var affectedExamDocs = [];
+                var preSubcollectionCounts = {};
+                var postSubcollectionCounts = {};
+                try {
+                    var examColRef = collection(db, 'tenant_data', schoolId, 'exam_marks');
+                    var examSnaps = await getDocs(examColRef);
+                    if (examSnaps && !examSnaps.empty) {
+                        examSnaps.forEach(function(docSnap) {
+                            var tData = docSnap.data() || {};
+                            var count = 0;
+                            if (tData[oldClass]) {
+                                Object.keys(tData[oldClass]).forEach(function(sec) {
+                                    count += Object.keys(tData[oldClass][sec] || {}).length;
+                                });
+                            }
+                            affectedExamDocs.push({
+                                id: docSnap.id,
+                                ref: docSnap.ref,
+                                data: JSON.parse(JSON.stringify(tData)),
+                                oldCount: count
+                            });
+                            preSubcollectionCounts[docSnap.id] = count;
+                        });
+                    }
+                } catch (subErr) {
+                    console.warn('[renameClassCascade] Error querying exam_marks subcollection:', subErr);
+                }
 
-                // Mirror restore point to recovery_trash for Super Admin inspectability
+                // Create Restore Point in SEPARATE doc: tenant_data/{schoolId}/rename_backups/{timestamp} (Prevents 1 MB root doc blowup)
+                var backupTimestamp = Date.now().toString(36);
+                var backupDocRef = doc(db, 'tenant_data', schoolId, 'rename_backups', 'rb_' + backupTimestamp);
+                var backupPayload = {
+                    id: 'rb_' + backupTimestamp,
+                    timestamp: new Date().toISOString(),
+                    schoolId: schoolId,
+                    schoolName: schoolName,
+                    description: "Auto-Backup before renaming class '" + oldClass + "' to '" + cleanNew + "'",
+                    oldClass: oldClass,
+                    newClass: cleanNew,
+                    rootDocSnapshot: JSON.parse(JSON.stringify(tenantData)),
+                    subcollectionSnapshots: affectedExamDocs.map(function(d) {
+                        return { termId: d.id, data: d.data };
+                    }),
+                    counts: {
+                        enrolledStudentsAffected: affectedCount,
+                        preSubcollectionCounts: preSubcollectionCounts
+                    }
+                };
+                await setDoc(backupDocRef, backupPayload);
+
+                // Mirror restore point metadata (WITHOUT full embedded snapshot) to recovery_trash
                 if (!data.recovery_trash) data.recovery_trash = [];
                 data.recovery_trash.unshift({
-                    id: 'rec_' + Date.now().toString(36),
+                    id: 'rec_' + backupTimestamp,
                     school_id: schoolId,
                     school_name: schoolName,
                     data_type: "Class Rename Snapshot ('" + oldClass + "' → '" + cleanNew + "')",
+                    backup_doc_id: 'rb_' + backupTimestamp,
                     deleted_by: currentUserEmail,
                     deleted_time: new Date().toISOString().replace('T', ' ').substring(0, 16)
                 });
                 if (data.recovery_trash.length > 20) data.recovery_trash = data.recovery_trash.slice(0, 20);
 
-                // Cascade Migration Across All 12 Stores:
+                // Cascade Migration Across Root Doc Stores:
                 // 1. settings.classes
                 if (tenantData.settings && tenantData.settings.classes) {
                     var cIdx = tenantData.settings.classes.indexOf(oldClass);
@@ -2035,11 +2074,6 @@ const auth = getAuth(app);
                 }
 
                 // 2. settings.sections
-                // Skip when sections is still the legacy flat shared array (not a
-                // per-class map) — renaming a class doesn't need to touch it (the
-                // same shared list still applies to the renamed class), and
-                // indexing/deleting into it by class name could corrupt the array
-                // if the class name happens to look like a numeric index.
                 if (tenantData.settings && tenantData.settings.sections && !Array.isArray(tenantData.settings.sections) && tenantData.settings.sections[oldClass]) {
                     tenantData.settings.sections[cleanNew] = tenantData.settings.sections[oldClass];
                     delete tenantData.settings.sections[oldClass];
@@ -2066,6 +2100,11 @@ const auth = getAuth(app);
                             migratedStudents++;
                         }
                     });
+                }
+
+                // Verification of migrated student count
+                if (migratedStudents !== affectedCount) {
+                    throw new Error('Pre-save validation failed: Migrated student count (' + migratedStudents + ') does not match affected student count (' + affectedCount + '). Aborting rename.');
                 }
 
                 // 6. teachers (assignedClasses, classTeacherOf, subjectTeacherOf)
@@ -2167,13 +2206,42 @@ const auth = getAuth(app);
                     });
                 }
 
+                // Process and verify subcollection exam_marks documents
+                var migratedSubcollectionDocs = [];
+                affectedExamDocs.forEach(function(aDoc) {
+                    var docData = JSON.parse(JSON.stringify(aDoc.data));
+                    if (docData[oldClass]) {
+                        docData[cleanNew] = docData[oldClass];
+                        delete docData[oldClass];
+                    }
+                    var newCount = 0;
+                    if (docData[cleanNew]) {
+                        Object.keys(docData[cleanNew]).forEach(function(sec) {
+                            newCount += Object.keys(docData[cleanNew][sec] || {}).length;
+                        });
+                    }
+                    postSubcollectionCounts[aDoc.id] = newCount;
+                    if (newCount !== aDoc.oldCount) {
+                        throw new Error('Pre-save validation failed for exam_marks/' + aDoc.id + ': Old marks count (' + aDoc.oldCount + ') does not match new marks count (' + newCount + '). Aborting rename.');
+                    }
+                    migratedSubcollectionDocs.push({
+                        ref: aDoc.ref,
+                        data: docData
+                    });
+                });
+
                 // Pre-save sanity check: Ensure student roster was not wiped or corrupted
                 if (studentCount > 0 && (!tenantData.students || tenantData.students.length === 0)) {
                     throw new Error('Pre-save sanity check failed: Expected ' + studentCount + ' enrolled students, but student array is empty. Aborting write to prevent data loss.');
                 }
 
-                // Persist migrated tenantData to Firestore with merge: true
-                await setDoc(tenantRef, tenantData, { merge: true });
+                // Atomic write batch: root document + all affected subcollection docs in ONE batch
+                var batch = writeBatch(db);
+                batch.set(tenantRef, tenantData, { merge: true });
+                migratedSubcollectionDocs.forEach(function(mDoc) {
+                    batch.set(mDoc.ref, mDoc.data);
+                });
+                await batch.commit();
 
                 // Update school metadata in schools/{schoolId}
                 if (school) {

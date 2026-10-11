@@ -3073,7 +3073,10 @@
       // Re-render once after save to update status icons and progress bar
       render();
 
-      // Rank recalculation — single save after recalc
+      // Rank recalculation — ensure term marks are fully loaded/merged before ranking
+      if (typeof SchoolApp.loadExamMarksTerm === 'function') {
+        await SchoolApp.loadExamMarksTerm(termId);
+      }
       recalculateRanks(termId, classId, sectionId);
       var updatedEntry = SchoolApp.store.examMarks[termId][classId][sectionId][studentId];
       if (updatedEntry && typeof SchoolApp.saveMarks === 'function') {

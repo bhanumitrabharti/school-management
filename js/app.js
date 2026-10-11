@@ -1129,29 +1129,86 @@ window.SchoolApp = {
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
     if (!currentSchoolId) return {};
 
-    if (this.store.examMarks && this.store.examMarks[termId] && Object.keys(this.store.examMarks[termId]).length > 0) {
-      return this.store.examMarks[termId];
+    var inMemData = (this.store.examMarks && this.store.examMarks[termId]) || null;
+    var isRestr = this.isRestructured(currentSchoolId);
+
+    // Non-restructured schools: behaviour unchanged
+    if (!isRestr) {
+      if (inMemData && Object.keys(inMemData).length > 0) {
+        return inMemData;
+      }
+      try {
+        if (window.firestore && window.db) {
+          var docRefLegacy = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
+          var snapLegacy = await window.firestore.getDoc(docRefLegacy);
+          if (snapLegacy && snapLegacy.exists()) {
+            var legacySubData = snapLegacy.data() || {};
+            if (!this.store.examMarks) this.store.examMarks = {};
+            this.store.examMarks[termId] = legacySubData;
+            return legacySubData;
+          }
+        }
+      } catch (err) {
+        console.warn('[Exam Marks] Error fetching exam_marks/' + termId + ':', err);
+      }
+      if (!this.store.examMarks) this.store.examMarks = {};
+      return this.store.examMarks[termId] || {};
     }
 
-    // Dual-read: try reading from subcollection: tenant_data/{schoolId}/exam_marks/{termId}
+    // Restructured schools: dual-read with per-student merge
+    var subData = null;
     try {
       if (window.firestore && window.db) {
         var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
         var snap = await window.firestore.getDoc(docRef);
         if (snap && snap.exists()) {
-          var termData = snap.data() || {};
-          if (!this.store.examMarks) this.store.examMarks = {};
-          this.store.examMarks[termId] = termData;
-          return termData;
+          subData = snap.data() || {};
         }
       }
     } catch (err) {
-      console.warn('[Exam Marks] Error fetching exam_marks/' + termId + ':', err);
+      console.warn('[Exam Marks] Error fetching subcollection exam_marks/' + termId + ':', err);
     }
 
-    // Fallback: legacy examMarks object on store
+    // Root examMarks data
+    var rootData = (this.store.examMarks && this.store.examMarks[termId]) || {};
+
+    var merged = {};
+    if (subData && Object.keys(subData).length > 0 && rootData && Object.keys(rootData).length > 0) {
+      // Both exist: merge per student (subcollection wins for overlapping students)
+      var allClasses = {};
+      Object.keys(rootData).forEach(function(c) { allClasses[c] = true; });
+      Object.keys(subData).forEach(function(c) { allClasses[c] = true; });
+
+      Object.keys(allClasses).forEach(function(c) {
+        merged[c] = {};
+        var allSecs = {};
+        if (rootData[c]) Object.keys(rootData[c]).forEach(function(s) { allSecs[s] = true; });
+        if (subData[c]) Object.keys(subData[c]).forEach(function(s) { allSecs[s] = true; });
+
+        Object.keys(allSecs).forEach(function(s) {
+          merged[c][s] = {};
+          var rootStudents = (rootData[c] && rootData[c][s]) || {};
+          var subStudents = (subData[c] && subData[c][s]) || {};
+
+          // Add all root students first
+          Object.keys(rootStudents).forEach(function(stuId) {
+            merged[c][s][stuId] = rootStudents[stuId];
+          });
+          // Subcollection wins for overlapping students
+          Object.keys(subStudents).forEach(function(stuId) {
+            merged[c][s][stuId] = subStudents[stuId];
+          });
+        });
+      });
+    } else if (subData) {
+      merged = subData;
+    } else {
+      merged = rootData;
+    }
+
     if (!this.store.examMarks) this.store.examMarks = {};
-    return this.store.examMarks[termId] || {};
+    this.store.examMarks[termId] = merged;
+    return merged;
   },
 
   deleteExamMarksTerm: async function(termId) {
@@ -1217,13 +1274,38 @@ window.SchoolApp = {
           await window.firestore.updateDoc(termDocRef, { [markSubPath]: markEntry });
           console.log('[saveMarks:subcollection] updateDoc SUCCESS');
         } catch (updateErr) {
-          console.warn('[saveMarks:subcollection] updateDoc failed, retrying setDoc merge...');
-          var nested = {};
-          nested[classId] = {};
-          nested[classId][sectionId] = {};
-          nested[classId][sectionId][studentId] = markEntry;
-          await window.firestore.setDoc(termDocRef, nested, { merge: true });
-          console.log('[saveMarks:subcollection] setDoc merge SUCCESS');
+          console.warn('[saveMarks:subcollection] updateDoc failed, checking root copy to seed subcollection doc...');
+          // Check if subcollection doc already exists
+          var subSnap = null;
+          try {
+            subSnap = await window.firestore.getDoc(termDocRef);
+          } catch (snapErr) {
+            console.warn('[saveMarks:subcollection] Error checking termDocRef:', snapErr);
+          }
+
+          if (!subSnap || !subSnap.exists()) {
+            // First write creating exam_marks/{termId}: seed with root copy if present
+            var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+            var rootSnap = await window.firestore.getDoc(rootDocRef);
+            var rootDocData = rootSnap && rootSnap.exists() ? (rootSnap.data() || {}) : {};
+            var rootTermData = (rootDocData.examMarks && rootDocData.examMarks[termId]) || (this.store.examMarks && this.store.examMarks[termId]) || {};
+            var seedData = JSON.parse(JSON.stringify(rootTermData || {}));
+
+            if (!seedData[classId]) seedData[classId] = {};
+            if (!seedData[classId][sectionId]) seedData[classId][sectionId] = {};
+            seedData[classId][sectionId][studentId] = markEntry;
+
+            await window.firestore.setDoc(termDocRef, seedData, { merge: true });
+            console.log('[saveMarks:subcollection] Seeded new subcollection doc with root data + new mark SUCCESS');
+          } else {
+            // Subcollection doc already exists: fallback to setDoc merge for this entry
+            var nested = {};
+            nested[classId] = {};
+            nested[classId][sectionId] = {};
+            nested[classId][sectionId][studentId] = markEntry;
+            await window.firestore.setDoc(termDocRef, nested, { merge: true });
+            console.log('[saveMarks:subcollection] setDoc merge SUCCESS');
+          }
         }
         return true;
       }
