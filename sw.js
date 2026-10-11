@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v40 for disabling destructive restore buttons in admin.js.
-const CACHE_NAME = 'erp-cache-v40';
+// Bumped to v41 for updating company contact email to connect@ctrlshifts.in.
+const CACHE_NAME = 'erp-cache-v41';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

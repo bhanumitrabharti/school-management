@@ -1548,7 +1548,7 @@ const auth = getAuth(app);
                     '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">' +
                         '<h4 style="margin:0 0 8px 0; color:#1e3a8a; font-size:13px; text-transform:uppercase;">PROVIDER (LICENSOR)</h4>' +
                         '<strong style="font-size:14px;">CTRL Shift Solutions Private Limited</strong><br>' +
-                        '<span style="font-size:12px; color:#475569;">Email: support@ctrlshifts.in</span><br>' +
+                        '<span style="font-size:12px; color:#475569;">Email: connect@ctrlshifts.in</span><br>' +
                         '<span style="font-size:12px; color:#475569;">Web: ctrlshifts.in</span>' +
                     '</div>' +
                     '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px;">' +
