@@ -74,7 +74,8 @@
     if (state.fetchedTerms && state.fetchedTerms[termId]) {
       return;
     }
-    if (SchoolApp.store && SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId] && Object.keys(SchoolApp.store.examMarks[termId]).length > 0) {
+    var isRestr = typeof SchoolApp.isRestructured === 'function' && SchoolApp.isRestructured();
+    if (!isRestr && SchoolApp.store && SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId] && Object.keys(SchoolApp.store.examMarks[termId]).length > 0) {
       if (!state.fetchedTerms) state.fetchedTerms = {};
       state.fetchedTerms[termId] = true;
       return;

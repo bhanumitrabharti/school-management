@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v42 for Exam Phase 1: marks split-read and class-rename data disconnect fix.
-const CACHE_NAME = 'erp-cache-v42';
+// Bumped to v43 for Exam Phase 1: cache early-return and concurrent first-write hardening.
+const CACHE_NAME = 'erp-cache-v43';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

@@ -1124,6 +1124,9 @@ window.SchoolApp = {
   },
 
   /* ===== EXAM MARKS DUAL-READ / SINGLE-WRITE ===== */
+  _mergedTerms: {}, // cache tracker for restructured terms that have undergone dual-read merge
+  _existingSubTerms: {}, // cache tracker for terms whose exam_marks/{termId} subcollection doc is confirmed to exist
+
   loadExamMarksTerm: async function(termId) {
     if (!termId) return {};
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
@@ -1155,7 +1158,13 @@ window.SchoolApp = {
       return this.store.examMarks[termId] || {};
     }
 
-    // Restructured schools: dual-read with per-student merge
+    // Restructured schools: if already merged in this session, return in-memory cache
+    var termCacheKey = currentSchoolId + '_' + termId;
+    if (this._mergedTerms[termCacheKey] && inMemData && Object.keys(inMemData).length > 0) {
+      return inMemData;
+    }
+
+    // Dual-read with per-student merge
     var subData = null;
     try {
       if (window.firestore && window.db) {
@@ -1163,13 +1172,14 @@ window.SchoolApp = {
         var snap = await window.firestore.getDoc(docRef);
         if (snap && snap.exists()) {
           subData = snap.data() || {};
+          this._existingSubTerms[termCacheKey] = true;
         }
       }
     } catch (err) {
       console.warn('[Exam Marks] Error fetching subcollection exam_marks/' + termId + ':', err);
     }
 
-    // Root examMarks data
+    // Root examMarks data (present on initial login load or store)
     var rootData = (this.store.examMarks && this.store.examMarks[termId]) || {};
 
     var merged = {};
@@ -1208,6 +1218,7 @@ window.SchoolApp = {
 
     if (!this.store.examMarks) this.store.examMarks = {};
     this.store.examMarks[termId] = merged;
+    this._mergedTerms[termCacheKey] = true;
     return merged;
   },
 
@@ -1226,6 +1237,8 @@ window.SchoolApp = {
     if (this.store.examMarks && this.store.examMarks[termId]) {
       delete this.store.examMarks[termId];
     }
+    delete this._mergedTerms[currentSchoolId + '_' + termId];
+    delete this._existingSubTerms[currentSchoolId + '_' + termId];
 
     if (this.isRestructured(currentSchoolId)) {
       try {
@@ -1267,15 +1280,29 @@ window.SchoolApp = {
 
       // Restructured write path -> tenant_data/{schoolId}/exam_marks/{termId}
       if (this.isRestructured(currentSchoolId)) {
+        const termCacheKey = currentSchoolId + '_' + termId;
         const termDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
         const markSubPath = classId + '.' + sectionId + '.' + studentId;
         console.log('[saveMarks:subcollection] path:', 'exam_marks/' + termId + ' -> ' + markSubPath);
+
+        // Fast path: if subcollection doc is already known to exist in this session, update directly
+        if (this._existingSubTerms[termCacheKey]) {
+          try {
+            await window.firestore.updateDoc(termDocRef, { [markSubPath]: markEntry });
+            console.log('[saveMarks:subcollection] updateDoc SUCCESS (cached existence)');
+            return true;
+          } catch (cachedUpdateErr) {
+            console.warn('[saveMarks:subcollection] cached updateDoc failed, falling back to setDoc merge...', cachedUpdateErr);
+          }
+        }
+
         try {
           await window.firestore.updateDoc(termDocRef, { [markSubPath]: markEntry });
+          this._existingSubTerms[termCacheKey] = true;
           console.log('[saveMarks:subcollection] updateDoc SUCCESS');
         } catch (updateErr) {
           console.warn('[saveMarks:subcollection] updateDoc failed, checking root copy to seed subcollection doc...');
-          // Check if subcollection doc already exists
+          // Check if subcollection doc already exists (only when not confirmed cached)
           var subSnap = null;
           try {
             subSnap = await window.firestore.getDoc(termDocRef);
@@ -1284,26 +1311,32 @@ window.SchoolApp = {
           }
 
           if (!subSnap || !subSnap.exists()) {
-            // First write creating exam_marks/{termId}: seed with root copy if present
+            // First write creating exam_marks/{termId}: seed with root copy first
             var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
             var rootSnap = await window.firestore.getDoc(rootDocRef);
             var rootDocData = rootSnap && rootSnap.exists() ? (rootSnap.data() || {}) : {};
             var rootTermData = (rootDocData.examMarks && rootDocData.examMarks[termId]) || (this.store.examMarks && this.store.examMarks[termId]) || {};
             var seedData = JSON.parse(JSON.stringify(rootTermData || {}));
 
-            if (!seedData[classId]) seedData[classId] = {};
-            if (!seedData[classId][sectionId]) seedData[classId][sectionId] = {};
-            seedData[classId][sectionId][studentId] = markEntry;
-
+            // Step 1: Write seed data with merge: true (preserves any concurrent teacher write)
             await window.firestore.setDoc(termDocRef, seedData, { merge: true });
-            console.log('[saveMarks:subcollection] Seeded new subcollection doc with root data + new mark SUCCESS');
-          } else {
-            // Subcollection doc already exists: fallback to setDoc merge for this entry
+
+            // Step 2: Write this student's mark with merge: true (never overwrites concurrent fields)
             var nested = {};
             nested[classId] = {};
             nested[classId][sectionId] = {};
             nested[classId][sectionId][studentId] = markEntry;
             await window.firestore.setDoc(termDocRef, nested, { merge: true });
+            this._existingSubTerms[termCacheKey] = true;
+            console.log('[saveMarks:subcollection] Seeded new subcollection doc with root data + new mark SUCCESS (merge-safe)');
+          } else {
+            // Subcollection doc already exists: fallback to setDoc merge for this entry
+            var nestedExist = {};
+            nestedExist[classId] = {};
+            nestedExist[classId][sectionId] = {};
+            nestedExist[classId][sectionId][studentId] = markEntry;
+            await window.firestore.setDoc(termDocRef, nestedExist, { merge: true });
+            this._existingSubTerms[termCacheKey] = true;
             console.log('[saveMarks:subcollection] setDoc merge SUCCESS');
           }
         }
