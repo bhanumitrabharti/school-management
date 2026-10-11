@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -18,7 +18,7 @@ export const auth = getAuth(app);
 // Expose Firestore and Auth globally for any non-module components
 window.db = db;
 window.auth = auth;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
@@ -1282,13 +1282,20 @@ window.SchoolApp = {
       if (this.isRestructured(currentSchoolId)) {
         const termCacheKey = currentSchoolId + '_' + termId;
         const termDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'exam_marks', termId);
-        const markSubPath = classId + '.' + sectionId + '.' + studentId;
-        console.log('[saveMarks:subcollection] path:', 'exam_marks/' + termId + ' -> ' + markSubPath);
+        console.log('[saveMarks:subcollection] path: exam_marks/' + termId + ' -> [' + classId + '][' + sectionId + '][' + studentId + ']');
 
         // Fast path: if subcollection doc is already known to exist in this session, update directly
         if (this._existingSubTerms[termCacheKey]) {
           try {
-            await window.firestore.updateDoc(termDocRef, { [markSubPath]: markEntry });
+            if (window.firestore.FieldPath) {
+              await window.firestore.updateDoc(termDocRef, new window.firestore.FieldPath(String(classId), String(sectionId), String(studentId)), markEntry);
+            } else {
+              var nestedFast = {};
+              nestedFast[classId] = {};
+              nestedFast[classId][sectionId] = {};
+              nestedFast[classId][sectionId][studentId] = markEntry;
+              await window.firestore.setDoc(termDocRef, nestedFast, { merge: true });
+            }
             console.log('[saveMarks:subcollection] updateDoc SUCCESS (cached existence)');
             return true;
           } catch (cachedUpdateErr) {
@@ -1297,7 +1304,15 @@ window.SchoolApp = {
         }
 
         try {
-          await window.firestore.updateDoc(termDocRef, { [markSubPath]: markEntry });
+          if (window.firestore.FieldPath) {
+            await window.firestore.updateDoc(termDocRef, new window.firestore.FieldPath(String(classId), String(sectionId), String(studentId)), markEntry);
+          } else {
+            var nestedFirst = {};
+            nestedFirst[classId] = {};
+            nestedFirst[classId][sectionId] = {};
+            nestedFirst[classId][sectionId][studentId] = markEntry;
+            await window.firestore.setDoc(termDocRef, nestedFirst, { merge: true });
+          }
           this._existingSubTerms[termCacheKey] = true;
           console.log('[saveMarks:subcollection] updateDoc SUCCESS');
         } catch (updateErr) {
@@ -1345,12 +1360,20 @@ window.SchoolApp = {
 
       // Legacy write path -> tenant_data/{schoolId}
       const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-      const markPath = 'examMarks.' + termId + '.' + classId + '.' + sectionId + '.' + studentId;
-
-      console.log('[saveMarks:legacy] path:', markPath);
+      console.log('[saveMarks:legacy] path: examMarks.' + termId + '.' + classId + '.' + sectionId + '.' + studentId);
 
       try {
-        await window.firestore.updateDoc(docRef, { [markPath]: markEntry });
+        if (window.firestore.FieldPath) {
+          await window.firestore.updateDoc(docRef, new window.firestore.FieldPath('examMarks', String(termId), String(classId), String(sectionId), String(studentId)), markEntry);
+        } else {
+          var nestedLegacy = {};
+          nestedLegacy['examMarks'] = {};
+          nestedLegacy['examMarks'][termId] = {};
+          nestedLegacy['examMarks'][termId][classId] = {};
+          nestedLegacy['examMarks'][termId][classId][sectionId] = {};
+          nestedLegacy['examMarks'][termId][classId][sectionId][studentId] = markEntry;
+          await window.firestore.setDoc(docRef, nestedLegacy, { merge: true });
+        }
         console.log('[saveMarks:legacy] updateDoc SUCCESS');
       } catch (updateErr) {
         console.warn('[saveMarks:legacy] updateDoc failed (' + (updateErr.code || updateErr.message) + '), retrying with setDoc merge...');

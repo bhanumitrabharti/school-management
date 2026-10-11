@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v43 for Exam Phase 1: cache early-return and concurrent first-write hardening.
-const CACHE_NAME = 'erp-cache-v43';
+// Bumped to v44 for dotted field-path fix: FieldPath support for dotted class names (e.g. K.G).
+const CACHE_NAME = 'erp-cache-v44';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
