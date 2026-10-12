@@ -81,6 +81,14 @@
       "continue": false
     },
     {
+      "src": "/(?:scratch|scripts|ANTIGRAVITY-TASKS|Claude outputs|shishu-vikash)/(.*)",
+      "status": 404
+    },
+    {
+      "src": "/(?:firestore\\.rules|firebase\\.json|\\.firebaserc|server\\.js|validate\\.js|netlify\\.toml|.*\\.md)$",
+      "status": 404
+    },
+    {
       "handle": "filesystem"
     },
     {
