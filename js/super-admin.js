@@ -7,7 +7,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -20,6 +20,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+try {
+  setPersistence(auth, browserSessionPersistence);
+} catch (e) {
+  console.error('[SA Auth] setPersistence failed:', e);
+}
 
 (function () {
     'use strict';
@@ -551,7 +556,7 @@ const auth = getAuth(app);
         }
 
         if (authSucceeded) {
-
+            sessionStorage.setItem('erp_active_session_uid', (auth && auth.currentUser) ? auth.currentUser.uid : 'superadmin');
             sessionStorage.setItem(SESSION_KEY, 'active');
             loginPage.classList.add('hidden');
             dashboard.classList.add('active');
@@ -575,8 +580,17 @@ const auth = getAuth(app);
     }
 
     /** End session and return to login. */
-    function saLogout() {
+    async function saLogout() {
+        sessionStorage.removeItem('erp_active_session_uid');
         sessionStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem('isImpersonating');
+        sessionStorage.removeItem('impersonate_school_id');
+        sessionStorage.removeItem('impersonate_role');
+        try {
+            if (auth) await signOut(auth);
+        } catch (e) {
+            console.warn('[SA Logout] signOut warning:', e);
+        }
         dashboard.classList.remove('active');
         loginPage.classList.remove('hidden');
         showToast('Logged out successfully', 'info');
@@ -3190,9 +3204,11 @@ const auth = getAuth(app);
             return;
         }
 
-        localStorage.setItem('impersonate_school_id', schoolId);
-        localStorage.setItem('impersonate_role', role);
+        sessionStorage.setItem('impersonate_school_id', schoolId);
+        sessionStorage.setItem('impersonate_role', role);
         sessionStorage.setItem('isImpersonating', 'true');
+        localStorage.removeItem('impersonate_school_id');
+        localStorage.removeItem('impersonate_role');
 
         showToast('Redirecting as ' + role + ' of "' + school.school_name + '"…', 'info');
 
