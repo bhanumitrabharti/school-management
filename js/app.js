@@ -1527,6 +1527,31 @@ window.SchoolApp = {
           var _lastExamsRender = 0;
           var EXAMS_RENDER_THROTTLE = 5000;
 
+          // Watchdog: after 25s with no usable snapshot, hide loader and show Retry option
+          var _watchdogTimer = setTimeout(function() {
+            if (!self.tenantInitialized && !firstResolveCalled) {
+              console.warn('[Watchdog] 25s elapsed with no usable tenant snapshot for ' + activeSchoolId);
+              if (!bypassLoader) self.hideLoader();
+              var errEl = document.getElementById('login-error-msg');
+              if (errEl) {
+                errEl.innerHTML = 'Slow connection — <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
+                errEl.style.display = 'block';
+                var retryBtn = document.getElementById('btn-retry-connection');
+                if (retryBtn) {
+                  retryBtn.onclick = function() {
+                    errEl.style.display = 'none';
+                    errEl.textContent = '';
+                    window.location.reload();
+                  };
+                }
+              }
+              var loginBtnText = document.getElementById('login-btn-text');
+              if (loginBtnText && !self.tenantInitialized) {
+                loginBtnText.textContent = 'Slow Connection';
+              }
+            }
+          }, 25000);
+
           self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
             self.updateConnectionIndicator(docSnap.metadata.fromCache);
 
@@ -1537,11 +1562,32 @@ window.SchoolApp = {
             }
 
             // SAFEGUARD: Never auto-create or overwrite tenant document from a client onSnapshot event.
-            // If the document is not found, simply wait for the next snapshot from server.
+            // If doc does not exist and confirmed from server, show clear error message and dismiss loader.
             if (!docExists) {
-              console.warn('Document not found on snapshot for ' + activeSchoolId + ' — waiting for next snapshot, NOT auto-initializing.');
+              if (docSnap.metadata && docSnap.metadata.fromCache === false) {
+                console.warn('[initData] Tenant document confirmed missing from server for ' + activeSchoolId);
+                if (_watchdogTimer) clearTimeout(_watchdogTimer);
+                if (!bypassLoader) self.hideLoader();
+                var errEl = document.getElementById('login-error-msg');
+                if (errEl) {
+                  errEl.textContent = 'School data not initialized. Please contact connect@ctrlshifts.in';
+                  errEl.style.display = 'block';
+                }
+                var submitBtn = document.getElementById('login-submit-btn');
+                var btnText = document.getElementById('login-btn-text');
+                if (submitBtn) submitBtn.disabled = true;
+                if (btnText) btnText.textContent = 'School Unavailable';
+                if (!firstResolveCalled) {
+                  firstResolveCalled = true;
+                  resolve(false);
+                }
+                return;
+              }
+              console.warn('Document not found in cache for ' + activeSchoolId + ' — waiting for next snapshot, NOT auto-initializing.');
               return;
             }
+
+            if (_watchdogTimer) clearTimeout(_watchdogTimer);
 
             if (parsed) {
               // Clean replacement from initial baseline + server snapshot (NO MERGING with stale state)
@@ -1723,6 +1769,7 @@ window.SchoolApp = {
             }
           }, (error) => {
             console.error("Firestore tenant onSnapshot error:", error);
+            if (_watchdogTimer) clearTimeout(_watchdogTimer);
             self.updateConnectionIndicator(true);
 
             if (!firstResolveCalled) {

@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v45 for P0 Security Release: Server-verified school access & credential protection.
-const CACHE_NAME = 'erp-cache-v45';
+// Bumped to v46 for loader timeout watchdog and atomic onboarding updates.
+const CACHE_NAME = 'erp-cache-v46';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [

@@ -3047,8 +3047,73 @@ const auth = getAuth(app);
                 restructured: true
             };
 
-            data.schools.push(newSchool);
-            saveData(data);
+            // Save fresh settings in tenant_data (merge: false)
+            var legacyFeeStructures = {};
+            if (formFeeStructure) {
+                Object.keys(formFeeStructure).forEach(function(c) {
+                    var clsFees = formFeeStructure[c] || {};
+                    var legacyFees = {};
+                    Object.keys(clsFees).forEach(function(k) {
+                        var legacyKey = k;
+                        if (k === 'tuition') legacyKey = 'fh_tuition';
+                        else if (k === 'transport') legacyKey = 'fh_transport';
+                        else if (k === 'exam') legacyKey = 'fh_exam';
+                        else if (k === 'fine') legacyKey = 'fh_fine';
+                        else if (k === 'annual') legacyKey = 'fh_annual';
+                        else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
+                        legacyFees[legacyKey] = clsFees[k];
+                    });
+                    legacyFeeStructures[c] = legacyFees;
+                });
+            }
+
+            var tenantData = {
+                settings: {
+                    schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                    schoolName: name,
+                    tagline: tagline,
+                    phone: phone,
+                    email: email,
+                    address: address,
+                    affiliation: affiliation,
+                    udiseCode: udiseCode,
+                    adminUsername: adminUsername,
+                    adminPassword: adminPasswordHashed,
+                    adminEmail: adminEmail,
+                    classes: formClasses,
+                    sections: formSections,
+                    feeStructure: formFeeStructure,
+                    extraCharges: formExtraCharges,
+                    setupCompletedBySuperAdmin: true,
+                    clientCanEdit: true,
+                    theme: 'dark',
+                    attendanceTime: '09:00',
+                    academicYear: '2025-2026',
+                    restructured: true
+                },
+                restructured: true,
+                students: [],
+                teachers: [],
+                attendance: [],
+                fees: [],
+                feeHeads: [
+                    { id: 'fh_tuition', name: 'Tuition Fee' },
+                    { id: 'fh_transport', name: 'Transport Fee' },
+                    { id: 'fh_exam', name: 'Examination Fee' },
+                    { id: 'fh_fine', name: 'Late Fee / Fine' },
+                    { id: 'fh_annual', name: 'Annual Development Fee' }
+                ],
+                feeStructures: legacyFeeStructures,
+                exams: [],
+                marks: [],
+                notices: [],
+                timetable: {},
+                subjectMapping: {},
+                notifications: [],
+                trash: [],
+                lastAutomatedFeeRun: ""
+            };
+
             try {
                 // Pre-onboarding collision check: Ensure newSchoolId does not already exist in Firestore
                 const existingTenantCheck = await getDoc(doc(db, 'tenant_data', newSchoolId));
@@ -3056,84 +3121,18 @@ const auth = getAuth(app);
                     throw new Error('Safety collision check failed: School ID "' + newSchoolId + '" already exists in Firestore! Cannot overwrite an existing school.');
                 }
 
-                // Save metadata
-                await setDoc(doc(db, 'schools', newSchoolId), newSchool);
-                
-                // Save fresh settings in tenant_data (merge: false)
-                var legacyFeeStructures = {};
-                if (formFeeStructure) {
-                    Object.keys(formFeeStructure).forEach(function(c) {
-                        var clsFees = formFeeStructure[c] || {};
-                        var legacyFees = {};
-                        Object.keys(clsFees).forEach(function(k) {
-                            var legacyKey = k;
-                            if (k === 'tuition') legacyKey = 'fh_tuition';
-                            else if (k === 'transport') legacyKey = 'fh_transport';
-                            else if (k === 'exam') legacyKey = 'fh_exam';
-                            else if (k === 'fine') legacyKey = 'fh_fine';
-                            else if (k === 'annual') legacyKey = 'fh_annual';
-                            else if (!k.startsWith('fh_')) legacyKey = 'fh_' + k;
-                            legacyFees[legacyKey] = clsFees[k];
-                        });
-                        legacyFeeStructures[c] = legacyFees;
-                    });
-                }
+                // ATOMIC ONBOARDING: Commit both schools and tenant_data in a single atomic batch
+                var batch = writeBatch(db);
+                batch.set(doc(db, 'schools', newSchoolId), newSchool);
+                batch.set(doc(db, 'tenant_data', newSchoolId), tenantData);
+                await batch.commit();
 
-                var tenantData = {
-                    settings: {
-                        schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
-                // Also write the FLAT fields — the School Admin Settings page
-                // (admin.js) reads/writes settings.schoolName / .phone / etc
-                // directly, not settings.schoolInfo.*. Without these, a newly
-                // onboarded school's Settings form shows blank until the admin
-                // manually retypes everything already entered here.
-                schoolName: name,
-                tagline: tagline,
-                phone: phone,
-                email: email,
-                address: address,
-                affiliation: affiliation,
-                udiseCode: udiseCode,
-                        adminUsername: adminUsername,
-                        adminPassword: adminPasswordHashed,
-                        adminEmail: adminEmail,
-                        classes: formClasses,
-                        sections: formSections,
-                        feeStructure: formFeeStructure,
-                        extraCharges: formExtraCharges,
-                        setupCompletedBySuperAdmin: true,
-                        clientCanEdit: true,
-                        theme: 'dark',
-                        attendanceTime: '09:00',
-                        academicYear: '2025-2026',
-                        restructured: true
-                    },
-                    restructured: true,
-                    students: [],
-                    teachers: [],
-                    attendance: [],
-                    fees: [],
-                    feeHeads: [
-                        { id: 'fh_tuition', name: 'Tuition Fee' },
-                        { id: 'fh_transport', name: 'Transport Fee' },
-                        { id: 'fh_exam', name: 'Examination Fee' },
-                        { id: 'fh_fine', name: 'Late Fee / Fine' },
-                        { id: 'fh_annual', name: 'Annual Development Fee' }
-                    ],
-                    feeStructures: legacyFeeStructures,
-                    exams: [],
-                    marks: [],
-                    notices: [],
-                    timetable: {},
-                    subjectMapping: {},
-                    notifications: [],
-                    trash: [],
-                    lastAutomatedFeeRun: ""
-                };
-                await setDoc(doc(db, 'tenant_data', newSchoolId), tenantData);
+                // Only update in-memory state after successful atomic commit!
+                data.schools.push(newSchool);
+                saveData(data);
 
             } catch(e) {
-                console.error('Failed to save new school/tenant to Firestore:', e);
+                console.error('Failed to atomically onboard school to Firestore:', e);
                 showToast('Failed to onboard school to Firestore: ' + (e.message || e), 'error');
                 return;
             }
@@ -3546,6 +3545,10 @@ const auth = getAuth(app);
 
         // Add School button
         btnAddSchool.addEventListener('click', function () {
+            if (btnAddSchool.disabled) {
+                showToast('Onboarding temporarily disabled — security upgrade in progress', 'warning');
+                return;
+            }
             showSchoolModal(null);
         });
 
