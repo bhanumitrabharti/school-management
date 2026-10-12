@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -14,6 +14,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// Connect to local emulator if explicitly requested (test runs)
+try {
+  const urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+  const emulatorPort = (urlParams && urlParams.get('emulator_port')) || (typeof window !== 'undefined' && window.__EMULATOR_PORT__);
+  if (emulatorPort) {
+    connectFirestoreEmulator(db, '127.0.0.1', parseInt(emulatorPort, 10));
+    console.log('[Firebase] Connected to local Firestore emulator on 127.0.0.1:' + emulatorPort);
+  }
+} catch (e) {
+  console.warn('[Firebase] Emulator connection warning:', e);
+}
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = db;
@@ -1511,275 +1523,21 @@ window.SchoolApp = {
         }
 
         if (activeSchoolId) {
-          var firstResolveCalled = false;
-
-          // If already listening to this exact school and initialized, do not tear down or re-attach
-          if (self.tenantListenerUnsubscribe && previousSchoolId === activeSchoolId && self.tenantInitialized) {
-            if (!bypassLoader) self.hideLoader();
-            resolve(true);
-            return;
-          }
-
-          const docRef = window.firestore.doc(window.db, 'tenant_data', activeSchoolId);
-
-          // ISSUE 2 FIX: Declare render guard OUTSIDE onSnapshot callback so it persists
-          var _examsRenderLock = false;
-          var _lastExamsRender = 0;
-          var EXAMS_RENDER_THROTTLE = 5000;
-
-          // Watchdog: after 25s with no usable snapshot, hide loader and show Retry option
-          var _watchdogTimer = setTimeout(function() {
-            if (!self.tenantInitialized && !firstResolveCalled) {
-              console.warn('[Watchdog] 25s elapsed with no usable tenant snapshot for ' + activeSchoolId);
-              if (!bypassLoader) self.hideLoader();
-              var errEl = document.getElementById('login-error-msg');
-              if (errEl) {
-                errEl.innerHTML = 'Slow connection — <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
-                errEl.style.display = 'block';
-                var retryBtn = document.getElementById('btn-retry-connection');
-                if (retryBtn) {
-                  retryBtn.onclick = function() {
-                    errEl.style.display = 'none';
-                    errEl.textContent = '';
-                    window.location.reload();
-                  };
-                }
-              }
-              var loginBtnText = document.getElementById('login-btn-text');
-              if (loginBtnText && !self.tenantInitialized) {
-                loginBtnText.textContent = 'Slow Connection';
-              }
-            }
-          }, 25000);
-
-          self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
-            self.updateConnectionIndicator(docSnap.metadata.fromCache);
-
-            var parsed = null;
-            var docExists = docSnap.exists();
-            if (docExists) {
-              parsed = docSnap.data();
-            }
-
-            // SAFEGUARD: Never auto-create or overwrite tenant document from a client onSnapshot event.
-            // If doc does not exist and confirmed from server, show clear error message and dismiss loader.
-            if (!docExists) {
-              if (docSnap.metadata && docSnap.metadata.fromCache === false) {
-                console.warn('[initData] Tenant document confirmed missing from server for ' + activeSchoolId);
-                if (_watchdogTimer) clearTimeout(_watchdogTimer);
-                if (!bypassLoader) self.hideLoader();
-                var errEl = document.getElementById('login-error-msg');
-                if (errEl) {
-                  errEl.textContent = 'School data not initialized. Please contact connect@ctrlshifts.in';
-                  errEl.style.display = 'block';
-                }
-                var submitBtn = document.getElementById('login-submit-btn');
-                var btnText = document.getElementById('login-btn-text');
-                if (submitBtn) submitBtn.disabled = true;
-                if (btnText) btnText.textContent = 'School Unavailable';
-                if (!firstResolveCalled) {
-                  firstResolveCalled = true;
-                  resolve(false);
-                }
-                return;
-              }
-              console.warn('Document not found in cache for ' + activeSchoolId + ' — waiting for next snapshot, NOT auto-initializing.');
-              return;
-            }
-
-            if (_watchdogTimer) clearTimeout(_watchdogTimer);
-
-            if (parsed) {
-              // Clean replacement from initial baseline + server snapshot (NO MERGING with stale state)
-              var preservedSchools = (self.store && self.store.schools) ? self.store.schools : [];
-              var preservedFees = (self.store && self.store.fees && self.store.fees.length > 0 && (!parsed.fees || parsed.fees.length === 0)) ? self.store.fees : [];
-              var preservedAttendance = (self.store && self.store.attendance && self.store.attendance.length > 0 && (!parsed.attendance || parsed.attendance.length === 0)) ? self.store.attendance : [];
-              var preservedExamMarks = (self.store && self.store.examMarks && Object.keys(self.store.examMarks).length > 0 && (!parsed.examMarks || Object.keys(parsed.examMarks).length === 0)) ? self.store.examMarks : {};
-
-              self.store = Object.assign(self.getInitialStore(), parsed, {
-                currentSchoolId: activeSchoolId
-              });
-              self.store.schools = preservedSchools;
-              if (preservedFees.length > 0) self.store.fees = preservedFees;
-              if (preservedAttendance.length > 0) self.store.attendance = preservedAttendance;
-              if (Object.keys(preservedExamMarks).length > 0) self.store.examMarks = preservedExamMarks;
-
-              self.initialServerStudentCount = (parsed.students || []).length;
-              self.initialServerTeacherCount = (parsed.teachers || []).length;
-              self.initialServerExamTermsCount = Object.keys(parsed.examTerms || {}).length;
-              self.liveServerStudentCount = (parsed.students || []).length;
-              self.liveServerTeacherCount = (parsed.teachers || []).length;
-              self.tenantInitialized = true;
-              self.enableLoginButton();
-            }
-
-            // Populate default arrays/objects if missing
-            if (!self.store.students) self.store.students = [];
-            if (!self.store.teachers) self.store.teachers = [];
-            if (!self.store.attendance) self.store.attendance = [];
-            if (!self.store.trash) self.store.trash = [];
-            if (!self.store.feeHeads) self.store.feeHeads = [];
-            if (!self.store.feeStructures) self.store.feeStructures = {};
-            if (!self.store.fees) self.store.fees = [];
-            if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
-            if (!self.store.exams) self.store.exams = [];
-            if (!self.store.subjectMapping) self.store.subjectMapping = {};
-            if (!self.store.marks) self.store.marks = [];
-            if (!self.store.notices) self.store.notices = [];
-            if (!self.store.timetable) self.store.timetable = {};
-
-            if (!self.store.settings) self.store.settings = {};
-
-            // Migrate or initialize settings.feeHeads from store.feeHeads
-            if (!self.store.settings.feeHeads) {
-              if (self.store.feeHeads && self.store.feeHeads.length > 0) {
-                self.store.settings.feeHeads = JSON.parse(JSON.stringify(self.store.feeHeads));
-              } else {
-                self.store.settings.feeHeads = [
-                  { id: 'fh_tuition', name: 'Tuition Fee' },
-                  { id: 'fh_transport', name: 'Transport Fee' },
-                  { id: 'fh_exam', name: 'Examination Fee' },
-                  { id: 'fh_fine', name: 'Late Fee / Fine' },
-                  { id: 'fh_annual', name: 'Annual Development Fee' }
-                ];
-              }
-            }
-            self.store.feeHeads = self.store.settings.feeHeads;
-
-            // Migrate or initialize settings.feeStructure from store.feeStructures
-            if (!self.store.settings.feeStructure) {
-              if (self.store.feeStructures && Object.keys(self.store.feeStructures).length > 0) {
-                self.store.settings.feeStructure = {};
-                var fs = self.store.feeStructures;
-                Object.keys(fs).forEach(function(cls) {
-                  self.store.settings.feeStructure[cls] = {};
-                  var clsFees = fs[cls] || {};
-                  Object.keys(clsFees).forEach(function(feeId) {
-                    var cleanId = feeId;
-                    if (feeId === 'fh_tuition') cleanId = 'tuition';
-                    else if (feeId === 'fh_transport') cleanId = 'transport';
-                    else if (feeId === 'fh_exam') cleanId = 'exam';
-                    else if (feeId === 'fh_fine') cleanId = 'fine';
-                    else if (feeId === 'fh_annual') cleanId = 'annual';
-                    else if (feeId.startsWith('fh_')) cleanId = feeId.substring(3);
-                    self.store.settings.feeStructure[cls][cleanId] = clsFees[feeId];
-                  });
-                });
-              }
-            }
-
-            // Default subjects
-            if (!self.store.settings.subjects) {
-              self.store.settings.subjects = ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Computer Science', 'Sanskrit', 'Art'];
-            }
-            if (!self.store.settings.schoolInfo) {
-              self.store.settings.schoolInfo = {
-                name: self.store.settings.schoolName || '',
-                tagline: '',
-                logoUrl: self.store.settings.logoUrl || '',
-                phone: self.store.settings.phone || '',
-                email: self.store.settings.email || '',
-                address: self.store.settings.address || '',
-                affiliation: '',
-                udiseCode: ''
-              };
-            } else if (self.store.settings.schoolInfo.udiseCode === undefined) {
-              self.store.settings.schoolInfo.udiseCode = '';
-            }
-
-            // SYNC FIX: Super Admin onboarding/edit writes settings.schoolInfo.*
-            // (nested). The School Admin Settings form reads/writes the FLAT
-            // fields (settings.schoolName, settings.phone, etc). Without this,
-            // a school onboarded (or last edited) from Super Admin shows a
-            // BLANK Settings form until the admin manually retypes everything
-            // that was already entered during onboarding. Backfill any missing
-            // flat field from schoolInfo — never overwrite a flat value the
-            // admin already set themselves.
-            (function syncFlatSettingsFromSchoolInfo() {
-              var si = self.store.settings.schoolInfo;
-              var s = self.store.settings;
-              var ms = matchedSchool || (self.store.schools || []).find(function(sch) { return sch.school_id === activeSchoolId; });
-
-              // Authoritative fallback chain for schoolName:
-              // settings.schoolName -> settings.schoolInfo.name -> matchedSchool.school_name
-              if (!s.schoolName) {
-                if (si && si.name) s.schoolName = si.name;
-                else if (ms && ms.school_name) s.schoolName = ms.school_name;
-              }
-              if (si) {
-                if (!si.name && s.schoolName) si.name = s.schoolName;
-                else if (!si.name && ms && ms.school_name) si.name = ms.school_name;
-              }
-
-              if (si) {
-                if (!s.tagline && si.tagline) s.tagline = si.tagline;
-                if (!s.phone && si.phone) s.phone = si.phone;
-                if (!s.email && si.email) s.email = si.email;
-                if (!s.address && si.address) s.address = si.address;
-                if (!s.affiliation && si.affiliation) s.affiliation = si.affiliation;
-                if (!s.udiseCode && si.udiseCode) s.udiseCode = si.udiseCode;
-                if (!s.logoUrl && si.logoUrl) s.logoUrl = si.logoUrl;
-              }
-            })();
-
-            // Reactively update brand UI whenever tenant settings load or change
-            self.updateBrandUI();
-
-            // RESTORE ARCHITECTURE: If tenant is restructured, automatically load & listen
-            // to the current month's attendance and current year's fees
-            if (self.isRestructured(activeSchoolId)) {
-              var currentYM = new Date().toISOString().slice(0, 7);
-              var currentYr = String(new Date().getFullYear());
-              self.loadAttendanceMonth(currentYM).then(function() {
-                self.listenToAttendanceMonth(currentYM);
-              });
-              self.loadFeesYear(currentYr).then(function() {
-                self.listenToFeesYear(currentYr);
-                if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
-                  window.FeesModule.render();
-                }
-              });
-            }
-            if (self.currentPage && firstResolveCalled) {
-              console.log("Auto-refreshing active page: " + self.currentPage);
-              if (self.currentPage === 'dashboard') {
-                self.renderDashboard();
-              } else if (self.currentPage === 'exams') {
-                // ISSUE 2 FIX: onSnapshot NEVER triggers full module re-render.
-                // Only call refreshMarksTable (lightweight, guarded inside exams.js)
-                if (typeof window.renderMarksTable === 'function') {
-                  var _now = Date.now();
-                  if (!_examsRenderLock && (_now - _lastExamsRender > EXAMS_RENDER_THROTTLE)) {
-                    _examsRenderLock = true;
-                    _lastExamsRender = _now;
-                    try { window.renderMarksTable(); } finally { _examsRenderLock = false; }
-                  } else {
-                    console.log('Exams render throttled (' + (Date.now() - _lastExamsRender) + 'ms since last)');
-                  }
-                }
-              } else if (self.modules[self.currentPage] && self.modules[self.currentPage].render) {
-                self.modules[self.currentPage].render();
-              }
-            }
-
-            if (!firstResolveCalled) {
-              firstResolveCalled = true;
-              if (!bypassLoader) self.hideLoader();
-              resolve(true);
-            }
-          }, (error) => {
-            console.error("Firestore tenant onSnapshot error:", error);
-            if (_watchdogTimer) clearTimeout(_watchdogTimer);
-            self.updateConnectionIndicator(true);
-
-            if (!firstResolveCalled) {
-              firstResolveCalled = true;
-              if (!bypassLoader) self.hideLoader();
-              resolve(false);
-            }
-          });
+          self.store.currentSchoolId = activeSchoolId;
+          self.matchedSchool = matchedSchool;
+          self.updateBrandUI();
+          self.enableLoginButton();
+          if (!bypassLoader) self.hideLoader();
+          resolve(true);
         } else {
           if (!bypassLoader) self.hideLoader();
+          if (sub) {
+            var errEl = document.getElementById('login-error-msg');
+            if (errEl) {
+              errEl.textContent = 'School not found. Please contact support.';
+              errEl.style.display = 'block';
+            }
+          }
           self.setupLoginButtonGate();
           resolve(false);
         }
@@ -1788,6 +1546,260 @@ window.SchoolApp = {
         if (!bypassLoader) self.hideLoader();
         self.setupLoginButtonGate();
         resolve(false);
+      });
+    });
+  },
+
+  initTenantStore: function(schoolId, bypassLoader) {
+    var self = this;
+    if (!schoolId) return Promise.resolve(false);
+    
+    // Clean teardown if switching to a different school
+    if (this.store && this.store.currentSchoolId && this.store.currentSchoolId !== schoolId) {
+      this.resetTenantSession(schoolId);
+    } else {
+      this.store.currentSchoolId = schoolId;
+    }
+
+    if (!bypassLoader) {
+      this.showLoader('Loading school data...');
+    }
+
+    return new Promise((resolve) => {
+      var firstResolveCalled = false;
+      const docRef = window.firestore.doc(window.db, 'tenant_data', schoolId);
+
+      var _examsRenderLock = false;
+      var _lastExamsRender = 0;
+      var EXAMS_RENDER_THROTTLE = 5000;
+
+      // Watchdog: after 25s with no usable snapshot, hide loader and show Retry option
+      var _watchdogTimer = setTimeout(function() {
+        if (!self.tenantInitialized && !firstResolveCalled) {
+          console.warn('[Watchdog] 25s elapsed with no usable tenant snapshot for ' + schoolId);
+          if (!bypassLoader) self.hideLoader();
+          var errEl = document.getElementById('login-error-msg');
+          if (errEl) {
+            errEl.innerHTML = 'Slow connection — <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
+            errEl.style.display = 'block';
+            var retryBtn = document.getElementById('btn-retry-connection');
+            if (retryBtn) {
+              retryBtn.onclick = function() {
+                errEl.style.display = 'none';
+                errEl.textContent = '';
+                window.location.reload();
+              };
+            }
+          }
+        }
+      }, 25000);
+
+      self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
+        self.updateConnectionIndicator(docSnap.metadata.fromCache);
+
+        var parsed = null;
+        var docExists = docSnap.exists();
+        if (docExists) {
+          parsed = docSnap.data();
+        }
+
+        // SAFEGUARD: Never auto-create or overwrite tenant document from a client onSnapshot event.
+        if (!docExists) {
+          if (docSnap.metadata && docSnap.metadata.fromCache === false) {
+            console.warn('[initTenantStore] Tenant document confirmed missing from server for ' + schoolId);
+            if (_watchdogTimer) clearTimeout(_watchdogTimer);
+            if (!bypassLoader) self.hideLoader();
+            var errEl = document.getElementById('login-error-msg');
+            if (errEl) {
+              errEl.textContent = 'School data not initialized. Please contact connect@ctrlshifts.in';
+              errEl.style.display = 'block';
+            }
+            if (!firstResolveCalled) {
+              firstResolveCalled = true;
+              resolve(false);
+            }
+            return;
+          }
+          console.warn('Document not found in cache for ' + schoolId + ' — waiting for next snapshot.');
+          return;
+        }
+
+        if (_watchdogTimer) clearTimeout(_watchdogTimer);
+
+        if (parsed) {
+          var preservedSchools = (self.store && self.store.schools) ? self.store.schools : [];
+          var preservedFees = (self.store && self.store.fees && self.store.fees.length > 0 && (!parsed.fees || parsed.fees.length === 0)) ? self.store.fees : [];
+          var preservedAttendance = (self.store && self.store.attendance && self.store.attendance.length > 0 && (!parsed.attendance || parsed.attendance.length === 0)) ? self.store.attendance : [];
+          var preservedExamMarks = (self.store && self.store.examMarks && Object.keys(self.store.examMarks).length > 0 && (!parsed.examMarks || Object.keys(parsed.examMarks).length === 0)) ? self.store.examMarks : {};
+
+          self.store = Object.assign(self.getInitialStore(), parsed, {
+            currentSchoolId: schoolId
+          });
+          self.store.schools = preservedSchools;
+          if (preservedFees.length > 0) self.store.fees = preservedFees;
+          if (preservedAttendance.length > 0) self.store.attendance = preservedAttendance;
+          if (Object.keys(preservedExamMarks).length > 0) self.store.examMarks = preservedExamMarks;
+
+          self.initialServerStudentCount = (parsed.students || []).length;
+          self.initialServerTeacherCount = (parsed.teachers || []).length;
+          self.initialServerExamTermsCount = Object.keys(parsed.examTerms || {}).length;
+          self.liveServerStudentCount = (parsed.students || []).length;
+          self.liveServerTeacherCount = (parsed.teachers || []).length;
+          self.tenantInitialized = true;
+        }
+
+        // Populate default arrays/objects if missing
+        if (!self.store.students) self.store.students = [];
+        if (!self.store.teachers) self.store.teachers = [];
+        if (!self.store.attendance) self.store.attendance = [];
+        if (!self.store.trash) self.store.trash = [];
+        if (!self.store.feeHeads) self.store.feeHeads = [];
+        if (!self.store.feeStructures) self.store.feeStructures = {};
+        if (!self.store.fees) self.store.fees = [];
+        if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
+        if (!self.store.exams) self.store.exams = [];
+        if (!self.store.subjectMapping) self.store.subjectMapping = {};
+        if (!self.store.marks) self.store.marks = [];
+        if (!self.store.notices) self.store.notices = [];
+        if (!self.store.timetable) self.store.timetable = {};
+
+        if (!self.store.settings) self.store.settings = {};
+
+        if (!self.store.settings.feeHeads) {
+          if (self.store.feeHeads && self.store.feeHeads.length > 0) {
+            self.store.settings.feeHeads = JSON.parse(JSON.stringify(self.store.feeHeads));
+          } else {
+            self.store.settings.feeHeads = [
+              { id: 'fh_tuition', name: 'Tuition Fee' },
+              { id: 'fh_transport', name: 'Transport Fee' },
+              { id: 'fh_exam', name: 'Examination Fee' },
+              { id: 'fh_fine', name: 'Late Fee / Fine' },
+              { id: 'fh_annual', name: 'Annual Development Fee' }
+            ];
+          }
+        }
+        self.store.feeHeads = self.store.settings.feeHeads;
+
+        if (!self.store.settings.feeStructure) {
+          if (self.store.feeStructures && Object.keys(self.store.feeStructures).length > 0) {
+            self.store.settings.feeStructure = {};
+            var fs = self.store.feeStructures;
+            Object.keys(fs).forEach(function(cls) {
+              self.store.settings.feeStructure[cls] = {};
+              var clsFees = fs[cls] || {};
+              Object.keys(clsFees).forEach(function(feeId) {
+                var cleanId = feeId;
+                if (feeId === 'fh_tuition') cleanId = 'tuition';
+                else if (feeId === 'fh_transport') cleanId = 'transport';
+                else if (feeId === 'fh_exam') cleanId = 'exam';
+                else if (feeId === 'fh_fine') cleanId = 'fine';
+                else if (feeId === 'fh_annual') cleanId = 'annual';
+                else if (feeId.startsWith('fh_')) cleanId = feeId.substring(3);
+                self.store.settings.feeStructure[cls][cleanId] = clsFees[feeId];
+              });
+            });
+          }
+        }
+
+        if (!self.store.settings.subjects) {
+          self.store.settings.subjects = ['Hindi', 'English', 'Mathematics', 'Science', 'Social Science', 'Computer Science', 'Sanskrit', 'Art'];
+        }
+        if (!self.store.settings.schoolInfo) {
+          self.store.settings.schoolInfo = {
+            name: self.store.settings.schoolName || '',
+            tagline: '',
+            logoUrl: self.store.settings.logoUrl || '',
+            phone: self.store.settings.phone || '',
+            email: self.store.settings.email || '',
+            address: self.store.settings.address || '',
+            affiliation: '',
+            udiseCode: ''
+          };
+        } else if (self.store.settings.schoolInfo.udiseCode === undefined) {
+          self.store.settings.schoolInfo.udiseCode = '';
+        }
+
+        (function syncFlatSettingsFromSchoolInfo() {
+          var si = self.store.settings.schoolInfo;
+          var s = self.store.settings;
+          var ms = self.matchedSchool || (self.store.schools || []).find(function(sch) { return sch.school_id === schoolId; });
+
+          if (!s.schoolName) {
+            if (si && si.name) s.schoolName = si.name;
+            else if (ms && ms.school_name) s.schoolName = ms.school_name;
+          }
+          if (si) {
+            if (!si.name && s.schoolName) si.name = s.schoolName;
+            else if (!si.name && ms && ms.school_name) si.name = ms.school_name;
+          }
+
+          if (si) {
+            if (!s.tagline && si.tagline) s.tagline = si.tagline;
+            if (!s.phone && si.phone) s.phone = si.phone;
+            if (!s.email && si.email) s.email = si.email;
+            if (!s.address && si.address) s.address = si.address;
+            if (!s.affiliation && si.affiliation) s.affiliation = si.affiliation;
+            if (!s.udiseCode && si.udiseCode) s.udiseCode = si.udiseCode;
+            if (!s.logoUrl && si.logoUrl) s.logoUrl = si.logoUrl;
+          }
+        })();
+
+        self.updateBrandUI();
+
+        if (self.isRestructured(schoolId)) {
+          var currentYM = new Date().toISOString().slice(0, 7);
+          var currentYr = String(new Date().getFullYear());
+          self.loadAttendanceMonth(currentYM).then(function() {
+            self.listenToAttendanceMonth(currentYM);
+          });
+          self.loadFeesYear(currentYr).then(function() {
+            self.listenToFeesYear(currentYr);
+            if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
+              window.FeesModule.render();
+            }
+          });
+        }
+        if (self.currentPage && firstResolveCalled) {
+          console.log("Auto-refreshing active page: " + self.currentPage);
+          if (self.currentPage === 'dashboard') {
+            self.renderDashboard();
+          } else if (self.currentPage === 'exams') {
+            if (typeof window.renderMarksTable === 'function') {
+              var _now = Date.now();
+              if (!_examsRenderLock && (_now - _lastExamsRender > EXAMS_RENDER_THROTTLE)) {
+                _examsRenderLock = true;
+                _lastExamsRender = _now;
+                try { window.renderMarksTable(); } finally { _examsRenderLock = false; }
+              }
+            }
+          } else if (self.modules[self.currentPage] && self.modules[self.currentPage].render) {
+            self.modules[self.currentPage].render();
+          }
+        }
+
+        if (!firstResolveCalled) {
+          firstResolveCalled = true;
+          if (!bypassLoader) self.hideLoader();
+          resolve(true);
+        }
+      }, (error) => {
+        console.error("Firestore tenant onSnapshot error:", error);
+        if (_watchdogTimer) clearTimeout(_watchdogTimer);
+        self.updateConnectionIndicator(true);
+
+        // Security / session expired error handling
+        var errCode = error && error.code ? error.code : '';
+        if (errCode === 'permission-denied') {
+          console.warn('[Tenant Access] Permission denied for ' + schoolId + ' — session expired or unauthorized.');
+          self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
+          self.showLoginPage();
+        }
+
+        if (!firstResolveCalled) {
+          firstResolveCalled = true;
+          if (!bypassLoader) self.hideLoader();
+          resolve(false);
+        }
       });
     });
   },
@@ -2643,44 +2655,22 @@ window.SchoolApp = {
       console.error("Firebase Auth module not initialized!");
     }
 
-    // HARD SECURITY GATE: Refuse authentication if tenant is not loaded or currentSchoolId is missing
-    if (!this.tenantInitialized || !this.store || !this.store.currentSchoolId) {
-      console.warn('[Auth Security] Login attempted before tenant data finished loading. Waiting for sync...');
-      this.showLoader('Connecting to school...');
-      var loadSuccess = await Promise.race([
-        this.load(true),
-        new Promise(function(resolve) { setTimeout(function() { resolve(false); }, 7000); })
-      ]);
-      if (!loadSuccess || !this.tenantInitialized || !this.store || !this.store.currentSchoolId) {
-        this.hideLoader();
-        this.enableLoginButton();
-        var btnTxt = document.getElementById('login-btn-text');
-        if (btnTxt) btnTxt.textContent = 'Retry Sign In';
-        throw new Error('School system could not connect. Please check your internet connection and try again.');
-      }
+    // TARGET SCHOOL CONTEXT: Ensure target school ID is resolved from store or matched school
+    const targetSchoolId = (this.store && this.store.currentSchoolId) || (this.matchedSchool && this.matchedSchool.school_id);
+    if (!targetSchoolId) {
+      this.hideLoader();
+      this.enableLoginButton();
+      var btnTxt = document.getElementById('login-btn-text');
+      if (btnTxt) btnTxt.textContent = 'Retry Sign In';
+      throw new Error('School context not found. Please refresh the page or check the URL.');
     }
 
-    this.showLoader('Loading...');
-    // ALWAYS load fresh from Firestore first as source of truth
-    await this.load(true);
-    var schoolData = this.store;
+    this.showLoader('Verifying credentials...');
 
-    // CREDENTIAL-CHECK FRESHNESS FIX: this.load() resolves on the first
-    // onSnapshot event for the tenant document, which can — after a very
-    // recent password change from Super Admin — briefly replay a cached
-    // version from the Firestore client SDK's own internal watch cache
-    // (a page-lifetime singleton) before the live update reconciles. That
-    // is fine for normal app usage, but for a LOGIN it means the OLD
-    // password can keep "working" (and the new one keep failing) for an
-    // unpredictable stretch. Force one direct, uncached server read of the
-    // tenant document specifically for the auth check, so login always
-    // validates against the true current password.
     // SERVER-VERIFIED AUTHENTICATION (P0 Security Remediation)
-    // Client-side bcrypt validation and direct client school_access self-writes
-    // have been replaced with the secure /api/verify-school-access endpoint.
+    // Authenticate with Firebase Auth and call /api/verify-school-access
     let fbUser = null;
     try {
-      // 1. Establish Firebase Auth session to get an authentic ID token
       const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js');
       const anonResult = await signInAnonymously(auth);
       fbUser = anonResult.user;
@@ -2695,7 +2685,6 @@ window.SchoolApp = {
     }
 
     const idToken = await fbUser.getIdToken(true);
-    const targetSchoolId = (schoolData && schoolData.currentSchoolId) || this.store.currentSchoolId;
 
     let apiResult = null;
     try {
@@ -2725,9 +2714,17 @@ window.SchoolApp = {
       throw fetchErr;
     }
 
-    this.hideLoader();
-
     if (apiResult && apiResult.success) {
+      this.showLoader('Loading school data...');
+      // Attach tenant_data listener now that server has authorized school_access
+      var initOk = await this.initTenantStore(targetSchoolId, false);
+      if (!initOk) {
+        this.hideLoader();
+        this.enableLoginButton();
+        throw new Error('Could not initialize school data after login. Please retry.');
+      }
+      this.hideLoader();
+
       if (role === 'admin') {
         const userObj = apiResult.user || {};
         this.currentUser = {
@@ -2760,11 +2757,6 @@ window.SchoolApp = {
       // Clear pre-login poisoned caches
       if (this._feesYears) this._feesYears = {};
       if (this._attendanceMonths) this._attendanceMonths = {};
-
-      // If tenant listener is not active, initialize it now that school_access is authorized
-      if (!this.tenantInitialized && typeof this.initTenantStore === 'function') {
-        await this.initTenantStore(targetSchoolId, true);
-      }
 
       // Reload subcollection data now that school_access has been written by server
       if (this.isRestructured && this.isRestructured(targetSchoolId)) {
@@ -5641,6 +5633,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       SchoolApp.updateBrandUI();
 
+      // Attach tenant store for impersonated school
+      await SchoolApp.initTenantStore(impSchoolId, true);
+
       // Set user session based on role
       if (impRole === 'teacher') {
         var teachers = SchoolApp.store.teachers || [];
@@ -5679,8 +5674,73 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
 
-  // SAFEGUARD: Auto-client seeding of svm_bokaro_001 disabled to prevent accidental wipes.
-  // Greenwood Public School now has its dedicated professional dataset.
+  // ---- Returning Session Check (Page Reload / Already Logged In) ----
+  var currentSchoolId = SchoolApp.store.currentSchoolId;
+  var authUser = (window.auth && window.auth.currentUser) || null;
+  if (!authUser && window.auth && typeof window.auth.onAuthStateChanged === 'function') {
+    // Wait briefly for Firebase Auth state to resolve from IndexedDB
+    authUser = await new Promise(function(resolve) {
+      var unsub = window.auth.onAuthStateChanged(function(u) {
+        if (typeof unsub === 'function') unsub();
+        resolve(u);
+      });
+      setTimeout(function() { resolve(null); }, 1500);
+    });
+  }
+
+  if (authUser && currentSchoolId && window.firestore && window.db) {
+    try {
+      const saDocRef = window.firestore.doc(window.db, 'school_access', authUser.uid);
+      const saSnap = await window.firestore.getDoc(saDocRef);
+      if (saSnap && saSnap.exists() && saSnap.data().schoolId === currentSchoolId) {
+        const saData = saSnap.data();
+        const role = saData.role || 'admin';
+        console.log('[Auth] Active verified session detected for school: ' + currentSchoolId + ' role: ' + role);
+        SchoolApp.showLoader('Restoring session...');
+        const tenantOk = await SchoolApp.initTenantStore(currentSchoolId, false);
+        if (tenantOk) {
+          if (role === 'admin') {
+            SchoolApp.currentUser = {
+              id: 'admin',
+              firstName: 'Admin',
+              lastName: 'User',
+              role: 'admin'
+            };
+          } else {
+            var teacherId = saData.teacherId || 'teacher';
+            var teacherObj = (SchoolApp.store.teachers || []).find(function(t) { return t.id === teacherId; }) || {};
+            SchoolApp.currentUser = {
+              id: teacherId,
+              firstName: teacherObj.name || 'Teacher',
+              lastName: '',
+              role: 'teacher',
+              email: teacherObj.email || '',
+              assignedClasses: teacherObj.assignedClasses || []
+            };
+          }
+          SchoolApp.applyUserTheme();
+          SchoolApp.setupEventListeners();
+          SchoolApp.updateSidebarLockBadges();
+          SchoolApp.updateNotificationBadge();
+          SchoolApp.runAutoFeeReconciliation();
+          setTimeout(function() {
+            Object.keys(SchoolApp.modules).forEach(function(name) {
+              var mod = SchoolApp.modules[name];
+              if (mod.init) mod.init();
+            });
+          }, 50);
+          SchoolApp.hideLoader();
+          SchoolApp.showApp();
+          SchoolApp.navigate('dashboard');
+          return;
+        }
+        SchoolApp.hideLoader();
+      }
+    } catch (sessionErr) {
+      console.warn('[Auth] Session check failed or unauthorized:', sessionErr.message);
+      SchoolApp.hideLoader();
+    }
+  }
 
   // Setup event listeners
   SchoolApp.setupEventListeners();

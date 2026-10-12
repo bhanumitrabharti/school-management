@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v46 for loader timeout watchdog and atomic onboarding updates.
-const CACHE_NAME = 'erp-cache-v46';
+// Bumped to v47 for Stage 1.5 pre-login tenant_data decoupling.
+const CACHE_NAME = 'erp-cache-v47';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
