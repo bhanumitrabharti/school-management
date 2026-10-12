@@ -1466,13 +1466,15 @@ window.SchoolApp = {
 
     return new Promise((resolve) => {
       var hostname = window.location.hostname.toLowerCase();
-      var sub = null;
-      if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
-        sub = hostname.substring(0, hostname.indexOf('.ctrlshifts.in'));
-      } else if (hostname.endsWith('.shishu-vikash-mandir.vercel.app')) {
-        sub = hostname.substring(0, hostname.indexOf('.shishu-vikash-mandir.vercel.app'));
-      } else if (hostname.endsWith('.localhost')) {
-        sub = hostname.substring(0, hostname.indexOf('.localhost'));
+      var sub = self._overrideSubdomain || null;
+      if (!sub) {
+        if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
+          sub = hostname.substring(0, hostname.indexOf('.ctrlshifts.in'));
+        } else if (hostname.endsWith('.shishu-vikash-mandir.vercel.app')) {
+          sub = hostname.substring(0, hostname.indexOf('.shishu-vikash-mandir.vercel.app'));
+        } else if (hostname.endsWith('.localhost')) {
+          sub = hostname.substring(0, hostname.indexOf('.localhost'));
+        }
       }
 
       if (self.schoolsListenerUnsubscribe) {
