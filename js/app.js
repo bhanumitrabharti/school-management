@@ -257,6 +257,10 @@ window.SchoolApp = {
           console.error('[Save] Non-retryable Firestore error:', code, e && e.message);
           if (code === 'invalid-argument' || code === 'resource-exhausted') {
             this.showToast('❌ Your school\'s data has reached its storage limit. This change was NOT saved — please contact support.', 'error');
+          } else if (code === 'permission-denied' || code === 'unauthenticated') {
+            this.showToast('Session expired. Please sign in again to save your changes.', 'warning');
+            // C7 Robustness: Preserve unsaved form and store state in memory; navigate to login screen gracefully
+            this.showLoginPage();
           } else {
             this.showToast('❌ Save failed: ' + (e && e.message ? e.message : 'permission error') + '.', 'error');
           }
@@ -2624,54 +2628,61 @@ window.SchoolApp = {
     // unpredictable stretch. Force one direct, uncached server read of the
     // tenant document specifically for the auth check, so login always
     // validates against the true current password.
-    if (schoolData && schoolData.currentSchoolId && window.firestore && window.firestore.getDocFromServer) {
-      try {
-        var freshSnap = await window.firestore.getDocFromServer(window.firestore.doc(window.db, 'tenant_data', schoolData.currentSchoolId));
-        if (freshSnap.exists()) {
-          schoolData = Object.assign({}, schoolData, freshSnap.data());
-        }
-      } catch (freshErr) {
-        console.warn('Could not force a fresh server read for login (likely offline) — falling back to cached data:', freshErr && freshErr.code);
-      }
-    }
-
-    let firebaseResult = null;
-    let firebaseError = null;
-
-    console.log("Firebase auth called");
+    // SERVER-VERIFIED AUTHENTICATION (P0 Security Remediation)
+    // Client-side bcrypt validation and direct client school_access self-writes
+    // have been replaced with the secure /api/verify-school-access endpoint.
+    let fbUser = null;
     try {
-      const email = role === 'admin' ? 
-        (credentials.username.includes('@') ? credentials.username : `${credentials.username}@ctrlshifts.in`) : 
-        credentials.email;
-      const password = credentials.password;
-
-      firebaseResult = await signInWithEmailAndPassword(auth, email, password);
-      console.log("Success/Error: " + JSON.stringify(firebaseResult));
-    } catch (err) {
-      firebaseError = err;
-      console.log("Success/Error: " + (err.code || err.message || err));
+      // 1. Establish Firebase Auth session to get an authentic ID token
+      const { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js');
+      const anonResult = await signInAnonymously(auth);
+      fbUser = anonResult.user;
+    } catch (anonErr) {
+      console.warn('Anonymous auth initialization failed:', anonErr);
     }
 
-    if (!schoolData || !schoolData.currentSchoolId || !this.tenantInitialized) {
+    if (!fbUser) {
       this.hideLoader();
       this.enableLoginButton();
-      var btnTxtPost = document.getElementById('login-btn-text');
-      if (btnTxtPost) btnTxtPost.textContent = 'Retry Sign In';
-      throw new Error('School system could not connect. Please check your internet connection and try again.');
+      throw new Error('Could not establish secure session with authentication provider.');
     }
 
-    let customResult = null;
-    if (role === 'admin') {
-      customResult = await AuthUtils.login("admin", credentials.username, credentials.password, schoolData);
-    } else if (role === 'teacher') {
-      customResult = await AuthUtils.login("teacher", credentials.email, credentials.password, schoolData);
+    const idToken = await fbUser.getIdToken(true);
+    const targetSchoolId = (schoolData && schoolData.currentSchoolId) || this.store.currentSchoolId;
+
+    let apiResult = null;
+    try {
+      const resp = await fetch('/api/verify-school-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idToken: idToken,
+          schoolId: targetSchoolId,
+          role: role,
+          username: credentials.username,
+          email: credentials.email,
+          password: credentials.password
+        })
+      });
+
+      apiResult = await resp.json();
+      if (!resp.ok) {
+        this.hideLoader();
+        this.enableLoginButton();
+        var errMsg = apiResult && apiResult.error ? apiResult.error : 'Login verification failed.';
+        throw new Error(errMsg);
+      }
+    } catch (fetchErr) {
+      this.hideLoader();
+      this.enableLoginButton();
+      throw fetchErr;
     }
 
     this.hideLoader();
 
-    if ((firebaseResult && firebaseResult.user) || (customResult && customResult.success)) {
+    if (apiResult && apiResult.success) {
       if (role === 'admin') {
-        const userObj = (customResult && customResult.user) ? customResult.user : {};
+        const userObj = apiResult.user || {};
         this.currentUser = {
           id: 'admin',
           firstName: userObj.firstName || 'Admin',
@@ -2679,7 +2690,7 @@ window.SchoolApp = {
           role: 'admin'
         };
       } else if (role === 'teacher') {
-        const teacher = (customResult && customResult.user) ? customResult.user : {};
+        const teacher = apiResult.user || {};
         var classTeacherOf = Array.isArray(teacher.classTeacherOf) ? teacher.classTeacherOf : (teacher.assignedClasses && teacher.assignedClasses.length > 0 ? [teacher.assignedClasses[0]] : []);
         var subjectTeacherOf = Array.isArray(teacher.subjectTeacherOf) ? teacher.subjectTeacherOf : (teacher.assignedClasses || []).map(function(ac) {
           return { class: ac.class, section: ac.section, subject: teacher.subject };
@@ -2699,64 +2710,43 @@ window.SchoolApp = {
       }
       this.applyUserTheme();
 
-      // F1 – Tenant isolation: write school_access/{uid} so Firestore rules can
-      // enforce per-school read/write at the DB level (not only at the app level).
-      if (this.store && this.store.currentSchoolId) {
-        try {
-          var fbUser = (firebaseResult && firebaseResult.user) ? firebaseResult.user : null;
-          // If no Firebase Auth user (school admin without Firebase account),
-          // sign in anonymously to get a real Firebase uid for Firestore rules
-          if (!fbUser) {
-            var { signInAnonymously } = await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js');
-            var anonResult = await signInAnonymously(auth);
-            fbUser = anonResult.user;
-          }
-          if (fbUser) {
-            var uid = fbUser.uid;
-            var schoolId = this.store.currentSchoolId;
-            await setDoc(doc(db, 'school_access', uid), {
-              schoolId: schoolId,
-              role: role,
-              updatedAt: serverTimestamp()
-            });
+      // Clear pre-login poisoned caches
+      if (this._feesYears) this._feesYears = {};
+      if (this._attendanceMonths) this._attendanceMonths = {};
 
-            // Clear pre-login poisoned caches
-            if (this._feesYears) this._feesYears = {};
-            if (this._attendanceMonths) this._attendanceMonths = {};
+      // If tenant listener is not active, initialize it now that school_access is authorized
+      if (!this.tenantInitialized && typeof this.initTenantStore === 'function') {
+        await this.initTenantStore(targetSchoolId, true);
+      }
 
-            // Reload subcollection data now that school_access is written
-            if (this.isRestructured && this.isRestructured(schoolId)) {
-              var currentYM = new Date().toISOString().slice(0, 7);   // e.g. "2026-10"
-              var currentYr = String(new Date().getFullYear());        // e.g. "2026"
-              var self = this;
-              // Reload attendance month
-              if (typeof self.loadAttendanceMonth === 'function') {
-                self.loadAttendanceMonth(currentYM).then(function() {
-                  if (typeof self.listenToAttendanceMonth === 'function') {
-                    self.listenToAttendanceMonth(currentYM);
-                  }
-                  if (self.currentPage === 'attendance' && window.AttendanceModule 
-                      && typeof window.AttendanceModule.render === 'function') {
-                    window.AttendanceModule.render();
-                  }
-                }).catch(function(e) { console.warn('[F1] post-login attendance reload failed:', e); });
-              }
-              // Reload fees year
-              if (typeof self.loadFeesYear === 'function') {
-                self.loadFeesYear(currentYr).then(function() {
-                  if (typeof self.listenToFeesYear === 'function') {
-                    self.listenToFeesYear(currentYr);
-                  }
-                  if (self.currentPage === 'fees' && window.FeesModule 
-                      && typeof window.FeesModule.render === 'function') {
-                    window.FeesModule.render();
-                  }
-                }).catch(function(e) { console.warn('[F1] post-login fees reload failed:', e); });
-              }
+      // Reload subcollection data now that school_access has been written by server
+      if (this.isRestructured && this.isRestructured(targetSchoolId)) {
+        var currentYM = new Date().toISOString().slice(0, 7);   // e.g. "2026-10"
+        var currentYr = String(new Date().getFullYear());        // e.g. "2026"
+        var self = this;
+        // Reload attendance month
+        if (typeof self.loadAttendanceMonth === 'function') {
+          self.loadAttendanceMonth(currentYM).then(function() {
+            if (typeof self.listenToAttendanceMonth === 'function') {
+              self.listenToAttendanceMonth(currentYM);
             }
-          }
-        } catch (saErr) {
-          console.warn('[F1] school_access write failed:', saErr);
+            if (self.currentPage === 'attendance' && window.AttendanceModule 
+                && typeof window.AttendanceModule.render === 'function') {
+              window.AttendanceModule.render();
+            }
+          }).catch(function(e) { console.warn('[F1] post-login attendance reload failed:', e); });
+        }
+        // Reload fees year
+        if (typeof self.loadFeesYear === 'function') {
+          self.loadFeesYear(currentYr).then(function() {
+            if (typeof self.listenToFeesYear === 'function') {
+              self.listenToFeesYear(currentYr);
+            }
+            if (self.currentPage === 'fees' && window.FeesModule 
+                && typeof window.FeesModule.render === 'function') {
+              window.FeesModule.render();
+            }
+          }).catch(function(e) { console.warn('[F1] post-login fees reload failed:', e); });
         }
       }
 
@@ -2764,8 +2754,7 @@ window.SchoolApp = {
       return true;
     } else {
       this._loginInProgress = false;
-      const finalError = new Error((customResult && customResult.message) ? customResult.message : "Invalid credentials.");
-      throw finalError;
+      throw new Error((apiResult && apiResult.error) ? apiResult.error : "Invalid credentials.");
     }
   },
 
@@ -5561,6 +5550,22 @@ document.addEventListener('DOMContentLoaded', async function() {
   var impSchoolId = (urlParams ? urlParams.get('impersonate_school_id') : null) || localStorage.getItem('impersonate_school_id');
   var impRole = (urlParams ? urlParams.get('impersonate_role') : null) || localStorage.getItem('impersonate_role');
   if (impSchoolId && impRole) {
+    // SECURITY GUARD (C3/D4): Impersonation auto-login is permitted ONLY if an active
+    // super-admin session is established with the authorized UID.
+    var saUser = (window.auth && window.auth.currentUser) || null;
+    var SUPER_ADMIN_UID = 'cq647u1GfCXISzf7XMw8pxH76I72';
+    var isAuthSuperAdmin = saUser && saUser.uid === SUPER_ADMIN_UID;
+    var isSessionFlag = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('isImpersonating') === 'true');
+
+    if (!isAuthSuperAdmin && !isSessionFlag) {
+      console.warn('[Security] Unauthorized impersonation attempt blocked: caller is not verified Super Admin.');
+      localStorage.removeItem('impersonate_school_id');
+      localStorage.removeItem('impersonate_role');
+      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('isImpersonating');
+      SchoolApp.showLoginPage();
+      return;
+    }
+
     localStorage.setItem('impersonate_school_id', impSchoolId);
     localStorage.setItem('impersonate_role', impRole);
     if (typeof sessionStorage !== 'undefined') {

@@ -44,12 +44,10 @@ const auth = getAuth(app);
     var _SA_USERNAME = 'superadmin';
     var _SA_FALLBACK_HASH = 'f998b3b4cc8195419a2992902c42dc11cc9ac431d9a8468a0af82ff6b12792ec';
 
-    // F8: Firebase Auth credential for superadmin@ctrlshifts.in.
-    // This enables Firestore security rules (isSuperAdmin() UID check).
-    // ACTION REQUIRED (Antigravity): Replace 74661a8cb2fa47a9b269551d7b1b761be6c4624d24b02d1d4c169db55c51485c with the
-    // real password used when creating superadmin@ctrlshifts.in in Firebase Auth.
+    // F8: Super Admin Firebase Auth account.
+    // Authenticates directly with user-entered password via Firebase Auth.
+    // Hardcoded password removed permanently (C3/D3 remediation).
     var _SA_FIREBASE_EMAIL = 'superadmin@ctrlshifts.in';
-    var _SA_FIREBASE_PASS  = '74661a8cb2fa47a9b269551d7b1b761be6c4624d24b02d1d4c169db55c51485c';
 
     // Expose cache and functions on window
     window.saCache = {
@@ -525,31 +523,34 @@ const auth = getAuth(app);
             return false;
         }
 
-        const enteredHash = await sha256Hex(password);
+        let authSucceeded = false;
 
-        // Try Firestore sa_data/sa_auth first (allows password change without code deploy)
-        let expectedHash = _SA_FALLBACK_HASH;
+        // Primary: Try Firebase Auth directly using entered password
         try {
-            const authDoc = await getDoc(doc(db, 'sa_data', 'sa_auth'));
-            if (authDoc.exists() && authDoc.data().hash) {
-                expectedHash = authDoc.data().hash;
-            }
-        } catch (e) {
-            // Firestore unavailable — fall back to built-in hash
+            await signInWithEmailAndPassword(auth, _SA_FIREBASE_EMAIL, password);
+            authSucceeded = true;
+        } catch (fbErr) {
+            console.warn('[SA] Firebase Auth sign-in failed, checking fallback hash:', fbErr.code);
         }
 
-        if (enteredHash === expectedHash) {
-            // F8: Establish Firebase Auth session so Firestore rules (isSuperAdmin()) allow
-            // read/write to sa_data and schools. Uses a dedicated Firebase Auth account
-            // (superadmin@ctrlshifts.in) separate from school admin accounts.
+        // Fallback: If Firebase Auth failed, check SHA-256 hash
+        if (!authSucceeded) {
+            const enteredHash = await sha256Hex(password);
+            let expectedHash = _SA_FALLBACK_HASH;
             try {
-                await signInWithEmailAndPassword(auth, _SA_FIREBASE_EMAIL, _SA_FIREBASE_PASS);
-            } catch (fbErr) {
-                // Non-fatal at UI level — SHA-256 check above is the real gate.
-                // If Firebase Auth fails (e.g. account not yet created), Firestore writes
-                // will be denied by security rules, but the UI session still opens.
-                console.warn('[SA] Firebase Auth sign-in failed (F8 Firestore rules will be blocked):', fbErr.code);
+                const authDoc = await getDoc(doc(db, 'sa_data', 'sa_auth'));
+                if (authDoc.exists() && authDoc.data().hash) {
+                    expectedHash = authDoc.data().hash;
+                }
+            } catch (e) {
+                // Firestore unavailable
             }
+            if (enteredHash === expectedHash) {
+                authSucceeded = true;
+            }
+        }
+
+        if (authSucceeded) {
 
             sessionStorage.setItem(SESSION_KEY, 'active');
             loginPage.classList.add('hidden');
