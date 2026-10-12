@@ -1493,7 +1493,7 @@ window.SchoolApp = {
         var matchedSchool = null;
         if (sub) {
           matchedSchool = schoolsList.find(function(s) {
-            return s.subdomain === sub;
+            return s.subdomain === sub || (sub === 'shishu-vikash-mandir' && (s.subdomain === 'svm' || s.school_id === 'svm_mqbv7qm2'));
           });
           if (matchedSchool) {
             activeSchoolId = matchedSchool.school_id;
@@ -4894,7 +4894,8 @@ window.SchoolApp = {
     var btn = document.getElementById('login-submit-btn');
     var txt = document.getElementById('login-btn-text');
     var err = document.getElementById('login-error-msg');
-    if (this.tenantInitialized) {
+    var hasContext = !!(this.store && this.store.currentSchoolId);
+    if (this.tenantInitialized || hasContext) {
       this.enableLoginButton();
       return;
     }
@@ -4903,7 +4904,7 @@ window.SchoolApp = {
 
     if (this._loginButtonTimeout) clearTimeout(this._loginButtonTimeout);
     this._loginButtonTimeout = setTimeout(function() {
-      if (!self.tenantInitialized) {
+      if (!self.tenantInitialized && !(self.store && self.store.currentSchoolId)) {
         if (btn) btn.disabled = false;
         if (txt) txt.textContent = 'Retry Sign In';
         if (err) {
@@ -4920,7 +4921,11 @@ window.SchoolApp = {
     // Auto-populate copyright year
     var yearEl = document.getElementById('login-copyright-year');
     if (yearEl) yearEl.textContent = new Date().getFullYear();
-    this.setupLoginButtonGate();
+    if (this.store && this.store.currentSchoolId) {
+      this.enableLoginButton();
+    } else {
+      this.setupLoginButtonGate();
+    }
   },
 
   showApp: function() {
