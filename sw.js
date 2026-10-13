@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v48 for Stage 1.5 login button gate and svm alias.
-const CACHE_NAME = 'erp-cache-v48';
+// Bumped to v50 to invalidate SEC-16 v49 cache and force fresh reverted JS.
+const CACHE_NAME = 'erp-cache-v50';
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
