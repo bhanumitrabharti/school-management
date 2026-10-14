@@ -11,3 +11,8 @@ service-account-key.json
 
 # Local backup dumps
 backups/
+scratch/
+firestore-debug.log
+firebase.json
+.firebaserc
+

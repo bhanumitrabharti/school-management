@@ -7,7 +7,7 @@
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -524,6 +524,11 @@ const auth = getAuth(app);
         }
 
         let authSucceeded = false;
+        try {
+            await setPersistence(auth, browserSessionPersistence);
+        } catch (pErr) {
+            console.warn('[SA] Could not enforce session persistence:', pErr);
+        }
 
         // Primary: Try Firebase Auth directly using entered password
         try {
@@ -3190,9 +3195,11 @@ const auth = getAuth(app);
             return;
         }
 
-        localStorage.setItem('impersonate_school_id', schoolId);
-        localStorage.setItem('impersonate_role', role);
+        sessionStorage.setItem('impersonate_school_id', schoolId);
+        sessionStorage.setItem('impersonate_role', role);
         sessionStorage.setItem('isImpersonating', 'true');
+        localStorage.removeItem('impersonate_school_id');
+        localStorage.removeItem('impersonate_role');
 
         showToast('Redirecting as ' + role + ' of "' + school.school_name + '"…', 'info');
 

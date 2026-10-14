@@ -77,7 +77,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon/apple-touch-icon.png">
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/styles.css?v=v52">
   <script>
     (function() {
       var savedTheme = localStorage.getItem('erp_theme_preference') || 'dark';
@@ -204,7 +204,7 @@
       </div>
       <!-- Powered by footer -->
       <div style="text-align: center; margin-top: 12px; font-size: 0.72rem; color: rgba(255,255,255,0.25);">
-        &copy; <span id="login-copyright-year"></span> Powered by <a href="https://ctrlshifts.in" target="_blank" rel="noopener" style="color: rgba(255,255,255,0.35); text-decoration: none;">Paathshala &middot; ctrlshifts.in</a>
+        &copy; <span id="login-copyright-year"></span> Powered by <a href="https://ctrlshifts.in" target="_blank" rel="noopener" style="color: rgba(255,255,255,0.35); text-decoration: none;">Paathshala &middot; ctrlshifts.in</a> <span class="app-version-badge" style="margin-left: 6px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); font-size: 11px;">v52</span>
       </div>
     </div>
   </div>
@@ -283,6 +283,7 @@
         <button id="logout-btn" class="btn-icon logout-btn" title="Logout">
           <span class="material-icons-round">logout</span>
         </button>
+        <div class="sidebar-version" style="width: 100%; font-size: 10px; color: var(--text-muted); text-align: center; margin-top: 6px; opacity: 0.65;">Paathshala v52</div>
       </div>
     </aside>
     <!-- Sidebar Overlay for mobile -->
@@ -468,23 +469,25 @@
 
   <!-- ==================== SCRIPTS ==================== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>
-  <script src="js/auth-utils.js"></script>
-  <script src="js/storage-utils.js"></script>
-  <script type="module" src="js/app.js"></script>
-  <script type="module" src="js/utils.js"></script>
-  <script type="module" src="js/students.js"></script>
-  <script type="module" src="js/teachers.js"></script>
-  <script type="module" src="js/attendance.js"></script>
-  <script type="module" src="js/teacher-attendance.js"></script>
-  <script type="module" src="js/fees.js"></script>
-  <script type="module" src="js/exams.js"></script>
-  <script type="module" src="js/documents.js"></script>
-  <script type="module" src="js/admin.js"></script>
-  <script type="module" src="js/timetable.js"></script>
-  <script type="module" src="js/help.js"></script>
-  <script type="module" src="js/chatbot.js"></script>
-  <!-- Service Worker Registration + Update Notification -->
+  <script src="js/auth-utils.js?v=v52"></script>
+  <script src="js/storage-utils.js?v=v52"></script>
+  <script type="module" src="js/app.js?v=v52"></script>
+  <script type="module" src="js/utils.js?v=v52"></script>
+  <script type="module" src="js/students.js?v=v52"></script>
+  <script type="module" src="js/teachers.js?v=v52"></script>
+  <script type="module" src="js/attendance.js?v=v52"></script>
+  <script type="module" src="js/teacher-attendance.js?v=v52"></script>
+  <script type="module" src="js/fees.js?v=v52"></script>
+  <script type="module" src="js/exams.js?v=v52"></script>
+  <script type="module" src="js/documents.js?v=v52"></script>
+  <script type="module" src="js/admin.js?v=v52"></script>
+  <script type="module" src="js/timetable.js?v=v52"></script>
+  <script type="module" src="js/help.js?v=v52"></script>
+  <script type="module" src="js/chatbot.js?v=v52"></script>
+  <!-- Service Worker Registration + Auto-Update Engine -->
   <script>
+    window.APP_VERSION = 'v52';
+
     function hasUserStartedTypingOnLogin() {
       var loginPage = document.getElementById('login-page');
       if (!loginPage || loginPage.classList.contains('hidden')) return false;
@@ -511,83 +514,113 @@
     }
     window.hasUserStartedTypingOnLogin = hasUserStartedTypingOnLogin;
 
+    function isFormDirty() {
+      // 0. User actively interacting or typed on login page
+      if (hasUserStartedTypingOnLogin()) return true;
+      // 1. Admin/settings dirty flag
+      if (window.SchoolApp && window.SchoolApp.adminIsDirty) return true;
+      // 2. Active modal open (student form, fee payment modal, expense modal, etc.)
+      var activeModal = document.querySelector('.modal-overlay.active, .modal.active, #modal-overlay.active, #upsell-modal.active');
+      if (activeModal) return true;
+      // 3. Focused editable element
+      var activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
+        return true;
+      }
+      return false;
+    }
+    window.isFormDirty = isFormDirty;
+
+    function showRefreshBanner(msg) {
+      if (document.getElementById('sw-refresh-banner')) return;
+      var banner = document.createElement('div');
+      banner.id = 'sw-refresh-banner';
+      banner.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:999999;background:#1d2f45;color:#fff;padding:12px 18px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);display:flex;align-items:center;gap:12px;font-family:system-ui,sans-serif;font-size:14px;border:1px solid #4B9FD6;';
+      banner.innerHTML = '<span>⚡ ' + (msg || 'Update ready — tap to refresh after saving') + '</span>' +
+        '<button id="sw-refresh-now-btn" style="background:#4B9FD6;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;">Refresh Now</button>' +
+        '<button id="sw-refresh-dismiss-btn" style="background:transparent;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 4px;">&times;</button>';
+      document.body.appendChild(banner);
+      document.getElementById('sw-refresh-now-btn').addEventListener('click', function() {
+        window.location.reload();
+      });
+      document.getElementById('sw-refresh-dismiss-btn').addEventListener('click', function() {
+        banner.remove();
+      });
+    }
+    window.showRefreshBanner = showRefreshBanner;
+
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
+      function checkServerVersion() {
+        fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })
+          .then(function(res) { return res.ok ? res.json() : null; })
+          .then(function(data) {
+            if (data && data.version && data.version !== window.APP_VERSION) {
+              console.log('[PWA] Newer server version detected:', data.version, 'current:', window.APP_VERSION);
+              if (navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then(function(reg) { reg.update(); });
+              }
+              if (isFormDirty()) {
+                showRefreshBanner('Update ' + data.version + ' ready — tap to refresh after saving');
+              } else {
+                var loopKey = 'sw_reloaded_' + data.version;
+                if (!sessionStorage.getItem(loopKey)) {
+                  sessionStorage.setItem(loopKey, 'true');
+                  console.log('[PWA] Clean state detected. Auto-reloading for version ' + data.version);
+                  window.location.reload();
+                }
+              }
+            }
+          })
+          .catch(function(err) {
+            console.warn('[PWA] Version check bypassed:', err.message);
+          });
+      }
+      window.checkServerVersion = checkServerVersion;
+
+      // 1. Check version immediately
+      checkServerVersion();
+
+      // 2. Check version when app is brought to foreground (visibilitychange)
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') {
+          checkServerVersion();
+        }
+      });
+
+      // 3. Periodic check every 15 minutes
+      setInterval(checkServerVersion, 15 * 60 * 1000);
+
+      const registerSW = () => {
         navigator.serviceWorker.register('/sw.js')
           .then((reg) => {
-            console.log('Service Worker registered successfully with scope:', reg.scope);
+            console.log('[PWA] Service Worker registered successfully, scope:', reg.scope);
+          })
+          .catch((err) => console.error('Service Worker registration failed:', err));
+      };
 
-        function isFormDirty() {
-          // 0. User actively interacting or typed on login page
-          if (hasUserStartedTypingOnLogin()) return true;
-          // 1. Admin/settings dirty flag
-          if (window.SchoolApp && window.SchoolApp.adminIsDirty) return true;
-          // 2. Active modal open (student form, fee payment modal, expense modal, etc.)
-          var activeModal = document.querySelector('.modal-overlay.active, .modal.active, #modal-overlay.active, #upsell-modal.active');
-          if (activeModal) return true;
-          // 3. Focused editable element
-          var activeEl = document.activeElement;
-          if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
-            return true;
-          }
-          return false;
-        }
-        window.isFormDirty = isFormDirty;
+      if (document.readyState === 'complete') {
+        registerSW();
+      } else {
+        window.addEventListener('load', registerSW);
+      }
 
-        function showRefreshBanner() {
-          if (document.getElementById('sw-refresh-banner')) return;
-          var banner = document.createElement('div');
-          banner.id = 'sw-refresh-banner';
-          banner.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:999999;background:#1d2f45;color:#fff;padding:12px 18px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);display:flex;align-items:center;gap:12px;font-family:system-ui,sans-serif;font-size:14px;border:1px solid #4B9FD6;';
-          banner.innerHTML = '<span>⚡ A new version is available — refresh when ready</span>' +
-            '<button id="sw-refresh-now-btn" style="background:#4B9FD6;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;">Refresh Now</button>' +
-            '<button id="sw-refresh-dismiss-btn" style="background:transparent;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 4px;">&times;</button>';
-          document.body.appendChild(banner);
-          document.getElementById('sw-refresh-now-btn').addEventListener('click', function() {
+        // Once the new worker takes control, reload once if state is clean
+        var reloadingAfterUpdate = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (reloadingAfterUpdate) return;
+          var reloadToken = 'sw_controllerchange_' + (window.APP_VERSION || 'v52');
+          if (sessionStorage.getItem(reloadToken)) return;
+
+          if (isFormDirty()) {
+            console.log('[Service Worker] Update ready but form state is dirty. Showing non-blocking banner.');
+            showRefreshBanner('Update ready — tap to refresh after saving');
+          } else {
+            console.log('[Service Worker] Clean state detected. Auto-reloading once for new bundle.');
+            reloadingAfterUpdate = true;
+            sessionStorage.setItem(reloadToken, 'true');
             window.location.reload();
-          });
-          document.getElementById('sw-refresh-dismiss-btn').addEventListener('click', function() {
-            banner.remove();
-          });
-        }
-        window.showRefreshBanner = showRefreshBanner;
-
-        // Periodically check for a new deployment while the app stays open
-        setInterval(function() { reg.update(); }, 15 * 60 * 1000);
-      })
-      .catch((err) => console.error('Service Worker registration failed:', err));
-
-      // Once the new worker takes control, reload so the page runs on the
-      // fresh code/assets instead of a stale mix of old JS + new SW.
-      // SAFEGUARD: If user has typed inputs on login or form state is dirty, suppress reload and show banner.
-      var reloadingAfterUpdate = false;
-      navigator.serviceWorker.addEventListener('controllerchange', function() {
-        if (reloadingAfterUpdate) return;
-        var loginPage = document.getElementById('login-page');
-        var isLoginPage = loginPage && !loginPage.classList.contains('hidden');
-
-        if (isLoginPage) {
-          if (typeof hasUserStartedTypingOnLogin === 'function' && hasUserStartedTypingOnLogin()) {
-            console.log('[Service Worker] Update ready but user is typing/submitting on login page. Suppressing auto-reload.');
-            if (typeof showRefreshBanner === 'function') showRefreshBanner();
-            return;
           }
-          console.log('[Service Worker] Clean login page state. Auto-reloading to load newest bundle.');
-          reloadingAfterUpdate = true;
-          window.location.reload();
-          return;
-        }
-
-        if (typeof isFormDirty === 'function' && isFormDirty()) {
-          console.log('[Service Worker] Update ready but form state is dirty. Showing non-blocking banner.');
-          if (typeof showRefreshBanner === 'function') showRefreshBanner();
-        } else {
-          console.log('[Service Worker] Clean state detected. Auto-reloading for server accuracy.');
-          reloadingAfterUpdate = true;
-          window.location.reload();
-        }
-      });
-      });
+        });
     }
   </script>
 </body>

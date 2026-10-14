@@ -4,8 +4,8 @@
  * ===================================================
  */
 
-// Bumped to v50 to invalidate SEC-16 v49 cache and force fresh reverted JS.
-const CACHE_NAME = 'erp-cache-v50';
+const BUILD_VERSION = 'v52';
+const CACHE_NAME = `erp-cache-${BUILD_VERSION}`;
 
 // Assets to pre-cache on service worker install
 const ASSETS_TO_CACHE = [
@@ -15,23 +15,24 @@ const ASSETS_TO_CACHE = [
   '/landing.html',
   '/privacy.html',
   '/terms.html',
-  '/css/styles.css',
-  '/js/app.js',
-  '/js/admin.js',
-  '/js/super-admin.js',
-  '/js/students.js',
-  '/js/teachers.js',
-  '/js/attendance.js',
-  '/js/fees.js',
-  '/js/exams.js',
-  '/js/documents.js',
-  '/js/timetable.js',
-  '/js/help.js',
-  '/js/auth-utils.js',
-  '/js/chatbot.js',
-  '/js/notifications.js',
-  '/js/teacher-attendance.js',
-  '/js/utils.js',
+  `/css/styles.css?v=${BUILD_VERSION}`,
+  `/js/app.js?v=${BUILD_VERSION}`,
+  `/js/admin.js?v=${BUILD_VERSION}`,
+  `/js/super-admin.js?v=${BUILD_VERSION}`,
+  `/js/students.js?v=${BUILD_VERSION}`,
+  `/js/teachers.js?v=${BUILD_VERSION}`,
+  `/js/attendance.js?v=${BUILD_VERSION}`,
+  `/js/fees.js?v=${BUILD_VERSION}`,
+  `/js/exams.js?v=${BUILD_VERSION}`,
+  `/js/documents.js?v=${BUILD_VERSION}`,
+  `/js/timetable.js?v=${BUILD_VERSION}`,
+  `/js/help.js?v=${BUILD_VERSION}`,
+  `/js/auth-utils.js?v=${BUILD_VERSION}`,
+  `/js/storage-utils.js?v=${BUILD_VERSION}`,
+  `/js/chatbot.js?v=${BUILD_VERSION}`,
+  `/js/notifications.js?v=${BUILD_VERSION}`,
+  `/js/teacher-attendance.js?v=${BUILD_VERSION}`,
+  `/js/utils.js?v=${BUILD_VERSION}`,
   '/ctrl-shift-logo.png',
   '/school-logo-updated.jpg',
   '/images/logo.png',
@@ -51,22 +52,22 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('[Service Worker] Pre-caching offline assets...');
+        console.log(`[Service Worker ${BUILD_VERSION}] Pre-caching offline assets...`);
         return cache.addAll(ASSETS_TO_CACHE);
       })
       .then(() => self.skipWaiting())
-      .catch((err) => console.error('[Service Worker] Pre-cache failed:', err))
+      .catch((err) => console.error(`[Service Worker ${BUILD_VERSION}] Pre-cache failed:`, err))
   );
 });
 
-// Activate Event — Clean up older caches
+// Activate Event — Clean up older caches (purges v46..v50)
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[Service Worker] Deleting old cache:', key);
+            console.log(`[Service Worker ${BUILD_VERSION}] Deleting old cache:`, key);
             return caches.delete(key);
           }
         })
@@ -75,16 +76,14 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Lets the page hand control to a new, already-installed-but-waiting service
-// worker on demand (when the user clicks "Update Now"), instead of it forcing
-// itself in automatically.
+// Lets the page trigger skipWaiting explicitly on demand
 self.addEventListener('message', (e) => {
   if (e.data === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-// Fetch Event — Offline Routing Strategies
+// Fetch Event — Network-First for online accuracy; offline fallback only
 self.addEventListener('fetch', (e) => {
   // Only handle GET requests
   if (e.request.method !== 'GET') {
@@ -93,11 +92,12 @@ self.addEventListener('fetch', (e) => {
 
   const url = new URL(e.request.url);
 
-  // Exclude Firebase database calls, googleapis, and chatbot API proxy from caching
+  // Exclude Firebase database calls, googleapis, backend/chatbot APIs, and version.json from SW cache
   if (
     url.hostname.includes('firebase') ||
     url.hostname.includes('googleapis') ||
-    url.pathname.startsWith('/api/')
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/version.json'
   ) {
     return;
   }
@@ -113,7 +113,6 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(e.request)
         .then((response) => {
-          // If response is valid, update cache
           if (response.status === 200) {
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -123,21 +122,14 @@ self.addEventListener('fetch', (e) => {
           return response;
         })
         .catch(() => {
-          console.log('[Service Worker] Offline fallback for navigation request:', url.pathname);
+          console.log(`[Service Worker ${BUILD_VERSION}] Offline fallback for navigation request:`, url.pathname);
           return caches.match(e.request).then((cachedResponse) => {
-            // Fallback to cached index.html or target page
-            return cachedResponse || caches.match('/index.html');
+            return cachedResponse || caches.match('/index.html') || caches.match('/');
           });
         })
     );
   } else {
-    // Strategy: Network First, falling back to cache (same as HTML above).
-    // WAS "Cache First" — once a JS/CSS file was cached it was served
-    // forever and network was never even checked again, so a code deploy
-    // (a bug fix, a new feature) never reached an already-installed user
-    // until they manually cleared site data or uninstalled/reinstalled the
-    // PWA. Network First means every load picks up the latest deployed
-    // code when online, and only falls back to the cached copy when offline.
+    // Strategy: Network First for all assets (JS, CSS, images, etc.)
     e.respondWith(
       fetch(e.request)
         .then((response) => {
@@ -150,7 +142,7 @@ self.addEventListener('fetch', (e) => {
           return response;
         })
         .catch(() => {
-          console.log('[Service Worker] Offline — serving cached copy for:', url.pathname);
+          console.log(`[Service Worker ${BUILD_VERSION}] Offline — serving cached copy for:`, url.pathname);
           return caches.match(e.request);
         })
     );

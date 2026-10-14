@@ -18,5 +18,8 @@
   },
   "overrides": {
     "debug": "^4.3.7"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.0"
   }
 }

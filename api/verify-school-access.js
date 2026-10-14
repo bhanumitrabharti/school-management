@@ -282,13 +282,17 @@ module.exports = async function handler(req, res) {
     await acctRef.delete().catch(() => {});
 
     // Write authorized school_access document (SERVER-ONLY WRITE)
-    await db.collection('school_access').doc(uid).set({
+    const schoolAccessPayload = {
       schoolId: schoolId,
       role: role,
       verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
       authType: decodedToken.firebase ? decodedToken.firebase.sign_in_provider : 'anonymous',
       clientIp: clientIp
-    });
+    };
+    if (role === 'teacher' && authenticatedUser && authenticatedUser.id) {
+      schoolAccessPayload.teacherId = authenticatedUser.id;
+    }
+    await db.collection('school_access').doc(uid).set(schoolAccessPayload);
 
     return res.status(200).json({
       success: true,

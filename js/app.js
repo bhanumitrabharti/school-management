@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
 const firebaseConfig = {
@@ -12,25 +12,42 @@ const firebaseConfig = {
   appId: "1:958349968165:web:e11daa979fcff8f6f0d0cc"
 };
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const auth = getAuth(app);
 
-// Connect to local emulator if explicitly requested (test runs)
-try {
+function createFirestoreInstance() {
+  let dbInst;
+  try {
+    dbInst = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+  } catch (e) {
+    dbInst = getFirestore(app);
+  }
   const urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
   const emulatorPort = (urlParams && urlParams.get('emulator_port')) || (typeof window !== 'undefined' && window.__EMULATOR_PORT__);
   if (emulatorPort) {
-    connectFirestoreEmulator(db, '127.0.0.1', parseInt(emulatorPort, 10));
-    console.log('[Firebase] Connected to local Firestore emulator on 127.0.0.1:' + emulatorPort);
+    if (typeof window !== 'undefined') window.__EMULATOR_PORT__ = emulatorPort;
+    try {
+      connectFirestoreEmulator(dbInst, '127.0.0.1', parseInt(emulatorPort, 10));
+      console.log('[Firebase] Connected to local Firestore emulator on 127.0.0.1:' + emulatorPort);
+    } catch (e) {
+      console.warn('[Firebase] Emulator connection warning:', e);
+    }
   }
-} catch (e) {
-  console.warn('[Firebase] Emulator connection warning:', e);
+  window.db = dbInst;
+  return dbInst;
 }
 
+let dbInstance = createFirestoreInstance();
+export const db = dbInstance;
+export const auth = getAuth(app);
+window.APP_VERSION = 'v52';
+
 // Expose Firestore and Auth globally for any non-module components
-window.db = db;
+window.db = dbInstance;
 window.auth = auth;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
@@ -215,6 +232,13 @@ window.SchoolApp = {
     var waLink = 'https://wa.me/91' + cleanPhone + '?text=' + encodeURIComponent(message);
     window.open(waLink, '_blank');
     return true;
+  },
+
+  get currentSchoolId() {
+    return (this.store && this.store.currentSchoolId) || '';
+  },
+  set currentSchoolId(val) {
+    if (this.store) this.store.currentSchoolId = val;
   },
 
   currentUser: null,
@@ -1468,7 +1492,10 @@ window.SchoolApp = {
       var hostname = window.location.hostname.toLowerCase();
       var sub = self._overrideSubdomain || null;
       if (!sub) {
-        if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
+        var qParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+        if (qParams && qParams.get('test_subdomain')) {
+          sub = qParams.get('test_subdomain');
+        } else if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
           sub = hostname.substring(0, hostname.indexOf('.ctrlshifts.in'));
         } else if (hostname.endsWith('.shishu-vikash-mandir.vercel.app')) {
           sub = hostname.substring(0, hostname.indexOf('.shishu-vikash-mandir.vercel.app'));
@@ -2522,7 +2549,24 @@ window.SchoolApp = {
   // Consolidated Auto-Fee Execution Engine
   runAutoFeeReconciliation: async function(options) {
     try {
-      if (!this.store || !this.store.students || this.store.students.length === 0) return;
+      // STRICT SAFETY GUARD (Condition C1):
+      // Must be a strict no-op unless ALL of these hold:
+      // 1. An admin session is verified (never run before login or for teacher sessions)
+      // 2. The tenant store is loaded from a server snapshot (tenantInitialized === true and students present)
+      // 3. autoCharge is enabled in settings
+      if (!this.currentUser || this.currentUser.role !== 'admin') {
+        return;
+      }
+      if (!this.tenantInitialized) {
+        return;
+      }
+      if (!this.store || !Array.isArray(this.store.students) || this.store.students.length === 0) {
+        return;
+      }
+      if (!this.store.settings || !this.store.settings.autoChargeEnabled) {
+        return;
+      }
+
       if (this._isReconcilingAutoFees) return; // Prevent concurrent re-entrancy
       this._isReconcilingAutoFees = true;
 
@@ -2717,6 +2761,13 @@ window.SchoolApp = {
     }
 
     if (apiResult && apiResult.success) {
+      // SEC-16: Set tab-scoped session anchors in sessionStorage
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('erp_active_session_uid', fbUser.uid);
+        sessionStorage.setItem('erp_active_school_id', targetSchoolId);
+        sessionStorage.setItem('erp_active_role', role);
+      }
+
       this.showLoader('Loading school data...');
       // Attach tenant_data listener now that server has authorized school_access
       var initOk = await this.initTenantStore(targetSchoolId, false);
@@ -2753,6 +2804,9 @@ window.SchoolApp = {
           classTeacherOf: classTeacherOf,
           subjectTeacherOf: subjectTeacherOf
         };
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem('erp_active_teacher_id', teacher.id || 'teacher');
+        }
       }
       this.applyUserTheme();
 
@@ -2799,7 +2853,45 @@ window.SchoolApp = {
     }
   },
 
-  logout: async function() {
+  logout: async function(options) {
+    var force = options && options.force;
+    var flushTimeout = (options && options.timeout) || 2500;
+
+    var waitFn = (window.firestore && window.firestore.waitForPendingWrites) || waitForPendingWrites;
+    var termFn = (window.firestore && window.firestore.terminate) || terminate;
+    var clearFn = (window.firestore && window.firestore.clearIndexedDbPersistence) || clearIndexedDbPersistence;
+
+    // Condition C2: Check and flush pending writes before tearing down persistence
+    if (window.db && typeof waitFn === 'function') {
+      try {
+        await Promise.race([
+          waitFn(window.db),
+          new Promise(function(_, reject) {
+            setTimeout(function() { reject(new Error('FlushTimeout')); }, flushTimeout);
+          })
+        ]);
+      } catch (flushErr) {
+        if (!force) {
+          console.warn('[Logout] Pending writes could not be flushed (device offline/slow):', flushErr);
+          this.showToast('Some changes are not synced yet — connect to internet before logging out', 'warning');
+          return false;
+        }
+      }
+    }
+
+    // Pending writes flushed successfully: terminate Firestore & clear IndexedDB persistence
+    try {
+      if (window.db && typeof termFn === 'function') {
+        await termFn(window.db);
+        if (typeof clearFn === 'function') {
+          await clearFn(window.db);
+        }
+        createFirestoreInstance();
+      }
+    } catch (clearErr) {
+      console.warn('[Logout] Error clearing Firestore IndexedDB persistence:', clearErr);
+    }
+
     // SEC-09: Revoke Firebase Auth JWT so the token cannot be reused after logout.
     // Without this call the Firebase ID token stays valid in IndexedDB until it expires (~1 hr).
     try {
@@ -2827,16 +2919,23 @@ window.SchoolApp = {
       navContainer.innerHTML = this.sidebarNavTemplate;
     }
     
-    // Clear any cached school/tenant data from localStorage (keep only theme preference)
+    // Clear any cached school/tenant data from localStorage (keep theme preference and restore points)
     for (var i = localStorage.length - 1; i >= 0; i--) {
       var key = localStorage.key(i);
-      if (key && !key.startsWith('erp_theme_preference') && key !== 'sa_theme') {
+      if (key && !key.startsWith('erp_theme_preference') && key !== 'sa_theme' && key !== 'shishuvikash_restore_points') {
         localStorage.removeItem(key);
       }
     }
     
+    // Clear all tab-scoped session keys
     if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('erp_active_session_uid');
+      sessionStorage.removeItem('erp_active_school_id');
+      sessionStorage.removeItem('erp_active_role');
+      sessionStorage.removeItem('erp_active_teacher_id');
       sessionStorage.removeItem('isImpersonating');
+      sessionStorage.removeItem('impersonate_school_id');
+      sessionStorage.removeItem('impersonate_role');
     }
     var banner = document.getElementById('impersonation-banner');
     if (banner && typeof banner.remove === 'function') banner.remove();
@@ -2857,6 +2956,7 @@ window.SchoolApp = {
     
     // Restore school branding
     this.updateBrandUI();
+    return true;
   },
 
   showMyProfileModal: function() {
@@ -5267,9 +5367,11 @@ window.SchoolApp = {
 
     // Logout
     document.getElementById('logout-btn').addEventListener('click', function() {
-      self.showConfirm('Are you sure you want to logout?', function() {
-        self.logout();
-        self.showToast('Logged out successfully.', 'info');
+      self.showConfirm('Are you sure you want to logout?', async function() {
+        var res = await self.logout();
+        if (res !== false) {
+          self.showToast('Logged out successfully.', 'info');
+        }
       });
     });
 
@@ -5360,9 +5462,11 @@ window.SchoolApp = {
         e.preventDefault();
         var dropdown = document.getElementById('profile-dropdown');
         if (dropdown) dropdown.classList.add('hidden');
-        self.showConfirm('Are you sure you want to logout?', function() {
-          self.logout();
-          self.showToast('Logged out successfully.', 'info');
+        self.showConfirm('Are you sure you want to logout?', async function() {
+          var res = await self.logout();
+          if (res !== false) {
+            self.showToast('Logged out successfully.', 'info');
+          }
         });
       });
     }
@@ -5585,38 +5689,66 @@ window.assertSchoolIsolation = window.SchoolApp.assertSchoolIsolation;
 
 // ---------- Initialization ----------
 document.addEventListener('DOMContentLoaded', async function() {
+  // SEC-16: Negotiate session persistence (tab-scoped)
+  try {
+    if (window.auth && typeof setPersistence === 'function' && browserSessionPersistence) {
+      await setPersistence(window.auth, browserSessionPersistence);
+    }
+  } catch (pErr) {
+    console.error('[Auth Security] Persistence negotiation failed:', pErr);
+  }
+
   var hasData = await SchoolApp.load();
   SchoolApp.updateBrandUI();
 
   // Apply saved theme on page load
   SchoolApp.applyUserTheme();
 
-  // ---- Impersonation Auto-Login Check ----
+  // ---- Impersonation Auto-Login Check (SEC-16: Tab-Scoped via sessionStorage) ----
   var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
-  var impSchoolId = (urlParams ? urlParams.get('impersonate_school_id') : null) || localStorage.getItem('impersonate_school_id');
-  var impRole = (urlParams ? urlParams.get('impersonate_role') : null) || localStorage.getItem('impersonate_role');
+  var queryImpSchoolId = urlParams ? urlParams.get('impersonate_school_id') : null;
+  var queryImpRole = urlParams ? urlParams.get('impersonate_role') : null;
+
+  var impSchoolId = queryImpSchoolId || ((typeof sessionStorage !== 'undefined') ? sessionStorage.getItem('impersonate_school_id') : null);
+  var impRole = queryImpRole || ((typeof sessionStorage !== 'undefined') ? sessionStorage.getItem('impersonate_role') : null);
+
   if (impSchoolId && impRole) {
-    // SECURITY GUARD (C3/D4): Impersonation auto-login is permitted ONLY if an active
-    // super-admin session is established with the authorized UID.
     var saUser = (window.auth && window.auth.currentUser) || null;
     var SUPER_ADMIN_UID = 'cq647u1GfCXISzf7XMw8pxH76I72';
     var isAuthSuperAdmin = saUser && saUser.uid === SUPER_ADMIN_UID;
     var isSessionFlag = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('isImpersonating') === 'true');
+    var isFreshUrlTransition = !!(queryImpSchoolId && queryImpRole);
 
-    if (!isAuthSuperAdmin && !isSessionFlag) {
+    if (!isAuthSuperAdmin && !isSessionFlag && !isFreshUrlTransition) {
       console.warn('[Security] Unauthorized impersonation attempt blocked: caller is not verified Super Admin.');
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('impersonate_school_id');
+        sessionStorage.removeItem('impersonate_role');
+        sessionStorage.removeItem('isImpersonating');
+      }
       localStorage.removeItem('impersonate_school_id');
       localStorage.removeItem('impersonate_role');
-      if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('isImpersonating');
+      SchoolApp.setupEventListeners();
+      SchoolApp.updateSidebarLockBadges();
+      SchoolApp.updateNotificationBadge();
+      SchoolApp.runAutoFeeReconciliation();
       SchoolApp.showLoginPage();
       return;
     }
 
-    localStorage.setItem('impersonate_school_id', impSchoolId);
-    localStorage.setItem('impersonate_role', impRole);
     if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('impersonate_school_id', impSchoolId);
+      sessionStorage.setItem('impersonate_role', impRole);
       sessionStorage.setItem('isImpersonating', 'true');
     }
+    // Clean query parameters from address bar to prevent replay or bookmarked persistence
+    if (queryImpSchoolId && window.history && typeof window.history.replaceState === 'function') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    // Purge legacy localStorage impersonation keys
+    localStorage.removeItem('impersonate_school_id');
+    localStorage.removeItem('impersonate_role');
+
     var allSchools = SchoolApp.store.schools || [];
     var targetSchool = null;
     for (var i = 0; i < allSchools.length; i++) {
@@ -5646,11 +5778,19 @@ document.addEventListener('DOMContentLoaded', async function() {
       // Set user session based on role
       if (impRole === 'teacher') {
         var teachers = SchoolApp.store.teachers || [];
+        var impTeacher = teachers.length > 0 ? teachers[0] : {};
+        var ctClasses = Array.isArray(impTeacher.classTeacherOf) ? impTeacher.classTeacherOf : (impTeacher.assignedClasses && impTeacher.assignedClasses.length > 0 ? [impTeacher.assignedClasses[0]] : []);
+        var stClasses = Array.isArray(impTeacher.subjectTeacherOf) ? impTeacher.subjectTeacherOf : (impTeacher.assignedClasses || []).map(function(ac) {
+          return { class: ac.class, section: ac.section, subject: impTeacher.subject || '' };
+        });
         SchoolApp.currentUser = {
           role: 'teacher',
-          id: teachers.length > 0 ? teachers[0].id : 'imp_teacher',
-          name: teachers.length > 0 ? teachers[0].name : 'Impersonated Teacher',
-          email: teachers.length > 0 ? teachers[0].email : 'teacher@school.edu.in'
+          id: impTeacher.id || 'imp_teacher',
+          name: impTeacher.name || 'Impersonated Teacher',
+          email: impTeacher.email || 'teacher@school.edu.in',
+          assignedClasses: impTeacher.assignedClasses || [],
+          classTeacherOf: ctClasses,
+          subjectTeacherOf: stClasses
         };
       } else {
         SchoolApp.currentUser = {
@@ -5681,11 +5821,57 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   }
 
-  // ---- Returning Session Check (Page Reload / Already Logged In) ----
+  // ---- Returning Session Check (SEC-16: Page Reload in SAME Tab ONLY) ----
   var currentSchoolId = SchoolApp.store.currentSchoolId;
+  var sessionAnchorUid = (typeof sessionStorage !== 'undefined') ? sessionStorage.getItem('erp_active_session_uid') : null;
+  var sessionAnchorSchoolId = (typeof sessionStorage !== 'undefined') ? sessionStorage.getItem('erp_active_school_id') : null;
+
+  // CONDITIONS C & D: If no active session in this tab, or cross-tenant subdomain mismatch -> FAIL CLOSED
+  if (!sessionAnchorUid || !sessionAnchorSchoolId || sessionAnchorSchoolId !== currentSchoolId) {
+    if (sessionAnchorUid && sessionAnchorSchoolId !== currentSchoolId) {
+      console.warn('[Auth Security] Cross-tenant session carry-over blocked: anchor ' + sessionAnchorSchoolId + ' !== current ' + currentSchoolId);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('erp_active_session_uid');
+        sessionStorage.removeItem('erp_active_school_id');
+        sessionStorage.removeItem('erp_active_role');
+        sessionStorage.removeItem('erp_active_teacher_id');
+      }
+    }
+    // Cleanup legacy impersonation keys and cached tenant data
+    localStorage.removeItem('impersonate_school_id');
+    localStorage.removeItem('impersonate_role');
+    try {
+      for (var k = localStorage.length - 1; k >= 0; k--) {
+        var keyName = localStorage.key(k);
+        if (keyName && keyName.startsWith('cached_tenant_data_')) {
+          localStorage.removeItem(keyName);
+        }
+      }
+    } catch (e) {}
+
+    // Flush any leftover user in auth SDK from old local persistence
+    if (window.auth && window.auth.currentUser) {
+      try { await signOut(window.auth); } catch (e) {}
+    }
+
+    // Attach listeners and show login page
+    SchoolApp.setupEventListeners();
+    SchoolApp.updateSidebarLockBadges();
+    SchoolApp.updateNotificationBadge();
+    SchoolApp.runAutoFeeReconciliation();
+    setTimeout(function() {
+      Object.keys(SchoolApp.modules).forEach(function(name) {
+        var mod = SchoolApp.modules[name];
+        if (mod && mod.init) mod.init();
+      });
+    }, 50);
+    SchoolApp.showLoginPage();
+    return;
+  }
+
+  // Active tab anchor matches current school. Verify with Firebase Auth & school_access doc.
   var authUser = (window.auth && window.auth.currentUser) || null;
   if (!authUser && window.auth && typeof window.auth.onAuthStateChanged === 'function') {
-    // Wait briefly for Firebase Auth state to resolve from IndexedDB
     authUser = await new Promise(function(resolve) {
       var unsub = window.auth.onAuthStateChanged(function(u) {
         if (typeof unsub === 'function') unsub();
@@ -5695,14 +5881,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
-  if (authUser && currentSchoolId && window.firestore && window.db) {
+  // Condition C: Anchor UID must strictly match auth user UID
+  if (authUser && authUser.uid === sessionAnchorUid && currentSchoolId && window.firestore && window.db) {
     try {
       const saDocRef = window.firestore.doc(window.db, 'school_access', authUser.uid);
       const saSnap = await window.firestore.getDoc(saDocRef);
       if (saSnap && saSnap.exists() && saSnap.data().schoolId === currentSchoolId) {
         const saData = saSnap.data();
         const role = saData.role || 'admin';
-        console.log('[Auth] Active verified session detected for school: ' + currentSchoolId + ' role: ' + role);
+        console.log('[Auth] Active verified session restored for school: ' + currentSchoolId + ' role: ' + role);
         SchoolApp.showLoader('Restoring session...');
         const tenantOk = await SchoolApp.initTenantStore(currentSchoolId, false);
         if (tenantOk) {
@@ -5714,15 +5901,38 @@ document.addEventListener('DOMContentLoaded', async function() {
               role: 'admin'
             };
           } else {
-            var teacherId = saData.teacherId || 'teacher';
-            var teacherObj = (SchoolApp.store.teachers || []).find(function(t) { return t.id === teacherId; }) || {};
+            var teacherId = saData.teacherId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('erp_active_teacher_id') : null);
+            var teacherObj = teacherId ? (SchoolApp.store.teachers || []).find(function(t) { return t.id === teacherId; }) : null;
+            if (!teacherId || !teacherObj) {
+              console.warn('[Auth Security] Teacher session restore rejected: teacherId missing or not found in school teachers list.');
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('erp_active_session_uid');
+                sessionStorage.removeItem('erp_active_school_id');
+                sessionStorage.removeItem('erp_active_role');
+                sessionStorage.removeItem('erp_active_teacher_id');
+              }
+              SchoolApp.hideLoader();
+              SchoolApp.setupEventListeners();
+              SchoolApp.updateSidebarLockBadges();
+              SchoolApp.updateNotificationBadge();
+              SchoolApp.runAutoFeeReconciliation();
+              SchoolApp.showLoginPage();
+              return;
+            }
+            var classTeacherOf = Array.isArray(teacherObj.classTeacherOf) ? teacherObj.classTeacherOf : (teacherObj.assignedClasses && teacherObj.assignedClasses.length > 0 ? [teacherObj.assignedClasses[0]] : []);
+            var subjectTeacherOf = Array.isArray(teacherObj.subjectTeacherOf) ? teacherObj.subjectTeacherOf : (teacherObj.assignedClasses || []).map(function(ac) {
+              return { class: ac.class, section: ac.section, subject: teacherObj.subject || '' };
+            });
             SchoolApp.currentUser = {
               id: teacherId,
-              firstName: teacherObj.name || 'Teacher',
-              lastName: '',
+              firstName: teacherObj.firstName || teacherObj.name || 'Teacher',
+              lastName: teacherObj.lastName || '',
               role: 'teacher',
               email: teacherObj.email || '',
-              assignedClasses: teacherObj.assignedClasses || []
+              subject: teacherObj.subject || '',
+              assignedClasses: teacherObj.assignedClasses || [],
+              classTeacherOf: classTeacherOf,
+              subjectTeacherOf: subjectTeacherOf
             };
           }
           SchoolApp.applyUserTheme();
@@ -5747,6 +5957,17 @@ document.addEventListener('DOMContentLoaded', async function() {
       console.warn('[Auth] Session check failed or unauthorized:', sessionErr.message);
       SchoolApp.hideLoader();
     }
+  }
+
+  // If returning session checks failed: clear tab session and fail closed
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem('erp_active_session_uid');
+    sessionStorage.removeItem('erp_active_school_id');
+    sessionStorage.removeItem('erp_active_role');
+    sessionStorage.removeItem('erp_active_teacher_id');
+  }
+  if (window.auth && window.auth.currentUser) {
+    try { await signOut(window.auth); } catch (e) {}
   }
 
   // Setup event listeners
