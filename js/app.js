@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
 const firebaseConfig = {
@@ -41,12 +41,25 @@ function createFirestoreInstance() {
 
 let dbInstance = createFirestoreInstance();
 export const db = dbInstance;
-export const auth = getAuth(app);
+
+let authInst = getAuth(app);
+const urlParamsAuth = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+const authEmulatorPort = (urlParamsAuth && urlParamsAuth.get('auth_emulator_port')) || (typeof window !== 'undefined' && window.__AUTH_EMULATOR_PORT__);
+if (authEmulatorPort) {
+  if (typeof window !== 'undefined') window.__AUTH_EMULATOR_PORT__ = authEmulatorPort;
+  try {
+    connectAuthEmulator(authInst, 'http://127.0.0.1:' + authEmulatorPort, { disableWarnings: true });
+    console.log('[Firebase] Connected to local Auth emulator on 127.0.0.1:' + authEmulatorPort);
+  } catch (e) {
+    console.warn('[Firebase] Auth emulator connection warning:', e);
+  }
+}
+export const auth = authInst;
 window.APP_VERSION = 'v53';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
-window.auth = auth;
+window.auth = authInst;
 window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit };
 const storage = getStorage(app);
 window.storage = storage;
@@ -5741,7 +5754,14 @@ window.SchoolApp = {
         sessionStorage.removeItem('impersonate_school_id');
         sessionStorage.removeItem('impersonate_role');
       }
-      window.location.href = window.location.origin + '/super-admin.html';
+      var exitUrl = window.location.origin + '/super-admin.html';
+      var params = [];
+      var ep = (typeof window !== 'undefined' && window.__EMULATOR_PORT__) || (new URLSearchParams(window.location.search)).get('emulator_port');
+      var ap = (typeof window !== 'undefined' && window.__AUTH_EMULATOR_PORT__) || (new URLSearchParams(window.location.search)).get('auth_emulator_port');
+      if (ep) params.push('emulator_port=' + encodeURIComponent(ep));
+      if (ap) params.push('auth_emulator_port=' + encodeURIComponent(ap));
+      if (params.length > 0) exitUrl += '?' + params.join('&');
+      window.location.href = exitUrl;
     });
   }
 };
@@ -5813,7 +5833,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     // Clean query parameters from address bar to prevent replay or bookmarked persistence
     if (queryImpSchoolId && window.history && typeof window.history.replaceState === 'function') {
-      window.history.replaceState({}, '', window.location.pathname);
+      var ep = (typeof window !== 'undefined' && window.__EMULATOR_PORT__) || (new URLSearchParams(window.location.search)).get('emulator_port');
+      var ap = (typeof window !== 'undefined' && window.__AUTH_EMULATOR_PORT__) || (new URLSearchParams(window.location.search)).get('auth_emulator_port');
+      var cleanSearch = '';
+      var cleanParams = [];
+      if (ep) cleanParams.push('emulator_port=' + encodeURIComponent(ep));
+      if (ap) cleanParams.push('auth_emulator_port=' + encodeURIComponent(ap));
+      if (cleanParams.length > 0) cleanSearch = '?' + cleanParams.join('&');
+      window.history.replaceState({}, '', window.location.pathname + cleanSearch);
     }
     // Purge legacy localStorage impersonation keys
     localStorage.removeItem('impersonate_school_id');

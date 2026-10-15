@@ -6,8 +6,8 @@
  */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-import { getAuth, signInWithEmailAndPassword, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+import { getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot, deleteDoc, query, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -20,6 +20,31 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// Local testing emulator hooks
+const urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+const emulatorPort = (urlParams && urlParams.get('emulator_port')) || (typeof window !== 'undefined' && window.__EMULATOR_PORT__);
+if (emulatorPort) {
+  if (typeof window !== 'undefined') window.__EMULATOR_PORT__ = emulatorPort;
+  try {
+    connectFirestoreEmulator(db, '127.0.0.1', parseInt(emulatorPort, 10));
+    console.log('[Firebase SA] Connected to local Firestore emulator on 127.0.0.1:' + emulatorPort);
+  } catch (e) {
+    console.warn('[Firebase SA] Emulator connection warning:', e);
+  }
+}
+const authEmulatorPort = (urlParams && urlParams.get('auth_emulator_port')) || (typeof window !== 'undefined' && window.__AUTH_EMULATOR_PORT__);
+if (authEmulatorPort) {
+  if (typeof window !== 'undefined') window.__AUTH_EMULATOR_PORT__ = authEmulatorPort;
+  try {
+    connectAuthEmulator(auth, 'http://127.0.0.1:' + authEmulatorPort, { disableWarnings: true });
+    console.log('[Firebase SA] Connected to local Auth emulator on 127.0.0.1:' + authEmulatorPort);
+  } catch (e) {
+    console.warn('[Firebase SA] Auth emulator connection warning:', e);
+  }
+}
+
+window.saAuth = auth;
 
 (function () {
     'use strict';
@@ -48,6 +73,8 @@ const auth = getAuth(app);
     // Authenticates directly with user-entered password via Firebase Auth.
     // Hardcoded password removed permanently (C3/D3 remediation).
     var _SA_FIREBASE_EMAIL = 'superadmin@ctrlshifts.in';
+    var SUPER_ADMIN_UID = 'cq647u1GfCXISzf7XMw8pxH76I72';
+    window.SUPER_ADMIN_UID = SUPER_ADMIN_UID;
 
     // Expose cache and functions on window
     window.saCache = {
@@ -512,9 +539,6 @@ const auth = getAuth(app);
 
     /** Validate credentials and switch to dashboard. */
     async function saLogin(username, password) {
-        // SECURITY (C-2 + H-2): Password comparison now uses SHA-256 hash via Web Crypto API.
-        // Plaintext password never appears in source. Hash compared against Firestore sa_data/sa_auth
-        // (if configured) or built-in fallback hash.
         if (username !== _SA_USERNAME) {
             loginErrorMsg.textContent = 'Invalid username or password. Please try again.';
             loginError.classList.add('visible');
@@ -523,65 +547,64 @@ const auth = getAuth(app);
             return false;
         }
 
-        let authSucceeded = false;
         try {
             await setPersistence(auth, browserSessionPersistence);
         } catch (pErr) {
             console.warn('[SA] Could not enforce session persistence:', pErr);
         }
 
-        // Primary: Try Firebase Auth directly using entered password
+        // Primary: Authenticate directly with Firebase Auth using entered password
         try {
-            await signInWithEmailAndPassword(auth, _SA_FIREBASE_EMAIL, password);
-            authSucceeded = true;
+            const userCred = await signInWithEmailAndPassword(auth, _SA_FIREBASE_EMAIL, password);
+            if (!userCred.user || userCred.user.uid !== SUPER_ADMIN_UID) {
+                console.error('[SA] Sign-in succeeded but UID mismatch:', userCred.user ? userCred.user.uid : 'none');
+                await signOut(auth);
+                loginErrorMsg.textContent = 'Unauthorized: User is not configured as Super Admin.';
+                loginError.classList.add('visible');
+                passwordInput.value = '';
+                passwordInput.focus();
+                return false;
+            }
         } catch (fbErr) {
-            console.warn('[SA] Firebase Auth sign-in failed, checking fallback hash:', fbErr.code);
-        }
-
-        // Fallback: If Firebase Auth failed, check SHA-256 hash
-        if (!authSucceeded) {
-            const enteredHash = await sha256Hex(password);
-            let expectedHash = _SA_FALLBACK_HASH;
-            try {
-                const authDoc = await getDoc(doc(db, 'sa_data', 'sa_auth'));
-                if (authDoc.exists() && authDoc.data().hash) {
-                    expectedHash = authDoc.data().hash;
-                }
-            } catch (e) {
-                // Firestore unavailable
+            console.error('[SA] Firebase Auth sign-in failed:', fbErr.code, fbErr.message);
+            var errMsg = 'Invalid username or password. Please try again.';
+            if (fbErr.code === 'auth/too-many-requests') {
+                errMsg = 'Too many failed login attempts. Please try again later.';
+            } else if (fbErr.code === 'auth/network-request-failed') {
+                errMsg = 'Network error. Please check your connection and try again.';
+            } else if (fbErr.code === 'auth/user-disabled') {
+                errMsg = 'This account has been disabled.';
             }
-            if (enteredHash === expectedHash) {
-                authSucceeded = true;
-            }
-        }
-
-        if (authSucceeded) {
-
-            sessionStorage.setItem(SESSION_KEY, 'active');
-            loginPage.classList.add('hidden');
-            dashboard.classList.add('active');
-            loginError.classList.remove('visible');
-            loginForm.reset();
-
-            showToast('Loading database from Cloud Firestore...', 'info');
-            await ensureDataLoaded();
-            initLeadsListener();
-            
-            renderDashboard();
-            showToast('Welcome back, Super Admin!', 'success');
-            return true;
-        } else {
-            loginErrorMsg.textContent = 'Invalid username or password. Please try again.';
+            loginErrorMsg.textContent = errMsg;
             loginError.classList.add('visible');
             passwordInput.value = '';
             passwordInput.focus();
             return false;
         }
+
+        sessionStorage.setItem(SESSION_KEY, 'active');
+        loginPage.classList.add('hidden');
+        dashboard.classList.add('active');
+        loginError.classList.remove('visible');
+        loginForm.reset();
+
+        showToast('Loading database from Cloud Firestore...', 'info');
+        await ensureDataLoaded();
+        initLeadsListener();
+        
+        renderDashboard();
+        showToast('Welcome back, Super Admin!', 'success');
+        return true;
     }
 
     /** End session and return to login. */
-    function saLogout() {
+    async function saLogout() {
         sessionStorage.removeItem(SESSION_KEY);
+        try {
+            await signOut(auth);
+        } catch (e) {
+            console.warn('[SA] signOut error:', e);
+        }
         dashboard.classList.remove('active');
         loginPage.classList.remove('hidden');
         showToast('Logged out successfully', 'info');
@@ -596,6 +619,10 @@ const auth = getAuth(app);
 
     function initLeadsListener() {
         if (unsubscribeLeadsListener) return;
+        if (!auth.currentUser || auth.currentUser.uid !== SUPER_ADMIN_UID) {
+            console.warn('[SA] Cannot init leads listener without authenticated Super Admin UID.');
+            return;
+        }
 
         const leadsCol = collection(db, 'demo_requests');
         const q = query(leadsCol, orderBy('createdAt', 'desc'));
@@ -3182,6 +3209,10 @@ const auth = getAuth(app);
      * @param {string} role – 'admin' or 'teacher'
      */
     function impersonateSchool(schoolId, role) {
+        if (!auth.currentUser || auth.currentUser.uid !== SUPER_ADMIN_UID) {
+            showToast('You must be authenticated as Super Admin to impersonate.', 'error');
+            return;
+        }
         var data = loadData();
         var school = findSchoolById(data.schools, schoolId);
         if (!school) { showToast('School not found.', 'error'); return; }
@@ -3205,7 +3236,14 @@ const auth = getAuth(app);
         showToast('Redirecting as ' + role + ' of "' + school.school_name + '"…', 'info');
 
         setTimeout(function () {
-            window.location.href = window.location.origin + '/index.html?impersonate_school_id=' + encodeURIComponent(schoolId) + '&impersonate_role=' + encodeURIComponent(role);
+            var searchParams = new URLSearchParams(window.location.search);
+            searchParams.set('impersonate_school_id', schoolId);
+            searchParams.set('impersonate_role', role);
+            var ep = (typeof window !== 'undefined' && window.__EMULATOR_PORT__);
+            var ap = (typeof window !== 'undefined' && window.__AUTH_EMULATOR_PORT__);
+            if (ep && !searchParams.has('emulator_port')) searchParams.set('emulator_port', ep);
+            if (ap && !searchParams.has('auth_emulator_port')) searchParams.set('auth_emulator_port', ap);
+            window.location.href = window.location.origin + '/index.html?' + searchParams.toString();
         }, 800);
     }
 
@@ -3363,7 +3401,7 @@ const auth = getAuth(app);
 
     // ─── Event Listeners ────────────────────────────────
 
-    document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', async function () {
         // Load theme preference
         var theme = localStorage.getItem('sa_theme') || 'dark';
         if (theme === 'light') {
@@ -3517,16 +3555,31 @@ const auth = getAuth(app);
             });
         }
 
-        // Check for existing session
-        if (sessionStorage.getItem(SESSION_KEY) === 'active') {
+        // Check for existing session: ensure Firebase Auth state is ready
+        if (typeof auth.authStateReady === 'function') {
+            try {
+                await auth.authStateReady();
+            } catch (aErr) {
+                console.warn('[SA] authStateReady wait warning:', aErr);
+            }
+        }
+
+        var isSessionActive = sessionStorage.getItem(SESSION_KEY) === 'active';
+        var isAuthValid = !!(auth.currentUser && auth.currentUser.uid === SUPER_ADMIN_UID);
+
+        if (isSessionActive && isAuthValid) {
             loginPage.classList.add('hidden');
             dashboard.classList.add('active');
-            (async function() {
-                showToast('Loading database from Cloud Firestore...', 'info');
-                await ensureDataLoaded();
-                initLeadsListener();
-                renderDashboard();
-            })();
+            showToast('Loading database from Cloud Firestore...', 'info');
+            await ensureDataLoaded();
+            initLeadsListener();
+            renderDashboard();
+        } else {
+            sessionStorage.removeItem(SESSION_KEY);
+            loginPage.classList.remove('hidden');
+            dashboard.classList.remove('active');
+            unsubscribeLeads();
+            cleanupSuperAdminListeners();
         }
 
         // Login form submit
@@ -3542,8 +3595,8 @@ const auth = getAuth(app);
         });
 
         // Logout
-        btnLogout.addEventListener('click', function () {
-            saLogout();
+        btnLogout.addEventListener('click', async function () {
+            await saLogout();
         });
 
         // Add School button
