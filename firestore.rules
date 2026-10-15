@@ -7,55 +7,33 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // F8: Super-admin Firebase Auth UID.
-    // ACTION REQUIRED (Antigravity): Replace cq647u1GfCXISzf7XMw8pxH76I72
-    // with the real UID after creating superadmin@ctrlshifts.in in Firebase Auth.
+    // F8: Super-admin Firebase Auth UID
     function isSuperAdmin() {
       return isAuthenticated() &&
              request.auth.uid == 'cq647u1GfCXISzf7XMw8pxH76I72';
     }
 
-    // F1: Tenant isolation — user must have written their school_access/{uid}
-    // document (done by app.js on login) with a schoolId matching the target.
-    // A user can only write their OWN school_access document (uid == auth.uid),
-    // so they cannot forge another user's mapping.
+    // F1: Tenant isolation — verified mapping created by server API
     function canAccessSchool(schoolId) {
       return isAuthenticated() &&
              exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.schoolId == schoolId;
     }
 
-    function canReadTenant(schoolId) {
-      return !isAuthenticated() ||
-             !exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) ||
-             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.schoolId == schoolId;
-    }
-
-    // HARD GUARD for students and teachers:
-    // Even if restructured is true, students and teachers must NEVER be wiped to []
-    // unless an explicit server-level override flag allowCollectionWipe == true is present.
-    // SECURITY: allowCollectionWipe client bypass removed. Wipe operations
-    // must go through the Firebase Admin SDK (server.js) which bypasses rules.
+    // HARD GUARD for students and teachers
     function notWipingRoster(fieldName) {
       return (resource == null || resource.data == null) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
-    // Guard for fees and attendance:
-    // Allowed to become empty ONLY IF restructured == true (migrated to subcollections)
-    // or explicit override flag is present.
+    // Guard for fees and attendance
     function notWipingLedger(fieldName) {
       return (request.resource.data.settings != null && request.resource.data.settings.restructured == true) ||
              (resource == null || resource.data == null) ||
              !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
     }
 
-    // SEC-11: Prevent oversized signature / logo blobs being written into the
-    // main tenant document.  The client already enforces a 500 KB upload cap;
-    // this Firestore-level guard is a defence-in-depth backstop.
-    // base64(500 KB) ≈ 680 000 chars; 800 000 chars gives a comfortable margin
-    // while still rejecting anything far outside the intended size range.
-    // Only checked when a 'settings' key is present in the incoming write.
+    // SEC-11: Prevent oversized signature / logo blobs
     function notOversizedBlobs() {
       let s = request.resource.data.get('settings', null);
       return s == null
@@ -63,52 +41,44 @@ service cloud.firestore {
             && s.get('logoUrl', '').size() < 800000);
     }
 
-    // ── F1: school_access — each user owns and manages only their own entry ──
-    match /school_access/{uid} {
-      allow read:  if isAuthenticated() && request.auth.uid == uid;
-      allow write: if isAuthenticated() && request.auth.uid == uid;
-    }
-
-    // SEC-10: Validate fee month document structure on write.
-    // Firestore Rules cannot iterate array elements, so per-transaction
-    // amount checks live in app.js (_validateFeeTransaction).  This rule
-    // ensures the document shape is exactly what the app writes, preventing
-    // an attacker from injecting arbitrary fields or a non-list payload.
+    // SEC-10: Validate fee month document structure on write
     function validFeeMonthDoc() {
       return request.resource.data.keys().hasOnly(['transactions'])
           && request.resource.data.transactions is list
           && request.resource.data.transactions.size() <= 1000;
     }
 
-    // ── Tenant school data — F1: restricted to mapped school per user ─────────
+    // ── F1: school_access — client writes permanently blocked (server API only) ──
+    match /school_access/{uid} {
+      allow read:  if isAuthenticated() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ── Tenant school data — restricted to mapped school or super-admin ─────────
     match /tenant_data/{schoolId} {
-      allow read:   if canReadTenant(schoolId);
-      allow create: if canAccessSchool(schoolId) &&
+      allow read:   if canAccessSchool(schoolId) || isSuperAdmin();
+      allow create: if (canAccessSchool(schoolId) || isSuperAdmin()) &&
                        notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
-                       notOversizedBlobs();           // SEC-11
-      allow update: if canAccessSchool(schoolId) &&
+                       notOversizedBlobs();
+      allow update: if (canAccessSchool(schoolId) || isSuperAdmin()) &&
                        notWipingRoster('students') &&
                        notWipingRoster('teachers') &&
                        notWipingLedger('fees') &&
                        notWipingLedger('attendance') &&
                        notWipingLedger('examMarks') &&
-                       notOversizedBlobs();           // SEC-11
+                       notOversizedBlobs();
       allow delete: if false;
     }
 
-    // Subcollections — per-school access.
-    // For fees_years specifically, writes must also satisfy validFeeMonthDoc():
-    // this prevents injecting arbitrary keys or non-list transaction payloads.   SEC-10
+    // Subcollections — per-school access or super-admin
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
-      allow read:  if canAccessSchool(schoolId);
-      allow write: if canAccessSchool(schoolId)
-          && (subcollection != 'fees_years' || validFeeMonthDoc());  // SEC-10
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if (canAccessSchool(schoolId) || isSuperAdmin())
+          && (subcollection != 'fees_years' || validFeeMonthDoc());
     }
 
     // ── School registry — public read; write = super-admin only ──────────────
-    // super-admin.js must call signInWithEmailAndPassword(auth, 'superadmin@ctrlshifts.in', ...)
-    // before any write so that request.auth.uid satisfies isSuperAdmin().
     match /schools/{schoolId} {
       allow read:  if true;
       allow write: if isSuperAdmin();
@@ -119,10 +89,21 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
-    // ── Demo requests — unauthenticated create (landing page contact form) ───
+    // ── Demo requests — public create with basic validation; super-admin management ──
     match /demo_requests/{docId} {
-      allow create:              if true;
-      allow read, update, delete: if isAuthenticated();
+      allow create:              if request.resource.data.get('phone', '') is string
+                                    && request.resource.data.get('phone', '').size() >= 10;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // ── Login rate limits — Admin SDK only ──────────────────────────────────
+    match /login_rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    // ── Class rename backups — super-admin only ─────────────────────────────
+    match /rename_backups/{docId} {
+      allow read, write: if isSuperAdmin();
     }
 
   }
