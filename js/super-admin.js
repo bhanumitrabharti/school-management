@@ -3075,6 +3075,7 @@ const auth = getAuth(app);
             var tenantData = {
                 settings: {
                     schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+                    logoUrl: logoUrl,
                     schoolName: name,
                     tagline: tagline,
                     phone: phone,
@@ -3204,12 +3205,7 @@ const auth = getAuth(app);
         showToast('Redirecting as ' + role + ' of "' + school.school_name + '"…', 'info');
 
         setTimeout(function () {
-            var isProd = window.location.hostname.endsWith('ctrlshifts.in');
-            if (isProd && school.subdomain && !window.location.hostname.startsWith(school.subdomain)) {
-                window.location.href = 'https://' + school.subdomain + '.ctrlshifts.in/index.html?impersonate_school_id=' + encodeURIComponent(schoolId) + '&impersonate_role=' + encodeURIComponent(role);
-            } else {
-                window.location.href = 'index.html?impersonate_school_id=' + encodeURIComponent(schoolId) + '&impersonate_role=' + encodeURIComponent(role);
-            }
+            window.location.href = window.location.origin + '/index.html?impersonate_school_id=' + encodeURIComponent(schoolId) + '&impersonate_role=' + encodeURIComponent(role);
         }, 800);
     }
 
@@ -3552,10 +3548,6 @@ const auth = getAuth(app);
 
         // Add School button
         btnAddSchool.addEventListener('click', function () {
-            if (btnAddSchool.disabled) {
-                showToast('Onboarding temporarily disabled — security upgrade in progress', 'warning');
-                return;
-            }
             showSchoolModal(null);
         });
 

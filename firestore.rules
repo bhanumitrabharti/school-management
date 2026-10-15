@@ -14,6 +14,11 @@ service cloud.firestore {
     }
 
     // F1: Tenant isolation — verified mapping created by server API
+    function isSchoolAdmin(schoolId) {
+      return canAccessSchool(schoolId) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('role', '') == 'admin';
+    }
+
     function canAccessSchool(schoolId) {
       return isAuthenticated() &&
              exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
@@ -78,10 +83,15 @@ service cloud.firestore {
           && (subcollection != 'fees_years' || validFeeMonthDoc());
     }
 
-    // ── School registry — public read; write = super-admin only ──────────────
+    // ── School registry — public read; write = super-admin or school admin branding sync ──
     match /schools/{schoolId} {
-      allow read:  if true;
-      allow write: if isSuperAdmin();
+      allow read:   if true;
+      allow create: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() ||
+                       (isSchoolAdmin(schoolId) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logo_url', 'school_name', 'tagline']) &&
+                        request.resource.data.get('logo_url', '').size() < 800000);
     }
 
     // ── F8: Super-admin data — restricted to super-admin Firebase UID only ───

@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -42,12 +42,12 @@ function createFirestoreInstance() {
 let dbInstance = createFirestoreInstance();
 export const db = dbInstance;
 export const auth = getAuth(app);
-window.APP_VERSION = 'v52';
+window.APP_VERSION = 'v53';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
 window.auth = auth;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
@@ -442,6 +442,31 @@ window.SchoolApp = {
       }
       
       console.log('Successfully saved tenant data to Cloud Firestore for: ' + currentSchoolId);
+
+      // FIX 2(c): Keep schools/{id} branding fields in sync when school admin updates settings
+      if (this.currentUser && this.currentUser.role === 'admin' && currentSchoolId && window.firestore && window.firestore.updateDoc) {
+        try {
+          var sName = (payload.settings && payload.settings.schoolName) || (payload.settings && payload.settings.schoolInfo && payload.settings.schoolInfo.name) || '';
+          var sLogo = (payload.settings && payload.settings.logoUrl) || '';
+          var sTagline = (payload.settings && payload.settings.tagline) || (payload.settings && payload.settings.schoolInfo && payload.settings.schoolInfo.tagline) || '';
+
+          var schoolDocRef = window.firestore.doc(window.db, 'schools', currentSchoolId);
+          await window.firestore.updateDoc(schoolDocRef, {
+            school_name: sName,
+            logo_url: sLogo,
+            tagline: sTagline
+          });
+          if (this.matchedSchool) {
+            this.matchedSchool.school_name = sName;
+            this.matchedSchool.logo_url = sLogo;
+            this.matchedSchool.tagline = sTagline;
+          }
+          console.log('[Branding Sync] Successfully updated schools/' + currentSchoolId + ' branding fields.');
+        } catch (syncErr) {
+          console.warn('[Branding Sync] Note on syncing schools/' + currentSchoolId + ':', syncErr);
+        }
+      }
+
       if (allowWipe) {
         delete this.store.allowCollectionWipe;
         delete this.allowCollectionWipe;
@@ -1495,25 +1520,29 @@ window.SchoolApp = {
         var qParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
         if (qParams && qParams.get('test_subdomain')) {
           sub = qParams.get('test_subdomain');
-        } else if (hostname.endsWith('.ctrlshifts.in') && hostname !== 'ctrlshifts.in') {
-          sub = hostname.substring(0, hostname.indexOf('.ctrlshifts.in'));
-        } else if (hostname.endsWith('.shishu-vikash-mandir.vercel.app')) {
-          sub = hostname.substring(0, hostname.indexOf('.shishu-vikash-mandir.vercel.app'));
-        } else if (hostname.endsWith('.localhost')) {
-          sub = hostname.substring(0, hostname.indexOf('.localhost'));
+        } else {
+          var host = hostname;
+          if (host.startsWith('www.')) host = host.substring(4);
+          if (host.endsWith('.ctrlshifts.in') && host !== 'ctrlshifts.in') {
+            sub = host.substring(0, host.indexOf('.ctrlshifts.in'));
+          } else if (host.endsWith('.shishu-vikash-mandir.vercel.app')) {
+            sub = host.substring(0, host.indexOf('.shishu-vikash-mandir.vercel.app'));
+          } else if (host.endsWith('.localhost')) {
+            sub = host.substring(0, host.indexOf('.localhost'));
+          }
         }
       }
 
       if (self.schoolsListenerUnsubscribe) {
         self.schoolsListenerUnsubscribe();
       }
-      
-      const schoolsCol = window.firestore.collection(window.db, 'schools');
-      self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(schoolsCol, (querySnapshot) => {
-        var schoolsList = [];
-        querySnapshot.forEach((doc) => {
-          schoolsList.push(doc.data());
-        });
+
+      var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+      var querySchoolId = urlParams ? urlParams.get('impersonate_school_id') : null;
+      var isImpersonationSession = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('isImpersonating') === 'true');
+      var targetSchoolId = (!sub) ? ((isImpersonationSession ? querySchoolId : null) || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('impersonate_school_id')) || localStorage.getItem('impersonate_school_id') || null) : null;
+
+      var processSchoolsList = function(schoolsList) {
         self.store.schools = schoolsList;
         
         var activeSchoolId = null;
@@ -1528,16 +1557,11 @@ window.SchoolApp = {
           } else {
             console.warn('Subdomain context detected but no matching school found in Firestore: ' + sub);
           }
-        }
-
-        var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
-        var querySchoolId = urlParams ? urlParams.get('impersonate_school_id') : null;
-        // SECURITY: Only honour URL param when a legitimate super-admin impersonation
-        // session is active. Without this check any authenticated user could load any
-        // school by appending ?impersonate_school_id=<arbitrary_id> to the URL.
-        var isImpersonationSession = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('isImpersonating') === 'true');
-        if (!sub && !activeSchoolId) {
-          activeSchoolId = (isImpersonationSession ? querySchoolId : null) || localStorage.getItem('impersonate_school_id') || null;
+        } else if (targetSchoolId) {
+          matchedSchool = schoolsList.find(function(s) { return s.school_id === targetSchoolId; }) || (schoolsList.length > 0 ? schoolsList[0] : null);
+          if (matchedSchool) {
+            activeSchoolId = matchedSchool.school_id;
+          }
         }
 
         var previousSchoolId = (self.store && self.store.currentSchoolId) ? self.store.currentSchoolId : '';
@@ -1570,12 +1594,50 @@ window.SchoolApp = {
           self.setupLoginButtonGate();
           resolve(false);
         }
-      }, (error) => {
-        console.error('Failed to sync schools in real-time:', error);
+      };
+
+      var errorHandler = function(error) {
+        console.error('Failed to sync school registry in real-time:', error);
         if (!bypassLoader) self.hideLoader();
         self.setupLoginButtonGate();
         resolve(false);
-      });
+      };
+
+      // PERFORMANCE OPTIMIZATION: Query ONLY the specific school needed (1 doc), rather than the entire collection
+      if (sub && window.firestore && window.firestore.query && window.firestore.where) {
+        var targetSub = sub;
+        if (sub === 'shishu-vikash-mandir') targetSub = 'svm';
+        var q = window.firestore.query(
+          window.firestore.collection(window.db, 'schools'),
+          window.firestore.where('subdomain', '==', targetSub),
+          window.firestore.limit(1)
+        );
+        self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(q, function(querySnapshot) {
+          var schoolsList = [];
+          querySnapshot.forEach(function(docSnap) {
+            schoolsList.push(docSnap.data());
+          });
+          processSchoolsList(schoolsList);
+        }, errorHandler);
+      } else if (targetSchoolId && window.firestore && window.firestore.doc) {
+        var schoolDocRef = window.firestore.doc(window.db, 'schools', targetSchoolId);
+        self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(schoolDocRef, function(docSnap) {
+          var schoolsList = [];
+          if (docSnap.exists()) {
+            schoolsList.push(docSnap.data());
+          }
+          processSchoolsList(schoolsList);
+        }, errorHandler);
+      } else {
+        const schoolsCol = window.firestore.collection(window.db, 'schools');
+        self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(schoolsCol, function(querySnapshot) {
+          var schoolsList = [];
+          querySnapshot.forEach(function(docSnap) {
+            schoolsList.push(docSnap.data());
+          });
+          processSchoolsList(schoolsList);
+        }, errorHandler);
+      }
     });
   },
 
@@ -5674,13 +5736,12 @@ window.SchoolApp = {
     document.getElementById('exit-impersonation-btn').addEventListener('click', function() {
       localStorage.removeItem('impersonate_school_id');
       localStorage.removeItem('impersonate_role');
-      sessionStorage.removeItem('isImpersonating');
-      var isProd = window.location.hostname.endsWith('ctrlshifts.in');
-      if (isProd) {
-        window.location.href = 'https://ctrlshifts.in/super-admin.html';
-      } else {
-        window.location.href = 'super-admin.html';
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('isImpersonating');
+        sessionStorage.removeItem('impersonate_school_id');
+        sessionStorage.removeItem('impersonate_role');
       }
+      window.location.href = window.location.origin + '/super-admin.html';
     });
   }
 };
@@ -5696,6 +5757,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   } catch (pErr) {
     console.error('[Auth Security] Persistence negotiation failed:', pErr);
+  }
+
+  // Ensure Firebase Auth state is ready before proceeding so auth.currentUser is restored
+  if (window.auth && typeof window.auth.authStateReady === 'function') {
+    try {
+      await window.auth.authStateReady();
+    } catch (aErr) {
+      console.warn('[Auth] authStateReady wait warning:', aErr);
+    }
   }
 
   var hasData = await SchoolApp.load();
