@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -60,7 +60,7 @@ window.APP_VERSION = 'v53';
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
 window.auth = authInst;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, writeBatch, deleteField };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
@@ -327,6 +327,125 @@ window.SchoolApp = {
     }
   },
 
+  prepareSavePayload: function(options, bypassLoader) {
+    var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!currentSchoolId) {
+      console.error('[Security] Save blocked: No active school ID context.');
+      if (!bypassLoader) this.hideLoader();
+      this.showToast('Save failed: No active school identified.', 'error');
+      return { success: false, reason: 'no_school_id' };
+    }
+    const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+    const payload = JSON.parse(JSON.stringify(this.store));
+    if (!payload.settings) payload.settings = {};
+
+    // HARD FAILSAFE 1: Refuse to save if tenant data has not finished loading from Firestore
+    if (!this.tenantInitialized) {
+      console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to save before tenant data has loaded on ' + currentSchoolId);
+      if (!bypassLoader) this.hideLoader();
+      return { success: false, reason: 'tenant_not_initialized' };
+    }
+
+    // DELIBERATE OVERRIDE ESCAPE HATCH:
+    // Genuine administrative resets (e.g. academic session rollover / roster re-import)
+    // can pass options.allowCollectionWipe == true or set store.allowCollectionWipe == true.
+    // This is forwarded in payload to satisfy Firestore rules (notWipingRoster/notWipingLedger).
+    var allowWipe = (options && options.allowCollectionWipe === true) || (payload.allowCollectionWipe === true) || (this.allowCollectionWipe === true);
+    if (allowWipe) {
+      payload.allowCollectionWipe = true;
+      console.warn('[Security Override] allowCollectionWipe active for ' + currentSchoolId + '. Bypassing roster and ledger wipe guards.');
+    }
+
+    if (!allowWipe) {
+      // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from live server baseline
+      var serverStudentBaseline = (this.liveServerStudentCount !== undefined) ? this.liveServerStudentCount : (this.initialServerStudentCount || 0);
+      var serverTeacherBaseline = (this.liveServerTeacherCount !== undefined) ? this.liveServerTeacherCount : (this.initialServerTeacherCount || 0);
+
+      if (serverStudentBaseline > 0 && (!payload.students || payload.students.length === 0)) {
+        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + serverStudentBaseline + ' items -> 0) on ' + currentSchoolId);
+        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+        if (!bypassLoader) this.hideLoader();
+        return { success: false, reason: 'student_wipe_blocked' };
+      }
+      if (serverTeacherBaseline > 0 && (!payload.teachers || payload.teachers.length === 0)) {
+        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + serverTeacherBaseline + ' items -> 0) on ' + currentSchoolId);
+        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+        if (!bypassLoader) this.hideLoader();
+        return { success: false, reason: 'teacher_wipe_blocked' };
+      }
+    }
+    
+    // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
+    var canonicalLogo = payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && payload.settings.schoolInfo.logoUrl) || '';
+    if (!canonicalLogo) {
+      try {
+        var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
+        if (cachedRaw) {
+          var cached = JSON.parse(cachedRaw);
+          if (cached && cached.settings) {
+            canonicalLogo = cached.settings.logoUrl || cached.settings.schoolLogo || (cached.settings.schoolInfo && cached.settings.schoolInfo.logoUrl) || '';
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to preserve logo from cache:', err);
+      }
+    }
+    if (canonicalLogo) {
+      payload.settings.logoUrl = canonicalLogo;
+    }
+    delete payload.settings.schoolLogo;
+    if (payload.settings.schoolInfo) {
+      delete payload.settings.schoolInfo.schoolLogo;
+      delete payload.settings.schoolInfo.logoUrl;
+    }
+
+    // RESTORE ARCHITECTURE: If tenant is restructured, prune unbounded fields
+    // from main tenant doc payload so they are NEVER re-written or merged into
+    // tenant_data/{schoolId}. Their single source of truth is their subcollections.
+    if (this.isRestructured(currentSchoolId)) {
+      delete payload.attendance;
+      delete payload.fees;
+      delete payload.examMarks;
+    }
+
+    // Safety guard against accidental erasure of examTerms / examSubjects
+    var serverExamTermsBaseline = this.initialServerExamTermsCount || 0;
+    if (!allowWipe && serverExamTermsBaseline > 0) {
+      if (!payload.examTerms || Object.keys(payload.examTerms).length === 0) {
+        console.warn('[SAFETY GUARD] Prevented erasing examTerms on save (' + serverExamTermsBaseline + ' terms on server). Keeping server terms.');
+        delete payload.examTerms;
+        delete payload.examSubjects;
+      }
+    }
+
+    // Storage Limit Safety Alert: Warn when approaching 900KB (85% of 1MB limit)
+    var payloadStr = JSON.stringify(payload);
+    var estimatedBytes = (typeof Blob !== 'undefined') ? new Blob([payloadStr]).size : payloadStr.length;
+    var estimatedWireBytes = Math.round(estimatedBytes * 1.12); // Accounts for Protobuf map framing overhead
+
+    // HARD STOP: Firestore's document limit is 1,048,576 bytes.
+    if (estimatedWireBytes >= 1000000) {
+      console.error("[Storage Limit Alert] BLOCKED save for " + currentSchoolId + " — estimated ~" + Math.round(estimatedWireBytes / 1024) + " KB, at/over the safe threshold.");
+      this.showToast("❌ Your school's data has reached its storage limit. This change was NOT saved — please contact support immediately.", "error");
+      if (!bypassLoader) this.hideLoader();
+      return { success: false, reason: 'storage_limit_exceeded' };
+    }
+
+    if (estimatedBytes >= 900000 || estimatedWireBytes >= 900000) {
+      console.warn("[Storage Limit Alert] Tenant document size for " + currentSchoolId + " is approaching limit: ~" + Math.round(estimatedWireBytes / 1024) + " KB (" + Math.round((estimatedWireBytes / 1048576) * 100) + "% of 1MB limit).");
+      this.showToast("Your school's data is approaching storage limits. Please contact support.", "warning");
+    }
+
+    return {
+      success: true,
+      currentSchoolId: currentSchoolId,
+      docRef: docRef,
+      payload: payload,
+      estimatedWireBytes: estimatedWireBytes,
+      allowWipe: allowWipe
+    };
+  },
+
   save: async function(bypassLoader, options) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
@@ -337,115 +456,14 @@ window.SchoolApp = {
       this.showLoader('Saving...');
     }
     try {
-      var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
-      if (!currentSchoolId) {
-        console.error('[Security] Save blocked: No active school ID context.');
-        if (!bypassLoader) this.hideLoader();
-        this.showToast('Save failed: No active school identified.', 'error');
+      var prep = this.prepareSavePayload(options, bypassLoader);
+      if (!prep || !prep.success) {
         return false;
       }
-      const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-      const payload = JSON.parse(JSON.stringify(this.store));
-      if (!payload.settings) payload.settings = {};
-
-      // HARD FAILSAFE 1: Refuse to save if tenant data has not finished loading from Firestore
-      if (!this.tenantInitialized) {
-        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to save before tenant data has loaded on ' + currentSchoolId);
-        if (!bypassLoader) this.hideLoader();
-        return false;
-      }
-
-      // DELIBERATE OVERRIDE ESCAPE HATCH:
-      // Genuine administrative resets (e.g. academic session rollover / roster re-import)
-      // can pass options.allowCollectionWipe == true or set store.allowCollectionWipe == true.
-      // This is forwarded in payload to satisfy Firestore rules (notWipingRoster/notWipingLedger).
-      var allowWipe = (options && options.allowCollectionWipe === true) || (payload.allowCollectionWipe === true) || (this.allowCollectionWipe === true);
-      if (allowWipe) {
-        payload.allowCollectionWipe = true;
-        console.warn('[Security Override] allowCollectionWipe active for ' + currentSchoolId + '. Bypassing roster and ledger wipe guards.');
-      }
-
-      if (!allowWipe) {
-        // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from live server baseline
-        var serverStudentBaseline = (this.liveServerStudentCount !== undefined) ? this.liveServerStudentCount : (this.initialServerStudentCount || 0);
-        var serverTeacherBaseline = (this.liveServerTeacherCount !== undefined) ? this.liveServerTeacherCount : (this.initialServerTeacherCount || 0);
-
-        if (serverStudentBaseline > 0 && (!payload.students || payload.students.length === 0)) {
-          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + serverStudentBaseline + ' items -> 0) on ' + currentSchoolId);
-          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-          if (!bypassLoader) this.hideLoader();
-          return false;
-        }
-        if (serverTeacherBaseline > 0 && (!payload.teachers || payload.teachers.length === 0)) {
-          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + serverTeacherBaseline + ' items -> 0) on ' + currentSchoolId);
-          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-          if (!bypassLoader) this.hideLoader();
-          return false;
-        }
-      }
-      
-      // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
-      var canonicalLogo = payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && payload.settings.schoolInfo.logoUrl) || '';
-      if (!canonicalLogo) {
-        try {
-          var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
-          if (cachedRaw) {
-            var cached = JSON.parse(cachedRaw);
-            if (cached && cached.settings) {
-              canonicalLogo = cached.settings.logoUrl || cached.settings.schoolLogo || (cached.settings.schoolInfo && cached.settings.schoolInfo.logoUrl) || '';
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to preserve logo from cache:', err);
-        }
-      }
-      if (canonicalLogo) {
-        payload.settings.logoUrl = canonicalLogo;
-      }
-      delete payload.settings.schoolLogo;
-      if (payload.settings.schoolInfo) {
-        delete payload.settings.schoolInfo.schoolLogo;
-        delete payload.settings.schoolInfo.logoUrl;
-      }
-
-      // RESTORE ARCHITECTURE: If tenant is restructured, prune unbounded fields
-      // from main tenant doc payload so they are NEVER re-written or merged into
-      // tenant_data/{schoolId}. Their single source of truth is their subcollections.
-      if (this.isRestructured(currentSchoolId)) {
-        delete payload.attendance;
-        delete payload.fees;
-        delete payload.examMarks;
-      }
-
-      // Safety guard against accidental erasure of examTerms / examSubjects
-      var serverExamTermsBaseline = this.initialServerExamTermsCount || 0;
-      if (!allowWipe && serverExamTermsBaseline > 0) {
-        if (!payload.examTerms || Object.keys(payload.examTerms).length === 0) {
-          console.warn('[SAFETY GUARD] Prevented erasing examTerms on save (' + serverExamTermsBaseline + ' terms on server). Keeping server terms.');
-          delete payload.examTerms;
-          delete payload.examSubjects;
-        }
-      }
-
-      // Storage Limit Safety Alert: Warn when approaching 900KB (85% of 1MB limit)
-      var payloadStr = JSON.stringify(payload);
-      var estimatedBytes = (typeof Blob !== 'undefined') ? new Blob([payloadStr]).size : payloadStr.length;
-      var estimatedWireBytes = Math.round(estimatedBytes * 1.12); // Accounts for Protobuf map framing overhead
-
-      // HARD STOP: Firestore's document limit is 1,048,576 bytes. Attempting the
-      // write anyway just wastes 3 retries (~6s of "Saving..." stuck on screen)
-      // on a request that is guaranteed to fail. Fail fast instead.
-      if (estimatedWireBytes >= 1000000) {
-        console.error("[Storage Limit Alert] BLOCKED save for " + currentSchoolId + " — estimated ~" + Math.round(estimatedWireBytes / 1024) + " KB, at/over the safe threshold.");
-        this.showToast("❌ Your school's data has reached its storage limit. This change was NOT saved — please contact support immediately.", "error");
-        if (!bypassLoader) this.hideLoader();
-        return false;
-      }
-
-      if (estimatedBytes >= 900000 || estimatedWireBytes >= 900000) {
-        console.warn("[Storage Limit Alert] Tenant document size for " + currentSchoolId + " is approaching limit: ~" + Math.round(estimatedWireBytes / 1024) + " KB (" + Math.round((estimatedWireBytes / 1048576) * 100) + "% of 1MB limit).");
-        this.showToast("Your school's data is approaching storage limits. Please contact support.", "warning");
-      }
+      var currentSchoolId = prep.currentSchoolId;
+      var docRef = prep.docRef;
+      var payload = prep.payload;
+      var allowWipe = prep.allowWipe;
 
       const saveFn = () => window.firestore.setDoc(docRef, payload, { merge: true });
       const success = await this.saveWithRetry(saveFn);

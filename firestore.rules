@@ -76,11 +76,27 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Subcollections — per-school access or super-admin
-    match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
+    // ── Student Profiles Subcollections (Custom Fields & Privacy Isolation) ──
+    // Private student profiles — school admin + super admin only
+    match /tenant_data/{schoolId}/student_profiles/{studentId} {
+      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Shared student profiles (visible to teachers) — readable by school users (admin/teacher) of that school, writable only by school admin / super admin
+    match /tenant_data/{schoolId}/student_profiles_shared/{studentId} {
       allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
-      allow write: if (canAccessSchool(schoolId) || isSuperAdmin())
-          && (subcollection != 'fees_years' || validFeeMonthDoc());
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Subcollections — per-school access or super-admin (excluding student profile subcollections)
+    match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
+      allow read:  if subcollection != 'student_profiles'
+                      && subcollection != 'student_profiles_shared'
+                      && (canAccessSchool(schoolId) || isSuperAdmin());
+      allow write: if subcollection != 'student_profiles'
+                      && subcollection != 'student_profiles_shared'
+                      && (canAccessSchool(schoolId) || isSuperAdmin())
+                      && (subcollection != 'fees_years' || validFeeMonthDoc());
     }
 
     // ── School registry — public read; write = super-admin or school admin branding sync ──

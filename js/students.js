@@ -510,10 +510,312 @@
   }
 
 
-  function showStudentForm(student) {
+  // ── ProfileService (Student Subcollections Storage Engine) ────────────────
+  var ProfileService = {
+    getStudentProfile: async function(schoolId, studentId, isTeacher) {
+      if (!schoolId || !studentId) {
+        return { studentId: studentId, customFields: {}, additionalParentPhones: [], updatedAt: null, updatedBy: null };
+      }
+      try {
+        var db = window.db;
+        var fs = window.firestore;
+        var collName = isTeacher ? 'student_profiles_shared' : 'student_profiles';
+        var docRef = fs.doc(db, 'tenant_data', schoolId, collName, studentId);
+        var snap = await fs.getDoc(docRef);
+        if (snap.exists()) {
+          var data = snap.data();
+          return {
+            studentId: studentId,
+            customFields: data.customFields || {},
+            additionalParentPhones: data.additionalParentPhones || [],
+            updatedAt: data.updatedAt || null,
+            updatedBy: data.updatedBy || null
+          };
+        }
+      } catch (err) {
+        console.warn('[ProfileService] getStudentProfile warning for ' + studentId + ':', err);
+      }
+      return { studentId: studentId, customFields: {}, additionalParentPhones: [], updatedAt: null, updatedBy: null };
+    },
+
+    saveStudentWithProfile: async function(schoolId, coreStudentData, customFieldValues, additionalPhones, expectedUpdatedAt) {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+        console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+        SchoolApp.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+        return { success: false, reason: 'impersonating' };
+      }
+
+      var db = window.db;
+      var fs = window.firestore;
+      var studentId = coreStudentData.id;
+
+      var privateDocRef = fs.doc(db, 'tenant_data', schoolId, 'student_profiles', studentId);
+      var sharedDocRef = fs.doc(db, 'tenant_data', schoolId, 'student_profiles_shared', studentId);
+      var rootDocRef = fs.doc(db, 'tenant_data', schoolId);
+
+      // Stale-Write Protection: Check if server doc was updated since this edit form opened
+      if (expectedUpdatedAt) {
+        try {
+          var liveSnap = await fs.getDoc(privateDocRef);
+          if (liveSnap.exists()) {
+            var liveData = liveSnap.data();
+            var liveUpdatedAt = liveData && liveData.updatedAt;
+            if (liveUpdatedAt && liveUpdatedAt !== expectedUpdatedAt) {
+              console.warn('[ProfileService] Stale write collision detected. Server:', liveUpdatedAt, 'Local expected:', expectedUpdatedAt);
+              return {
+                success: false,
+                staleConflict: true,
+                serverData: liveData,
+                pendingCustomFields: customFieldValues,
+                pendingPhones: additionalPhones
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('[ProfileService] Stale check error (proceeding):', e);
+        }
+      }
+
+      var nowIso = new Date().toISOString();
+      var updatedByInfo = {
+        uid: (SchoolApp.currentUser && SchoolApp.currentUser.uid) || 'admin',
+        name: (SchoolApp.currentUser && (SchoolApp.currentUser.name || SchoolApp.currentUser.email)) || 'Admin'
+      };
+
+      // 1. Private profile doc (all custom fields + additional phones)
+      var privateDoc = {
+        studentId: studentId,
+        schoolId: schoolId,
+        customFields: customFieldValues || {},
+        additionalParentPhones: additionalPhones || [],
+        updatedAt: nowIso,
+        updatedBy: updatedByInfo
+      };
+
+      // 2. Shared profile doc (ONLY fields where visibleToTeachers === true)
+      var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.student) || [];
+      var sharedCustomFields = {};
+      defs.forEach(function(d) {
+        if (d.visibleToTeachers && customFieldValues && customFieldValues[d.fieldId] !== undefined) {
+          sharedCustomFields[d.fieldId] = customFieldValues[d.fieldId];
+        }
+      });
+
+      var sharedDoc = {
+        studentId: studentId,
+        schoolId: schoolId,
+        customFields: sharedCustomFields,
+        updatedAt: nowIso
+      };
+
+      // 3. Update root students array in memory
+      var currentStudents = (SchoolApp.store.students || []).slice();
+      var existingIdx = currentStudents.findIndex(function(s) { return s.id === studentId; });
+      if (existingIdx !== -1) {
+        currentStudents[existingIdx] = Object.assign({}, currentStudents[existingIdx], coreStudentData);
+      } else {
+        currentStudents.push(coreStudentData);
+      }
+
+      // Temporarily stage in store to build and guard the full root payload
+      var prevStoreStudents = SchoolApp.store.students;
+      SchoolApp.store.students = currentStudents;
+
+      var prep = (typeof SchoolApp.prepareSavePayload === 'function') ? SchoolApp.prepareSavePayload() : null;
+      var rootPayload = (prep && prep.success) ? prep.payload : { students: currentStudents };
+      if (prep && !prep.success) {
+        SchoolApp.store.students = prevStoreStudents; // revert on validation failure
+        return { success: false, reason: prep.reason || 'Validation failed' };
+      }
+
+      // 4. Construct ONE atomic writeBatch writing the exact guarded rootPayload
+      var batch = fs.writeBatch(db);
+      batch.set(rootDocRef, rootPayload, { merge: true });
+      batch.set(privateDocRef, privateDoc);
+      batch.set(sharedDocRef, sharedDoc);
+
+      await batch.commit();
+
+      // Commit to local in-memory store and cache
+      SchoolApp.store.students = currentStudents;
+      try {
+        var cachedRaw = localStorage.getItem('cached_tenant_data_' + schoolId);
+        if (cachedRaw) {
+          var cached = JSON.parse(cachedRaw);
+          cached.students = currentStudents;
+          localStorage.setItem('cached_tenant_data_' + schoolId, JSON.stringify(cached));
+        }
+      } catch (err) {
+        console.warn('Cache update warning:', err);
+      }
+
+      return { success: true, updatedAt: nowIso };
+    }
+  };
+
+  window.ProfileService = ProfileService;
+  window.StudentProfileService = ProfileService;
+
+  function showStaleWriteDiffModal(student, serverData, pendingCustomFields, pendingPhones, expectedUpdatedAt) {
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.student) || [];
+    var serverFields = serverData.customFields || {};
+    var serverPhones = serverData.additionalParentPhones || [];
+    var serverBy = (serverData.updatedBy && serverData.updatedBy.name) ? serverData.updatedBy.name : 'Another Administrator';
+    var serverTime = serverData.updatedAt ? new Date(serverData.updatedAt).toLocaleTimeString() : 'recently';
+
+    var html = '<div style="margin-bottom:16px;">';
+    html += '<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:12px; margin-bottom:16px;">';
+    html += '<p style="margin:0; font-size:13px; color:#EF4444; font-weight:600;"><span class="material-icons-round" style="vertical-align:middle; font-size:18px;">warning</span> Concurrency Conflict Detected</p>';
+    html += '<p style="margin:6px 0 0 0; font-size:12px; color:var(--text-secondary); line-height:1.5;">This record was updated on the server by <strong>' + SchoolApp.escapeHTML(serverBy) + '</strong> at ' + SchoolApp.escapeHTML(serverTime) + ' after you opened the form. Your unsaved changes were NOT overwritten.</p>';
+    html += '</div>';
+
+    html += '<table style="width:100%; border-collapse:collapse; font-size:12px; border:1px solid var(--border-color);">';
+    html += '<thead style="background:var(--bg-tertiary);">';
+    html += '<tr><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border-color);">Field</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border-color); color:#10B981;">Server Value (Current)</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border-color); color:#F59E0B;">Your Pending Value</th></tr>';
+    html += '</thead><tbody>';
+
+    defs.forEach(function(def) {
+      if (def.status === 'archived') return;
+      var sVal = serverFields[def.fieldId] || '—';
+      var pVal = (pendingCustomFields && pendingCustomFields[def.fieldId]) || '—';
+      var isDiff = String(sVal).trim() !== String(pVal).trim();
+      var rowStyle = isDiff ? 'background:rgba(245,158,11,0.08); font-weight:600;' : '';
+      html += '<tr style="' + rowStyle + '">';
+      html += '<td style="padding:8px; border-bottom:1px solid var(--border-color);">' + SchoolApp.escapeHTML(def.label) + '</td>';
+      html += '<td style="padding:8px; border-bottom:1px solid var(--border-color); color:#10B981;">' + SchoolApp.escapeHTML(String(sVal)) + '</td>';
+      html += '<td style="padding:8px; border-bottom:1px solid var(--border-color); color:#F59E0B;">' + SchoolApp.escapeHTML(String(pVal)) + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+    footerHTML += '<button class="btn btn-primary" id="conflict-reload-server-btn"><span class="material-icons-round">refresh</span> Reload Server Data</button>';
+
+    SchoolApp.showModal('Conflict: Stale Write Detected', html, footerHTML);
+
+    var reloadBtn = document.getElementById('conflict-reload-server-btn');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+        setTimeout(function() {
+          showStudentForm(student);
+        }, 150);
+      });
+    }
+  }
+
+  function renderContactRowHTML(label, phone, isWhatsApp) {
+    var out = '<div class="additional-contact-row" style="display:flex; gap:8px; align-items:center; background:var(--bg-secondary); padding:6px 8px; border-radius:6px; border:1px solid var(--border-color);">';
+    out += '  <input type="text" class="form-input contact-label-input" placeholder="e.g. Mother, Driver, Guardian" value="' + SchoolApp.escapeHTML(label || '') + '" style="width:35%; font-size:12px; height:32px;">';
+    out += '  <input type="tel" class="form-input contact-phone-input" placeholder="10-digit number" maxlength="10" value="' + SchoolApp.escapeHTML(phone || '') + '" style="width:40%; font-size:12px; height:32px;">';
+    out += '  <label style="display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--text-secondary); cursor:pointer; margin:0; white-space:nowrap;">';
+    out += '    <input type="checkbox" class="contact-wa-checkbox"' + (isWhatsApp ? ' checked' : '') + '> WhatsApp';
+    out += '  </label>';
+    out += '  <button type="button" class="btn btn-danger btn-xs remove-contact-row-btn" style="width:28px; height:28px; min-width:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:4px;"><span class="material-icons-round" style="font-size:14px;">close</span></button>';
+    out += '</div>';
+    return out;
+  }
+
+  var _currentEditingLoadedUpdatedAt = null;
+  var _currentEditingInitialCustomFields = {};
+  var _currentEditingInitialPhones = [];
+
+  async function showStudentForm(student) {
     var isEdit = !!student;
     var settings = SchoolApp.store.settings || {};
     var classes = settings.classes || [];
+    var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
+
+    _currentEditingLoadedUpdatedAt = null;
+    _currentEditingInitialCustomFields = {};
+    _currentEditingInitialPhones = [];
+
+    if (isEdit) {
+      SchoolApp.showLoader('Loading student profile...');
+      try {
+        var profile = await ProfileService.getStudentProfile(schoolId, student.id, SchoolApp.isTeacher());
+        _currentEditingLoadedUpdatedAt = profile.updatedAt || null;
+        _currentEditingInitialCustomFields = profile.customFields || {};
+        _currentEditingInitialPhones = profile.additionalParentPhones || [];
+      } catch (e) {
+        console.warn('Failed to load student profile:', e);
+      } finally {
+        SchoolApp.hideLoader();
+      }
+    }
+
+    var defs = (settings.customFieldDefinitions && settings.customFieldDefinitions.student) || [];
+    var activeDefs = defs.filter(function(d) { return d.status !== 'archived'; })
+                         .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+    var fieldsBySection = {
+      personal: [],
+      academic: [],
+      transport: [],
+      other: []
+    };
+    activeDefs.forEach(function(d) {
+      var sec = d.section || 'other';
+      if (!fieldsBySection[sec]) fieldsBySection[sec] = [];
+      fieldsBySection[sec].push(d);
+    });
+
+    function renderCustomFieldsForSection(secList) {
+      if (!secList || secList.length === 0) return '';
+      var out = '';
+      secList.forEach(function(d) {
+        var val = isEdit ? (_currentEditingInitialCustomFields[d.fieldId] || '') : '';
+        var wasInitiallyEmpty = isEdit && (!_currentEditingInitialCustomFields[d.fieldId]);
+        var isRequired = !!d.required;
+        var reqLabel = '';
+
+        if (isRequired) {
+          if (isEdit && wasInitiallyEmpty) {
+            reqLabel = ' <span class="badge badge-warning" style="font-size:10px; margin-left:6px; background:rgba(245,158,11,0.15); color:#F59E0B; padding:2px 6px; border-radius:4px; font-weight:500;">Missing Info (Optional for existing record)</span>';
+          } else {
+            reqLabel = ' *';
+          }
+        } else {
+          reqLabel = ' <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span>';
+        }
+
+        var fullWidthClass = (d.type === 'text' && d.label.length > 25) ? ' full-width' : '';
+        out += '<div class="form-group' + fullWidthClass + '">';
+        out += '  <label class="form-label">' + SchoolApp.escapeHTML(d.label) + reqLabel + '</label>';
+
+        if (d.type === 'dropdown') {
+          var opts = Array.isArray(d.options) ? d.options : (typeof d.options === 'string' ? d.options.split(',').map(function(s){return s.trim();}) : []);
+          out += '  <select class="form-select" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+          out += '    <option value="">Select ' + SchoolApp.escapeHTML(d.label) + '</option>';
+          opts.forEach(function(opt) {
+            out += '    <option value="' + SchoolApp.escapeHTML(opt) + '"' + (val === opt ? ' selected' : '') + '>' + SchoolApp.escapeHTML(opt) + '</option>';
+          });
+          out += '  </select>';
+        } else if (d.type === 'yes/no') {
+          out += '  <select class="form-select" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+          out += '    <option value="">Select</option>';
+          out += '    <option value="Yes"' + (val === 'Yes' ? ' selected' : '') + '>Yes</option>';
+          out += '    <option value="No"' + (val === 'No' ? ' selected' : '') + '>No</option>';
+          out += '  </select>';
+        } else if (d.type === 'number') {
+          out += '  <input type="number" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else if (d.type === 'date') {
+          out += '  <input type="date" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else if (d.type === 'phone') {
+          out += '  <input type="tel" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" maxlength="10" placeholder="10-digit number" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else if (d.type === 'email') {
+          out += '  <input type="email" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" placeholder="name@example.com" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else {
+          // default text
+          out += '  <input type="text" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        }
+
+        out += '  <span class="form-error">Required</span>';
+        out += '</div>';
+      });
+      return out;
+    }
 
     var bodyHTML = '<form id="student-form" class="form-grid">';
 
@@ -524,7 +826,6 @@
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Section *</label><select class="form-select" name="section" required><option value="">Select Section</option>';
-    // Populated dynamically below
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Roll Number *</label><input type="text" class="form-input" name="rollNumber" value="' + (student ? student.rollNumber : '') + '" required><span class="form-error">Required</span></div>';
@@ -539,23 +840,53 @@
 
     bodyHTML += '<div class="form-group"><label class="form-label">Aadhaar Number <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="aadhaarNumber" value="' + (student ? student.aadhaarNumber : '') + '" placeholder="XXXX XXXX XXXX"><span class="form-error">Must be 12 digits</span></div>';
 
+    // Personal Custom Fields
+    bodyHTML += renderCustomFieldsForSection(fieldsBySection.personal);
+
     bodyHTML += '<div class="form-group"><label class="form-label">Parent/Guardian Name *</label><input type="text" class="form-input" name="parentName" value="' + (student ? student.parentName : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Mother\'s Name <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="motherName" value="' + (student && student.motherName ? student.motherName : '') + '" placeholder="Mother\'s Name"></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone *</label><input type="text" class="form-input" name="parentPhone" value="' + (student ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone (Primary) *</label><input type="text" class="form-input" name="parentPhone" value="' + (student ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="parentEmail" value="' + (student ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
 
+    // Repeatable Additional Parent Contacts
+    bodyHTML += '<div class="form-group full-width" style="grid-column: span 2; margin-top: 6px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color);">';
+    bodyHTML += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">';
+    bodyHTML += '    <div>';
+    bodyHTML += '      <label class="form-label" style="margin:0; font-weight:600;"><span class="material-icons-round" style="vertical-align:middle; font-size:16px;">contact_phone</span> Additional Parent / Emergency Contacts</label>';
+    bodyHTML += '      <div style="font-size:11px; color:#9CA3AF;">Saved securely in student\'s private profile. Primary parent phone remains untouched.</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '    <button type="button" class="btn btn-secondary btn-xs" id="add-contact-row-btn" style="display:inline-flex; align-items:center; gap:4px; font-size:11px;"><span class="material-icons-round" style="font-size:14px;">add</span> Add Contact</button>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div id="additional-contacts-list" style="display:flex; flex-direction:column; gap:8px;">';
+    if (_currentEditingInitialPhones && _currentEditingInitialPhones.length > 0) {
+      _currentEditingInitialPhones.forEach(function(ph) {
+        bodyHTML += renderContactRowHTML(ph.label, ph.phone, ph.isWhatsApp);
+      });
+    }
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
     bodyHTML += '<div class="form-group"><label class="form-label">Admission Date <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="date" class="form-input" name="admissionDate" value="' + (student ? student.admissionDate : new Date().toISOString().split('T')[0]) + '"></div>';
 
+    // Academic Custom Fields
+    bodyHTML += renderCustomFieldsForSection(fieldsBySection.academic);
+
     bodyHTML += '<div class="form-group"><label class="form-label">Monthly Transport Fee (₹) <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="number" class="form-input" name="transportFee" min="0" step="1" value="' + (student && (student.transportFee || student.transport_fee) ? (student.transportFee || student.transport_fee) : '') + '" placeholder="0"></div>';
+
+    // Transport Custom Fields
+    bodyHTML += renderCustomFieldsForSection(fieldsBySection.transport);
 
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Address <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><textarea class="form-textarea" name="address" rows="2">' + (student ? student.address : '') + '</textarea></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Status <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><select class="form-select" name="status">';
     ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (student && student.status === s ? ' selected' : '') + '>' + s + '</option>'; });
     bodyHTML += '</select></div>';
+
+    // Other Custom Fields
+    bodyHTML += renderCustomFieldsForSection(fieldsBySection.other);
 
     var photoDisplay = (student && student.photoUrl) ? 'block' : 'none';
     var photoSrc = (student && student.photoUrl) || '';
@@ -626,6 +957,26 @@
       updateSectionsDropdown(classSelect.value, student ? student.section : null);
     }
 
+    // Additional contacts row repeater events
+    var addContactBtn = document.getElementById('add-contact-row-btn');
+    var contactsContainer = document.getElementById('additional-contacts-list');
+    if (addContactBtn && contactsContainer) {
+      addContactBtn.addEventListener('click', function() {
+        var tempDiv = document.createElement('div');
+        tempDiv.innerHTML = renderContactRowHTML('', '', false);
+        var newRow = tempDiv.firstElementChild;
+        contactsContainer.appendChild(newRow);
+      });
+
+      contactsContainer.addEventListener('click', function(e) {
+        var removeBtn = e.target.closest('.remove-contact-row-btn');
+        if (removeBtn) {
+          var row = removeBtn.closest('.additional-contact-row');
+          if (row) row.remove();
+        }
+      });
+    }
+
     // Save handler with in-flight guard
     var isSaving = false;
     var saveBtn = document.getElementById('student-save-btn');
@@ -654,17 +1005,19 @@
     var form = document.getElementById('student-form');
     if (!form) return;
 
-    var fields = {};
-    var inputs = form.querySelectorAll('input, select, textarea');
+    var coreFields = {};
+    var customFieldValues = {};
+    var additionalPhones = [];
     var valid = true;
 
-    inputs.forEach(function(input) {
+    // Validate standard core inputs
+    var coreInputs = form.querySelectorAll('input:not([name^="cf_"]):not(.contact-label-input):not(.contact-phone-input):not(.contact-wa-checkbox), select:not([name^="cf_"]), textarea:not([name^="cf_"])');
+    coreInputs.forEach(function(input) {
       var name = input.name;
       if (input.type === 'file' || !name) return;
       var value = input.value.trim();
-      fields[name] = value;
+      coreFields[name] = value;
 
-      // Validate required
       var group = input.closest('.form-group');
       if (input.required && !value) {
         if (group) group.classList.add('error');
@@ -675,24 +1028,87 @@
     });
 
     // Populate firstName & lastName for legacy compatibility
-    if (fields.name) {
-      var nameParts = fields.name.trim().split(/\s+/);
-      fields.firstName = nameParts[0] || '';
-      fields.lastName = nameParts.slice(1).join(' ') || '';
+    if (coreFields.name) {
+      var nameParts = coreFields.name.trim().split(/\s+/);
+      coreFields.firstName = nameParts[0] || '';
+      coreFields.lastName = nameParts.slice(1).join(' ') || '';
     }
 
     // Process optional additional fields
-    fields.transportFee = parseFloat(fields.transportFee) || 0;
-    fields.transport_fee = fields.transportFee;
-    fields.motherName = (fields.motherName || '').trim();
-    fields.admissionNumber = (fields.admissionNumber || '').trim();
+    coreFields.transportFee = parseFloat(coreFields.transportFee) || 0;
+    coreFields.transport_fee = coreFields.transportFee;
+    coreFields.motherName = (coreFields.motherName || '').trim();
+    coreFields.admissionNumber = (coreFields.admissionNumber || '').trim();
 
     // Validate aadhaar
-    if (fields.aadhaarNumber && !SchoolApp.utils.validate.aadhaar(fields.aadhaarNumber)) {
+    if (coreFields.aadhaarNumber && !SchoolApp.utils.validate.aadhaar(coreFields.aadhaarNumber)) {
       var aadhaarGroup = form.querySelector('[name="aadhaarNumber"]').closest('.form-group');
       if (aadhaarGroup) aadhaarGroup.classList.add('error');
       valid = false;
     }
+
+    // Validate custom fields with soft validation for old records
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.student) || [];
+    var activeDefs = defs.filter(function(d) { return d.status !== 'archived'; });
+
+    activeDefs.forEach(function(def) {
+      var input = form.querySelector('[name="cf_' + def.fieldId + '"]');
+      if (!input) return;
+      var val = input.value.trim();
+      customFieldValues[def.fieldId] = val;
+
+      var group = input.closest('.form-group');
+      var wasInitiallyEmpty = existing && (!_currentEditingInitialCustomFields || !_currentEditingInitialCustomFields[def.fieldId]);
+
+      if (def.required) {
+        if (existing && wasInitiallyEmpty) {
+          // Soft validation for existing student who had this field empty: allow saving!
+          if (group) group.classList.remove('error');
+        } else {
+          // Hard validation
+          if (!val) {
+            if (group) group.classList.add('error');
+            valid = false;
+          } else {
+            if (group) group.classList.remove('error');
+          }
+        }
+      }
+
+      // Format validation for phone / email custom fields
+      if (val) {
+        if (def.type === 'phone' && !/^\d{10}$/.test(val)) {
+          if (group) group.classList.add('error');
+          valid = false;
+          SchoolApp.showToast(def.label + ' must be a 10-digit number.', 'error');
+        }
+        if (def.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+          if (group) group.classList.add('error');
+          valid = false;
+          SchoolApp.showToast(def.label + ' must be a valid email address.', 'error');
+        }
+      }
+    });
+
+    // Collect additional parent phones
+    var contactRows = form.querySelectorAll('.additional-contact-row');
+    contactRows.forEach(function(row) {
+      var lbl = row.querySelector('.contact-label-input') ? row.querySelector('.contact-label-input').value.trim() : '';
+      var num = row.querySelector('.contact-phone-input') ? row.querySelector('.contact-phone-input').value.trim() : '';
+      var isWa = !!(row.querySelector('.contact-wa-checkbox') && row.querySelector('.contact-wa-checkbox').checked);
+      if (num) {
+        if (!/^\d{10}$/.test(num)) {
+          valid = false;
+          SchoolApp.showToast('Additional phone "' + num + '" must be 10 digits.', 'error');
+        } else {
+          additionalPhones.push({
+            label: lbl || 'Secondary Contact',
+            phone: num,
+            isWhatsApp: isWa
+          });
+        }
+      }
+    });
 
     if (!valid) {
       SchoolApp.showToast('Please fill all required fields correctly.', 'error');
@@ -700,7 +1116,7 @@
     }
 
     var studentId = existing ? existing.id : SchoolApp.generateId();
-    fields.id = studentId;
+    coreFields.id = studentId;
     var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
 
     // ── Student photo upload ────────────────────────────────────────────────
@@ -709,64 +1125,91 @@
       SchoolApp.showToast('Uploading student photo…', 'info');
       const photoUrl = await StorageUtils.uploadStudentPhoto(photoFile, schoolId, studentId, 'student');
       if (photoUrl) {
-        fields.photoUrl = photoUrl;
+        coreFields.photoUrl = photoUrl;
       } else {
         SchoolApp.showToast('Photo upload failed — student saved without photo.', 'warning');
       }
+    } else if (existing && existing.photoUrl) {
+      coreFields.photoUrl = existing.photoUrl;
     }
 
     // ── Parent photo: convert base64 → Storage URL if a new photo was picked ─
     const parentPhotoInput = document.getElementById('parent-photo-data');
     const parentPhotoData = parentPhotoInput ? parentPhotoInput.value : '';
     const existingParentUrl = existing ? (existing.parentPhotoUrl || '') : '';
-    // Only upload if it's a fresh base64 (data: URL) that differs from what's already saved
     if (parentPhotoData.startsWith('data:') && parentPhotoData !== existingParentUrl) {
       const parentUrl = await StorageUtils.uploadBase64Photo(parentPhotoData, schoolId, studentId, 'parent');
-      if (parentUrl) {
-        fields.parentPhotoUrl = parentUrl;
-      }
-      // If upload fails, fall back to keeping the base64 — better than losing the photo
-      if (!fields.parentPhotoUrl) {
-        fields.parentPhotoUrl = parentPhotoData;
-      }
+      coreFields.parentPhotoUrl = parentUrl || parentPhotoData;
+    } else if (existing && existing.parentPhotoUrl) {
+      coreFields.parentPhotoUrl = existing.parentPhotoUrl;
     }
 
-    var rollbackFn = null;
-    var successMessage = existing ? 'Student updated successfully.' : 'Student added successfully.';
-
-    if (existing) {
-      // Update
-      var idx = SchoolApp.store.students.findIndex(function(s) { return s.id === existing.id; });
-      if (idx !== -1) {
-        if (!fields.photoUrl) fields.photoUrl = existing.photoUrl;
-        if (!fields.parentPhotoUrl) fields.parentPhotoUrl = existing.parentPhotoUrl || '';
-        var previousSnapshot = Object.assign({}, SchoolApp.store.students[idx]);
-        Object.assign(SchoolApp.store.students[idx], fields);
-        rollbackFn = function() { SchoolApp.store.students[idx] = previousSnapshot; };
+    // SANITIZATION: Ensure NO custom field keys or additionalParentPhones leak into coreFields
+    Object.keys(coreFields).forEach(function(k) {
+      if (k.startsWith('cf_') || k === 'additionalParentPhones' || k === 'customFields') {
+        delete coreFields[k];
       }
-    } else {
-      // Create
-      SchoolApp.store.students.push(fields);
-      var newIdx = SchoolApp.store.students.length - 1;
-      rollbackFn = function() { SchoolApp.store.students.splice(newIdx, 1); };
+    });
+
+    // Check if school has zero custom fields AND no extra contacts entered AND not an existing profile edit
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.student) || [];
+    var hasCustomFieldDefinitions = defs.length > 0;
+    var hasAdditionalPhones = additionalPhones && additionalPhones.length > 0;
+
+    if (!hasCustomFieldDefinitions && !hasAdditionalPhones && !_currentEditingLoadedUpdatedAt) {
+      // ZERO CUSTOM FIELDS SAVE PATH (Schools like SVM, IPS, KKGS before adding custom fields)
+      // Save directly via SchoolApp.save() — 100% byte-identical save path and data
+      var currentStudents = (SchoolApp.store.students || []).slice();
+      var existingIdx = currentStudents.findIndex(function(s) { return s.id === studentId; });
+      if (existingIdx !== -1) {
+        currentStudents[existingIdx] = Object.assign({}, currentStudents[existingIdx], coreFields);
+      } else {
+        currentStudents.push(coreFields);
+      }
+      var previousSnapshot = SchoolApp.store.students;
+      SchoolApp.store.students = currentStudents;
+
+      var saveOk = await SchoolApp.save();
+      if (saveOk !== false) {
+        var successMessage = existing ? 'Student updated successfully.' : 'Student added successfully.';
+        SchoolApp.showToast(successMessage, 'success');
+        SchoolApp.closeModal();
+        render();
+      } else {
+        SchoolApp.store.students = previousSnapshot;
+      }
+      return;
     }
 
-    var saveOk = await SchoolApp.save();
-    if (saveOk !== false) {
-      // Only confirm success — and only close the modal / re-render — once the
-      // write has actually persisted to Firestore.
+    // Execute atomic save via ProfileService
+    var saveResult = await ProfileService.saveStudentWithProfile(
+      schoolId,
+      coreFields,
+      customFieldValues,
+      additionalPhones,
+      _currentEditingLoadedUpdatedAt
+    );
+
+    if (saveResult && saveResult.staleConflict) {
+      showStaleWriteDiffModal(
+        existing,
+        saveResult.serverData,
+        saveResult.pendingCustomFields,
+        saveResult.pendingPhones,
+        _currentEditingLoadedUpdatedAt
+      );
+      return;
+    }
+
+    if (saveResult && saveResult.success) {
+      var successMessage = existing ? 'Student updated successfully.' : 'Student added successfully.';
       SchoolApp.showToast(successMessage, 'success');
       SchoolApp.closeModal();
       render();
-    } else {
-      // Save failed (SchoolApp.save() already showed a specific error toast).
-      // Roll back the local in-memory change so a retry doesn't create a
-      // duplicate record and doesn't push an already-oversized document further.
-      if (rollbackFn) rollbackFn();
     }
   }
 
-  function viewStudent(id) {
+  async function viewStudent(id) {
     var student = SchoolApp.store.students.find(function(s) { return s.id === id; });
     if (!student) return;
 
@@ -787,46 +1230,102 @@
       }
     }
 
+    var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
+    var isTeacher = SchoolApp.isTeacher();
+    var profile = null;
+
+    try {
+      profile = await ProfileService.getStudentProfile(schoolId, student.id, isTeacher);
+    } catch (e) {
+      console.warn('Profile read warning:', e);
+    }
+
+    var customFields = (profile && profile.customFields) || {};
+    var addlPhones = (profile && profile.additionalParentPhones) || [];
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.student) || [];
+
+    // Filter definitions based on teacher visibility
+    var visibleDefs = defs.filter(function(d) {
+      if (d.status === 'archived') return false;
+      if (isTeacher && !d.visibleToTeachers) return false;
+      return true;
+    });
+
     var sName = getStudentFullName(student);
-    var initials = SchoolApp.getInitials(sName);
-    var color = SchoolApp.getAvatarColor(sName);
 
     var html = '<div class="detail-header">';
     html += getStudentAvatar(student, 80);
-    html += '<div><div class="detail-name">' + sName + '</div>';
-    html += '<div class="detail-subtitle">Class ' + student.class + '-' + student.section + ' · Roll No. ' + student.rollNumber + '</div>';
-    html += '<span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + student.status + '</span>';
+    html += '<div><div class="detail-name">' + SchoolApp.escapeHTML(sName) + '</div>';
+    html += '<div class="detail-subtitle">Class ' + SchoolApp.escapeHTML(student.class) + '-' + SchoolApp.escapeHTML(student.section) + ' · Roll No. ' + SchoolApp.escapeHTML(student.rollNumber) + '</div>';
+    html += '<span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + SchoolApp.escapeHTML(student.status) + '</span>';
     html += '</div></div>';
+
+    // Personal Information
+    var maskedAadhaar = '—';
+    if (student.aadhaarNumber) {
+      maskedAadhaar = isTeacher ? ('XXXX-XXXX-' + student.aadhaarNumber.slice(-4)) : student.aadhaarNumber;
+    }
 
     html += '<div class="detail-section"><h4><span class="material-icons-round">person</span> Personal Information</h4><div class="detail-grid">';
     html += '<div class="detail-item"><span class="detail-item-label">Date of Birth</span><span class="detail-item-value">' + SchoolApp.formatDate(student.dateOfBirth) + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Gender</span><span class="detail-item-value">' + (student.gender || '—') + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Aadhaar Number</span><span class="detail-item-value">' + (student.aadhaarNumber || '—') + '</span></div>';
-    html += '<div class="detail-item full-width"><span class="detail-item-label">Address</span><span class="detail-item-value">' + (student.address || '—') + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Gender</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.gender || '—') + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Aadhaar Number</span><span class="detail-item-value">' + SchoolApp.escapeHTML(maskedAadhaar) + '</span></div>';
+    html += '<div class="detail-item full-width"><span class="detail-item-label">Address</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.address || '—') + '</span></div>';
+
+    // Custom fields in personal section
+    visibleDefs.filter(function(d) { return d.section === 'personal'; }).forEach(function(d) {
+      var val = customFields[d.fieldId] || '—';
+      html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+    });
     html += '</div></div>';
 
+    // Academic Information
     html += '<div class="detail-section"><h4><span class="material-icons-round">school</span> Academic Information</h4><div class="detail-grid">';
-    html += '<div class="detail-item"><span class="detail-item-label">Class & Section</span><span class="detail-item-value">Class ' + student.class + ' - Section ' + student.section + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Roll Number</span><span class="detail-item-value">' + student.rollNumber + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Class & Section</span><span class="detail-item-value">Class ' + SchoolApp.escapeHTML(student.class) + ' - Section ' + SchoolApp.escapeHTML(student.section) + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Roll Number</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.rollNumber) + '</span></div>';
     if (student.admissionNumber) {
-      html += '<div class="detail-item"><span class="detail-item-label">Admission Number</span><span class="detail-item-value">' + student.admissionNumber + '</span></div>';
+      html += '<div class="detail-item"><span class="detail-item-label">Admission Number</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.admissionNumber) + '</span></div>';
     }
     html += '<div class="detail-item"><span class="detail-item-label">Admission Date</span><span class="detail-item-value">' + SchoolApp.formatDate(student.admissionDate) + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Status</span><span class="detail-item-value"><span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + student.status + '</span></span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Status</span><span class="detail-item-value"><span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + SchoolApp.escapeHTML(student.status) + '</span></span></div>';
     var tFee = parseFloat(student.transportFee || student.transport_fee || 0);
     if (tFee > 0) {
       html += '<div class="detail-item"><span class="detail-item-label">Monthly Transport Fee</span><span class="detail-item-value" style="color:var(--accent-primary); font-weight:600;">₹' + tFee.toLocaleString('en-IN') + ' / mo</span></div>';
     }
+    visibleDefs.filter(function(d) { return d.section === 'academic' || d.section === 'transport'; }).forEach(function(d) {
+      var val = customFields[d.fieldId] || '—';
+      html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+    });
     html += '</div></div>';
 
+    // Parent Information
     html += '<div class="detail-section"><h4><span class="material-icons-round">family_restroom</span> Parent/Guardian Information</h4><div class="detail-grid">';
-    html += '<div class="detail-item"><span class="detail-item-label">Parent Name</span><span class="detail-item-value">' + (student.parentName || '—') + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Parent Name</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.parentName || '—') + '</span></div>';
     if (student.motherName) {
-      html += '<div class="detail-item"><span class="detail-item-label">Mother\'s Name</span><span class="detail-item-value">' + student.motherName + '</span></div>';
+      html += '<div class="detail-item"><span class="detail-item-label">Mother\'s Name</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.motherName) + '</span></div>';
     }
-    html += '<div class="detail-item"><span class="detail-item-label">Phone</span><span class="detail-item-value">' + (student.parentPhone || '—') + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Email</span><span class="detail-item-value">' + (student.parentEmail || '—') + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Primary Phone</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.parentPhone || '—') + '</span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Email</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.parentEmail || '—') + '</span></div>';
+
+    // Additional phones (admin only)
+    if (!isTeacher && addlPhones && addlPhones.length > 0) {
+      addlPhones.forEach(function(ph) {
+        var waBadge = ph.isWhatsApp ? ' <span style="color:#10B981; font-size:11px; font-weight:600;">(WhatsApp)</span>' : '';
+        html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(ph.label || 'Additional Contact') + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(ph.phone) + waBadge + '</span></div>';
+      });
+    }
     html += '</div></div>';
+
+    // Other Details section if any custom fields exist in 'other'
+    var otherDefs = visibleDefs.filter(function(d) { return d.section === 'other'; });
+    if (otherDefs.length > 0) {
+      html += '<div class="detail-section"><h4><span class="material-icons-round">more_horiz</span> Additional Details</h4><div class="detail-grid">';
+      otherDefs.forEach(function(d) {
+        var val = customFields[d.fieldId] || '—';
+        html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+      });
+      html += '</div></div>';
+    }
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
     if (SchoolApp.isAdmin()) {
@@ -1772,6 +2271,7 @@
 
   // Expose StudentsModule globally (for inline onchange handlers)
   window.StudentsModule = {
+    viewStudent: viewStudent,
     handleParentPhotoSelect: function(input) {
       var file = input && input.files && input.files[0];
       if (!file) return;

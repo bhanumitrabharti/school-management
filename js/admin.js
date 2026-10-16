@@ -1270,6 +1270,481 @@
     });
   }
 
+  // ── Custom Field Definitions Manager (Phase 1) ──────────────────────────
+  function getCustomFieldDefinitions() {
+    if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+    if (!SchoolApp.store.settings.customFieldDefinitions) SchoolApp.store.settings.customFieldDefinitions = {};
+    if (!Array.isArray(SchoolApp.store.settings.customFieldDefinitions.student)) {
+      SchoolApp.store.settings.customFieldDefinitions.student = [];
+    }
+    return SchoolApp.store.settings.customFieldDefinitions.student;
+  }
+
+  function renderSettingsCustomFields() {
+    var container = document.getElementById('settings-custom-fields-container');
+    if (!container) return;
+
+    var defs = getCustomFieldDefinitions();
+    var activeFields = defs.filter(function(d) { return d.status !== 'archived'; })
+                           .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+    var archivedFields = defs.filter(function(d) { return d.status === 'archived'; });
+
+    var html = '';
+
+    // Summary header
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
+    html += '  <div style="font-size:13px; color:var(--text-secondary);">';
+    html += '    Active Fields: <strong style="color:var(--text-primary);">' + activeFields.length + '</strong> · ';
+    html += '    Archived: <strong style="color:var(--text-muted);">' + archivedFields.length + '</strong>';
+    html += '  </div>';
+    html += '</div>';
+
+    // Active Fields Table
+    if (activeFields.length === 0) {
+      html += '<div style="text-align:center; padding:24px; color:var(--text-secondary); border: 1px dashed var(--border-color); border-radius: 8px;">';
+      html += '  No active custom fields defined. Click <strong>Add Custom Field</strong> above to add fields such as Blood Group, Bus Route, Emergency Contact, etc.';
+      html += '</div>';
+    } else {
+      html += '<div style="overflow-x:auto;">';
+      html += '<table style="width:100%; border-collapse:collapse; font-size:12px; border:1px solid var(--border-color); border-radius:6px; overflow:hidden;">';
+      html += '<thead style="background:var(--bg-tertiary);">';
+      html += '<tr>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:60px; border-bottom:1px solid var(--border-color);">Order</th>';
+      html += '  <th style="padding:10px 8px; text-align:left; border-bottom:1px solid var(--border-color);">Field Label</th>';
+      html += '  <th style="padding:10px 8px; text-align:left; width:90px; border-bottom:1px solid var(--border-color);">Type</th>';
+      html += '  <th style="padding:10px 8px; text-align:left; width:100px; border-bottom:1px solid var(--border-color);">Section</th>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:80px; border-bottom:1px solid var(--border-color);">Required</th>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:130px; border-bottom:1px solid var(--border-color);">Teacher Visibility</th>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:110px; border-bottom:1px solid var(--border-color);">Actions</th>';
+      html += '</tr>';
+      html += '</thead><tbody>';
+
+      activeFields.forEach(function(field, idx) {
+        var typeColors = {
+          text: '#3B82F6',
+          number: '#14B8A6',
+          date: '#6366F1',
+          dropdown: '#8B5CF6',
+          'yes/no': '#F59E0B',
+          phone: '#10B981',
+          email: '#0EA5E9'
+        };
+        var tColor = typeColors[field.type] || '#6B7280';
+        var isFirst = idx === 0;
+        var isLast = idx === activeFields.length - 1;
+
+        html += '<tr style="border-bottom:1px solid var(--border-color);">';
+        // Order / arrows
+        html += '<td style="padding:8px; text-align:center;">';
+        html += '  <div style="display:inline-flex; align-items:center; gap:2px;">';
+        html += '    <button type="button" class="btn-icon settings-cf-up-btn" data-id="' + escapeAttr(field.fieldId) + '"' + (isFirst ? ' disabled style="opacity:0.3; cursor:not-allowed;"' : '') + ' title="Move Up"><span class="material-icons-round" style="font-size:16px;">arrow_upward</span></button>';
+        html += '    <button type="button" class="btn-icon settings-cf-down-btn" data-id="' + escapeAttr(field.fieldId) + '"' + (isLast ? ' disabled style="opacity:0.3; cursor:not-allowed;"' : '') + ' title="Move Down"><span class="material-icons-round" style="font-size:16px;">arrow_downward</span></button>';
+        html += '  </div>';
+        html += '</td>';
+
+        // Label
+        html += '<td style="padding:8px; font-weight:600; color:var(--text-primary);">' + escapeHTML(field.label) + '</td>';
+
+        // Type
+        html += '<td style="padding:8px;"><span class="badge" style="background:' + tColor + '20; color:' + tColor + '; font-size:10px; font-weight:600; text-transform:uppercase;">' + escapeHTML(field.type) + '</span></td>';
+
+        // Section
+        var secLabels = { personal: 'Personal', academic: 'Academic', transport: 'Transport', other: 'Other' };
+        html += '<td style="padding:8px; color:var(--text-secondary);">' + escapeHTML(secLabels[field.section] || field.section || 'Other') + '</td>';
+
+        // Required
+        html += '<td style="padding:8px; text-align:center;">' + (field.required ? '<span class="badge badge-warning" style="font-size:10px;">Required</span>' : '<span style="color:var(--text-muted); font-size:11px;">Optional</span>') + '</td>';
+
+        // Teacher Visibility
+        html += '<td style="padding:8px; text-align:center;">';
+        if (field.visibleToTeachers) {
+          html += '<button type="button" class="btn btn-xs settings-toggle-cf-vis-btn" data-id="' + escapeAttr(field.fieldId) + '" style="background:rgba(16,185,129,0.15); color:#10B981; border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:2px 8px; font-size:10px; font-weight:600;"><span class="material-icons-round" style="font-size:12px; vertical-align:middle;">visibility</span> Visible</button>';
+        } else {
+          html += '<button type="button" class="btn btn-xs settings-toggle-cf-vis-btn" data-id="' + escapeAttr(field.fieldId) + '" style="background:rgba(107,114,128,0.15); color:#9CA3AF; border:1px solid rgba(107,114,128,0.3); border-radius:12px; padding:2px 8px; font-size:10px; font-weight:600;"><span class="material-icons-round" style="font-size:12px; vertical-align:middle;">visibility_off</span> Admin Only</button>';
+        }
+        html += '</td>';
+
+        // Actions
+        html += '<td style="padding:8px; text-align:center;">';
+        html += '  <div style="display:inline-flex; gap:6px; align-items:center;">';
+        html += '    <button type="button" class="btn btn-secondary btn-xs settings-edit-cf-btn" data-id="' + escapeAttr(field.fieldId) + '" title="Edit Field" style="height:26px; padding:0 6px;"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">edit</span></button>';
+        html += '    <button type="button" class="btn btn-secondary btn-xs settings-archive-cf-btn" data-id="' + escapeAttr(field.fieldId) + '" title="Archive Field" style="height:26px; padding:0 6px; color:#F59E0B;"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">archive</span></button>';
+        html += '  </div>';
+        html += '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+    }
+
+    // Archived Fields Table (if any)
+    if (archivedFields.length > 0) {
+      html += '<div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border-color);">';
+      html += '  <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--text-secondary);"><span class="material-icons-round" style="font-size:16px; vertical-align:middle;">inventory_2</span> Archived Fields (Hidden from forms; existing records safe)</h4>';
+      html += '  <div style="overflow-x:auto;">';
+      html += '  <table style="width:100%; border-collapse:collapse; font-size:11px; border:1px solid var(--border-color); opacity:0.85;">';
+      html += '  <thead style="background:var(--bg-tertiary);">';
+      html += '  <tr><th style="padding:6px 8px; text-align:left;">Field Label</th><th style="padding:6px 8px; text-align:left;">Type</th><th style="padding:6px 8px; text-align:left;">Section</th><th style="padding:6px 8px; text-align:center; width:90px;">Action</th></tr>';
+      html += '  </thead><tbody>';
+
+      archivedFields.forEach(function(field) {
+        html += '<tr style="border-bottom:1px solid var(--border-color);">';
+        html += '<td style="padding:6px 8px; font-weight:500;">' + escapeHTML(field.label) + '</td>';
+        html += '<td style="padding:6px 8px;">' + escapeHTML(field.type) + '</td>';
+        html += '<td style="padding:6px 8px;">' + escapeHTML(field.section || 'other') + '</td>';
+        html += '<td style="padding:6px 8px; text-align:center;">';
+        html += '  <button type="button" class="btn btn-secondary btn-xs settings-restore-cf-btn" data-id="' + escapeAttr(field.fieldId) + '" style="font-size:10px; padding:2px 8px;"><span class="material-icons-round" style="font-size:12px; vertical-align:middle;">unarchive</span> Restore</button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+
+      html += '  </tbody></table></div>';
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+    attachSettingsCustomFieldsEvents();
+  }
+
+  function attachSettingsCustomFieldsEvents() {
+    var addBtn = document.getElementById('settings-add-custom-field-btn');
+    if (addBtn) {
+      addBtn.onclick = function() {
+        showCustomFieldModal(null);
+      };
+    }
+
+    var container = document.getElementById('settings-custom-fields-container');
+    if (!container) return;
+
+    // Edit button
+    container.querySelectorAll('.settings-edit-cf-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = this.getAttribute('data-id');
+        var defs = getCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (field) showCustomFieldModal(field);
+      };
+    });
+
+    // Move Up
+    container.querySelectorAll('.settings-cf-up-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getCustomFieldDefinitions();
+        var activeFields = defs.filter(function(d) { return d.status !== 'archived'; })
+                               .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+        var idx = activeFields.findIndex(function(d) { return d.fieldId === id; });
+        if (idx > 0) {
+          var curr = activeFields[idx];
+          var prev = activeFields[idx - 1];
+          var tempOrder = curr.order;
+          curr.order = prev.order;
+          prev.order = tempOrder;
+          await SchoolApp.save(true);
+          renderSettingsCustomFields();
+        }
+      };
+    });
+
+    // Move Down
+    container.querySelectorAll('.settings-cf-down-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getCustomFieldDefinitions();
+        var activeFields = defs.filter(function(d) { return d.status !== 'archived'; })
+                               .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+        var idx = activeFields.findIndex(function(d) { return d.fieldId === id; });
+        if (idx !== -1 && idx < activeFields.length - 1) {
+          var curr = activeFields[idx];
+          var next = activeFields[idx + 1];
+          var tempOrder = curr.order;
+          curr.order = next.order;
+          next.order = tempOrder;
+          await SchoolApp.save(true);
+          renderSettingsCustomFields();
+        }
+      };
+    });
+
+    // Toggle visibility quick button
+    container.querySelectorAll('.settings-toggle-cf-vis-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (!field) return;
+
+        var newVis = !field.visibleToTeachers;
+        var confirmMsg = newVis
+          ? 'Make "' + field.label + '" visible to teachers? Existing values will be synced to shared documents.'
+          : 'Hide "' + field.label + '" from teachers? Values will remain preserved in private records.';
+
+        SchoolApp.showConfirm(confirmMsg, async function() {
+          await syncTeacherVisibilityBatch(field, newVis);
+          field.visibleToTeachers = newVis;
+          await SchoolApp.save(true);
+          renderSettingsCustomFields();
+        });
+      };
+    });
+
+    // Archive button
+    container.querySelectorAll('.settings-archive-cf-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = this.getAttribute('data-id');
+        var defs = getCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (!field) return;
+
+        SchoolApp.showConfirm('Archive field "' + field.label + '"? It will be hidden from admission and edit forms, but all existing student values are safely preserved.', async function() {
+          field.status = 'archived';
+          await SchoolApp.save(true);
+          renderSettingsCustomFields();
+          SchoolApp.showToast('Field "' + field.label + '" archived.', 'info');
+        });
+      };
+    });
+
+    // Restore button
+    container.querySelectorAll('.settings-restore-cf-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (!field) return;
+
+        field.status = 'active';
+        await SchoolApp.save(true);
+        renderSettingsCustomFields();
+        SchoolApp.showToast('Field "' + field.label + '" restored.', 'success');
+      };
+    });
+  }
+
+  function showCustomFieldModal(fieldDef) {
+    var isEdit = !!fieldDef;
+    var title = isEdit ? 'Edit Custom Field' : 'Add Student Custom Field';
+
+    var bodyHTML = '<form id="custom-field-form" class="form-grid" style="gap:16px;">';
+
+    // Label
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Field Label *</label><input type="text" class="form-input" id="cf-modal-label" value="' + (isEdit ? escapeAttr(fieldDef.label) : '') + '" placeholder="e.g. Blood Group, Bus Route, Emergency Contact" required><span class="form-error">Required</span></div>';
+
+    // Type
+    if (isEdit) {
+      bodyHTML += '<div class="form-group"><label class="form-label">Field Type</label><input type="text" class="form-input" value="' + escapeAttr(fieldDef.type) + '" disabled readonly style="opacity:0.8; background:var(--bg-tertiary);"><span style="font-size:11px; color:#9CA3AF; margin-top:4px;">Type cannot be changed after creation to protect existing records.</span></div>';
+    } else {
+      bodyHTML += '<div class="form-group"><label class="form-label">Field Type *</label><select class="form-select" id="cf-modal-type" required>';
+      bodyHTML += '<option value="text">Text (Single Line)</option>';
+      bodyHTML += '<option value="number">Number</option>';
+      bodyHTML += '<option value="date">Date</option>';
+      bodyHTML += '<option value="dropdown">Dropdown (Select Option)</option>';
+      bodyHTML += '<option value="yes/no">Yes / No</option>';
+      bodyHTML += '<option value="phone">Phone Number (10 Digits)</option>';
+      bodyHTML += '<option value="email">Email Address</option>';
+      bodyHTML += '</select></div>';
+    }
+
+    // Section
+    var curSec = isEdit ? (fieldDef.section || 'personal') : 'personal';
+    bodyHTML += '<div class="form-group"><label class="form-label">Form Section *</label><select class="form-select" id="cf-modal-section" required>';
+    bodyHTML += '<option value="personal"' + (curSec === 'personal' ? ' selected' : '') + '>Personal Information</option>';
+    bodyHTML += '<option value="academic"' + (curSec === 'academic' ? ' selected' : '') + '>Academic Information</option>';
+    bodyHTML += '<option value="transport"' + (curSec === 'transport' ? ' selected' : '') + '>Transport Details</option>';
+    bodyHTML += '<option value="other"' + (curSec === 'other' ? ' selected' : '') + '>Other Details</option>';
+    bodyHTML += '</select></div>';
+
+    // Dropdown options (shown if dropdown)
+    var curOptions = isEdit && Array.isArray(fieldDef.options) ? fieldDef.options.join(', ') : '';
+    var optDisplay = (isEdit && fieldDef.type === 'dropdown') ? 'block' : 'none';
+    bodyHTML += '<div class="form-group full-width" id="cf-modal-options-group" style="display:' + optDisplay + ';"><label class="form-label">Dropdown Options * <span style="font-size:11px; color:#9CA3AF;">(Comma-separated)</span></label><textarea class="form-textarea" id="cf-modal-options" rows="2" placeholder="e.g. A+, A-, B+, B-, O+, O-, AB+, AB-">' + escapeHTML(curOptions) + '</textarea></div>';
+
+    // Checkboxes
+    var isReq = isEdit ? !!fieldDef.required : false;
+    var isVis = isEdit ? !!fieldDef.visibleToTeachers : false;
+
+    bodyHTML += '<div class="form-group full-width" style="display:flex; flex-direction:column; gap:10px; margin-top:4px;">';
+    bodyHTML += '  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">';
+    bodyHTML += '    <input type="checkbox" id="cf-modal-required"' + (isReq ? ' checked' : '') + '> <strong>Required on Admission Form</strong> (enforces soft validation for older records)';
+    bodyHTML += '  </label>';
+    bodyHTML += '  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">';
+    bodyHTML += '    <input type="checkbox" id="cf-modal-visible"' + (isVis ? ' checked' : '') + '> <strong>Visible to Teachers</strong> (shared with Teacher Portal; unchecked keeps field admin-only)';
+    bodyHTML += '  </label>';
+    bodyHTML += '</div>';
+
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="cf-modal-save-btn"><span class="material-icons-round">save</span> ' + (isEdit ? 'Update Field' : 'Create Field') + '</button>';
+
+    SchoolApp.showModal(title, bodyHTML, footerHTML);
+
+    var typeSelect = document.getElementById('cf-modal-type');
+    var optGroup = document.getElementById('cf-modal-options-group');
+    if (typeSelect && optGroup) {
+      typeSelect.addEventListener('change', function() {
+        optGroup.style.display = this.value === 'dropdown' ? 'block' : 'none';
+      });
+    }
+
+    var saveBtn = document.getElementById('cf-modal-save-btn');
+    if (saveBtn) {
+      saveBtn.onclick = async function() {
+        var labelInput = document.getElementById('cf-modal-label');
+        var label = labelInput ? labelInput.value.trim() : '';
+        if (!label) {
+          SchoolApp.showToast('Field label is required.', 'error');
+          if (labelInput) labelInput.focus();
+          return;
+        }
+
+        var defs = getCustomFieldDefinitions();
+        var type = isEdit ? fieldDef.type : (typeSelect ? typeSelect.value : 'text');
+        var section = document.getElementById('cf-modal-section') ? document.getElementById('cf-modal-section').value : 'personal';
+        var required = !!(document.getElementById('cf-modal-required') && document.getElementById('cf-modal-required').checked);
+        var visibleToTeachers = !!(document.getElementById('cf-modal-visible') && document.getElementById('cf-modal-visible').checked);
+
+        var options = [];
+        if (type === 'dropdown') {
+          var optVal = document.getElementById('cf-modal-options') ? document.getElementById('cf-modal-options').value : '';
+          options = optVal.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+          if (options.length === 0) {
+            SchoolApp.showToast('Please provide at least one option for the dropdown.', 'error');
+            return;
+          }
+        }
+
+        if (isEdit) {
+          var visibilityChanged = fieldDef.visibleToTeachers !== visibleToTeachers;
+          fieldDef.label = label;
+          fieldDef.section = section;
+          fieldDef.required = required;
+          if (type === 'dropdown') fieldDef.options = options;
+
+          SchoolApp.closeModal();
+
+          if (visibilityChanged) {
+            await syncTeacherVisibilityBatch(fieldDef, visibleToTeachers);
+          }
+          fieldDef.visibleToTeachers = visibleToTeachers;
+
+          await SchoolApp.save(true);
+          renderSettingsCustomFields();
+          SchoolApp.showToast('Custom field updated successfully.', 'success');
+        } else {
+          // Check if label already exists in active fields
+          var duplicate = defs.some(function(d) { return d.status !== 'archived' && d.label.toLowerCase() === label.toLowerCase(); });
+          if (duplicate) {
+            SchoolApp.showToast('A custom field with this label already exists.', 'warning');
+            return;
+          }
+
+          var fieldId = 'cf_std_' + Math.random().toString(36).substring(2, 10);
+          var newField = {
+            fieldId: fieldId,
+            label: label,
+            type: type,
+            section: section,
+            required: required,
+            visibleToTeachers: visibleToTeachers,
+            status: 'active',
+            order: defs.length + 1
+          };
+          if (type === 'dropdown') newField.options = options;
+
+          defs.push(newField);
+          SchoolApp.closeModal();
+          await SchoolApp.save(true);
+          renderSettingsCustomFields();
+          SchoolApp.showToast('Custom field created successfully.', 'success');
+        }
+      };
+    }
+  }
+
+  function showSyncProgressModal(title, subtitle) {
+    var bodyHTML = '<div style="text-align:center; padding:20px 10px;">';
+    bodyHTML += '  <div class="material-icons-round" style="font-size:40px; color:var(--accent-primary); animation:spin 1.5s linear infinite;">sync</div>';
+    bodyHTML += '  <h4 style="margin:16px 0 8px 0; font-size:15px;">' + SchoolApp.escapeHTML(title) + '</h4>';
+    bodyHTML += '  <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">' + SchoolApp.escapeHTML(subtitle) + '</p>';
+    bodyHTML += '  <div style="width:100%; height:8px; background:var(--bg-tertiary); border-radius:4px; overflow:hidden;">';
+    bodyHTML += '    <div id="cf-sync-progress-bar" style="width:0%; height:100%; background:var(--accent-primary); transition:width 0.3s ease;"></div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div id="cf-sync-progress-text" style="font-size:11px; color:var(--text-muted); margin-top:8px;">Preparing synchronization...</div>';
+    bodyHTML += '</div>';
+    SchoolApp.showModal('Syncing Data', bodyHTML, '');
+  }
+
+  function updateSyncProgress(processed, total) {
+    var bar = document.getElementById('cf-sync-progress-bar');
+    var txt = document.getElementById('cf-sync-progress-text');
+    var pct = total > 0 ? Math.round((processed / total) * 100) : 100;
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = processed + ' of ' + total + ' records processed (' + pct + '%)';
+  }
+
+  async function syncTeacherVisibilityBatch(fieldDef, newVisibility) {
+    var schoolId = SchoolApp.store.currentSchoolId;
+    if (!schoolId) return;
+
+    showSyncProgressModal('Syncing Teacher Visibility', 'Updating shared documents for ' + fieldDef.label + '...');
+    try {
+      var db = window.db;
+      var fs = window.firestore;
+
+      // Read existing private profile docs
+      var profilesSnap = await fs.getDocs(
+        fs.collection(db, 'tenant_data', schoolId, 'student_profiles')
+      );
+
+      var docsToUpdate = [];
+      profilesSnap.forEach(function(docSnap) {
+        var data = docSnap.data();
+        var val = (data && data.customFields) ? data.customFields[fieldDef.fieldId] : undefined;
+        if (val !== undefined && val !== null && val !== '') {
+          docsToUpdate.push({ studentId: docSnap.id, value: val });
+        }
+      });
+
+      var total = docsToUpdate.length;
+      var processed = 0;
+      var batchSize = 400;
+
+      for (var i = 0; i < total; i += batchSize) {
+        var chunk = docsToUpdate.slice(i, i + batchSize);
+        var batch = fs.writeBatch(db);
+
+        chunk.forEach(function(item) {
+          var sharedRef = fs.doc(db, 'tenant_data', schoolId, 'student_profiles_shared', item.studentId);
+          if (newVisibility) {
+            batch.set(sharedRef, {
+              studentId: item.studentId,
+              schoolId: schoolId,
+              customFields: { [fieldDef.fieldId]: item.value },
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          } else {
+            var updateData = { updatedAt: new Date().toISOString() };
+            updateData['customFields.' + fieldDef.fieldId] = fs.deleteField();
+            batch.update(sharedRef, updateData);
+          }
+        });
+
+        await batch.commit();
+        processed += chunk.length;
+        updateSyncProgress(processed, total);
+      }
+
+      SchoolApp.closeModal();
+      SchoolApp.showToast('Teacher visibility updated across ' + total + ' student records.', 'success');
+    } catch (err) {
+      console.error('Error syncing teacher visibility:', err);
+      SchoolApp.closeModal();
+      SchoolApp.showToast('Sync note: Teacher visibility updated locally: ' + err.message, 'warning');
+    }
+  }
+
   function render() {
     var container = document.getElementById('page-admin');
     if (!container) return;
@@ -1321,6 +1796,7 @@
       if (state.activeTab === 'settings') {
         renderSettingsClasses();
         renderSettingsSubjects();
+        renderSettingsCustomFields();
       }
       if (state.activeTab === 'fees') {
         renderFeesMatrix();
@@ -1998,6 +2474,19 @@
     html += '        <div class="form-group"><label class="form-label">Allowed Radius (meters) *</label><input type="number" class="form-input" name="geofenceRadius" id="geofence-radius" value="' + geofenceRadius + '" min="10" required></div>';
     html += '        <div class="form-group" style="display:flex; align-items:flex-end;"><button type="button" class="btn btn-secondary" id="settings-capture-gps-btn" style="width:100%; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px;"><span class="material-icons-round">my_location</span> Use Current Location</button></div>';
     html += '      </div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 7: Student Custom Fields Configuration
+    html += '  <div class="card" id="settings-custom-fields-card">';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '      <div>';
+    html += '        <h3><span class="material-icons-round">tune</span> Student Custom Fields</h3>';
+    html += '        <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">Manage custom admission fields. Values are stored in dedicated subcollections with teacher privacy isolation.</p>';
+    html += '      </div>';
+    html += '      <button type="button" class="btn btn-primary btn-sm" id="settings-add-custom-field-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">add</span> Add Custom Field</button>';
+    html += '    </div>';
+    html += '    <div class="card-body" id="settings-custom-fields-container" style="display:flex; flex-direction:column; gap:16px;">';
     html += '    </div>';
     html += '  </div>';
 
