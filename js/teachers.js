@@ -918,10 +918,7 @@
         fields.id = SchoolApp.generateId();
         var rawPassword = rawPasswordInput || 'teacher123';
         try {
-          var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
-            ? await firebase.auth().currentUser.getIdToken()
-            : null;
-          if (!idToken) throw new Error('Session token unavailable.');
+          var idToken = await SchoolApp.getFreshAuthToken();
           var resp = await fetch('/api/manage-credentials', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -945,7 +942,13 @@
           return;
         } catch (err) {
           console.error('[Teachers] Server add teacher failed:', err);
-          SchoolApp.showToast('Failed to add teacher: ' + err.message, 'error');
+          var msg = (err && err.message) || '';
+          if (msg.includes('Session expired')) {
+            SchoolApp.showToast('Session expired, please login again.', 'error');
+          } else {
+            SchoolApp.showToast('Failed to add teacher: ' + msg, 'error');
+          }
+          // Rollback local state: no half-added teacher in store (store.teachers was not pushed)
           return;
         }
       } else {
@@ -953,10 +956,7 @@
         fields.password = existing.password;
         if (rawPasswordInput) {
           try {
-            var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
-              ? await firebase.auth().currentUser.getIdToken()
-              : null;
-            if (!idToken) throw new Error('Session token unavailable.');
+            var idToken = await SchoolApp.getFreshAuthToken();
             var resp = await fetch('/api/manage-credentials', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -970,9 +970,15 @@
             });
             var resData = await resp.json();
             if (!resp.ok) throw new Error(resData.error || 'Server error updating teacher password.');
+            SchoolApp.showToast('Teacher password updated via secure server.', 'success');
           } catch (err) {
             console.error('[Teachers] Server update teacher password failed:', err);
-            SchoolApp.showToast('Failed to update teacher password: ' + err.message, 'error');
+            var msg = (err && err.message) || '';
+            if (msg.includes('Session expired')) {
+              SchoolApp.showToast('Session expired, please login again.', 'error');
+            } else {
+              SchoolApp.showToast('Failed to update teacher password: ' + msg, 'error');
+            }
             return;
           }
         }

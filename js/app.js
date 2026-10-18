@@ -417,6 +417,29 @@ window.SchoolApp = {
         payload.students = this._frozenRootStudents;
       }
     }
+
+    // STALE-CLIENT CREDENTIAL GUARD (Phase 1a V1):
+    // When credentialsIsolated is true, client saves must NEVER clobber server-managed credentials.
+    if (payload.settings && payload.settings.credentialsIsolated === true) {
+      if (this._serverSettingsBaseline && this._serverSettingsBaseline.adminPassword) {
+        payload.settings.adminPassword = this._serverSettingsBaseline.adminPassword;
+      }
+      if (Array.isArray(this._serverTeachersBaseline) && this._serverTeachersBaseline.length > 0) {
+        var localTeachersMap = new Map((payload.teachers || []).map(function(t) { return [t.id, t]; }));
+        // 1. Restore any teacher from server baseline that is missing locally (prevent stale clobber from deleting newly added teachers)
+        this._serverTeachersBaseline.forEach(function(serverT) {
+          if (!localTeachersMap.has(serverT.id)) {
+            payload.teachers.push(JSON.parse(JSON.stringify(serverT)));
+          } else {
+            // 2. Preserve server password hash for existing teachers (prevent stale clobber from reverting reset passwords)
+            var localT = localTeachersMap.get(serverT.id);
+            if (serverT.password) {
+              localT.password = serverT.password;
+            }
+          }
+        });
+      }
+    }
     
     // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
     var canonicalLogo = payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && payload.settings.schoolInfo.logoUrl) || '';
@@ -554,6 +577,13 @@ window.SchoolApp = {
         this.liveServerStudentCount = payload.students.length;
         this._serverStudentsBaseline = payload.students.slice();
       }
+      if (payload.teachers) {
+        this.liveServerTeacherCount = payload.teachers.length;
+        this._serverTeachersBaseline = payload.teachers.slice();
+      }
+      if (payload.settings) {
+        this._serverSettingsBaseline = Object.assign({}, payload.settings);
+      }
       
       // Update localStorage cache to match
       try {
@@ -648,6 +678,9 @@ window.SchoolApp = {
     this.initialServerTeacherCount = 0;
     this.liveServerStudentCount = 0;
     this.liveServerTeacherCount = 0;
+    this._serverStudentsBaseline = null;
+    this._serverTeachersBaseline = null;
+    this._serverSettingsBaseline = null;
   },
 
   // ---------- Subcollection Compatibility Layer (Dual-Read / Single-Write) ----------
@@ -1976,6 +2009,8 @@ window.SchoolApp = {
           self.tenantInitialized = true;
           self._frozenRootStudents = (parsed.students || []).slice();
           self._serverStudentsBaseline = (parsed.students || []).slice();
+          self._serverTeachersBaseline = (parsed.teachers || []).slice();
+          self._serverSettingsBaseline = Object.assign({}, parsed.settings || {});
 
           // CHANGE 2: Connect to students subcollection if migrated mode is active
           if (parsed.settings && parsed.settings.studentsMigrated === true) {
@@ -3271,6 +3306,28 @@ window.SchoolApp = {
     return true;
   },
 
+  getFreshAuthToken: async function() {
+    var a = window.auth;
+    if (!a && window.firebase && typeof window.firebase.auth === 'function') {
+      a = window.firebase.auth();
+    }
+    if (!a) {
+      throw new Error('Session expired, please login again.');
+    }
+    if (typeof a.authStateReady === 'function') {
+      try {
+        await a.authStateReady();
+      } catch (e) {
+        console.warn('[Auth] authStateReady wait warning:', e);
+      }
+    }
+    var user = a.currentUser;
+    if (!user) {
+      throw new Error('Session expired, please login again.');
+    }
+    return await user.getIdToken(true);
+  },
+
   showMyProfileModal: async function() {
     var self = this;
     var user = this.currentUser;
@@ -3367,10 +3424,7 @@ window.SchoolApp = {
 
         if (self.store.settings && self.store.settings.credentialsIsolated === true && fields.adminPassword && !AuthUtils.isHashed(fields.adminPassword)) {
           try {
-            var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
-              ? await firebase.auth().currentUser.getIdToken()
-              : null;
-            if (!idToken) throw new Error('Session token unavailable.');
+            var idToken = await self.getFreshAuthToken();
             var resp = await fetch('/api/manage-credentials', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -3386,7 +3440,12 @@ window.SchoolApp = {
             if (!resp.ok) throw new Error(resData.error || 'Server rejected password update.');
           } catch (err) {
             console.error('[MyProfile] Server credential update failed:', err);
-            self.showToast('Failed to update admin password: ' + err.message, 'error');
+            var msg = (err && err.message) || '';
+            if (msg.includes('Session expired')) {
+              self.showToast('Session expired, please login again.', 'error');
+            } else {
+              self.showToast('Failed to update admin password: ' + msg, 'error');
+            }
             return;
           }
         } else {

@@ -5177,10 +5177,7 @@
         if (username && (!changingPassword || password.length >= 4)) {
           if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true && changingPassword) {
             try {
-              var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
-                ? await firebase.auth().currentUser.getIdToken()
-                : null;
-              if (!idToken) throw new Error('Authentication session token not available.');
+              var idToken = await SchoolApp.getFreshAuthToken();
               var resp = await fetch('/api/manage-credentials', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -5199,7 +5196,12 @@
               return;
             } catch (srvErr) {
               console.error('Server credential update error:', srvErr);
-              SchoolApp.showToast('Failed to update credentials: ' + srvErr.message, 'error');
+              var msg = (srvErr && srvErr.message) || '';
+              if (msg.includes('Session expired')) {
+                SchoolApp.showToast('Session expired, please login again.', 'error');
+              } else {
+                SchoolApp.showToast('Failed to update credentials: ' + msg, 'error');
+              }
               return;
             }
           }
@@ -5231,10 +5233,7 @@
         if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true) {
           (async function() {
             try {
-              var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
-                ? await firebase.auth().currentUser.getIdToken()
-                : null;
-              if (!idToken) throw new Error('Authentication session token not available.');
+              var idToken = await SchoolApp.getFreshAuthToken();
               var resp = await fetch('/api/manage-credentials', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -5253,7 +5252,12 @@
                 '<button class="btn btn-primary" onclick="SchoolApp.closeModal()">Done</button>');
             } catch (err) {
               console.error('Server teacher password reset error:', err);
-              SchoolApp.showToast('Failed to reset teacher password: ' + err.message, 'error');
+              var msg = (err && err.message) || '';
+              if (msg.includes('Session expired')) {
+                SchoolApp.showToast('Session expired, please login again.', 'error');
+              } else {
+                SchoolApp.showToast('Failed to reset teacher password: ' + msg, 'error');
+              }
             }
           })();
           return;

@@ -13,6 +13,10 @@ app.use(express.json());
 // Serve static files from current directory
 app.use(express.static(__dirname));
 
+// Mount serverless endpoints for local testing
+app.post('/api/verify-school-access', require('./api/verify-school-access.js'));
+app.post('/api/manage-credentials', require('./api/manage-credentials.js'));
+
 // Proxy endpoint for Gemini Chat
 app.post('/api/chat', async (req, res) => {
   try {

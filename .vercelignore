@@ -1,29 +1,9 @@
-# Firebase Admin SDK — full project admin access, must NEVER be deployed
 service-account-key.json
-*firebase-adminsdk*.json
-
-# Local backups and internal docs
+scripts/
+scratch/
 backups/
-brain/
-ANTIGRAVITY-TASKS
 ANTIGRAVITY-TASKS/
 Claude outputs/
-*.md
-
-# Internal scratch, test runners, and script utilities
-scratch/
-scripts/
-
-# Root configurations and deployment rules that must not be public assets
-firestore.rules
-firebase.json
-.firebaserc
-server.js
-validate.js
-netlify.toml
 shishu-vikash/
-
-# Dev dependencies and environment secrets
-node_modules/
-.env
-.env*
+firestore-debug.log
+*.md
