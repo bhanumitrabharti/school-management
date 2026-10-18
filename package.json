@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "validate": "node validate.js",
-    "deploy": "node validate.js && npx vercel --prod"
+    "deploy": "node validate.js && npx vercel --prod --yes --scope manisha-bharti-s-projects"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
