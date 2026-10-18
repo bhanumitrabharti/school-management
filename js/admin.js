@@ -5554,7 +5554,42 @@
               }
             }
           } else if (item.type === 'teacher') {
-            SchoolApp.store.teachers.push(item.data);
+            if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true) {
+              try {
+                var idToken = await SchoolApp.getFreshAuthToken();
+                if (!idToken) {
+                  SchoolApp.showToast('Session token unavailable. Please refresh and try again.', 'error');
+                  return;
+                }
+                var resp = await fetch('/api/manage-credentials', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    idToken: idToken,
+                    schoolId: (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default',
+                    action: 'restore-teacher',
+                    teacherId: id
+                  })
+                });
+                var resData = await resp.json();
+                if (!resp.ok) {
+                  SchoolApp.showToast('Failed to restore teacher: ' + (resData.error || resp.statusText), 'error');
+                  return;
+                }
+                var restoredTeacher = Object.assign({}, item.data, { password: 'PROTECTED' });
+                SchoolApp.store.teachers.push(restoredTeacher);
+                SchoolApp.store.trash.splice(idx, 1);
+                SchoolApp.showToast('"' + item.name + '" restored successfully!', 'success');
+                render();
+                return;
+              } catch (err) {
+                console.error('[Admin] Restore teacher error:', err);
+                SchoolApp.showToast('Failed to restore teacher: ' + (err.message || err), 'error');
+                return;
+              }
+            } else {
+              SchoolApp.store.teachers.push(item.data);
+            }
           } else if (item.type === 'attendance') {
             SchoolApp.store.attendance.push(item.data);
           }

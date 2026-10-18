@@ -93,11 +93,11 @@
       "continue": false
     },
     {
-      "src": "/(?:scratch|scripts|ANTIGRAVITY-TASKS|Claude outputs|shishu-vikash)/(.*)",
+      "src": "/(?:scratch|scripts|ANTIGRAVITY-TASKS|Claude outputs|shishu-vikash|backups|brain|node_modules)(?:/.*)?$",
       "status": 404
     },
     {
-      "src": "/(?:firestore\\.rules|firebase\\.json|\\.firebaserc|server\\.js|validate\\.js|netlify\\.toml|.*\\.md)$",
+      "src": "/(?:service-account-key\\.json|.*firebase-adminsdk.*\\.json|\\.env.*|firestore\\.rules|firebase\\.json|\\.firebaserc|server\\.js|validate\\.js|netlify\\.toml|firestore-debug\\.log|.*\\.md)$",
       "status": 404
     },
     {

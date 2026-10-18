@@ -258,6 +258,142 @@ module.exports = async function handler(req, res) {
         message: 'Teacher created with credentials successfully.'
       });
 
+    } else if (action === 'delete-teacher') {
+      const { teacherId } = body;
+      if (!teacherId || typeof teacherId !== 'string') {
+        return res.status(400).json({ error: 'teacherId is required.' });
+      }
+
+      await db.runTransaction(async (t) => {
+        const rootSnap = await t.get(schoolRef);
+        if (!rootSnap.exists) throw new Error('School document does not exist.');
+        const rootData = rootSnap.data();
+        const teachers = Array.isArray(rootData.teachers) ? rootData.teachers.slice() : [];
+        const trash = Array.isArray(rootData.trash) ? rootData.trash.slice() : [];
+
+        const teacherIdx = teachers.findIndex(tch => tch.id === teacherId);
+        if (teacherIdx === -1) {
+          throw new Error(`Teacher with id ${teacherId} not found.`);
+        }
+
+        const targetTeacher = teachers[teacherIdx];
+        teachers.splice(teacherIdx, 1);
+
+        // Prepare clean teacher data for root trash: NO password or passwordHash
+        const teacherForTrash = Object.assign({}, targetTeacher);
+        delete teacherForTrash.password;
+        delete teacherForTrash.passwordHash;
+
+        const trashItem = {
+          id: teacherId,
+          type: 'teacher',
+          name: ((targetTeacher.firstName || '') + ' ' + (targetTeacher.lastName || '')).trim() || targetTeacher.name || targetTeacher.email || teacherId,
+          details: targetTeacher.subject || '',
+          deletedAt: new Date().toISOString(),
+          data: teacherForTrash
+        };
+
+        const existingTrashIdx = trash.findIndex(item => item.id === teacherId && item.type === 'teacher');
+        if (existingTrashIdx !== -1) {
+          trash[existingTrashIdx] = trashItem;
+        } else {
+          trash.push(trashItem);
+        }
+
+        // Manage private/credentials: move hash from credData.teachers to credData.deletedTeachers
+        const credSnap = await t.get(privateCredRef);
+        let credData = credSnap.exists ? credSnap.data() : { teachers: {} };
+        if (!credData.teachers) credData.teachers = {};
+        if (!credData.deletedTeachers) credData.deletedTeachers = {};
+
+        if (credData.teachers[teacherId]) {
+          credData.deletedTeachers[teacherId] = Object.assign({}, credData.teachers[teacherId]);
+          delete credData.teachers[teacherId];
+        } else if (targetTeacher.password) {
+          credData.deletedTeachers[teacherId] = {
+            username: (targetTeacher.email || targetTeacher.username || teacherId).trim().toLowerCase(),
+            email: (targetTeacher.email || '').trim().toLowerCase(),
+            passwordHash: targetTeacher.password
+          };
+        }
+
+        t.update(schoolRef, { teachers: teachers, trash: trash });
+        t.set(privateCredRef, credData, { merge: true });
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Teacher deleted and moved to trash.'
+      });
+
+    } else if (action === 'restore-teacher') {
+      const { teacherId } = body;
+      if (!teacherId || typeof teacherId !== 'string') {
+        return res.status(400).json({ error: 'teacherId is required.' });
+      }
+
+      await db.runTransaction(async (t) => {
+        const rootSnap = await t.get(schoolRef);
+        if (!rootSnap.exists) throw new Error('School document does not exist.');
+        const rootData = rootSnap.data();
+        const teachers = Array.isArray(rootData.teachers) ? rootData.teachers.slice() : [];
+        const trash = Array.isArray(rootData.trash) ? rootData.trash.slice() : [];
+
+        // Check if teacher is in trash
+        const trashIdx = trash.findIndex(item => item.id === teacherId && item.type === 'teacher');
+        let restoredTeacherData = null;
+        if (trashIdx !== -1) {
+          restoredTeacherData = trash[trashIdx].data || {};
+          trash.splice(trashIdx, 1);
+        }
+
+        // Manage private/credentials: restore from deletedTeachers
+        const credSnap = await t.get(privateCredRef);
+        let credData = credSnap.exists ? credSnap.data() : { teachers: {} };
+        if (!credData.teachers) credData.teachers = {};
+        if (!credData.deletedTeachers) credData.deletedTeachers = {};
+
+        let passwordHash = null;
+        if (credData.deletedTeachers[teacherId]) {
+          credData.teachers[teacherId] = Object.assign({}, credData.deletedTeachers[teacherId]);
+          passwordHash = credData.deletedTeachers[teacherId].passwordHash;
+          delete credData.deletedTeachers[teacherId];
+        }
+
+        if (!restoredTeacherData) {
+          const existingInTeachers = teachers.find(tch => tch.id === teacherId);
+          if (existingInTeachers) {
+            return;
+          }
+          restoredTeacherData = {
+            id: teacherId,
+            email: credData.teachers[teacherId] ? credData.teachers[teacherId].email : '',
+            status: 'Active'
+          };
+        }
+
+        // Dual-write during probation: root teacher gets passwordHash so old fallback works byte-identical
+        const finalTeacherRecord = Object.assign({}, restoredTeacherData, {
+          id: teacherId,
+          password: passwordHash || restoredTeacherData.password || 'PROTECTED'
+        });
+
+        const existingIdx = teachers.findIndex(tch => tch.id === teacherId);
+        if (existingIdx !== -1) {
+          teachers[existingIdx] = finalTeacherRecord;
+        } else {
+          teachers.push(finalTeacherRecord);
+        }
+
+        t.update(schoolRef, { teachers: teachers, trash: trash });
+        t.set(privateCredRef, credData, { merge: true });
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Teacher restored successfully with original credentials.'
+      });
+
     } else {
       return res.status(400).json({ error: `Unsupported action: ${action}` });
     }

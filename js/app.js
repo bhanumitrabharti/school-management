@@ -425,9 +425,26 @@ window.SchoolApp = {
         payload.settings.adminPassword = this._serverSettingsBaseline.adminPassword;
       }
       if (Array.isArray(this._serverTeachersBaseline) && this._serverTeachersBaseline.length > 0) {
+        // Collect all teacher IDs in trash (from local payload trash AND server trash baseline)
+        var trashTeacherIds = new Set(
+          (payload.trash || []).concat(this._serverTrashBaseline || [])
+            .filter(function(item) { return item && item.type === 'teacher'; })
+            .map(function(item) { return item.id; })
+        );
+
+        // If any teacher in payload.teachers is in trash, filter it out so stale tabs cannot resurrect
+        if (trashTeacherIds.size > 0 && Array.isArray(payload.teachers)) {
+          payload.teachers = payload.teachers.filter(function(t) {
+            return !trashTeacherIds.has(t.id);
+          });
+        }
+
         var localTeachersMap = new Map((payload.teachers || []).map(function(t) { return [t.id, t]; }));
-        // 1. Restore any teacher from server baseline that is missing locally (prevent stale clobber from deleting newly added teachers)
+        // 1. Restore any teacher from server baseline that is missing locally UNLESS the teacher is in trash
         this._serverTeachersBaseline.forEach(function(serverT) {
+          if (trashTeacherIds.has(serverT.id)) {
+            return; // In trash: do NOT resurrect
+          }
           if (!localTeachersMap.has(serverT.id)) {
             payload.teachers.push(JSON.parse(JSON.stringify(serverT)));
           } else {
@@ -680,6 +697,7 @@ window.SchoolApp = {
     this.liveServerTeacherCount = 0;
     this._serverStudentsBaseline = null;
     this._serverTeachersBaseline = null;
+    this._serverTrashBaseline = null;
     this._serverSettingsBaseline = null;
   },
 
@@ -2010,6 +2028,7 @@ window.SchoolApp = {
           self._frozenRootStudents = (parsed.students || []).slice();
           self._serverStudentsBaseline = (parsed.students || []).slice();
           self._serverTeachersBaseline = (parsed.teachers || []).slice();
+          self._serverTrashBaseline = (parsed.trash || []).slice();
           self._serverSettingsBaseline = Object.assign({}, parsed.settings || {});
 
           // CHANGE 2: Connect to students subcollection if migrated mode is active

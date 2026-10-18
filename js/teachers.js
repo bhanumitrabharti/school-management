@@ -721,8 +721,27 @@
   }
 
   async function saveTeacher(existing) {
+    var saveBtn = document.getElementById('teacher-save-btn');
+    if (saveBtn) {
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true;
+      saveBtn.setAttribute('data-original-text', saveBtn.textContent);
+      saveBtn.textContent = 'Saving...';
+    }
+
+    var restoreSaveBtn = function() {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        var orig = saveBtn.getAttribute('data-original-text');
+        if (orig) saveBtn.textContent = orig;
+      }
+    };
+
     var form = document.getElementById('teacher-form');
-    if (!form) return;
+    if (!form) {
+      restoreSaveBtn();
+      return;
+    }
 
     var fields = {};
     var inputs = form.querySelectorAll('input[name], select[name]');
@@ -862,6 +881,7 @@
     });
 
     if (!valid) {
+      restoreSaveBtn();
       SchoolApp.showToast('Please fill all required fields correctly.', 'error');
       return;
     }
@@ -900,6 +920,7 @@
     }
 
     if (conflictFound) {
+      restoreSaveBtn();
       SchoolApp.showToast('Validation Error: ' + conflictingTeacherName + ' is already assigned as the Class Teacher for this class.', 'error');
       return;
     }
@@ -941,6 +962,7 @@
           checkExamAccess();
           return;
         } catch (err) {
+          restoreSaveBtn();
           console.error('[Teachers] Server add teacher failed:', err);
           var msg = (err && err.message) || '';
           if (msg.includes('Session expired')) {
@@ -972,6 +994,7 @@
             if (!resp.ok) throw new Error(resData.error || 'Server error updating teacher password.');
             SchoolApp.showToast('Teacher password updated via secure server.', 'success');
           } catch (err) {
+            restoreSaveBtn();
             console.error('[Teachers] Server update teacher password failed:', err);
             var msg = (err && err.message) || '';
             if (msg.includes('Session expired')) {
@@ -1035,6 +1058,7 @@
     );
 
     if (saveResult && saveResult.staleConflict) {
+      restoreSaveBtn();
       showTeacherStaleWriteDiffModal(
         existing,
         saveResult.serverData,
@@ -1051,6 +1075,7 @@
       render();
       checkExamAccess();
     } else {
+      restoreSaveBtn();
       SchoolApp.showToast((saveResult && saveResult.reason) || 'Failed to save teacher.', 'error');
     }
 
@@ -1430,12 +1455,48 @@
   function deleteTeacher(id) {
     var teacher = SchoolApp.store.teachers.find(function(t) { return t.id === id; });
     if (!teacher) return;
-    SchoolApp.showConfirm('Delete teacher "' + teacher.firstName + ' ' + teacher.lastName + '"? They can be recovered from the Recycle Bin.', function() {
-      SchoolApp.moveToTrash('teacher', teacher.id, teacher.firstName + ' ' + teacher.lastName, teacher.subject, teacher);
-      SchoolApp.store.teachers = SchoolApp.store.teachers.filter(function(t) { return t.id !== id; });
-      SchoolApp.save();
-      SchoolApp.showToast('Teacher moved to Recycle Bin.', 'success');
-      render();
+    SchoolApp.showConfirm('Delete teacher "' + teacher.firstName + ' ' + teacher.lastName + '"? They can be recovered from the Recycle Bin.', async function() {
+      if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true) {
+        try {
+          var idToken = await SchoolApp.getFreshAuthToken();
+          if (!idToken) {
+            SchoolApp.showToast('Session token unavailable. Please refresh and try again.', 'error');
+            return;
+          }
+          var resp = await fetch('/api/manage-credentials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken: idToken,
+              schoolId: (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default',
+              action: 'delete-teacher',
+              teacherId: id
+            })
+          });
+          var resData = await resp.json();
+          if (!resp.ok) {
+            SchoolApp.showToast('Failed to delete teacher: ' + (resData.error || resp.statusText), 'error');
+            return;
+          }
+
+          var cleanTeacher = Object.assign({}, teacher);
+          delete cleanTeacher.password;
+          delete cleanTeacher.passwordHash;
+          SchoolApp.moveToTrash('teacher', teacher.id, teacher.firstName + ' ' + teacher.lastName, teacher.subject, cleanTeacher);
+          SchoolApp.store.teachers = SchoolApp.store.teachers.filter(function(t) { return t.id !== id; });
+          SchoolApp.showToast('Teacher moved to Recycle Bin.', 'success');
+          render();
+        } catch (err) {
+          console.error('[Teachers] Server delete teacher failed:', err);
+          SchoolApp.showToast('Failed to delete teacher: ' + (err.message || err), 'error');
+        }
+      } else {
+        SchoolApp.moveToTrash('teacher', teacher.id, teacher.firstName + ' ' + teacher.lastName, teacher.subject, teacher);
+        SchoolApp.store.teachers = SchoolApp.store.teachers.filter(function(t) { return t.id !== id; });
+        SchoolApp.save();
+        SchoolApp.showToast('Teacher moved to Recycle Bin.', 'success');
+        render();
+      }
     });
   }
 
