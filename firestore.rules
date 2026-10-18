@@ -115,17 +115,24 @@ service cloud.firestore {
                       && request.resource.data.schoolId == schoolId;
     }
 
-    // Subcollections — per-school access or super-admin (excluding student/teacher profiles and core students)
+    // Private subcollection — Admin SDK only (completely blocked for all client roles: teacher, admin, super admin)
+    match /tenant_data/{schoolId}/private/{allChildren=**} {
+      allow read, write: if false;
+    }
+
+    // Subcollections — per-school access or super-admin (excluding student/teacher profiles, core students, and private)
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
       allow read:  if subcollection != 'student_profiles'
                       && subcollection != 'student_profiles_shared'
                       && subcollection != 'teacher_profiles'
                       && subcollection != 'students'
+                      && subcollection != 'private'
                       && (canAccessSchool(schoolId) || isSuperAdmin());
       allow write: if subcollection != 'student_profiles'
                       && subcollection != 'student_profiles_shared'
                       && subcollection != 'teacher_profiles'
                       && subcollection != 'students'
+                      && subcollection != 'private'
                       && (canAccessSchool(schoolId) || isSuperAdmin())
                       && (subcollection != 'fees_years' || validFeeMonthDoc());
     }

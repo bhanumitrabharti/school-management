@@ -5175,6 +5175,35 @@
         // Blank password = keep existing (never expose or overwrite with empty)
         var changingPassword = password.length > 0;
         if (username && (!changingPassword || password.length >= 4)) {
+          if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true && changingPassword) {
+            try {
+              var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
+                ? await firebase.auth().currentUser.getIdToken()
+                : null;
+              if (!idToken) throw new Error('Authentication session token not available.');
+              var resp = await fetch('/api/manage-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  idToken: idToken,
+                  schoolId: SchoolApp.store.currentSchoolId,
+                  action: 'set-admin-password',
+                  adminUsername: username,
+                  newPassword: password
+                })
+              });
+              var resData = await resp.json();
+              if (!resp.ok) throw new Error(resData.error || 'Server rejected password update.');
+              SchoolApp.store.settings.adminUsername = username;
+              SchoolApp.showToast('Admin credentials updated securely via server.', 'success');
+              return;
+            } catch (srvErr) {
+              console.error('Server credential update error:', srvErr);
+              SchoolApp.showToast('Failed to update credentials: ' + srvErr.message, 'error');
+              return;
+            }
+          }
+          // Legacy flow (unisolated schools)
           SchoolApp.store.settings.adminUsername = username;
           if (changingPassword && !AuthUtils.isHashed(password)) {
             SchoolApp.store.settings.adminPassword = await AuthUtils.hashPassword(password);
@@ -5198,6 +5227,37 @@
         var chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
         var newPw = '';
         for (var i = 0; i < 8; i++) newPw += chars.charAt(Math.floor(Math.random() * chars.length));
+
+        if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true) {
+          (async function() {
+            try {
+              var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
+                ? await firebase.auth().currentUser.getIdToken()
+                : null;
+              if (!idToken) throw new Error('Authentication session token not available.');
+              var resp = await fetch('/api/manage-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  idToken: idToken,
+                  schoolId: SchoolApp.store.currentSchoolId,
+                  action: 'set-teacher-password',
+                  teacherId: id,
+                  newPassword: newPw
+                })
+              });
+              var resData = await resp.json();
+              if (!resp.ok) throw new Error(resData.error || 'Server rejected teacher password reset.');
+              teacher.password = newPw;
+              SchoolApp.showModal('Password Reset', '<div class="text-center"><div style="font-size:48px;margin-bottom:16px">🔑</div><p>New password for <strong>' + teacher.firstName + ' ' + teacher.lastName + '</strong>:</p><div style="font-family:monospace;font-size:24px;padding:16px;background:var(--bg-tertiary);border:1px solid var(--border-light);border-radius:8px;margin:16px 0;letter-spacing:2px;text-align:center"><strong>' + newPw + '</strong></div><p style="color:var(--text-muted);font-size:13px">Please share this password securely with the teacher.</p></div>',
+                '<button class="btn btn-primary" onclick="SchoolApp.closeModal()">Done</button>');
+            } catch (err) {
+              console.error('Server teacher password reset error:', err);
+              SchoolApp.showToast('Failed to reset teacher password: ' + err.message, 'error');
+            }
+          })();
+          return;
+        }
 
         teacher.password = newPw;
         SchoolApp.save();

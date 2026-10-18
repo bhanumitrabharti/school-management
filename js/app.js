@@ -3364,10 +3364,37 @@ window.SchoolApp = {
         self.store.settings.adminUsername = fields.adminUsername;
         self.store.settings.email = fields.email;
         self.store.settings.phone = fields.phone;
-        if (fields.adminPassword && !AuthUtils.isHashed(fields.adminPassword)) {
-          self.store.settings.adminPassword = await AuthUtils.hashPassword(fields.adminPassword);
+
+        if (self.store.settings && self.store.settings.credentialsIsolated === true && fields.adminPassword && !AuthUtils.isHashed(fields.adminPassword)) {
+          try {
+            var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
+              ? await firebase.auth().currentUser.getIdToken()
+              : null;
+            if (!idToken) throw new Error('Session token unavailable.');
+            var resp = await fetch('/api/manage-credentials', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                idToken: idToken,
+                schoolId: self.store.currentSchoolId,
+                action: 'set-admin-password',
+                adminUsername: fields.adminUsername,
+                newPassword: fields.adminPassword
+              })
+            });
+            var resData = await resp.json();
+            if (!resp.ok) throw new Error(resData.error || 'Server rejected password update.');
+          } catch (err) {
+            console.error('[MyProfile] Server credential update failed:', err);
+            self.showToast('Failed to update admin password: ' + err.message, 'error');
+            return;
+          }
         } else {
-          self.store.settings.adminPassword = fields.adminPassword;
+          if (fields.adminPassword && !AuthUtils.isHashed(fields.adminPassword)) {
+            self.store.settings.adminPassword = await AuthUtils.hashPassword(fields.adminPassword);
+          } else {
+            self.store.settings.adminPassword = fields.adminPassword;
+          }
         }
         self.currentUser.firstName = fields.adminUsername;
         self.currentUser.email = fields.email;

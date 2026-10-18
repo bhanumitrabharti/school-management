@@ -911,19 +911,88 @@
     fields.subjectTeacherOf = subjectTeacherOf;
 
     var isNewTeacher = !existing;
-    if (existing) {
-      fields.id = existing.id;
-      if (!fields.password) {
-        fields.password = existing.password; // Keep existing password hash untouched
-      } else if (!AuthUtils.isHashed(fields.password)) {
-        fields.password = await AuthUtils.hashPassword(fields.password);
+    var rawPasswordInput = form.querySelector('[name="password"]') ? form.querySelector('[name="password"]').value.trim() : '';
+
+    if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true) {
+      if (isNewTeacher) {
+        fields.id = SchoolApp.generateId();
+        var rawPassword = rawPasswordInput || 'teacher123';
+        try {
+          var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
+            ? await firebase.auth().currentUser.getIdToken()
+            : null;
+          if (!idToken) throw new Error('Session token unavailable.');
+          var resp = await fetch('/api/manage-credentials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken: idToken,
+              schoolId: (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default',
+              action: 'add-teacher',
+              teacherData: fields,
+              rawPassword: rawPassword
+            })
+          });
+          var resData = await resp.json();
+          if (!resp.ok) throw new Error(resData.error || 'Server error creating teacher.');
+          fields.id = resData.teacherId || fields.id;
+          fields.password = 'PROTECTED';
+          SchoolApp.store.teachers.push(fields);
+          SchoolApp.showToast('Teacher added successfully via secure server.', 'success');
+          SchoolApp.closeModal();
+          render();
+          checkExamAccess();
+          return;
+        } catch (err) {
+          console.error('[Teachers] Server add teacher failed:', err);
+          SchoolApp.showToast('Failed to add teacher: ' + err.message, 'error');
+          return;
+        }
+      } else {
+        fields.id = existing.id;
+        fields.password = existing.password;
+        if (rawPasswordInput) {
+          try {
+            var idToken = window.firebase && firebase.auth && firebase.auth().currentUser
+              ? await firebase.auth().currentUser.getIdToken()
+              : null;
+            if (!idToken) throw new Error('Session token unavailable.');
+            var resp = await fetch('/api/manage-credentials', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                idToken: idToken,
+                schoolId: (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default',
+                action: 'set-teacher-password',
+                teacherId: existing.id,
+                newPassword: rawPasswordInput
+              })
+            });
+            var resData = await resp.json();
+            if (!resp.ok) throw new Error(resData.error || 'Server error updating teacher password.');
+          } catch (err) {
+            console.error('[Teachers] Server update teacher password failed:', err);
+            SchoolApp.showToast('Failed to update teacher password: ' + err.message, 'error');
+            return;
+          }
+        }
       }
     } else {
-      fields.id = SchoolApp.generateId();
-      var rawPassword = form.querySelector('[name="password"]').value.trim() || 'teacher123';
-      fields.password = rawPassword;
-      if (fields.password && !AuthUtils.isHashed(fields.password)) {
-        fields.password = await AuthUtils.hashPassword(fields.password);
+      // Legacy unisolated behavior
+      if (existing) {
+        fields.id = existing.id;
+        if (!fields.password) {
+          fields.password = existing.password; // Keep existing password hash untouched
+        } else if (!AuthUtils.isHashed(fields.password)) {
+          fields.password = await AuthUtils.hashPassword(fields.password);
+        }
+      } else {
+        fields.id = SchoolApp.generateId();
+        var rawPassword = rawPasswordInput || 'teacher123';
+        fields.password = rawPassword;
+        if (fields.password && !AuthUtils.isHashed(fields.password)) {
+          fields.password = await AuthUtils.hashPassword(fields.password);
+        }
       }
     }
 

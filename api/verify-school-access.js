@@ -165,6 +165,21 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Could not load school credentials context.' });
   }
 
+  // 3b. Read Private Credentials if credentialsIsolated is enabled (with seamless root fallback)
+  let credData = null;
+  if (tenantData.settings && tenantData.settings.credentialsIsolated === true) {
+    try {
+      const credSnap = await db.collection('tenant_data').doc(schoolId).collection('private').doc('credentials').get();
+      if (credSnap.exists) {
+        credData = credSnap.data();
+      } else {
+        console.warn(`[verify-school-access] credentialsIsolated=true for ${schoolId} but private/credentials does not exist, falling back to root doc.`);
+      }
+    } catch (credErr) {
+      console.warn(`[verify-school-access] private/credentials read error for ${schoolId}, falling back to root doc:`, credErr.message);
+    }
+  }
+
   // 4. Parity Evaluation with AuthUtils.login (C1: Zero writes to tenant_data)
   let isValid = false;
   let authenticatedUser = null;
@@ -172,8 +187,14 @@ module.exports = async function handler(req, res) {
 
   if (role === 'admin') {
     const settings = tenantData.settings || {};
-    const adminUser = settings.adminUsername || 'admin';
-    const adminPassStored = settings.adminPassword;
+    let adminUser = settings.adminUsername || 'admin';
+    let adminPassStored = settings.adminPassword;
+
+    // Phase 1a: Use private/credentials if isolated and available
+    if (credData && (credData.adminPassword || credData.adminUsername)) {
+      if (credData.adminPassword) adminPassStored = credData.adminPassword;
+      if (credData.adminUsername) adminUser = credData.adminUsername;
+    }
 
     if (!adminPassStored) {
       authMessage = 'Admin password not configured for this school.';
@@ -213,7 +234,24 @@ module.exports = async function handler(req, res) {
     } else if (teacher.status !== 'Active') {
       authMessage = 'Teacher account is paused or inactive.';
     } else {
-      const teacherPassStored = teacher.password;
+      let teacherPassStored = teacher.password;
+      // Phase 1a: Use private/credentials if isolated and available
+      if (credData && credData.teachers) {
+        const teacherCred = credData.teachers[teacher.id];
+        if (teacherCred && teacherCred.passwordHash) {
+          teacherPassStored = teacherCred.passwordHash;
+        } else {
+          const matchingId = Object.keys(credData.teachers).find(k => {
+            const entry = credData.teachers[k];
+            return entry && ((entry.email && entry.email.trim().toLowerCase() === normalizedInput) ||
+                             (entry.username && entry.username.trim().toLowerCase() === normalizedInput));
+          });
+          if (matchingId && credData.teachers[matchingId].passwordHash) {
+            teacherPassStored = credData.teachers[matchingId].passwordHash;
+          }
+        }
+      }
+
       if (!teacherPassStored || typeof teacherPassStored !== 'string' || teacherPassStored.trim() === '') {
         authMessage = 'Teacher password not configured.';
       } else {
