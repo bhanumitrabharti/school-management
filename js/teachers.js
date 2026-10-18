@@ -309,9 +309,184 @@
     container.innerHTML = html;
   }
 
-  function showTeacherForm(teacher) {
+  // ── TeacherProfileService (Teacher Subcollections Storage Engine) ──────────
+  var TeacherProfileService = {
+    getTeacherProfile: async function(schoolId, teacherId) {
+      if (!schoolId || !teacherId) {
+        return { teacherId: teacherId, customFields: {}, updatedAt: null, updatedBy: null };
+      }
+      try {
+        var db = window.db;
+        var fs = window.firestore;
+        var docRef = fs.doc(db, 'tenant_data', schoolId, 'teacher_profiles', teacherId);
+        var snap = await fs.getDoc(docRef);
+        if (snap.exists()) {
+          var data = snap.data();
+          return {
+            teacherId: teacherId,
+            customFields: data.customFields || {},
+            updatedAt: data.updatedAt || null,
+            updatedBy: data.updatedBy || null
+          };
+        }
+      } catch (err) {
+        console.warn('[TeacherProfileService] getTeacherProfile warning for ' + teacherId + ':', err);
+      }
+      return { teacherId: teacherId, customFields: {}, updatedAt: null, updatedBy: null };
+    },
+
+    saveTeacherWithProfile: async function(schoolId, coreTeacherData, customFieldValues, expectedUpdatedAt) {
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+        console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+        SchoolApp.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+        return { success: false, reason: 'impersonating' };
+      }
+
+      var db = window.db;
+      var fs = window.firestore;
+      var teacherId = coreTeacherData.id;
+
+      var profileDocRef = fs.doc(db, 'tenant_data', schoolId, 'teacher_profiles', teacherId);
+      var rootDocRef = fs.doc(db, 'tenant_data', schoolId);
+
+      // Stale-Write Protection: Check if server doc was updated since this edit form opened
+      if (expectedUpdatedAt) {
+        try {
+          var liveSnap = await fs.getDoc(profileDocRef);
+          if (liveSnap.exists()) {
+            var liveData = liveSnap.data();
+            var liveUpdatedAt = liveData && liveData.updatedAt;
+            if (liveUpdatedAt && liveUpdatedAt !== expectedUpdatedAt) {
+              console.warn('[TeacherProfileService] Stale write collision detected. Server:', liveUpdatedAt, 'Local expected:', expectedUpdatedAt);
+              return {
+                success: false,
+                staleConflict: true,
+                serverData: liveData,
+                pendingCustomFields: customFieldValues
+              };
+            }
+          }
+        } catch (e) {
+          console.warn('[TeacherProfileService] Stale check error (proceeding):', e);
+        }
+      }
+
+      var nowIso = new Date().toISOString();
+      var updatedByInfo = {
+        uid: (SchoolApp.currentUser && SchoolApp.currentUser.uid) || 'admin',
+        name: (SchoolApp.currentUser && (SchoolApp.currentUser.name || SchoolApp.currentUser.email)) || 'Admin'
+      };
+
+      // Profile doc
+      var profileDoc = {
+        teacherId: teacherId,
+        schoolId: schoolId,
+        customFields: customFieldValues || {},
+        updatedAt: nowIso,
+        updatedBy: updatedByInfo
+      };
+
+      // Update root teachers array in memory
+      var currentTeachers = (SchoolApp.store.teachers || []).slice();
+      var existingIdx = currentTeachers.findIndex(function(t) { return t.id === teacherId; });
+      if (existingIdx !== -1) {
+        currentTeachers[existingIdx] = Object.assign({}, currentTeachers[existingIdx], coreTeacherData);
+      } else {
+        currentTeachers.push(coreTeacherData);
+      }
+
+      // Temporarily stage in store to build and guard the full root payload
+      var prevStoreTeachers = SchoolApp.store.teachers;
+      SchoolApp.store.teachers = currentTeachers;
+
+      var prep = (typeof SchoolApp.prepareSavePayload === 'function') ? SchoolApp.prepareSavePayload() : null;
+      var rootPayload = (prep && prep.success) ? prep.payload : { teachers: currentTeachers };
+      if (prep && !prep.success) {
+        SchoolApp.store.teachers = prevStoreTeachers; // revert on validation failure
+        return { success: false, reason: prep.reason || 'Validation failed' };
+      }
+
+      // Construct atomic writeBatch writing the exact guarded rootPayload and teacher profile
+      var batch = fs.writeBatch(db);
+      batch.set(rootDocRef, rootPayload, { merge: true });
+      batch.set(profileDocRef, profileDoc);
+
+      await batch.commit();
+
+      // Commit to local in-memory store and cache
+      SchoolApp.store.teachers = currentTeachers;
+      try {
+        var cachedRaw = localStorage.getItem('cached_tenant_data_' + schoolId);
+        if (cachedRaw) {
+          var cached = JSON.parse(cachedRaw);
+          cached.teachers = currentTeachers;
+          localStorage.setItem('cached_tenant_data_' + schoolId, JSON.stringify(cached));
+        }
+      } catch (err) {
+        console.warn('Cache update warning:', err);
+      }
+
+      return { success: true, updatedAt: nowIso };
+    }
+  };
+
+  window.TeacherProfileService = TeacherProfileService;
+
+  function showTeacherStaleWriteDiffModal(teacher, serverData, pendingCustomFields, expectedUpdatedAt) {
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.teacher) || [];
+    var serverFields = serverData.customFields || {};
+    var serverBy = (serverData.updatedBy && serverData.updatedBy.name) ? serverData.updatedBy.name : 'Another Administrator';
+    var serverTime = serverData.updatedAt ? new Date(serverData.updatedAt).toLocaleTimeString() : 'recently';
+
+    var html = '<div style="margin-bottom:16px;">';
+    html += '<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:12px; margin-bottom:16px;">';
+    html += '<p style="margin:0; font-size:13px; color:#EF4444; font-weight:600;"><span class="material-icons-round" style="vertical-align:middle; font-size:18px;">warning</span> Concurrency Conflict Detected</p>';
+    html += '<p style="margin:6px 0 0 0; font-size:12px; color:var(--text-secondary); line-height:1.5;">This teacher profile was updated on the server by <strong>' + SchoolApp.escapeHTML(serverBy) + '</strong> at ' + SchoolApp.escapeHTML(serverTime) + ' after you opened the form. Your unsaved changes were NOT overwritten.</p>';
+    html += '</div>';
+
+    html += '<table style="width:100%; border-collapse:collapse; font-size:12px; border:1px solid var(--border-color);">';
+    html += '<thead style="background:var(--bg-tertiary);">';
+    html += '<tr><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border-color);">Field</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border-color); color:#10B981;">Server Value (Current)</th><th style="padding:8px; text-align:left; border-bottom:1px solid var(--border-color); color:#F59E0B;">Your Pending Value</th></tr>';
+    html += '</thead><tbody>';
+
+    defs.forEach(function(def) {
+      if (def.status === 'archived') return;
+      var sVal = serverFields[def.fieldId] || '—';
+      var pVal = (pendingCustomFields && pendingCustomFields[def.fieldId]) || '—';
+      var isDiff = String(sVal).trim() !== String(pVal).trim();
+      var rowStyle = isDiff ? 'background:rgba(245,158,11,0.08); font-weight:600;' : '';
+      html += '<tr style="' + rowStyle + '">';
+      html += '<td style="padding:8px; border-bottom:1px solid var(--border-color);">' + SchoolApp.escapeHTML(def.label) + '</td>';
+      html += '<td style="padding:8px; border-bottom:1px solid var(--border-color); color:#10B981;">' + SchoolApp.escapeHTML(String(sVal)) + '</td>';
+      html += '<td style="padding:8px; border-bottom:1px solid var(--border-color); color:#F59E0B;">' + SchoolApp.escapeHTML(String(pVal)) + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+    footerHTML += '<button class="btn btn-primary" id="t-conflict-reload-server-btn"><span class="material-icons-round">refresh</span> Reload Server Data</button>';
+
+    SchoolApp.showModal('Conflict: Stale Write Detected', html, footerHTML);
+
+    var reloadBtn = document.getElementById('t-conflict-reload-server-btn');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function() {
+        SchoolApp.closeModal();
+        setTimeout(function() {
+          showTeacherForm(teacher);
+        }, 150);
+      });
+    }
+  }
+
+  var _currentEditingTeacherLoadedUpdatedAt = null;
+  var _currentEditingTeacherInitialCustomFields = {};
+
+  async function showTeacherForm(teacher) {
     var isEdit = !!teacher;
     var settings = SchoolApp.store.settings || {};
+    var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
     var classes = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
     var rawSections = settings.sections || {};
     var sections = [];
@@ -323,6 +498,94 @@
         if (Array.isArray(arr)) arr.forEach(function(s) { allSecs.add(s); });
       });
       sections = Array.from(allSecs);
+    }
+
+    _currentEditingTeacherLoadedUpdatedAt = null;
+    _currentEditingTeacherInitialCustomFields = {};
+
+    if (isEdit) {
+      SchoolApp.showLoader('Loading teacher profile...');
+      try {
+        var profile = await TeacherProfileService.getTeacherProfile(schoolId, teacher.id);
+        _currentEditingTeacherLoadedUpdatedAt = profile.updatedAt || null;
+        _currentEditingTeacherInitialCustomFields = profile.customFields || {};
+      } catch (e) {
+        console.warn('Failed to load teacher profile:', e);
+      } finally {
+        SchoolApp.hideLoader();
+      }
+    }
+
+    var defs = (settings.customFieldDefinitions && settings.customFieldDefinitions.teacher) || [];
+    var activeDefs = defs.filter(function(d) { return d.status !== 'archived'; })
+                         .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+    var fieldsBySection = {
+      personal: [],
+      academic: [],
+      employment: [],
+      other: []
+    };
+    activeDefs.forEach(function(d) {
+      var sec = d.section || 'other';
+      if (!fieldsBySection[sec]) fieldsBySection[sec] = [];
+      fieldsBySection[sec].push(d);
+    });
+
+    function renderTeacherCustomFieldsForSection(secList) {
+      if (!secList || secList.length === 0) return '';
+      var out = '';
+      secList.forEach(function(d) {
+        var val = isEdit ? (_currentEditingTeacherInitialCustomFields[d.fieldId] || '') : '';
+        var wasInitiallyEmpty = isEdit && (!_currentEditingTeacherInitialCustomFields[d.fieldId]);
+        var isRequired = !!d.required;
+        var reqLabel = '';
+
+        if (isRequired) {
+          if (isEdit && wasInitiallyEmpty) {
+            reqLabel = ' <span class="badge badge-warning" style="font-size:10px; margin-left:6px; background:rgba(245,158,11,0.15); color:#F59E0B; padding:2px 6px; border-radius:4px; font-weight:500;">Missing Info (Optional for existing record)</span>';
+          } else {
+            reqLabel = ' *';
+          }
+        } else {
+          reqLabel = ' <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span>';
+        }
+
+        var fullWidthClass = (d.type === 'text' && d.label.length > 25) ? ' full-width' : '';
+        out += '<div class="form-group' + fullWidthClass + '">';
+        out += '  <label class="form-label">' + SchoolApp.escapeHTML(d.label) + reqLabel + '</label>';
+
+        if (d.type === 'dropdown') {
+          var opts = Array.isArray(d.options) ? d.options : (typeof d.options === 'string' ? d.options.split(',').map(function(s){return s.trim();}) : []);
+          out += '  <select class="form-select" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+          out += '    <option value="">Select ' + SchoolApp.escapeHTML(d.label) + '</option>';
+          opts.forEach(function(opt) {
+            out += '    <option value="' + SchoolApp.escapeHTML(opt) + '"' + (val === opt ? ' selected' : '') + '>' + SchoolApp.escapeHTML(opt) + '</option>';
+          });
+          out += '  </select>';
+        } else if (d.type === 'yes/no') {
+          out += '  <select class="form-select" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+          out += '    <option value="">Select</option>';
+          out += '    <option value="Yes"' + (val === 'Yes' ? ' selected' : '') + '>Yes</option>';
+          out += '    <option value="No"' + (val === 'No' ? ' selected' : '') + '>No</option>';
+          out += '  </select>';
+        } else if (d.type === 'number') {
+          out += '  <input type="number" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else if (d.type === 'date') {
+          out += '  <input type="date" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else if (d.type === 'phone') {
+          out += '  <input type="tel" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" maxlength="10" placeholder="10-digit number" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else if (d.type === 'email') {
+          out += '  <input type="email" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" placeholder="name@example.com" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        } else {
+          // default text
+          out += '  <input type="text" class="form-input" name="cf_' + d.fieldId + '" data-field-id="' + d.fieldId + '" value="' + SchoolApp.escapeHTML(String(val)) + '"' + ((isRequired && (!isEdit || !wasInitiallyEmpty)) ? ' required' : '') + '>';
+        }
+
+        out += '  <span class="form-error">Required</span>';
+        out += '</div>';
+      });
+      return out;
     }
 
     var bodyHTML = '<form id="teacher-form" class="form-grid">';
@@ -337,6 +600,9 @@
       bodyHTML += '</div>';
     }
     bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher ? teacher.phone : '') + '" required><span class="form-error">Required</span></div>';
+
+    // Personal Custom Fields
+    bodyHTML += renderTeacherCustomFieldsForSection(fieldsBySection.personal);
 
     // Global subjects checkboxes selection
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Subjects Taught *</label>';
@@ -356,7 +622,13 @@
 
     bodyHTML += '<div class="form-group"><label class="form-label">Qualification *</label><input type="text" class="form-input" name="qualification" value="' + (teacher ? teacher.qualification : '') + '" required><span class="form-error">Required</span></div>';
 
+    // Academic Custom Fields
+    bodyHTML += renderTeacherCustomFieldsForSection(fieldsBySection.academic);
+
     bodyHTML += '<div class="form-group"><label class="form-label">Joining Date</label><input type="date" class="form-input" name="joiningDate" value="' + (teacher ? teacher.joiningDate : new Date().toISOString().split('T')[0]) + '"></div>';
+
+    // Employment Custom Fields
+    bodyHTML += renderTeacherCustomFieldsForSection(fieldsBySection.employment);
 
     bodyHTML += '<div class="form-group"><label class="form-label">Password' + (isEdit ? '' : ' *') + '</label><div class="password-wrapper"><input type="password" class="form-input" name="password" value="' + (isEdit ? '' : 'teacher123') + '" placeholder="' + (isEdit ? 'Leave blank to keep current' : 'Minimum 6 characters') + '"><i class="fa fa-eye toggle-password"></i></div><span class="form-error">Min 6 characters</span></div>';
 
@@ -412,6 +684,9 @@
     bodyHTML += '<div id="class-subject-mapping-container" style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;"></div>';
     bodyHTML += '</div>';
 
+    // Other / Additional Custom Fields
+    bodyHTML += renderTeacherCustomFieldsForSection(fieldsBySection.other);
+
     bodyHTML += '</form>';
 
     var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
@@ -455,8 +730,8 @@
 
     inputs.forEach(function(input) {
       var name = input.name;
-      // Skip Class Teacher / Subject checkbox inputs, they are processed separately
-      if (name.indexOf('ct-') === 0 || name.indexOf('sub-') === 0) return;
+      // Skip Class Teacher / Subject checkbox inputs and custom field inputs, they are processed separately
+      if (name.indexOf('ct-') === 0 || name.indexOf('sub-') === 0 || name.indexOf('cf_') === 0) return;
 
       var value = input.value.trim();
       fields[name] = value;
@@ -545,10 +820,58 @@
       document.getElementById('class-error').style.display = 'none';
     }
 
+    // Validate custom fields with soft validation for old records
+    var customFieldValues = {};
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.teacher) || [];
+    var activeDefs = defs.filter(function(d) { return d.status !== 'archived'; });
+
+    activeDefs.forEach(function(def) {
+      var input = form.querySelector('[name="cf_' + def.fieldId + '"]');
+      if (!input) return;
+      var val = input.value.trim();
+      customFieldValues[def.fieldId] = val;
+
+      var group = input.closest('.form-group');
+      var wasInitiallyEmpty = existing && (!_currentEditingTeacherInitialCustomFields || !_currentEditingTeacherInitialCustomFields[def.fieldId]);
+
+      if (def.required) {
+        if (existing && wasInitiallyEmpty && !val) {
+          // Soft validation for existing teacher who had this field empty: allow saving!
+          if (group) group.classList.remove('error');
+        } else {
+          // Hard validation
+          if (!val) {
+            if (group) group.classList.add('error');
+            valid = false;
+          } else {
+            if (group) group.classList.remove('error');
+          }
+        }
+      }
+
+      // Format validation for phone / email custom fields
+      if (val) {
+        if (def.type === 'phone' && !/^\d{10}$/.test(val)) {
+          if (group) group.classList.add('error');
+          valid = false;
+        } else if (def.type === 'email' && !SchoolApp.utils.validate.email(val)) {
+          if (group) group.classList.add('error');
+          valid = false;
+        }
+      }
+    });
+
     if (!valid) {
       SchoolApp.showToast('Please fill all required fields correctly.', 'error');
       return;
     }
+
+    // SANITIZATION: Ensure NO custom field keys leak into fields
+    Object.keys(fields).forEach(function(k) {
+      if (k.startsWith('cf_') || k === 'customFields') {
+        delete fields[k];
+      }
+    });
 
     // Enforce strict One Class Teacher Per Class Validation
     var conflictFound = false;
@@ -588,33 +911,73 @@
     fields.subjectTeacherOf = subjectTeacherOf;
 
     var isNewTeacher = !existing;
-    var rawPassword = '';
-    if (isNewTeacher) {
-      rawPassword = form.querySelector('[name="password"]').value.trim() || 'teacher123';
-    }
-
     if (existing) {
-      var idx = SchoolApp.store.teachers.findIndex(function(t) { return t.id === existing.id; });
-      if (idx !== -1) {
-        if (!fields.password) fields.password = existing.password; // Keep existing password
-        if (fields.password && !AuthUtils.isHashed(fields.password)) {
-          fields.password = await AuthUtils.hashPassword(fields.password);
-        }
-        Object.assign(SchoolApp.store.teachers[idx], fields);
-        SchoolApp.showToast('Teacher updated successfully.', 'success');
+      fields.id = existing.id;
+      if (!fields.password) {
+        fields.password = existing.password; // Keep existing password hash untouched
+      } else if (!AuthUtils.isHashed(fields.password)) {
+        fields.password = await AuthUtils.hashPassword(fields.password);
       }
     } else {
       fields.id = SchoolApp.generateId();
+      var rawPassword = form.querySelector('[name="password"]').value.trim() || 'teacher123';
+      fields.password = rawPassword;
       if (fields.password && !AuthUtils.isHashed(fields.password)) {
         fields.password = await AuthUtils.hashPassword(fields.password);
       }
-      SchoolApp.store.teachers.push(fields);
-      SchoolApp.showToast('Teacher added successfully.', 'success');
     }
 
-    await SchoolApp.save();
-    SchoolApp.closeModal();
-    render();
+    var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
+    var hasCustomFieldDefinitions = defs.length > 0;
+
+    if (!hasCustomFieldDefinitions && !_currentEditingTeacherLoadedUpdatedAt) {
+      // ZERO CUSTOM FIELDS SAVE PATH (Schools like SVM, IPS, KKGS before adding teacher custom fields)
+      // Save directly via SchoolApp.save() — 100% byte-identical save path and data
+      if (existing) {
+        var idx = SchoolApp.store.teachers.findIndex(function(t) { return t.id === existing.id; });
+        if (idx !== -1) {
+          Object.assign(SchoolApp.store.teachers[idx], fields);
+          SchoolApp.showToast('Teacher updated successfully.', 'success');
+        }
+      } else {
+        SchoolApp.store.teachers.push(fields);
+        SchoolApp.showToast('Teacher added successfully.', 'success');
+      }
+
+      await SchoolApp.save();
+      SchoolApp.closeModal();
+      render();
+      checkExamAccess();
+      return;
+    }
+
+    // Execute atomic save via TeacherProfileService
+    var saveResult = await TeacherProfileService.saveTeacherWithProfile(
+      schoolId,
+      fields,
+      customFieldValues,
+      _currentEditingTeacherLoadedUpdatedAt
+    );
+
+    if (saveResult && saveResult.staleConflict) {
+      showTeacherStaleWriteDiffModal(
+        existing,
+        saveResult.serverData,
+        saveResult.pendingCustomFields,
+        _currentEditingTeacherLoadedUpdatedAt
+      );
+      return;
+    }
+
+    if (saveResult && saveResult.success) {
+      var successMessage = existing ? 'Teacher updated successfully.' : 'Teacher added successfully.';
+      SchoolApp.showToast(successMessage, 'success');
+      SchoolApp.closeModal();
+      render();
+      checkExamAccess();
+    } else {
+      SchoolApp.showToast((saveResult && saveResult.reason) || 'Failed to save teacher.', 'error');
+    }
 
     function checkExamAccess() {
       var activeTerms = Object.values(SchoolApp.store.examTerms || {}).filter(function(t) {
@@ -860,9 +1223,29 @@
     }
   }
 
-  function viewTeacher(id) {
+  async function viewTeacher(id) {
     var teacher = SchoolApp.store.teachers.find(function(t) { return t.id === id; });
     if (!teacher) return;
+
+    var schoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || 'default';
+    var profile = await TeacherProfileService.getTeacherProfile(schoolId, teacher.id);
+    var customFields = (profile && profile.customFields) || {};
+
+    var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.teacher) || [];
+    var activeDefs = defs.filter(function(d) { return d.status !== 'archived'; })
+                         .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+    var fieldsBySection = {
+      personal: [],
+      academic: [],
+      employment: [],
+      other: []
+    };
+    activeDefs.forEach(function(d) {
+      var sec = d.section || 'other';
+      if (!fieldsBySection[sec]) fieldsBySection[sec] = [];
+      fieldsBySection[sec].push(d);
+    });
 
     var initials = SchoolApp.getInitials(teacher.firstName, teacher.lastName);
     var color = SchoolApp.getAvatarColor(teacher.firstName + teacher.lastName);
@@ -882,17 +1265,53 @@
     html += '<span class="badge ' + (teacher.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + teacher.status + '</span>';
     html += '</div></div>';
 
+    // Personal Information
     html += '<div class="detail-section"><h4><span class="material-icons-round">person</span> Personal Information</h4><div class="detail-grid">';
     html += '<div class="detail-item"><span class="detail-item-label">Email</span><span class="detail-item-value">' + teacher.email + '</span></div>';
     html += '<div class="detail-item"><span class="detail-item-label">Phone</span><span class="detail-item-value">' + teacher.phone + '</span></div>';
+    fieldsBySection.personal.forEach(function(d) {
+      var val = customFields[d.fieldId];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+      }
+    });
     html += '</div></div>';
 
-    html += '<div class="detail-section"><h4><span class="material-icons-round">work</span> Professional Information</h4><div class="detail-grid">';
+    // Professional & Academic Information
+    html += '<div class="detail-section"><h4><span class="material-icons-round">work</span> Professional & Academic Information</h4><div class="detail-grid">';
     html += '<div class="detail-item"><span class="detail-item-label">Subject</span><span class="detail-item-value">' + teacher.subject + '</span></div>';
     html += '<div class="detail-item"><span class="detail-item-label">Qualification</span><span class="detail-item-value">' + teacher.qualification + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Joining Date</span><span class="detail-item-value">' + SchoolApp.formatDate(teacher.joiningDate) + '</span></div>';
+    fieldsBySection.academic.forEach(function(d) {
+      var val = customFields[d.fieldId];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+      }
+    });
     html += '<div class="detail-item"><span class="detail-item-label">Total Students</span><span class="detail-item-value">' + studentCount + '</span></div>';
     html += '</div></div>';
+
+    // Employment Information
+    html += '<div class="detail-section"><h4><span class="material-icons-round">badge</span> Employment Information</h4><div class="detail-grid">';
+    html += '<div class="detail-item"><span class="detail-item-label">Joining Date</span><span class="detail-item-value">' + SchoolApp.formatDate(teacher.joiningDate) + '</span></div>';
+    fieldsBySection.employment.forEach(function(d) {
+      var val = customFields[d.fieldId];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+      }
+    });
+    html += '</div></div>';
+
+    // Additional / Other Custom Fields
+    if (fieldsBySection.other.some(function(d) { return customFields[d.fieldId]; })) {
+      html += '<div class="detail-section"><h4><span class="material-icons-round">more_horiz</span> Additional Information</h4><div class="detail-grid">';
+      fieldsBySection.other.forEach(function(d) {
+        var val = customFields[d.fieldId];
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          html += '<div class="detail-item"><span class="detail-item-label">' + SchoolApp.escapeHTML(d.label) + '</span><span class="detail-item-value">' + SchoolApp.escapeHTML(String(val)) + '</span></div>';
+        }
+      });
+      html += '</div></div>';
+    }
 
     html += '<div class="detail-section"><h4><span class="material-icons-round">class</span> Assigned Classes</h4>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:8px">';

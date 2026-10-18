@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = 'v53';
+window.APP_VERSION = 'v55';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
@@ -357,21 +357,64 @@ window.SchoolApp = {
     }
 
     if (!allowWipe) {
-      // HARD FAILSAFE 2: Refuse to wipe populated students or teachers from live server baseline
+      // HARD FAILSAFE 2: Refuse unauthorized reduction or wipe of populated students or teachers from live server baseline
       var serverStudentBaseline = (this.liveServerStudentCount !== undefined) ? this.liveServerStudentCount : (this.initialServerStudentCount || 0);
       var serverTeacherBaseline = (this.liveServerTeacherCount !== undefined) ? this.liveServerTeacherCount : (this.initialServerTeacherCount || 0);
 
-      if (serverStudentBaseline > 0 && (!payload.students || payload.students.length === 0)) {
-        console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe students (' + serverStudentBaseline + ' items -> 0) on ' + currentSchoolId);
-        this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
-        if (!bypassLoader) this.hideLoader();
-        return { success: false, reason: 'student_wipe_blocked' };
+      var payloadStudents = Array.isArray(payload.students) ? payload.students : [];
+      var payloadTrash = Array.isArray(payload.trash) ? payload.trash : [];
+
+      if (!this.isStudentsMigrated(currentSchoolId) && serverStudentBaseline > 0 && payloadStudents.length < serverStudentBaseline) {
+        var baselineStudents = Array.isArray(this._serverStudentsBaseline) ? this._serverStudentsBaseline : (Array.isArray(this._frozenRootStudents) ? this._frozenRootStudents : []);
+
+        // Fail-closed: If baseline student list is unavailable, block any reduction
+        if (!Array.isArray(baselineStudents) || baselineStudents.length === 0) {
+          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked student reduction: baseline student list is unavailable on ' + currentSchoolId);
+          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+          if (!bypassLoader) this.hideLoader();
+          return { success: false, reason: 'student_wipe_blocked' };
+        }
+
+        var currentStudentIds = new Set(payloadStudents.map(function(s) { return s && s.id; }).filter(Boolean));
+        var trashStudentIds = new Set(payloadTrash.filter(function(t) { return t && t.type === 'student'; }).map(function(t) { return t.id; }).filter(Boolean));
+
+        // Find students present in baseline who are missing from the payload
+        var missingFromBaseline = baselineStudents.filter(function(s) {
+          return s && s.id && !currentStudentIds.has(s.id);
+        });
+
+        var countDiff = serverStudentBaseline - payloadStudents.length;
+
+        // Count ONLY trash entries whose id was in the baseline AND is missing from the payload. Old trash entries must not count.
+        var validMatchingTrashCount = 0;
+        var allMissingInTrash = missingFromBaseline.length > 0 && missingFromBaseline.every(function(s) {
+          if (trashStudentIds.has(s.id)) {
+            validMatchingTrashCount++;
+            return true;
+          }
+          return false;
+        });
+
+        if (!allMissingInTrash || validMatchingTrashCount < countDiff) {
+          console.error('[SAFETY GUARD BLOCKED SAVE] Blocked unauthorized reduction of students (' + serverStudentBaseline + ' -> ' + payloadStudents.length + ', ' + missingFromBaseline.length + ' missing, ' + validMatchingTrashCount + ' matching in trash) on ' + currentSchoolId);
+          this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
+          if (!bypassLoader) this.hideLoader();
+          return { success: false, reason: 'student_wipe_blocked' };
+        }
       }
+
       if (serverTeacherBaseline > 0 && (!payload.teachers || payload.teachers.length === 0)) {
         console.error('[SAFETY GUARD BLOCKED SAVE] Blocked attempt to wipe teachers (' + serverTeacherBaseline + ' items -> 0) on ' + currentSchoolId);
         this.showToast('Save blocked: Potential data loss detected. Please refresh the page.', 'error');
         if (!bypassLoader) this.hideLoader();
         return { success: false, reason: 'teacher_wipe_blocked' };
+      }
+    }
+
+    // CHANGE 1 & 2: In migrated mode post-probation (dualWrite=false), keep root students frozen
+    if (this.isStudentsMigrated(currentSchoolId) && !this.isStudentsDualWrite(currentSchoolId)) {
+      if (Array.isArray(this._frozenRootStudents) && this._frozenRootStudents.length > 0) {
+        payload.students = this._frozenRootStudents;
       }
     }
     
@@ -465,6 +508,11 @@ window.SchoolApp = {
       var payload = prep.payload;
       var allowWipe = prep.allowWipe;
 
+      // CHANGE 2: Subcollection Safety Net — diff and sync any mutated student docs
+      if (this.isStudentsMigrated(currentSchoolId) && window.firestore && window.db) {
+        await this.syncStoreStudentsToSubcollection(currentSchoolId);
+      }
+
       const saveFn = () => window.firestore.setDoc(docRef, payload, { merge: true });
       const success = await this.saveWithRetry(saveFn);
       if (!success) {
@@ -501,6 +549,10 @@ window.SchoolApp = {
       if (allowWipe) {
         delete this.store.allowCollectionWipe;
         delete this.allowCollectionWipe;
+      }
+      if (payload.students) {
+        this.liveServerStudentCount = payload.students.length;
+        this._serverStudentsBaseline = payload.students.slice();
       }
       
       // Update localStorage cache to match
@@ -564,6 +616,15 @@ window.SchoolApp = {
     this._feesListeners = {};
     this._feesYears = {};
 
+    // 3b. Unsubscribe and clear student subcollection listener
+    if (this._studentsSubcollectionUnsubscribe) {
+      try { this._studentsSubcollectionUnsubscribe(); } catch (e) { console.warn('Error unsubscribing students listener:', e); }
+      this._studentsSubcollectionUnsubscribe = null;
+    }
+    this._lastServerStudentsMap = null;
+    this._subcollectionEverLoaded = false;
+    this._frozenRootStudents = null;
+
     // 4. Purge local tenant storage caches to prevent cross-school contamination
     try {
       for (var k = localStorage.length - 1; k >= 0; k--) {
@@ -594,6 +655,151 @@ window.SchoolApp = {
   _attendanceListeners: {},
   _feesYears: {},
   _feesListeners: {},
+  _studentsSubcollectionUnsubscribe: null,
+  _lastServerStudentsMap: null,
+  _subcollectionEverLoaded: false,
+  _frozenRootStudents: null,
+
+  isStudentsMigrated: function(schoolId) {
+    var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!sid) return false;
+    return !!(this.store && this.store.settings && this.store.settings.studentsMigrated === true);
+  },
+
+  isStudentsDualWrite: function(schoolId) {
+    if (!this.isStudentsMigrated(schoolId)) return false;
+    return !!(this.store && this.store.settings && this.store.settings.studentsDualWrite === true);
+  },
+
+  initStudentsSubcollectionListener: function(schoolId) {
+    var self = this;
+    if (this._studentsSubcollectionUnsubscribe) {
+      try { this._studentsSubcollectionUnsubscribe(); } catch (e) {}
+      this._studentsSubcollectionUnsubscribe = null;
+    }
+    if (!window.firestore || !window.db) return;
+    try {
+      var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'students');
+      this._studentsSubcollectionUnsubscribe = window.firestore.onSnapshot(collRef, function(snap) {
+        if (!snap) return;
+        var subStudents = [];
+        var newServerMap = new Map();
+        snap.forEach(function(d) {
+          var item = d.data();
+          subStudents.push(item);
+          newServerMap.set(item.id, JSON.parse(JSON.stringify(item)));
+        });
+
+        // Dual-read fallback: if subcollection is empty but root has students, fallback to root
+        if (subStudents.length === 0 && Array.isArray(self.store.students) && self.store.students.length > 0 && !self._subcollectionEverLoaded) {
+          console.warn('[Students Subcollection] Subcollection empty; retaining root fallback students.');
+          return;
+        }
+
+        self._subcollectionEverLoaded = true;
+        self._lastServerStudentsMap = newServerMap;
+        self.store.students = subStudents;
+        self.liveServerStudentCount = subStudents.length;
+        self.initialServerStudentCount = subStudents.length;
+        self._serverStudentsBaseline = subStudents.slice();
+
+        // Auto-refresh active tab if relevant
+        if (self.tenantInitialized && self.activeTab === 'students' && typeof window.StudentsModule !== 'undefined' && typeof window.StudentsModule.render === 'function') {
+          window.StudentsModule.render();
+        }
+      }, function(err) {
+        console.error('[Students Subcollection] Listener error:', err);
+      });
+    } catch (e) {
+      console.error('[Students Subcollection] Failed to initialize listener:', e);
+    }
+  },
+
+  syncStoreStudentsToSubcollection: async function(currentSchoolId) {
+    if (!currentSchoolId || !window.firestore || !window.db) return;
+    try {
+      var storeStudents = this.store.students || [];
+      var serverMap = this._lastServerStudentsMap || new Map();
+      var storeMap = new Map();
+      var toWrite = [];
+      var toSoftDelete = [];
+
+      for (var i = 0; i < storeStudents.length; i++) {
+        var s = storeStudents[i];
+        if (!s || !s.id) continue;
+        storeMap.set(s.id, s);
+
+        if (!s.schoolId) s.schoolId = currentSchoolId;
+
+        var serverItem = serverMap.get(s.id);
+        if (!serverItem) {
+          toWrite.push(s);
+        } else {
+          if (JSON.stringify(s) !== JSON.stringify(serverItem)) {
+            toWrite.push(s);
+          }
+        }
+      }
+
+      // Check for removed students in memory (which become soft-deletes)
+      serverMap.forEach(function(serverItem, sId) {
+        if (!storeMap.has(sId) && serverItem.status !== 'Deleted' && !serverItem.inTrash) {
+          toSoftDelete.push(serverItem);
+        }
+      });
+
+      var totalMutations = toWrite.length + toSoftDelete.length;
+      if (totalMutations > 0) {
+        var stack = (new Error().stack || '').split('\n').slice(2, 5).join(' -> ');
+        console.warn('[Students Subcollection Auto-Sync] Syncing ' + totalMutations + ' mutated student doc(s) (' + toWrite.length + ' writes, ' + toSoftDelete.length + ' soft-deletes) from SchoolApp.save(). Caller: ' + stack);
+
+        var batchSize = 400;
+        var allOps = [];
+        for (var w = 0; w < toWrite.length; w++) {
+          allOps.push({ type: 'set', student: toWrite[w] });
+        }
+        for (var d = 0; d < toSoftDelete.length; d++) {
+          allOps.push({ type: 'softDelete', student: toSoftDelete[d] });
+        }
+
+        for (var b = 0; b < allOps.length; b += batchSize) {
+          var chunk = allOps.slice(b, b + batchSize);
+          var batch = window.firestore.writeBatch(window.db);
+          for (var c = 0; c < chunk.length; c++) {
+            var op = chunk[c];
+            var ref = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'students', op.student.id);
+            if (op.type === 'set') {
+              batch.set(ref, JSON.parse(JSON.stringify(op.student)));
+            } else if (op.type === 'softDelete') {
+              var origStatus = op.student.statusBeforeDelete || op.student.status || 'Active';
+              batch.update(ref, {
+                status: 'Deleted',
+                statusBeforeDelete: origStatus,
+                inTrash: true,
+                deletedAt: new Date().toISOString(),
+                'deletedBy.name': 'Admin'
+              });
+            }
+          }
+          await batch.commit();
+        }
+
+        // Update serverMap
+        for (var uw = 0; uw < toWrite.length; uw++) {
+          serverMap.set(toWrite[uw].id, JSON.parse(JSON.stringify(toWrite[uw])));
+        }
+        for (var ud = 0; ud < toSoftDelete.length; ud++) {
+          var sd = toSoftDelete[ud];
+          sd.status = 'Deleted';
+          sd.inTrash = true;
+          serverMap.set(sd.id, JSON.parse(JSON.stringify(sd)));
+        }
+        this._lastServerStudentsMap = serverMap;
+      }
+    } catch (err) {
+      console.error('[Students Subcollection Auto-Sync] Error during subcollection sync:', err);
+    }
+  },
 
   isRestructured: function(schoolId) {
     var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id');
@@ -1768,6 +1974,13 @@ window.SchoolApp = {
           self.liveServerStudentCount = (parsed.students || []).length;
           self.liveServerTeacherCount = (parsed.teachers || []).length;
           self.tenantInitialized = true;
+          self._frozenRootStudents = (parsed.students || []).slice();
+          self._serverStudentsBaseline = (parsed.students || []).slice();
+
+          // CHANGE 2: Connect to students subcollection if migrated mode is active
+          if (parsed.settings && parsed.settings.studentsMigrated === true) {
+            self.initStudentsSubcollectionListener(schoolId);
+          }
         }
 
         // Populate default arrays/objects if missing
@@ -2035,15 +2248,21 @@ window.SchoolApp = {
 
   moveToTrash: function(type, id, name, details, data) {
     if (!this.store.trash) this.store.trash = [];
-    this.store.trash.push({
+    // CHANGE 3: Deduplication guard — never add duplicate entries to trash (fixes Usha bug class)
+    var existingIdx = this.store.trash.findIndex(function(t) { return t.id === id && t.type === type; });
+    var trashItem = {
       id: id,
       type: type, // 'student' | 'teacher' | 'attendance'
       name: name,
       details: details,
       deletedAt: new Date().toISOString(),
       data: data
-    });
-    this.save(true);
+    };
+    if (existingIdx !== -1) {
+      this.store.trash[existingIdx] = trashItem;
+    } else {
+      this.store.trash.push(trashItem);
+    }
   },
 
   createRestorePoint: function(description) {
@@ -3052,7 +3271,7 @@ window.SchoolApp = {
     return true;
   },
 
-  showMyProfileModal: function() {
+  showMyProfileModal: async function() {
     var self = this;
     var user = this.currentUser;
     if (!user) return;
@@ -3077,6 +3296,38 @@ window.SchoolApp = {
       bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (teacher.email || '') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher.phone || '') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><div class="password-wrapper"><input type="password" class="form-input" name="password" value="' + (teacher.password || '') + '" required><i class="fa fa-eye toggle-password"></i></div></div>';
+
+      // Read-only custom fields for this teacher
+      var schoolId = (self.store && self.store.currentSchoolId) || 'default';
+      var customFieldDefs = (self.store.settings && self.store.settings.customFieldDefinitions && self.store.settings.customFieldDefinitions.teacher) || [];
+      var activeDefs = customFieldDefs.filter(function(d) { return d.status !== 'archived'; })
+                                      .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+
+      if (activeDefs.length > 0) {
+        var profile = { customFields: {} };
+        if (window.TeacherProfileService && typeof window.TeacherProfileService.getTeacherProfile === 'function') {
+          try {
+            profile = await window.TeacherProfileService.getTeacherProfile(schoolId, teacher.id);
+          } catch (e) {
+            console.warn('[MyProfile] Error loading teacher profile:', e);
+          }
+        }
+        var cf = (profile && profile.customFields) || {};
+
+        bodyHTML += '<div class="form-group full-width" style="margin-top:12px; border-top:1px solid var(--border-color); padding-top:12px;">';
+        bodyHTML += '  <label class="form-label" style="font-weight:700; color:var(--text-primary); margin-bottom:8px;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">badge</span> Additional Details <span style="font-size:11px; font-weight:400; color:var(--text-muted);">(Read-Only &bull; Managed by Admin)</span></label>';
+        bodyHTML += '  <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">';
+        activeDefs.forEach(function(d) {
+          var val = cf[d.fieldId];
+          var displayVal = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val) : '—';
+          bodyHTML += '    <div style="background:var(--bg-tertiary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">';
+          bodyHTML += '      <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; font-weight:600;">' + self.escapeHTML(d.label) + '</div>';
+          bodyHTML += '      <div style="font-size:13px; font-weight:500; color:var(--text-primary); margin-top:2px;">' + self.escapeHTML(displayVal) + '</div>';
+          bodyHTML += '    </div>';
+        });
+        bodyHTML += '  </div>';
+        bodyHTML += '</div>';
+      }
     }
     
     bodyHTML += '</form>';

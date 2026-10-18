@@ -76,7 +76,7 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── Student Profiles Subcollections (Custom Fields & Privacy Isolation) ──
+    // ── Student & Teacher Profiles Subcollections (Custom Fields & Privacy Isolation) ──
     // Private student profiles — school admin + super admin only
     match /tenant_data/{schoolId}/student_profiles/{studentId} {
       allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
@@ -88,13 +88,44 @@ service cloud.firestore {
       allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
     }
 
-    // Subcollections — per-school access or super-admin (excluding student profile subcollections)
+    // Helper to check if caller is this specific teacher
+    function isOwnTeacherProfile(schoolId, teacherId) {
+      return canAccessSchool(schoolId) &&
+             exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('teacherId', '') == teacherId;
+    }
+
+    // Teacher profiles — school admin + super admin: read/write; own teacher: read-only; other teachers: denied; write: admin/super admin only
+    match /tenant_data/{schoolId}/teacher_profiles/{teacherId} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin() || isOwnTeacherProfile(schoolId, teacherId);
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Helper to check if caller is an authorized teacher of this school
+    function isSchoolTeacher(schoolId) {
+      return canAccessSchool(schoolId) &&
+             exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('role', '') == 'teacher';
+    }
+
+    // Core Students Subcollection — school admin & super admin: read/write; school teachers: read-only; other teachers/schools: denied
+    match /tenant_data/{schoolId}/students/{studentId} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin() || isSchoolTeacher(schoolId);
+      allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin())
+                      && request.resource.data.schoolId == schoolId;
+    }
+
+    // Subcollections — per-school access or super-admin (excluding student/teacher profiles and core students)
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
       allow read:  if subcollection != 'student_profiles'
                       && subcollection != 'student_profiles_shared'
+                      && subcollection != 'teacher_profiles'
+                      && subcollection != 'students'
                       && (canAccessSchool(schoolId) || isSuperAdmin());
       allow write: if subcollection != 'student_profiles'
                       && subcollection != 'student_profiles_shared'
+                      && subcollection != 'teacher_profiles'
+                      && subcollection != 'students'
                       && (canAccessSchool(schoolId) || isSuperAdmin())
                       && (subcollection != 'fees_years' || validFeeMonthDoc());
     }

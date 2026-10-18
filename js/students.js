@@ -476,6 +476,10 @@
             return state.selectedIds.indexOf(s.id) !== -1;
           });
           deleted.forEach(function(s) {
+            var origStatus = s.statusBeforeDelete || s.status || 'Active';
+            s.statusBeforeDelete = origStatus;
+            s.status = 'Deleted';
+            s.inTrash = true;
             SchoolApp.moveToTrash('student', s.id, getStudentFullName(s), 'Class ' + s.class + '-' + s.section, s);
           });
           SchoolApp.store.students = SchoolApp.store.students.filter(function(s) {
@@ -630,7 +634,25 @@
 
       // 4. Construct ONE atomic writeBatch writing the exact guarded rootPayload
       var batch = fs.writeBatch(db);
-      batch.set(rootDocRef, rootPayload, { merge: true });
+
+      if (SchoolApp.isStudentsMigrated && SchoolApp.isStudentsMigrated(schoolId)) {
+        var studentSubDocRef = fs.doc(db, 'tenant_data', schoolId, 'students', studentId);
+        var studentDocData = Object.assign({}, coreStudentData, { schoolId: schoolId });
+        batch.set(studentSubDocRef, studentDocData);
+
+        if (SchoolApp.isStudentsDualWrite && SchoolApp.isStudentsDualWrite(schoolId)) {
+          batch.set(rootDocRef, rootPayload, { merge: true });
+        } else {
+          // Post-probation: Keep root students frozen as immutable safety copy
+          if (Array.isArray(SchoolApp._frozenRootStudents) && SchoolApp._frozenRootStudents.length > 0) {
+            rootPayload.students = SchoolApp._frozenRootStudents;
+          }
+          batch.set(rootDocRef, rootPayload, { merge: true });
+        }
+      } else {
+        batch.set(rootDocRef, rootPayload, { merge: true });
+      }
+
       batch.set(privateDocRef, privateDoc);
       batch.set(sharedDocRef, sharedDoc);
 
@@ -828,28 +850,28 @@
     bodyHTML += '<div class="form-group"><label class="form-label">Section *</label><select class="form-select" name="section" required><option value="">Select Section</option>';
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Roll Number *</label><input type="text" class="form-input" name="rollNumber" value="' + (student ? student.rollNumber : '') + '" required><span class="form-error">Required</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Roll Number *</label><input type="text" class="form-input" name="rollNumber" value="' + (student && student.rollNumber !== undefined ? student.rollNumber : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Admission Number <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="admissionNumber" value="' + (student && student.admissionNumber ? student.admissionNumber : '') + '" placeholder="e.g. ADM-2024-001"></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Date of Birth *</label><input type="date" class="form-input" name="dateOfBirth" value="' + (student ? student.dateOfBirth : '') + '" required><span class="form-error">Required</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Date of Birth *</label><input type="date" class="form-input" name="dateOfBirth" value="' + (student && student.dateOfBirth ? student.dateOfBirth : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Gender *</label><select class="form-select" name="gender" required><option value="">Select Gender</option>';
     ['Male', 'Female', 'Other'].forEach(function(g) { bodyHTML += '<option value="' + g + '"' + (student && student.gender === g ? ' selected' : '') + '>' + g + '</option>'; });
     bodyHTML += '</select><span class="form-error">Required</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Aadhaar Number <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="aadhaarNumber" value="' + (student ? student.aadhaarNumber : '') + '" placeholder="XXXX XXXX XXXX"><span class="form-error">Must be 12 digits</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Aadhaar Number <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="aadhaarNumber" value="' + (student && student.aadhaarNumber ? student.aadhaarNumber : '') + '" placeholder="XXXX XXXX XXXX"><span class="form-error">Must be 12 digits</span></div>';
 
     // Personal Custom Fields
     bodyHTML += renderCustomFieldsForSection(fieldsBySection.personal);
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Parent/Guardian Name *</label><input type="text" class="form-input" name="parentName" value="' + (student ? student.parentName : '') + '" required><span class="form-error">Required</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Parent/Guardian Name *</label><input type="text" class="form-input" name="parentName" value="' + (student && student.parentName ? student.parentName : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Mother\'s Name <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="motherName" value="' + (student && student.motherName ? student.motherName : '') + '" placeholder="Mother\'s Name"></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone (Primary) *</label><input type="text" class="form-input" name="parentPhone" value="' + (student ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone (Primary) *</label><input type="text" class="form-input" name="parentPhone" value="' + (student && student.parentPhone ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="parentEmail" value="' + (student ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="parentEmail" value="' + (student && student.parentEmail ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
 
     // Repeatable Additional Parent Contacts
     bodyHTML += '<div class="form-group full-width" style="grid-column: span 2; margin-top: 6px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color);">';
@@ -869,7 +891,7 @@
     bodyHTML += '  </div>';
     bodyHTML += '</div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Admission Date <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="date" class="form-input" name="admissionDate" value="' + (student ? student.admissionDate : new Date().toISOString().split('T')[0]) + '"></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Admission Date <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="date" class="form-input" name="admissionDate" value="' + ((student && student.admissionDate) ? student.admissionDate : new Date().toISOString().split('T')[0]) + '"></div>';
 
     // Academic Custom Fields
     bodyHTML += renderCustomFieldsForSection(fieldsBySection.academic);
@@ -879,7 +901,7 @@
     // Transport Custom Fields
     bodyHTML += renderCustomFieldsForSection(fieldsBySection.transport);
 
-    bodyHTML += '<div class="form-group full-width"><label class="form-label">Address <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><textarea class="form-textarea" name="address" rows="2">' + (student ? student.address : '') + '</textarea></div>';
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Address <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><textarea class="form-textarea" name="address" rows="2">' + (student && student.address ? student.address : '') + '</textarea></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Status <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><select class="form-select" name="status">';
     ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (student && student.status === s ? ' selected' : '') + '>' + s + '</option>'; });
@@ -1352,10 +1374,31 @@
     var student = SchoolApp.store.students.find(function(s) { return s.id === id; });
     if (!student) return;
     var sName = getStudentFullName(student);
-    SchoolApp.showConfirm('Delete student "' + sName + '"? They can be recovered from the Recycle Bin.', function() {
+    SchoolApp.showConfirm('Delete student "' + sName + '"? They can be recovered from the Recycle Bin.', async function() {
+      // CHANGE 3: Soft delete preserves original status (statusBeforeDelete)
+      var origStatus = student.statusBeforeDelete || student.status || 'Active';
+      student.statusBeforeDelete = origStatus;
+      student.status = 'Deleted';
+      student.inTrash = true;
+
       SchoolApp.moveToTrash('student', student.id, sName, 'Class ' + student.class + '-' + student.section, student);
+
+      if (SchoolApp.isStudentsMigrated && SchoolApp.isStudentsMigrated()) {
+        try {
+          var ref = window.firestore.doc(window.db, 'tenant_data', SchoolApp.store.currentSchoolId, 'students', id);
+          await window.firestore.updateDoc(ref, {
+            status: 'Deleted',
+            statusBeforeDelete: origStatus,
+            inTrash: true,
+            deletedAt: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn('Subcollection delete update error:', e);
+        }
+      }
+
       SchoolApp.store.students = SchoolApp.store.students.filter(function(s) { return s.id !== id; });
-      SchoolApp.save();
+      await SchoolApp.save();
       SchoolApp.showToast('Student moved to Recycle Bin.', 'success');
       render();
     });

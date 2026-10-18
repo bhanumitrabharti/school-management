@@ -1745,6 +1745,354 @@
     }
   }
 
+  // ── Teacher Custom Field Definitions Manager (Phase 4) ───────────────────
+  function getTeacherCustomFieldDefinitions() {
+    if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+    if (!SchoolApp.store.settings.customFieldDefinitions) SchoolApp.store.settings.customFieldDefinitions = {};
+    if (!Array.isArray(SchoolApp.store.settings.customFieldDefinitions.teacher)) {
+      SchoolApp.store.settings.customFieldDefinitions.teacher = [];
+    }
+    return SchoolApp.store.settings.customFieldDefinitions.teacher;
+  }
+
+  function renderSettingsTeacherCustomFields() {
+    var container = document.getElementById('settings-teacher-custom-fields-container');
+    if (!container) return;
+
+    var defs = getTeacherCustomFieldDefinitions();
+    var activeFields = defs.filter(function(d) { return d.status !== 'archived'; })
+                           .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+    var archivedFields = defs.filter(function(d) { return d.status === 'archived'; });
+
+    var html = '';
+
+    // Summary header
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
+    html += '  <div style="font-size:13px; color:var(--text-secondary);">';
+    html += '    Active Fields: <strong style="color:var(--text-primary);">' + activeFields.length + '</strong> · ';
+    html += '    Archived: <strong style="color:var(--text-muted);">' + archivedFields.length + '</strong>';
+    html += '  </div>';
+    html += '</div>';
+
+    // Active Fields Table
+    if (activeFields.length === 0) {
+      html += '<div style="text-align:center; padding:24px; color:var(--text-secondary); border: 1px dashed var(--border-color); border-radius: 8px;">';
+      html += '  No active teacher custom fields defined. Click <strong>Add Teacher Field</strong> above to add fields such as PAN Number, Aadhaar Number, Emergency Contact, EPF Number, etc.';
+      html += '</div>';
+    } else {
+      html += '<div style="overflow-x:auto;">';
+      html += '<table style="width:100%; border-collapse:collapse; font-size:12px; border:1px solid var(--border-color); border-radius:6px; overflow:hidden;">';
+      html += '<thead style="background:var(--bg-tertiary);">';
+      html += '<tr>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:60px; border-bottom:1px solid var(--border-color);">Order</th>';
+      html += '  <th style="padding:10px 8px; text-align:left; border-bottom:1px solid var(--border-color);">Field Label</th>';
+      html += '  <th style="padding:10px 8px; text-align:left; width:90px; border-bottom:1px solid var(--border-color);">Type</th>';
+      html += '  <th style="padding:10px 8px; text-align:left; width:130px; border-bottom:1px solid var(--border-color);">Section</th>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:80px; border-bottom:1px solid var(--border-color);">Required</th>';
+      html += '  <th style="padding:10px 8px; text-align:center; width:110px; border-bottom:1px solid var(--border-color);">Actions</th>';
+      html += '</tr>';
+      html += '</thead><tbody>';
+
+      activeFields.forEach(function(field, idx) {
+        var typeColors = {
+          text: '#3B82F6',
+          number: '#14B8A6',
+          date: '#6366F1',
+          dropdown: '#8B5CF6',
+          'yes/no': '#F59E0B',
+          phone: '#10B981',
+          email: '#0EA5E9'
+        };
+        var tColor = typeColors[field.type] || '#6B7280';
+        var isFirst = idx === 0;
+        var isLast = idx === activeFields.length - 1;
+
+        html += '<tr style="border-bottom:1px solid var(--border-color);">';
+        // Order / arrows
+        html += '<td style="padding:8px; text-align:center;">';
+        html += '  <div style="display:inline-flex; align-items:center; gap:2px;">';
+        html += '    <button type="button" class="btn-icon settings-tcf-up-btn" data-id="' + escapeAttr(field.fieldId) + '"' + (isFirst ? ' disabled style="opacity:0.3; cursor:not-allowed;"' : '') + ' title="Move Up"><span class="material-icons-round" style="font-size:16px;">arrow_upward</span></button>';
+        html += '    <button type="button" class="btn-icon settings-tcf-down-btn" data-id="' + escapeAttr(field.fieldId) + '"' + (isLast ? ' disabled style="opacity:0.3; cursor:not-allowed;"' : '') + ' title="Move Down"><span class="material-icons-round" style="font-size:16px;">arrow_downward</span></button>';
+        html += '  </div>';
+        html += '</td>';
+
+        // Label
+        html += '<td style="padding:8px; font-weight:600; color:var(--text-primary);">' + escapeHTML(field.label) + '</td>';
+
+        // Type
+        html += '<td style="padding:8px;"><span class="badge" style="background:' + tColor + '20; color:' + tColor + '; font-size:10px; font-weight:600; text-transform:uppercase;">' + escapeHTML(field.type) + '</span></td>';
+
+        // Section
+        var secLabels = { personal: 'Personal Details', academic: 'Academic & Qualifications', employment: 'Employment & Service', other: 'Other Details' };
+        html += '<td style="padding:8px; color:var(--text-secondary);">' + escapeHTML(secLabels[field.section] || field.section || 'Other') + '</td>';
+
+        // Required
+        html += '<td style="padding:8px; text-align:center;">' + (field.required ? '<span class="badge badge-warning" style="font-size:10px;">Required</span>' : '<span style="color:var(--text-muted); font-size:11px;">Optional</span>') + '</td>';
+
+        // Actions
+        html += '<td style="padding:8px; text-align:center;">';
+        html += '  <div style="display:inline-flex; gap:6px; align-items:center;">';
+        html += '    <button type="button" class="btn btn-secondary btn-xs settings-edit-tcf-btn" data-id="' + escapeAttr(field.fieldId) + '" title="Edit Field" style="height:26px; padding:0 6px;"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">edit</span></button>';
+        html += '    <button type="button" class="btn btn-secondary btn-xs settings-archive-tcf-btn" data-id="' + escapeAttr(field.fieldId) + '" title="Archive Field" style="height:26px; padding:0 6px; color:#F59E0B;"><span class="material-icons-round" style="font-size:14px; vertical-align:middle;">archive</span></button>';
+        html += '  </div>';
+        html += '</td>';
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+    }
+
+    // Archived Fields Table (if any)
+    if (archivedFields.length > 0) {
+      html += '<div style="margin-top:16px; padding-top:16px; border-top:1px dashed var(--border-color);">';
+      html += '  <h4 style="margin:0 0 8px 0; font-size:13px; color:var(--text-secondary);"><span class="material-icons-round" style="font-size:16px; vertical-align:middle;">inventory_2</span> Archived Fields (Hidden from forms; existing records safe)</h4>';
+      html += '  <div style="overflow-x:auto;">';
+      html += '  <table style="width:100%; border-collapse:collapse; font-size:11px; border:1px solid var(--border-color); opacity:0.85;">';
+      html += '  <thead style="background:var(--bg-tertiary);">';
+      html += '  <tr><th style="padding:6px 8px; text-align:left;">Field Label</th><th style="padding:6px 8px; text-align:left;">Type</th><th style="padding:6px 8px; text-align:left;">Section</th><th style="padding:6px 8px; text-align:center; width:90px;">Action</th></tr>';
+      html += '  </thead><tbody>';
+
+      archivedFields.forEach(function(field) {
+        html += '<tr style="border-bottom:1px solid var(--border-color);">';
+        html += '<td style="padding:6px 8px; font-weight:500;">' + escapeHTML(field.label) + '</td>';
+        html += '<td style="padding:6px 8px;">' + escapeHTML(field.type) + '</td>';
+        html += '<td style="padding:6px 8px;">' + escapeHTML(field.section || 'other') + '</td>';
+        html += '<td style="padding:6px 8px; text-align:center;">';
+        html += '  <button type="button" class="btn btn-secondary btn-xs settings-restore-tcf-btn" data-id="' + escapeAttr(field.fieldId) + '" style="font-size:10px; padding:2px 8px;"><span class="material-icons-round" style="font-size:12px; vertical-align:middle;">unarchive</span> Restore</button>';
+        html += '</td>';
+        html += '</tr>';
+      });
+
+      html += '  </tbody></table></div>';
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+    attachSettingsTeacherCustomFieldsEvents();
+  }
+
+  function attachSettingsTeacherCustomFieldsEvents() {
+    var addBtn = document.getElementById('settings-add-teacher-cf-btn');
+    if (addBtn) {
+      addBtn.onclick = function() {
+        showTeacherCustomFieldModal(null);
+      };
+    }
+
+    var container = document.getElementById('settings-teacher-custom-fields-container');
+    if (!container) return;
+
+    // Edit button
+    container.querySelectorAll('.settings-edit-tcf-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = this.getAttribute('data-id');
+        var defs = getTeacherCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (field) showTeacherCustomFieldModal(field);
+      };
+    });
+
+    // Move Up
+    container.querySelectorAll('.settings-tcf-up-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getTeacherCustomFieldDefinitions();
+        var activeFields = defs.filter(function(d) { return d.status !== 'archived'; })
+                               .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+        var idx = activeFields.findIndex(function(d) { return d.fieldId === id; });
+        if (idx > 0) {
+          var curr = activeFields[idx];
+          var prev = activeFields[idx - 1];
+          var tempOrder = curr.order;
+          curr.order = prev.order;
+          prev.order = tempOrder;
+          await SchoolApp.save(true);
+          renderSettingsTeacherCustomFields();
+        }
+      };
+    });
+
+    // Move Down
+    container.querySelectorAll('.settings-tcf-down-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getTeacherCustomFieldDefinitions();
+        var activeFields = defs.filter(function(d) { return d.status !== 'archived'; })
+                               .sort(function(a, b) { return (a.order || 0) - (b.order || 0); });
+        var idx = activeFields.findIndex(function(d) { return d.fieldId === id; });
+        if (idx !== -1 && idx < activeFields.length - 1) {
+          var curr = activeFields[idx];
+          var next = activeFields[idx + 1];
+          var tempOrder = curr.order;
+          curr.order = next.order;
+          next.order = tempOrder;
+          await SchoolApp.save(true);
+          renderSettingsTeacherCustomFields();
+        }
+      };
+    });
+
+    // Archive button
+    container.querySelectorAll('.settings-archive-tcf-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = this.getAttribute('data-id');
+        var defs = getTeacherCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (!field) return;
+
+        SchoolApp.showConfirm('Archive field "' + field.label + '"? It will be hidden from teacher forms, but all existing teacher profile values are safely preserved.', async function() {
+          field.status = 'archived';
+          await SchoolApp.save(true);
+          renderSettingsTeacherCustomFields();
+          SchoolApp.showToast('Field "' + field.label + '" archived.', 'info');
+        });
+      };
+    });
+
+    // Restore button
+    container.querySelectorAll('.settings-restore-tcf-btn').forEach(function(btn) {
+      btn.onclick = async function() {
+        var id = this.getAttribute('data-id');
+        var defs = getTeacherCustomFieldDefinitions();
+        var field = defs.find(function(d) { return d.fieldId === id; });
+        if (!field) return;
+
+        field.status = 'active';
+        await SchoolApp.save(true);
+        renderSettingsTeacherCustomFields();
+        SchoolApp.showToast('Field "' + field.label + '" restored.', 'success');
+      };
+    });
+  }
+
+  function showTeacherCustomFieldModal(fieldDef) {
+    var isEdit = !!fieldDef;
+    var title = isEdit ? 'Edit Teacher Custom Field' : 'Add Teacher Custom Field';
+
+    var bodyHTML = '<form id="teacher-custom-field-form" class="form-grid" style="gap:16px;">';
+
+    // Label
+    bodyHTML += '<div class="form-group full-width"><label class="form-label">Field Label *</label><input type="text" class="form-input" id="tcf-modal-label" value="' + (isEdit ? escapeAttr(fieldDef.label) : '') + '" placeholder="e.g. PAN Number, Aadhaar Number, EPF Number, Emergency Contact" required><span class="form-error">Required</span></div>';
+
+    // Type
+    if (isEdit) {
+      bodyHTML += '<div class="form-group"><label class="form-label">Field Type</label><input type="text" class="form-input" value="' + escapeAttr(fieldDef.type) + '" disabled readonly style="opacity:0.8; background:var(--bg-tertiary);"><span style="font-size:11px; color:#9CA3AF; margin-top:4px;">Type cannot be changed after creation to protect existing records.</span></div>';
+    } else {
+      bodyHTML += '<div class="form-group"><label class="form-label">Field Type *</label><select class="form-select" id="tcf-modal-type" required>';
+      bodyHTML += '<option value="text">Text (Single Line)</option>';
+      bodyHTML += '<option value="number">Number</option>';
+      bodyHTML += '<option value="date">Date</option>';
+      bodyHTML += '<option value="dropdown">Dropdown (Select Option)</option>';
+      bodyHTML += '<option value="yes/no">Yes / No</option>';
+      bodyHTML += '<option value="phone">Phone Number (10 Digits)</option>';
+      bodyHTML += '<option value="email">Email Address</option>';
+      bodyHTML += '</select></div>';
+    }
+
+    // Section
+    var curSec = isEdit ? (fieldDef.section || 'personal') : 'personal';
+    bodyHTML += '<div class="form-group"><label class="form-label">Form Section *</label><select class="form-select" id="tcf-modal-section" required>';
+    bodyHTML += '<option value="personal"' + (curSec === 'personal' ? ' selected' : '') + '>Personal Details</option>';
+    bodyHTML += '<option value="academic"' + (curSec === 'academic' ? ' selected' : '') + '>Academic & Qualifications</option>';
+    bodyHTML += '<option value="employment"' + (curSec === 'employment' ? ' selected' : '') + '>Employment & Service Details</option>';
+    bodyHTML += '<option value="other"' + (curSec === 'other' ? ' selected' : '') + '>Other Details</option>';
+    bodyHTML += '</select></div>';
+
+    // Dropdown options (shown if dropdown)
+    var curOptions = isEdit && Array.isArray(fieldDef.options) ? fieldDef.options.join(', ') : '';
+    var optDisplay = (isEdit && fieldDef.type === 'dropdown') ? 'block' : 'none';
+    bodyHTML += '<div class="form-group full-width" id="tcf-modal-options-group" style="display:' + optDisplay + ';"><label class="form-label">Dropdown Options * <span style="font-size:11px; color:#9CA3AF;">(Comma-separated)</span></label><textarea class="form-textarea" id="tcf-modal-options" rows="2" placeholder="e.g. Regular, Contractual, Visiting, Guest">' + escapeHTML(curOptions) + '</textarea></div>';
+
+    // Required Checkbox
+    var isReq = isEdit ? !!fieldDef.required : false;
+    bodyHTML += '<div class="form-group full-width" style="display:flex; flex-direction:column; gap:10px; margin-top:4px;">';
+    bodyHTML += '  <label style="display:inline-flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;">';
+    bodyHTML += '    <input type="checkbox" id="tcf-modal-required"' + (isReq ? ' checked' : '') + '> <strong>Required on Teacher Form</strong> (enforces soft validation for older records)';
+    bodyHTML += '  </label>';
+    bodyHTML += '</div>';
+
+    bodyHTML += '</form>';
+
+    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+    footerHTML += '<button class="btn btn-primary" id="tcf-modal-save-btn"><span class="material-icons-round">save</span> ' + (isEdit ? 'Update Field' : 'Create Field') + '</button>';
+
+    SchoolApp.showModal(title, bodyHTML, footerHTML);
+
+    var typeSelect = document.getElementById('tcf-modal-type');
+    var optGroup = document.getElementById('tcf-modal-options-group');
+    if (typeSelect && optGroup) {
+      typeSelect.addEventListener('change', function() {
+        optGroup.style.display = this.value === 'dropdown' ? 'block' : 'none';
+      });
+    }
+
+    var saveBtn = document.getElementById('tcf-modal-save-btn');
+    if (saveBtn) {
+      saveBtn.onclick = async function() {
+        var labelInput = document.getElementById('tcf-modal-label');
+        var label = labelInput ? labelInput.value.trim() : '';
+        if (!label) {
+          SchoolApp.showToast('Field label is required.', 'error');
+          if (labelInput) labelInput.focus();
+          return;
+        }
+
+        var defs = getTeacherCustomFieldDefinitions();
+        var type = isEdit ? fieldDef.type : (typeSelect ? typeSelect.value : 'text');
+        var section = document.getElementById('tcf-modal-section') ? document.getElementById('tcf-modal-section').value : 'personal';
+        var required = !!(document.getElementById('tcf-modal-required') && document.getElementById('tcf-modal-required').checked);
+
+        var options = [];
+        if (type === 'dropdown') {
+          var optsRaw = document.getElementById('tcf-modal-options') ? document.getElementById('tcf-modal-options').value : '';
+          options = optsRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+          if (options.length === 0) {
+            SchoolApp.showToast('Please specify at least one dropdown option.', 'error');
+            return;
+          }
+        }
+
+        if (isEdit) {
+          fieldDef.label = label;
+          fieldDef.section = section;
+          fieldDef.required = required;
+          if (type === 'dropdown') fieldDef.options = options;
+          fieldDef.updatedAt = new Date().toISOString();
+
+          SchoolApp.closeModal();
+          await SchoolApp.save(true);
+          renderSettingsTeacherCustomFields();
+          SchoolApp.showToast('Teacher custom field updated successfully.', 'success');
+        } else {
+          var duplicate = defs.some(function(d) { return d.status !== 'archived' && d.label.toLowerCase() === label.toLowerCase(); });
+          if (duplicate) {
+            SchoolApp.showToast('An active field with this label already exists.', 'error');
+            return;
+          }
+
+          var maxOrder = defs.reduce(function(max, d) { return Math.max(max, d.order || 0); }, 0);
+          var newField = {
+            fieldId: 'tcf_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 4),
+            label: label,
+            type: type,
+            section: section,
+            required: required,
+            status: 'active',
+            order: maxOrder + 1,
+            options: options,
+            createdAt: new Date().toISOString()
+          };
+
+          defs.push(newField);
+          SchoolApp.closeModal();
+          await SchoolApp.save(true);
+          renderSettingsTeacherCustomFields();
+          SchoolApp.showToast('Teacher custom field created successfully.', 'success');
+        }
+      };
+    }
+  }
+
   function render() {
     var container = document.getElementById('page-admin');
     if (!container) return;
@@ -1797,6 +2145,7 @@
         renderSettingsClasses();
         renderSettingsSubjects();
         renderSettingsCustomFields();
+        renderSettingsTeacherCustomFields();
       }
       if (state.activeTab === 'fees') {
         renderFeesMatrix();
@@ -2487,6 +2836,19 @@
     html += '      <button type="button" class="btn btn-primary btn-sm" id="settings-add-custom-field-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">add</span> Add Custom Field</button>';
     html += '    </div>';
     html += '    <div class="card-body" id="settings-custom-fields-container" style="display:flex; flex-direction:column; gap:16px;">';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 8: Teacher Custom Fields Configuration
+    html += '  <div class="card" id="settings-teacher-custom-fields-card">';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '      <div>';
+    html += '        <h3><span class="material-icons-round">badge</span> Teacher Custom Fields</h3>';
+    html += '        <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">Manage custom teacher profile fields. Values are stored in isolated teacher profiles with self-service view access.</p>';
+    html += '      </div>';
+    html += '      <button type="button" class="btn btn-primary btn-sm" id="settings-add-teacher-cf-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">add</span> Add Teacher Field</button>';
+    html += '    </div>';
+    html += '    <div class="card-body" id="settings-teacher-custom-fields-container" style="display:flex; flex-direction:column; gap:16px;">';
     html += '    </div>';
     html += '  </div>';
 
@@ -5104,10 +5466,29 @@
         if (idx === -1) return;
         var item = trash[idx];
 
-        SchoolApp.showConfirm('Restore ' + item.type + ' "' + item.name + '"?', function() {
+        SchoolApp.showConfirm('Restore ' + item.type + ' "' + item.name + '"?', async function() {
           // Restore to corresponding array
           if (item.type === 'student') {
-            SchoolApp.store.students.push(item.data);
+            var restoredStudent = item.data;
+            var origStatus = (restoredStudent && restoredStudent.statusBeforeDelete) || (restoredStudent && restoredStudent.status) || 'Active';
+            restoredStudent.status = origStatus;
+            delete restoredStudent.statusBeforeDelete;
+            delete restoredStudent.inTrash;
+            SchoolApp.store.students.push(restoredStudent);
+
+            if (SchoolApp.isStudentsMigrated && SchoolApp.isStudentsMigrated()) {
+              try {
+                var ref = window.firestore.doc(window.db, 'tenant_data', SchoolApp.store.currentSchoolId, 'students', id);
+                await window.firestore.updateDoc(ref, {
+                  status: origStatus,
+                  statusBeforeDelete: null,
+                  inTrash: false,
+                  restoredAt: new Date().toISOString()
+                });
+              } catch (e) {
+                console.warn('Subcollection restore error:', e);
+              }
+            }
           } else if (item.type === 'teacher') {
             SchoolApp.store.teachers.push(item.data);
           } else if (item.type === 'attendance') {
@@ -5116,7 +5497,7 @@
 
           // Remove from trash
           SchoolApp.store.trash.splice(idx, 1);
-          SchoolApp.save();
+          await SchoolApp.save();
           SchoolApp.showToast('"' + item.name + '" restored successfully!', 'success');
           render();
         });
