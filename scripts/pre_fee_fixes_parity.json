@@ -1,0 +1,83 @@
+[
+  {
+    "schoolId": "svm_bokaro_001",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 780,
+    "subTotal": 1085410,
+    "totalTxns": 780,
+    "grandTotal": 1085410
+  },
+  {
+    "schoolId": "svm_mqbv7qm2",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 689,
+    "subTotal": 338378,
+    "totalTxns": 689,
+    "grandTotal": 338378
+  },
+  {
+    "schoolId": "kkgs_mttt4ufq",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 244,
+    "subTotal": 64950,
+    "totalTxns": 244,
+    "grandTotal": 64950
+  },
+  {
+    "schoolId": "ips_mttx07mt",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 0,
+    "subTotal": 0,
+    "totalTxns": 0,
+    "grandTotal": 0
+  },
+  {
+    "schoolId": "oxford_narra_muktjcky",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 0,
+    "subTotal": 0,
+    "totalTxns": 0,
+    "grandTotal": 0
+  },
+  {
+    "schoolId": "apex_khalcho_mugmtmx4",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 0,
+    "subTotal": 0,
+    "totalTxns": 0,
+    "grandTotal": 0
+  },
+  {
+    "schoolId": "nts_mu28myws",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 0,
+    "subTotal": 0,
+    "totalTxns": 0,
+    "grandTotal": 0
+  },
+  {
+    "schoolId": "idealschoolgomoh_mv1xhpe5",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 0,
+    "subTotal": 0,
+    "totalTxns": 0,
+    "grandTotal": 0
+  },
+  {
+    "schoolId": "usha_academy_mango_muzflr5z",
+    "rootTxns": 0,
+    "rootTotal": 0,
+    "subTxns": 0,
+    "subTotal": 0,
+    "totalTxns": 0,
+    "grandTotal": 0
+  }
+]

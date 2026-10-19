@@ -729,6 +729,13 @@ window.SchoolApp = {
       this._studentsSubcollectionUnsubscribe = null;
     }
     if (!window.firestore || !window.db) return;
+
+    var resolveReady, rejectReady;
+    this.studentsSubcollectionReady = new Promise(function(resolve, reject) {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+
     try {
       var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'students');
       this._studentsSubcollectionUnsubscribe = window.firestore.onSnapshot(collRef, function(snap) {
@@ -744,6 +751,7 @@ window.SchoolApp = {
         // Dual-read fallback: if subcollection is empty but root has students, fallback to root
         if (subStudents.length === 0 && Array.isArray(self.store.students) && self.store.students.length > 0 && !self._subcollectionEverLoaded) {
           console.warn('[Students Subcollection] Subcollection empty; retaining root fallback students.');
+          if (resolveReady) { resolveReady(self.store.students); resolveReady = null; }
           return;
         }
 
@@ -754,16 +762,67 @@ window.SchoolApp = {
         self.initialServerStudentCount = subStudents.length;
         self._serverStudentsBaseline = subStudents.slice();
 
+        if (resolveReady) {
+          resolveReady(subStudents);
+          resolveReady = null;
+        }
+
         // Auto-refresh active tab if relevant
         if (self.tenantInitialized && self.activeTab === 'students' && typeof window.StudentsModule !== 'undefined' && typeof window.StudentsModule.render === 'function') {
           window.StudentsModule.render();
         }
       }, function(err) {
         console.error('[Students Subcollection] Listener error:', err);
+        if (rejectReady) {
+          rejectReady(err);
+          rejectReady = null;
+        }
       });
     } catch (e) {
       console.error('[Students Subcollection] Failed to initialize listener:', e);
+      if (rejectReady) {
+        rejectReady(e);
+        rejectReady = null;
+      }
     }
+  },
+
+  loadStudentsSubcollectionAsync: async function(schoolId, timeoutMs) {
+    var self = this;
+    if (!schoolId) schoolId = (this.store && this.store.currentSchoolId) || '';
+    if (!schoolId || !window.firestore || !window.db) return [];
+
+    timeoutMs = timeoutMs || 10000;
+
+    // If already listening and ready promise exists, wait on it with timeout
+    if (this.studentsSubcollectionReady) {
+      var timeoutPromise = new Promise(function(_, reject) {
+        setTimeout(function() { reject(new Error('Students subcollection load timed out')); }, timeoutMs);
+      });
+      try {
+        return await Promise.race([this.studentsSubcollectionReady, timeoutPromise]);
+      } catch (err) {
+        console.warn('[Students Subcollection] Promise.race fallback to getDocs:', err.message);
+      }
+    }
+
+    // Direct getDocs fallback
+    var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'students');
+    var snap = await window.firestore.getDocs(collRef);
+    var students = [];
+    var newServerMap = new Map();
+    snap.forEach(function(d) {
+      var item = d.data();
+      students.push(item);
+      newServerMap.set(item.id, JSON.parse(JSON.stringify(item)));
+    });
+    self._subcollectionEverLoaded = true;
+    self._lastServerStudentsMap = newServerMap;
+    self.store.students = students;
+    self.liveServerStudentCount = students.length;
+    self.initialServerStudentCount = students.length;
+    self._serverStudentsBaseline = students.slice();
+    return students;
   },
 
   syncStoreStudentsToSubcollection: async function(currentSchoolId) {
@@ -2431,7 +2490,8 @@ window.SchoolApp = {
       missedMonths.forEach(function(m) {
         var monthName = monthNames[m.month - 1];
         var desc = 'Monthly Tuition Fee - ' + monthName + ' ' + m.year;
-        var chargeDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-05';
+        var triggerDayPad = triggerDay < 10 ? '0' + triggerDay : String(triggerDay);
+        var chargeDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-' + triggerDayPad;
 
         activeStudents.forEach(function(s) {
           var alreadyBilled = (self.store.fees || []).some(function(f) {
@@ -2926,9 +2986,6 @@ window.SchoolApp = {
       if (!this.tenantInitialized) {
         return;
       }
-      if (!this.store || !Array.isArray(this.store.students) || this.store.students.length === 0) {
-        return;
-      }
       if (!this.store.settings || !this.store.settings.autoChargeEnabled) {
         return;
       }
@@ -2936,8 +2993,28 @@ window.SchoolApp = {
       if (this._isReconcilingAutoFees) return; // Prevent concurrent re-entrancy
       this._isReconcilingAutoFees = true;
 
-      // Ensure current year fees are loaded for restructured schools before evaluating
       var activeSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+
+      // F1: In migrated mode, ALWAYS await students subcollection being fully loaded
+      if (activeSchoolId && typeof this.isStudentsMigrated === 'function' && this.isStudentsMigrated(activeSchoolId)) {
+        try {
+          var loadedStudents = await this.loadStudentsSubcollectionAsync(activeSchoolId, 10000);
+          if (!Array.isArray(loadedStudents) || loadedStudents.length === 0) {
+            console.warn('[Auto-Fee] Students subcollection returned empty in migrated mode. Skipping run without stamping autoChargeLastRun.');
+            return;
+          }
+        } catch (subErr) {
+          console.error('[Auto-Fee] Failed to load students subcollection in migrated mode:', subErr);
+          // If loading fails or times out: skip run and do NOT stamp autoChargeLastRun
+          return;
+        }
+      } else {
+        if (!this.store || !Array.isArray(this.store.students) || this.store.students.length === 0) {
+          return;
+        }
+      }
+
+      // Ensure current year fees are loaded for restructured schools before evaluating
       if (activeSchoolId && typeof this.isRestructured === 'function' && this.isRestructured(activeSchoolId)) {
         var currentYr = String(new Date().getFullYear());
         if (!this._feesYears || !this._feesYears[currentYr] || !Array.isArray(this.store.fees) || this.store.fees.length === 0) {
@@ -2974,19 +3051,26 @@ window.SchoolApp = {
       }
 
       // Restructured-aware persistence
+      var saveSuccess = false;
       if (typeof this.saveFeeTransactions === 'function') {
-        await this.saveFeeTransactions(newDueTxns, true);
+        saveSuccess = await this.saveFeeTransactions(newDueTxns, true);
       } else {
-        await this.save(true);
+        saveSuccess = await this.save(true);
       }
 
-      // Update tracking keys
-      settings.autoChargeLastRun = currentPeriod;
+      if (!saveSuccess) {
+        console.error('[Auto-Fee] Failed to persist generated fee dues. autoChargeLastRun NOT stamped.');
+        return;
+      }
+
+      // Update tracking keys ONLY after dues are written successfully
+      if (!this.store.settings) this.store.settings = {};
+      this.store.settings.autoChargeLastRun = currentPeriod;
       this.store.lastAutomatedFeeRun = currentPeriod;
 
       // Update extra charges state
       if (evalResult.updatedExtraChargesState && evalResult.updatedExtraChargesState.length > 0) {
-        var extraCharges = settings.extraCharges || [];
+        var extraCharges = this.store.settings.extraCharges || [];
         evalResult.updatedExtraChargesState.forEach(function(up) {
           var found = extraCharges.find(function(ec) { return ec.id === up.id; });
           if (found) found.lastBilledPeriod = up.lastBilledPeriod;

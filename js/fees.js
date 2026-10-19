@@ -175,15 +175,24 @@
     return 0;
   }
 
-  function getActiveFeeHeads() {
+  function getActiveFeeHeads(includeOrphans) {
     var settings = SchoolApp.store.settings || {};
-    var heads = JSON.parse(JSON.stringify(settings.feeHeads || SchoolApp.store.feeHeads || []));
+    var officialHeads = JSON.parse(JSON.stringify(settings.feeHeads || SchoolApp.store.feeHeads || []));
+    var officialMap = new Map();
+    officialHeads.forEach(function(h) {
+      if (h && h.id) officialMap.set(h.id, h);
+    });
+
+    var heads = officialHeads.slice();
+
     if (settings && settings.feeStructure) {
       var keys = new Set();
       Object.values(settings.feeStructure).forEach(function(clsFees) {
-        Object.keys(clsFees).forEach(function(k) {
-          keys.add(k);
-        });
+        if (clsFees && typeof clsFees === 'object') {
+          Object.keys(clsFees).forEach(function(k) {
+            keys.add(k);
+          });
+        }
       });
       
       keys.forEach(function(k) {
@@ -193,20 +202,33 @@
         else if (k === 'exam') headId = 'fh_exam';
         else if (k === 'fine') headId = 'fh_fine';
         else if (k === 'annual') headId = 'fh_annual';
-        else {
+        else if (!k.startsWith('fh_')) {
           headId = 'fh_' + k;
         }
 
-        var exists = heads.some(function(h) { return h.id === headId || h.name.toLowerCase() === k.toLowerCase(); });
+        var official = officialMap.get(headId) || officialMap.get(k);
+        var exists = heads.some(function(h) { return h.id === headId; });
+
         if (!exists) {
-          heads.push({
-            id: headId,
-            name: k.charAt(0).toUpperCase() + k.slice(1)
-          });
+          if (official) {
+            heads.push(official);
+          } else {
+            // Orphan head: present in feeStructure but not defined in settings.feeHeads
+            heads.push({
+              id: headId,
+              name: k.charAt(0).toUpperCase() + k.slice(1),
+              isOrphan: true
+            });
+          }
         }
       });
     }
-    return heads;
+
+    if (includeOrphans === true) {
+      return heads;
+    }
+    // By default, filter out orphan heads from active creation dropdowns
+    return heads.filter(function(h) { return !h.isOrphan; });
   }
 
   function getStudentParentPhone(student) {
@@ -2382,15 +2404,44 @@
     var totalPaidAmt = statement.totalPaid || 0;
     var outstandingAmt = Math.max(0, statement.netDue || 0);
 
-    // Predict Next Due Date (5th of upcoming billing cycle)
-    var now = new Date();
-    var nextYear = now.getFullYear();
-    var nextMonth = now.getMonth() + 1; // 1-12
-    if (now.getDate() > 5) {
-      nextMonth++;
-      if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+    // F2: Next Due Date (use earliest unpaid due date; otherwise next cycle from settings.autoChargeTriggerDate)
+    var nextDueStr = '—';
+    var settings = SchoolApp.store.settings || {};
+    var triggerDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
+    var padTriggerDay = triggerDay < 10 ? '0' + triggerDay : String(triggerDay);
+
+    // 1. Check if student has pending unpaid dues (from statement or ledger transactions)
+    var earliestUnpaidDate = null;
+    var allDues = (ledger && Array.isArray(ledger.transactions)) ? ledger.transactions.filter(function(t) { return t.type === 'due' && !t.isVoided; }) : [];
+    if (outstandingAmt > 0 && allDues.length > 0) {
+      allDues.forEach(function(d) {
+        if (d && d.date) {
+          if (!earliestUnpaidDate || d.date < earliestUnpaidDate) {
+            earliestUnpaidDate = d.date;
+          }
+        }
+      });
     }
-    var nextDueStr = '05/' + (nextMonth < 10 ? '0' + nextMonth : nextMonth) + '/' + nextYear;
+
+    if (earliestUnpaidDate) {
+      // Format YYYY-MM-DD to DD/MM/YYYY
+      var parts = earliestUnpaidDate.split('-');
+      if (parts.length === 3) {
+        nextDueStr = parts[2] + '/' + parts[1] + '/' + parts[0];
+      } else {
+        nextDueStr = formatDateDDMMYYYY(earliestUnpaidDate) || earliestUnpaidDate;
+      }
+    } else {
+      // No unpaid overdue dues: project next billing cycle based on triggerDay
+      var now = new Date();
+      var nextYear = now.getFullYear();
+      var nextMonth = now.getMonth() + 1; // 1-12
+      if (now.getDate() >= triggerDay) {
+        nextMonth++;
+        if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+      }
+      nextDueStr = padTriggerDay + '/' + (nextMonth < 10 ? '0' + nextMonth : nextMonth) + '/' + nextYear;
+    }
 
     bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(4, 1fr); gap: 10px;">';
     bodyHTML += '  <div class="stat-card purple" style="padding:12px 14px;">';
@@ -3411,9 +3462,9 @@
     });
     bodyHTML += '</select></div>';
 
-    // Billing Date
+    // Due Date (renamed from Billing Date)
     var todayStr = new Date().toISOString().split('T')[0];
-    bodyHTML += '<div class="form-group"><label class="form-label">Billing Date *</label>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Due Date *</label>';
     bodyHTML += '<input type="date" id="bulk-date" class="form-input" value="' + todayStr + '" required>';
     bodyHTML += '</div>';
 
@@ -3437,6 +3488,10 @@
     var saveBtn = document.getElementById('bulk-charge-save-btn');
     if (saveBtn) {
       saveBtn.addEventListener('click', async function() {
+        if (saveBtn.disabled) return;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Checking...';
+
         var cls = document.getElementById('bulk-class').value;
         var headId = document.getElementById('bulk-feehead').value;
         var date = document.getElementById('bulk-date').value;
@@ -3444,11 +3499,15 @@
         var note = document.getElementById('bulk-note') ? document.getElementById('bulk-note').value.trim() : '';
 
         if (!date) {
-          SchoolApp.showToast('Please select a billing date.', 'error');
+          SchoolApp.showToast('Please select a due date.', 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
           return;
         }
         if (!desc) {
           SchoolApp.showToast('Please enter a description/period.', 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
           return;
         }
 
@@ -3460,7 +3519,29 @@
 
         if (students.length === 0) {
           SchoolApp.showToast('No students found in selected class(es).', 'error');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
           return;
+        }
+
+        // F3 Size Guard: Estimate bytes the run adds to the root (feeActivityLog)
+        // Each log entry is ~230 bytes JSON serialization in the root doc
+        try {
+          var rootEstimatedBytes = 0;
+          if (SchoolApp.store) {
+            rootEstimatedBytes = new Blob([JSON.stringify(SchoolApp.store)]).size;
+          }
+          var incomingLogBytes = students.length * 250;
+          if (rootEstimatedBytes + incomingLogBytes > 921600) { // 900 KB threshold
+            var currentKb = (rootEstimatedBytes / 1024).toFixed(0);
+            var projectedKb = ((rootEstimatedBytes + incomingLogBytes) / 1024).toFixed(0);
+            SchoolApp.showToast('Bulk charge blocked: Root document is near 1 MB limit (' + currentKb + ' KB now, ' + projectedKb + ' KB projected). Please archive feeActivityLog first.', 'error');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Generate Dues';
+            return;
+          }
+        } catch (e) {
+          console.warn('[Bulk Charge] Size guard check failed:', e);
         }
 
         if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
@@ -3474,13 +3555,38 @@
 
         var existingFees = SchoolApp.store.fees || [];
         var generatedTxns = [];
+        var targetMonth = date.substring(0, 7); // YYYY-MM
+
+        // F3 Pre-check: Count how many students already have the same student + feeHead + month
+        var alreadyBilledForMonthCount = 0;
+        students.forEach(function(s) {
+          var hasMonthDue = existingFees.some(function(t) {
+            if (!t || t.studentId !== s.id || t.feeHeadId !== headId || t.type !== 'due') return false;
+            var tPeriod = t.billingPeriod || (t.date ? t.date.substring(0, 7) : '');
+            return tPeriod === targetMonth || (t.date && t.date.startsWith(targetMonth));
+          });
+          if (hasMonthDue) alreadyBilledForMonthCount++;
+        });
+
+        if (alreadyBilledForMonthCount > 0) {
+          var unbilledStudentsCount = students.length - alreadyBilledForMonthCount;
+          var warnMsg = alreadyBilledForMonthCount + ' student(s) already have ' + feeHeadName + ' dues recorded for ' + targetMonth + '.';
+          if (unbilledStudentsCount === 0) {
+            SchoolApp.showToast(warnMsg + ' All students are already billed. Generation stopped.', 'warning');
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Generate Dues';
+            return;
+          } else {
+            SchoolApp.showToast(warnMsg + ' Charging only ' + unbilledStudentsCount + ' unbilled student(s).', 'info');
+          }
+        }
 
         students.forEach(function(s) {
+          // Pre-check for same student + feeHead + month (or same date)
           var alreadyCharged = existingFees.some(function(t) {
-            return t && t.studentId === s.id
-              && t.feeHeadId === headId
-              && t.type === 'due'
-              && t.date === date;
+            if (!t || t.studentId !== s.id || t.feeHeadId !== headId || t.type !== 'due') return false;
+            var tPeriod = t.billingPeriod || (t.date ? t.date.substring(0, 7) : '');
+            return tPeriod === targetMonth || (t.date && t.date.startsWith(targetMonth)) || t.date === date;
           });
           if (alreadyCharged) {
             skippedCount++;
@@ -3497,7 +3603,8 @@
               feeHeadId: headId,
               amount: defaultAmt,
               date: date,
-              description: desc
+              description: desc,
+              billingPeriod: targetMonth
             };
             SchoolApp.store.fees.push(newTxn);
             generatedTxns.push(newTxn);
@@ -3519,12 +3626,16 @@
         });
 
         if (students.length > 0 && chargedCount === 0 && skippedCount > 0) {
-          SchoolApp.showToast('Ye students is date ke liye already charge ho chuke hain.', 'warning');
+          SchoolApp.showToast('Ye students is month / date ke liye already charge ho chuke hain.', 'warning');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
           return;
         }
 
         if (chargedCount === 0) {
           SchoolApp.showToast('No dues to generate (default fee amount is 0 for selected class).', 'info');
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Generate Dues';
           return;
         }
 
@@ -3548,7 +3659,7 @@
 
         if (success) {
           SchoolApp.closeModal();
-          var msg = 'Charged default fee dues to ' + chargedCount + ' students successfully!';
+          var msg = 'Charged fee dues to ' + chargedCount + ' students successfully!';
           if (skippedCount > 0) {
             msg += ' (' + skippedCount + ' already charged and skipped)';
           }
