@@ -6,6 +6,134 @@
 
 (function() {
 
+  // --- Fee Due-Date & Overdue Lifecycle Helpers ---
+  function formatFeeMonth(monthKey) {
+    if (!monthKey) return '';
+    var str = String(monthKey).trim();
+    if (str.indexOf('-') === 4) {
+      var parts = str.split('-');
+      var mIdx = parseInt(parts[1], 10) - 1;
+      var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      if (mIdx >= 0 && mIdx < 12) {
+        return monthNames[mIdx] + ' ' + parts[0];
+      }
+    }
+    return str;
+  }
+
+  function getFeeDueMetadata(due) {
+    if (!due) return { billingDate: '', dueDate: '', feeMonth: '', feeMonthFormatted: '' };
+    var bDate = due.billingDate || due.date || '';
+    var dDate = due.dueDate || due.date || bDate;
+    var monthKey = due.feeMonth || due.billingPeriod || (bDate ? bDate.substring(0, 7) : '');
+    return {
+      billingDate: bDate,
+      dueDate: dDate,
+      feeMonth: monthKey,
+      feeMonthFormatted: formatFeeMonth(monthKey)
+    };
+  }
+
+  // A2: FIFO Payment Allocation helper for unpaid dues
+  function getStudentUnpaidDues(studentId, customTodayStr) {
+    var todayStr = customTodayStr || new Date().toISOString().split('T')[0];
+    var settings = (SchoolApp.store && SchoolApp.store.settings) || {};
+    var graceDays = parseInt(settings.gracePeriodDays, 10);
+    if (isNaN(graceDays) || graceDays < 0) graceDays = 0;
+
+    var allTxns = (SchoolApp.store && Array.isArray(SchoolApp.store.fees)) ? SchoolApp.store.fees.filter(function(f) {
+      return f && f.studentId === studentId && !f.isVoided && !f.isReversal;
+    }) : [];
+
+    // Sort chronologically by due date (oldest first for FIFO)
+    var dues = [];
+    var payments = [];
+
+    allTxns.forEach(function(t) {
+      if (t.type === 'due') {
+        var meta = getFeeDueMetadata(t);
+        dues.push({
+          id: t.id,
+          feeHeadId: t.feeHeadId || 'custom',
+          description: t.description || 'Charge',
+          amount: Number(t.amount || 0),
+          remaining: Number(t.amount || 0),
+          billingDate: meta.billingDate,
+          dueDate: meta.dueDate,
+          feeMonth: meta.feeMonth,
+          feeMonthFormatted: meta.feeMonthFormatted,
+          rawTxn: t
+        });
+      } else if (t.type === 'payment') {
+        payments.push(t);
+      }
+    });
+
+    dues.sort(function(a, b) {
+      return (a.dueDate || a.billingDate).localeCompare(b.dueDate || b.billingDate);
+    });
+
+    // Deduct payments via allocations or chronological FIFO
+    payments.forEach(function(p) {
+      if (Array.isArray(p.allocations) && p.allocations.length > 0) {
+        p.allocations.forEach(function(alloc) {
+          var allocAmt = Number(alloc.amount || 0);
+          if (alloc.dueId) {
+            var targetDue = dues.find(function(d) { return d.id === alloc.dueId; });
+            if (targetDue && targetDue.remaining > 0) {
+              var deduct = Math.min(targetDue.remaining, allocAmt);
+              targetDue.remaining -= deduct;
+              allocAmt -= deduct;
+            }
+          }
+          if (allocAmt > 0) {
+            for (var i = 0; i < dues.length; i++) {
+              if (allocAmt <= 0) break;
+              if (dues[i].remaining > 0 && (!alloc.feeHeadId || dues[i].feeHeadId === alloc.feeHeadId)) {
+                var dDeduct = Math.min(dues[i].remaining, allocAmt);
+                dues[i].remaining -= dDeduct;
+                allocAmt -= dDeduct;
+              }
+            }
+          }
+        });
+      } else {
+        var unallocatedAmt = Number(p.amount || 0) + Number(p.discount || 0);
+        for (var i = 0; i < dues.length; i++) {
+          if (unallocatedAmt <= 0) break;
+          if (dues[i].remaining > 0) {
+            var deduct = Math.min(dues[i].remaining, unallocatedAmt);
+            dues[i].remaining -= deduct;
+            unallocatedAmt -= deduct;
+          }
+        }
+      }
+    });
+
+    // Return unpaid / partially paid dues with overdue status
+    var unpaidDues = [];
+    dues.forEach(function(d) {
+      if (d.remaining > 0) {
+        var dTime = new Date(d.dueDate || d.billingDate).getTime();
+        var overdueDeadlineStr = d.dueDate || d.billingDate;
+        if (!isNaN(dTime)) {
+          var deadlineMs = dTime + (graceDays * 86400000);
+          var deadlineDate = new Date(deadlineMs);
+          overdueDeadlineStr = deadlineDate.toISOString().split('T')[0];
+        }
+        var isOverdue = todayStr > overdueDeadlineStr;
+        unpaidDues.push({
+          ...d,
+          isPartiallyPaid: d.remaining < d.amount,
+          isOverdue: isOverdue,
+          overdueDeadline: overdueDeadlineStr
+        });
+      }
+    });
+
+    return unpaidDues;
+  }
+
   var state = {
     searchQuery: '',
     classFilter: 'all',
@@ -666,10 +794,16 @@
       if (s.status === 'Inactive') return;
       var stmt = generateFeeStatement(s.id);
       if (stmt && stmt.netDue > 0) {
-        defaulters.push({
-          student: s,
-          statement: stmt
-        });
+        // Defaulter condition: Must have netDue > 0 AND at least one unpaid due that is overdue past dueDate + grace
+        var unpaidDues = getStudentUnpaidDues(s.id);
+        var hasOverdueDue = unpaidDues.some(function(d) { return d.isOverdue; });
+        if (hasOverdueDue) {
+          defaulters.push({
+            student: s,
+            statement: stmt,
+            earliestOverdue: unpaidDues.find(function(d) { return d.isOverdue; })
+          });
+        }
       }
     });
 
@@ -820,7 +954,11 @@
     if (state.statusFilter !== 'all') {
       students = students.filter(function(s) {
         var stats = getStudentFeeStats(s.id);
-        if (state.statusFilter === 'unpaid') {
+        if (state.statusFilter === 'defaulters') {
+          if (stats.outstanding <= 0) return false;
+          var sUnpaid = getStudentUnpaidDues(s.id);
+          return sUnpaid.some(function(d) { return d.isOverdue; });
+        } else if (state.statusFilter === 'unpaid') {
           return stats.outstanding > 0;
         } else if (state.statusFilter === 'paid') {
           return stats.outstanding <= 0;
@@ -1283,7 +1421,7 @@
 
       shellHtml += '<div class="defaulter-toggle-wrapper" style="display:flex; align-items:center; gap:6px; margin-left: 12px; margin-right: auto;">';
       shellHtml += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text-secondary);">';
-      shellHtml += '<input type="checkbox" id="defaulters-only-toggle"' + (state.statusFilter === 'unpaid' ? ' checked' : '') + ' style="width:16px; height:16px; cursor:pointer; accent-color:var(--danger);">';
+      shellHtml += '<input type="checkbox" id="defaulters-only-toggle"' + (state.statusFilter === 'defaulters' ? ' checked' : '') + ' style="width:16px; height:16px; cursor:pointer; accent-color:var(--danger);">';
       shellHtml += '<span>Show Defaulters</span>';
       shellHtml += '</label>';
       shellHtml += '</div>';
@@ -1317,6 +1455,7 @@
 
       shellHtml += '<select class="form-select" id="fees-status-filter">';
       shellHtml += '<option value="all"' + (state.statusFilter === 'all' ? ' selected' : '') + '>All Statuses</option>';
+      shellHtml += '<option value="defaulters"' + (state.statusFilter === 'defaulters' ? ' selected' : '') + '>Defaulters (Overdue Only)</option>';
       shellHtml += '<option value="unpaid"' + (state.statusFilter === 'unpaid' ? ' selected' : '') + '>Outstanding Balance</option>';
       shellHtml += '<option value="paid"' + (state.statusFilter === 'paid' ? ' selected' : '') + '>Fully Paid</option>';
       shellHtml += '</select>';
@@ -1431,7 +1570,7 @@
     }
     var defaulterToggle = document.getElementById('defaulters-only-toggle');
     if (defaulterToggle) {
-      defaulterToggle.checked = (state.statusFilter === 'unpaid');
+      defaulterToggle.checked = (state.statusFilter === 'defaulters');
     }
     var classFilter = document.getElementById('fees-class-filter');
     if (classFilter && classFilter.value !== state.classFilter) {
@@ -1741,8 +1880,13 @@
 
     if (hasAllocations) {
       txn.allocations.forEach(function(a) {
+        var allocHeadName = escapeHTML(a.feeHeadName || a.feeHeadId || 'Fee Head');
+        var allocPeriodStr = formatFeeMonth(a.feeMonth || a.billingPeriod);
+        if (allocPeriodStr && allocHeadName.indexOf(allocPeriodStr) === -1) {
+          allocHeadName += ' <span style="font-size:11px; color:#64748b; font-weight:normal;">(' + escapeHTML(allocPeriodStr) + ')</span>';
+        }
         html += '      <tr style="border-bottom:1px solid #e2e8f0;">';
-        html += '        <td style="padding:8px 12px; font-weight:500;">' + escapeHTML(a.feeHeadName || a.feeHeadId || 'Fee Head') + '</td>';
+        html += '        <td style="padding:8px 12px; font-weight:500;">' + allocHeadName + '</td>';
         html += '        <td style="padding:8px 12px; color:#64748b;">' + escapeHTML(remarks) + '</td>';
         html += '        <td style="padding:8px 12px; text-align:right; font-weight:600; color:#0f172a;">₹' + Number(a.amount || 0).toLocaleString('en-IN') + '.00</td>';
         html += '      </tr>';
@@ -2404,43 +2548,68 @@
     var totalPaidAmt = statement.totalPaid || 0;
     var outstandingAmt = Math.max(0, statement.netDue || 0);
 
-    // F2: Next Due Date (use earliest unpaid due date; otherwise next cycle from settings.autoChargeTriggerDate)
-    var nextDueStr = '—';
+    // Dynamic Due-Date & Overdue Lifecycle Model
     var settings = SchoolApp.store.settings || {};
-    var triggerDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
-    var padTriggerDay = triggerDay < 10 ? '0' + triggerDay : String(triggerDay);
+    var isAutoChargeOn = !!settings.autoChargeEnabled;
+    var rawTriggerDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
+    var graceDays = parseInt(settings.gracePeriodDays, 10);
+    if (isNaN(graceDays) || graceDays < 0) graceDays = 0;
 
-    // 1. Check if student has pending unpaid dues (from statement or ledger transactions)
-    var earliestUnpaidDate = null;
-    var allDues = (ledger && Array.isArray(ledger.transactions)) ? ledger.transactions.filter(function(t) { return t.type === 'due' && !t.isVoided; }) : [];
-    if (outstandingAmt > 0 && allDues.length > 0) {
-      allDues.forEach(function(d) {
-        if (d && d.date) {
-          if (!earliestUnpaidDate || d.date < earliestUnpaidDate) {
-            earliestUnpaidDate = d.date;
-          }
+    var statusCardClass = 'cyan';
+    var statusTitle = 'Next Due Date';
+    var statusValueHTML = '—';
+
+    if (outstandingAmt > 0) {
+      // Unpaid dues exist: evaluate earliest unpaid due via FIFO allocation
+      var unpaidDuesList = getStudentUnpaidDues(studentId);
+      if (unpaidDuesList.length > 0) {
+        var earliestDue = unpaidDuesList[0];
+        var parts = (earliestDue.dueDate || earliestDue.billingDate).split('-');
+        var formattedDueDate = parts.length === 3 ? (parts[2] + '/' + parts[1] + '/' + parts[0]) : (earliestDue.dueDate || earliestDue.billingDate);
+
+        if (earliestDue.isOverdue) {
+          // State 1: Overdue past dueDate + grace (A8: CSS tokens)
+          statusCardClass = 'red';
+          statusTitle = 'Overdue Status';
+          statusValueHTML = '<span style="color:var(--danger, #ef4444); font-weight:700;">Overdue since ' + escapeHTML(formattedDueDate) + '</span>';
+        } else {
+          // State 2: Due date within pending / grace window
+          statusCardClass = 'amber';
+          statusTitle = 'Next Due Date';
+          statusValueHTML = '<span style="color:var(--warning, #f59e0b); font-weight:700;">Due on ' + escapeHTML(formattedDueDate) + '</span>';
         }
-      });
-    }
-
-    if (earliestUnpaidDate) {
-      // Format YYYY-MM-DD to DD/MM/YYYY
-      var parts = earliestUnpaidDate.split('-');
-      if (parts.length === 3) {
-        nextDueStr = parts[2] + '/' + parts[1] + '/' + parts[0];
       } else {
-        nextDueStr = formatDateDDMMYYYY(earliestUnpaidDate) || earliestUnpaidDate;
+        statusCardClass = 'amber';
+        statusTitle = 'Next Due Date';
+        statusValueHTML = '<span style="color:var(--warning, #f59e0b); font-weight:700;">Balance Pending</span>';
       }
     } else {
-      // No unpaid overdue dues: project next billing cycle based on triggerDay
-      var now = new Date();
-      var nextYear = now.getFullYear();
-      var nextMonth = now.getMonth() + 1; // 1-12
-      if (now.getDate() >= triggerDay) {
-        nextMonth++;
-        if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+      // State 3: Nothing unpaid (Zero balance)
+      if (!isAutoChargeOn) {
+        // A3: Auto-charge disabled -> "Next Cycle: —" (no invented date)
+        statusCardClass = 'cyan';
+        statusTitle = 'Next Due Date';
+        statusValueHTML = '<span style="color:var(--text-muted); font-weight:600;">Next Cycle: —</span>';
+      } else {
+        // Project next auto-charge cycle from triggerDay
+        var now = new Date();
+        var nextYear = now.getFullYear();
+        var nextMonth = now.getMonth() + 1; // 1-12
+        if (now.getDate() >= rawTriggerDay) {
+          nextMonth++;
+          if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+        }
+        // A4: Clamp trigger day 29-31 to days in nextMonth
+        var daysInNextMonth = new Date(nextYear, nextMonth, 0).getDate();
+        var clampedDay = Math.min(rawTriggerDay, daysInNextMonth);
+        var padClampedDay = clampedDay < 10 ? '0' + clampedDay : String(clampedDay);
+        var padNextMonth = nextMonth < 10 ? '0' + nextMonth : String(nextMonth);
+        var nextCycleStr = padClampedDay + '/' + padNextMonth + '/' + nextYear;
+
+        statusCardClass = 'cyan';
+        statusTitle = 'Next Due Date';
+        statusValueHTML = '<span style="color:var(--success, #10b981); font-weight:700;">Next Cycle: ' + nextCycleStr + '</span>';
       }
-      nextDueStr = padTriggerDay + '/' + (nextMonth < 10 ? '0' + nextMonth : nextMonth) + '/' + nextYear;
     }
 
     bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(4, 1fr); gap: 10px;">';
@@ -2463,10 +2632,10 @@
     bodyHTML += '      <div class="stat-label" style="font-size:11px;">Outstanding Balance</div>';
     bodyHTML += '    </div>';
     bodyHTML += '  </div>';
-    bodyHTML += '  <div class="stat-card cyan" style="padding:12px 14px;">';
+    bodyHTML += '  <div class="stat-card ' + statusCardClass + '" style="padding:12px 14px;">';
     bodyHTML += '    <div class="stat-info">';
-    bodyHTML += '      <div class="stat-number" style="font-size:16px;">' + nextDueStr + '</div>';
-    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Next Due Date</div>';
+    bodyHTML += '      <div class="stat-number" style="font-size:15px;">' + statusValueHTML + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">' + escapeHTML(statusTitle) + '</div>';
     bodyHTML += '    </div>';
     bodyHTML += '  </div>';
     bodyHTML += '</div>';
@@ -2526,7 +2695,25 @@
         } else {
           bodyHTML += '<tr>';
           bodyHTML += '<td style="font-size:12px; white-space:nowrap;">' + formatDateDDMMYYYY(t.date) + '</td>';
-          bodyHTML += '<td><strong>' + escapeHTML(t.description) + '</strong>';
+          var dueMeta = getFeeDueMetadata(t);
+          var rowDescHTML = escapeHTML(t.description);
+          if (t.type === 'due' && dueMeta.feeMonthFormatted && rowDescHTML.indexOf(dueMeta.feeMonthFormatted) === -1) {
+            rowDescHTML += ' <span style="font-size:11px; color:var(--text-secondary); font-weight:normal;">(' + escapeHTML(dueMeta.feeMonthFormatted) + ')</span>';
+          }
+          if (t.type === 'due') {
+            var partsD = dueMeta.dueDate.split('-');
+            var dFmt = partsD.length === 3 ? (partsD[2] + '/' + partsD[1] + '/' + partsD[0]) : dueMeta.dueDate;
+            rowDescHTML += '<br><small style="color:var(--text-muted); font-size:11px;">Due: ' + escapeHTML(dFmt) + '</small>';
+            var gDays = parseInt((SchoolApp.store.settings && SchoolApp.store.settings.gracePeriodDays), 10) || 0;
+            var dTimeMs = new Date(dueMeta.dueDate).getTime();
+            if (!isNaN(dTimeMs) && !t.isVoided) {
+              var isDueOverdue = (new Date().toISOString().split('T')[0]) > new Date(dTimeMs + gDays * 86400000).toISOString().split('T')[0];
+              if (isDueOverdue) {
+                rowDescHTML += ' <span class="badge" style="background:rgba(239,68,68,0.12); color:var(--danger, #ef4444); border:1px solid rgba(239,68,68,0.25); font-size:10px; padding:1px 5px; border-radius:10px; font-weight:600;">Overdue</span>';
+              }
+            }
+          }
+          bodyHTML += '<td><strong>' + rowDescHTML + '</strong>';
           if (t.discount > 0) {
             bodyHTML += '<br><span style="font-size:11px; color:var(--info);">₹' + t.discount.toLocaleString('en-IN') + ' discount applied (' + (t.discountType === 'percentage' ? (t.discountValue || '') + '%' : 'Flat') + ')</span>';
           }
@@ -3462,10 +3649,15 @@
     });
     bodyHTML += '</select></div>';
 
-    // Due Date (renamed from Billing Date)
+    // Due Date & Fee Month (A5)
     var todayStr = new Date().toISOString().split('T')[0];
+    var currentMonthStr = todayStr.substring(0, 7);
     bodyHTML += '<div class="form-group"><label class="form-label">Due Date *</label>';
     bodyHTML += '<input type="date" id="bulk-date" class="form-input" value="' + todayStr + '" required>';
+    bodyHTML += '</div>';
+
+    bodyHTML += '<div class="form-group"><label class="form-label">Fee Month *</label>';
+    bodyHTML += '<input type="month" id="bulk-fee-month" class="form-input" value="' + currentMonthStr + '" required>';
     bodyHTML += '</div>';
 
     // Period / Description
@@ -3485,6 +3677,19 @@
 
     SchoolApp.showModal('Bulk Charge Class Dues', bodyHTML, footerHTML);
 
+    var bulkDateEl = document.getElementById('bulk-date');
+    var bulkMonthEl = document.getElementById('bulk-fee-month');
+    if (bulkDateEl && bulkMonthEl) {
+      bulkDateEl.addEventListener('change', function() {
+        if (!bulkMonthEl.dataset.manuallyEdited && this.value) {
+          bulkMonthEl.value = this.value.substring(0, 7);
+        }
+      });
+      bulkMonthEl.addEventListener('input', function() {
+        this.dataset.manuallyEdited = 'true';
+      });
+    }
+
     var saveBtn = document.getElementById('bulk-charge-save-btn');
     if (saveBtn) {
       saveBtn.addEventListener('click', async function() {
@@ -3495,6 +3700,7 @@
         var cls = document.getElementById('bulk-class').value;
         var headId = document.getElementById('bulk-feehead').value;
         var date = document.getElementById('bulk-date').value;
+        var feeMonthVal = document.getElementById('bulk-fee-month') ? document.getElementById('bulk-fee-month').value : (date ? date.substring(0, 7) : '');
         var desc = document.getElementById('bulk-desc').value.trim();
         var note = document.getElementById('bulk-note') ? document.getElementById('bulk-note').value.trim() : '';
 
@@ -3603,8 +3809,11 @@
               feeHeadId: headId,
               amount: defaultAmt,
               date: date,
+              billingDate: todayStr,
+              dueDate: date,
+              feeMonth: feeMonthVal,
               description: desc,
-              billingPeriod: targetMonth
+              billingPeriod: feeMonthVal
             };
             SchoolApp.store.fees.push(newTxn);
             generatedTxns.push(newTxn);
@@ -3718,7 +3927,7 @@
     var defaulterToggle = document.getElementById('defaulters-only-toggle');
     if (defaulterToggle) {
       defaulterToggle.addEventListener('change', function() {
-        state.statusFilter = this.checked ? 'unpaid' : 'all';
+        state.statusFilter = this.checked ? 'defaulters' : 'all';
         state.currentPage = 1;
         render();
       });

@@ -2490,7 +2490,10 @@ window.SchoolApp = {
       missedMonths.forEach(function(m) {
         var monthName = monthNames[m.month - 1];
         var desc = 'Monthly Tuition Fee - ' + monthName + ' ' + m.year;
-        var triggerDayPad = triggerDay < 10 ? '0' + triggerDay : String(triggerDay);
+        // A4: Clamp trigger day 29-31 to the last day of short months
+        var maxDaysInMonth = new Date(m.year, m.month, 0).getDate();
+        var effectiveTriggerDay = Math.min(triggerDay, maxDaysInMonth);
+        var triggerDayPad = effectiveTriggerDay < 10 ? '0' + effectiveTriggerDay : String(effectiveTriggerDay);
         var chargeDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-' + triggerDayPad;
 
         activeStudents.forEach(function(s) {
@@ -2529,6 +2532,9 @@ window.SchoolApp = {
             feeHeadId: 'fh_tuition',
             amount: tuitionAmt,
             date: chargeDate,
+            billingDate: chargeDate,
+            dueDate: chargeDate,
+            feeMonth: m.period,
             description: desc,
             billingPeriod: m.period,
             timestamp: new Date().toISOString()
@@ -2560,7 +2566,10 @@ window.SchoolApp = {
             type: 'due',
             feeHeadId: 'fh_transport',
             amount: tAmt,
-            date: m.period + '-01',
+            date: chargeDate,
+            billingDate: chargeDate,
+            dueDate: chargeDate,
+            feeMonth: m.period,
             description: 'Monthly Transport Fee - ' + monthName + ' ' + m.year,
             billingPeriod: m.period,
             timestamp: new Date().toISOString()
@@ -2863,8 +2872,9 @@ window.SchoolApp = {
     var lateConfig = settings.lateFeeConfig || {};
     if (lateConfig.enabled === true) {
       var fineHeadId = lateConfig.feeHeadId || 'fh_fine';
-      var graceDays = parseInt(lateConfig.gracePeriodDays, 10);
-      if (isNaN(graceDays) || graceDays < 0) graceDays = 10;
+      var graceDays = settings.gracePeriodDays !== undefined ? parseInt(settings.gracePeriodDays, 10) : parseInt(lateConfig.gracePeriodDays, 10);
+      if (isNaN(graceDays) || graceDays < 0) graceDays = (lateConfig.gracePeriodDays !== undefined ? parseInt(lateConfig.gracePeriodDays, 10) : 0);
+      if (isNaN(graceDays) || graceDays < 0) graceDays = 0;
       var fineType = lateConfig.type === 'percentage' ? 'percentage' : 'flat';
       var fineVal = parseFloat(lateConfig.value) || 0;
       var maxCap = parseFloat(lateConfig.maxCap) || 0;
@@ -2906,7 +2916,8 @@ window.SchoolApp = {
           if (due.originatingDueId) return; // Do not fine a fine transaction!
           if (finedDueIds.has(due.id)) return; // ONE-SHOT GUARANTEE: Already fined!
 
-          var dueTime = new Date(due.date).getTime();
+          var effectiveDueDate = due.dueDate || due.date;
+          var dueTime = new Date(effectiveDueDate).getTime();
           if (isNaN(dueTime)) return;
 
           var overdueDeadline = dueTime + (graceDays * 86400000);

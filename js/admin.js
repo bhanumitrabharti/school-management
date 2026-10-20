@@ -3011,6 +3011,18 @@
     // Card 4b: Automated Monthly Fee Settings
     var isAutoChargeEnabled = !!settings.autoChargeEnabled;
     var autoChargeDay = parseInt(settings.autoChargeTriggerDate, 10) || 1;
+    var graceDays = parseInt(settings.gracePeriodDays, 10);
+    if (isNaN(graceDays) || graceDays < 0) graceDays = 0;
+
+    var daysOptions = [];
+    for (var d = 1; d <= 31; d++) {
+      var suffix = 'th';
+      if (d === 1 || d === 21 || d === 31) suffix = 'st';
+      else if (d === 2 || d === 22) suffix = 'nd';
+      else if (d === 3 || d === 23) suffix = 'rd';
+      daysOptions.push({ day: d, label: d + suffix + ' of each month' });
+    }
+
     html += '  <div class="card fee-setup-card">';
     html += '    <div class="card-header fee-setup-header" style="display:flex; justify-content:space-between; align-items:center;">';
     html += '      <h3><span class="material-icons-round">bolt</span> Automated Monthly Fee Settings</h3>';
@@ -3023,14 +3035,19 @@
     html += '        <div class="form-group">';
     html += '          <label class="form-label">Auto-Charge Trigger Day of Month</label>';
     html += '          <select class="form-select" id="setup-autocharge-trigger-date">';
-    [1, 5, 10, 15, 20, 25].forEach(function(d) {
-      html += '            <option value="' + d + '"' + (autoChargeDay === d ? ' selected' : '') + '>' + d + (d === 1 ? 'st' : 'th') + ' of each month</option>';
+    daysOptions.forEach(function(opt) {
+      html += '            <option value="' + opt.day + '"' + (autoChargeDay === opt.day ? ' selected' : '') + '>' + opt.label + '</option>';
     });
     html += '          </select>';
     html += '        </div>';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label">Grace Period (Days)</label>';
+    html += '          <input type="number" id="setup-autocharge-grace-days" class="form-input" min="0" max="30" value="' + graceDays + '" placeholder="0">';
+    html += '          <small style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Days after due date before a charge is marked Overdue or incurs late fines (default 0).</small>';
+    html += '        </div>';
     html += '      </div>';
     html += '      <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.25); border-radius:8px; padding:12px 16px; font-size:13px; color:var(--text-secondary); line-height:1.5;">';
-    html += '        <span class="material-icons-round" style="font-size:16px; color:#f59e0b; vertical-align:text-bottom;">info</span> <strong>Auto-Charge Day:</strong> System automatically generates dues for all students on this day each month. Do NOT click Generate Dues manually after setting this.';
+    html += '        <span class="material-icons-round" style="font-size:16px; color:var(--warning, #f59e0b); vertical-align:text-bottom;">info</span> <strong>Auto-Charge Day:</strong> System automatically generates dues for all students on this day each month. It serves as both the billing date and due date. Trigger days 29–31 automatically clamp to the last day of shorter months.';
     html += '      </div>';
     html += '    </div>';
     html += '    <div class="card-footer fee-setup-actions" style="padding:16px 24px; display:flex; justify-content:flex-end; border-top:1px solid rgba(255,255,255,0.06);">';
@@ -4809,10 +4826,13 @@
 
         var isEnabled = document.getElementById('setup-autocharge-enabled') ? document.getElementById('setup-autocharge-enabled').checked : false;
         var triggerDay = document.getElementById('setup-autocharge-trigger-date') ? (parseInt(document.getElementById('setup-autocharge-trigger-date').value, 10) || 1) : 1;
+        var graceDaysInput = document.getElementById('setup-autocharge-grace-days') ? (parseInt(document.getElementById('setup-autocharge-grace-days').value, 10) || 0) : 0;
+        if (graceDaysInput < 0) graceDaysInput = 0;
 
         if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
         SchoolApp.store.settings.autoChargeEnabled = isEnabled;
         SchoolApp.store.settings.autoChargeTriggerDate = triggerDay;
+        SchoolApp.store.settings.gracePeriodDays = graceDaysInput;
 
         saveAutoChargeBtn.disabled = true;
         var origHTML = saveAutoChargeBtn.innerHTML;
