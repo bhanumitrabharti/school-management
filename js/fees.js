@@ -979,7 +979,15 @@
     return students;
   }
 
-  function exportHistoryToExcel() {
+  async function exportHistoryToExcel() {
+    if (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated() && SchoolApp._feeLogsHasMore) {
+      SchoolApp.showLoader('Loading all logs for export...');
+      try {
+        await SchoolApp.loadAllFeeActivityLogs();
+      } finally {
+        SchoolApp.hideLoader();
+      }
+    }
     var students = SchoolApp.store.students || [];
     var studentMap = {};
     students.forEach(function(s) {
@@ -1072,7 +1080,15 @@
     );
   }
 
-  function exportHistoryToPDF() {
+  async function exportHistoryToPDF() {
+    if (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated() && SchoolApp._feeLogsHasMore) {
+      SchoolApp.showLoader('Loading all logs for export...');
+      try {
+        await SchoolApp.loadAllFeeActivityLogs();
+      } finally {
+        SchoolApp.hideLoader();
+      }
+    }
     var students = SchoolApp.store.students || [];
     var studentMap = {};
     students.forEach(function(s) {
@@ -1227,6 +1243,16 @@
   }
 
   function renderHistoryTab(dataContainer) {
+    if (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated() && !SchoolApp._feeLogsLoaded) {
+      dataContainer.innerHTML = '<div class="empty-state"><span class="material-icons-round" style="animation: spin 1s infinite linear;">sync</span><h3>Loading Fee Activity Logs...</h3><p>Fetching records from subcollection...</p></div>';
+      SchoolApp.loadFeeActivityLogs(false).then(function() {
+        renderHistoryTab(dataContainer);
+      }).catch(function(err) {
+        console.error(err);
+        dataContainer.innerHTML = '<div class="empty-state"><span class="material-icons-round">error</span><h3>Failed to load activity logs</h3></div>';
+      });
+      return;
+    }
     var students = SchoolApp.store.students || [];
     var studentMap = {};
     students.forEach(function(s) {
@@ -1321,6 +1347,12 @@
       html += '<button class="pagination-btn" ' + (state.historyCurrentPage >= totalPages ? 'disabled' : '') + ' data-page="next"><span class="material-icons-round">chevron_right</span></button>';
       html += '</div>';
 
+      if (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated() && SchoolApp._feeLogsHasMore) {
+        html += '<div style="text-align: center; margin: 12px 0;">';
+        html += '<button type="button" class="btn btn-secondary" id="fees-history-load-more-btn" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px;"><span class="material-icons-round" style="font-size: 18px;">expand_more</span> Load Older Logs (50 more)</button>';
+        html += '</div>';
+      }
+
     } else {
       html += '<div class="empty-state"><span class="material-icons-round">history</span><h3>No History Found</h3><p>No activity match your current filters.</p></div>';
     }
@@ -1340,6 +1372,16 @@
         renderHistoryTab(dataContainer);
       });
     });
+
+    var loadMoreBtn = dataContainer.querySelector('#fees-history-load-more-btn');
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', async function() {
+        this.disabled = true;
+        this.innerHTML = '<span class="material-icons-round" style="font-size: 18px; animation: spin 1s infinite linear;">sync</span> Loading...';
+        await SchoolApp.loadFeeActivityLogs(true);
+        renderHistoryTab(dataContainer);
+      });
+    }
   }
 
   function render() {
@@ -3588,7 +3630,7 @@
         };
         SchoolApp.store.fees.push(dueTxn);
 
-        SchoolApp.store.feeActivityLog.push({
+        var logEntry = {
           id: SchoolApp.generateId(),
           timestamp: new Date().toISOString(),
           studentId: studentId,
@@ -3598,7 +3640,8 @@
           amount: amt,
           addedBy: SchoolApp.currentUser ? (SchoolApp.currentUser.username || SchoolApp.currentUser.firstName || 'admin') : 'admin',
           note: note
-        });
+        };
+        SchoolApp.store.feeActivityLog.push(logEntry);
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
@@ -3606,7 +3649,7 @@
         var success = false;
         try {
           if (typeof SchoolApp.saveFeeTransaction === 'function') {
-            success = await SchoolApp.saveFeeTransaction(dueTxn, true);
+            success = await SchoolApp.saveFeeTransaction(dueTxn, true, logEntry);
           } else {
             success = await SchoolApp.save(true);
           }
@@ -3732,22 +3775,24 @@
 
         // F3 Size Guard: Estimate bytes the run adds to the root (feeActivityLog)
         // Each log entry is ~230 bytes JSON serialization in the root doc
-        try {
-          var rootEstimatedBytes = 0;
-          if (SchoolApp.store) {
-            rootEstimatedBytes = new Blob([JSON.stringify(SchoolApp.store)]).size;
+        if (!SchoolApp.isFeeLogMigrated || !SchoolApp.isFeeLogMigrated()) {
+          try {
+            var rootEstimatedBytes = 0;
+            if (SchoolApp.store) {
+              rootEstimatedBytes = new Blob([JSON.stringify(SchoolApp.store)]).size;
+            }
+            var incomingLogBytes = students.length * 250;
+            if (rootEstimatedBytes + incomingLogBytes > 921600) { // 900 KB threshold
+              var currentKb = (rootEstimatedBytes / 1024).toFixed(0);
+              var projectedKb = ((rootEstimatedBytes + incomingLogBytes) / 1024).toFixed(0);
+              SchoolApp.showToast('Bulk charge blocked: Root document is near 1 MB limit (' + currentKb + ' KB now, ' + projectedKb + ' KB projected). Please archive feeActivityLog first.', 'error');
+              saveBtn.disabled = false;
+              saveBtn.textContent = 'Generate Dues';
+              return;
+            }
+          } catch (e) {
+            console.warn('[Bulk Charge] Size guard check failed:', e);
           }
-          var incomingLogBytes = students.length * 250;
-          if (rootEstimatedBytes + incomingLogBytes > 921600) { // 900 KB threshold
-            var currentKb = (rootEstimatedBytes / 1024).toFixed(0);
-            var projectedKb = ((rootEstimatedBytes + incomingLogBytes) / 1024).toFixed(0);
-            SchoolApp.showToast('Bulk charge blocked: Root document is near 1 MB limit (' + currentKb + ' KB now, ' + projectedKb + ' KB projected). Please archive feeActivityLog first.', 'error');
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Generate Dues';
-            return;
-          }
-        } catch (e) {
-          console.warn('[Bulk Charge] Size guard check failed:', e);
         }
 
         if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
@@ -3761,6 +3806,7 @@
 
         var existingFees = SchoolApp.store.fees || [];
         var generatedTxns = [];
+        var generatedLogs = [];
         var targetMonth = date.substring(0, 7); // YYYY-MM
 
         // F3 Pre-check: Count how many students already have the same student + feeHead + month
@@ -3818,7 +3864,7 @@
             SchoolApp.store.fees.push(newTxn);
             generatedTxns.push(newTxn);
 
-            SchoolApp.store.feeActivityLog.push({
+            var newBulkLog = {
               id: SchoolApp.generateId(),
               timestamp: new Date().toISOString(),
               studentId: s.id,
@@ -3828,7 +3874,9 @@
               amount: defaultAmt,
               addedBy: adminName,
               note: note
-            });
+            };
+            SchoolApp.store.feeActivityLog.push(newBulkLog);
+            generatedLogs.push(newBulkLog);
 
             chargedCount++;
           }
@@ -3856,7 +3904,7 @@
         var success = false;
         try {
           if (typeof SchoolApp.saveFeeTransactions === 'function') {
-            success = await SchoolApp.saveFeeTransactions(generatedTxns, true);
+            success = await SchoolApp.saveFeeTransactions(generatedTxns, true, generatedLogs);
           } else {
             success = await SchoolApp.save(true);
           }

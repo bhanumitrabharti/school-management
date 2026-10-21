@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, orderBy, startAfter, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -60,7 +60,7 @@ window.APP_VERSION = 'v55';
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
 window.auth = authInst;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, writeBatch, deleteField };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, orderBy, startAfter, writeBatch, deleteField };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
@@ -510,6 +510,9 @@ window.SchoolApp = {
       delete payload.fees;
       delete payload.examMarks;
     }
+    if (this.isFeeLogMigrated(currentSchoolId)) {
+      delete payload.feeActivityLog;
+    }
 
     // Safety guard against accidental erasure of examTerms / examSubjects
     var serverExamTermsBaseline = this.initialServerExamTermsCount || 0;
@@ -740,6 +743,92 @@ window.SchoolApp = {
   isStudentsDualWrite: function(schoolId) {
     if (!this.isStudentsMigrated(schoolId)) return false;
     return !!(this.store && this.store.settings && this.store.settings.studentsDualWrite === true);
+  },
+
+  isFeeLogMigrated: function(schoolId) {
+    var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!sid) return false;
+    return !!(this.store && this.store.settings && this.store.settings.feeLogMigrated === true);
+  },
+
+  loadFeeActivityLogs: async function(loadMore) {
+    var schoolId = this.currentSchoolId || (this.store && this.store.currentSchoolId);
+    if (!schoolId || !window.firestore || !window.db) return [];
+    if (!this.store) this.store = {};
+    if (!Array.isArray(this.store.feeActivityLog)) this.store.feeActivityLog = [];
+
+    var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'fee_activity_logs');
+    var q;
+    var pageSize = 50;
+
+    try {
+      if (loadMore && this._lastFeeLogDoc && window.firestore.startAfter) {
+        q = window.firestore.query(collRef, window.firestore.orderBy('timestamp', 'desc'), window.firestore.startAfter(this._lastFeeLogDoc), window.firestore.limit(pageSize));
+      } else {
+        q = window.firestore.query(collRef, window.firestore.orderBy('timestamp', 'desc'), window.firestore.limit(pageSize));
+        if (!loadMore) {
+          this._lastFeeLogDoc = null;
+        }
+      }
+
+      var snap = await window.firestore.getDocs(q);
+      var fetched = [];
+      snap.forEach(function(docSnap) {
+        var d = docSnap.data();
+        d.id = docSnap.id;
+        fetched.push(d);
+      });
+
+      if (snap.docs.length > 0) {
+        this._lastFeeLogDoc = snap.docs[snap.docs.length - 1];
+      }
+      this._feeLogsHasMore = (snap.docs.length === pageSize);
+
+      if (loadMore) {
+        var existingIds = new Set(this.store.feeActivityLog.map(function(l) { return l.id; }));
+        fetched.forEach(function(l) {
+          if (!existingIds.has(l.id)) {
+            SchoolApp.store.feeActivityLog.push(l);
+          }
+        });
+      } else {
+        var existingNewLogs = this.store.feeActivityLog.filter(function(l) {
+          return !fetched.some(function(f) { return f.id === l.id; });
+        });
+        this.store.feeActivityLog = existingNewLogs.concat(fetched);
+      }
+      this._feeLogsLoaded = true;
+      return this.store.feeActivityLog;
+    } catch (e) {
+      console.warn('[Fees] Failed to load fee_activity_logs subcollection:', e);
+      this._feeLogsLoaded = true;
+      return this.store.feeActivityLog;
+    }
+  },
+
+  loadAllFeeActivityLogs: async function() {
+    var schoolId = this.currentSchoolId || (this.store && this.store.currentSchoolId);
+    if (!schoolId || !window.firestore || !window.db) return this.store.feeActivityLog || [];
+    try {
+      var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'fee_activity_logs');
+      var snap = await window.firestore.getDocs(collRef);
+      var allLogs = [];
+      snap.forEach(function(docSnap) {
+        var d = docSnap.data();
+        d.id = docSnap.id;
+        allLogs.push(d);
+      });
+      allLogs.sort(function(a, b) {
+        return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+      });
+      this.store.feeActivityLog = allLogs;
+      this._feeLogsHasMore = false;
+      this._feeLogsLoaded = true;
+      return allLogs;
+    } catch (e) {
+      console.warn('[Fees] Failed to load all fee_activity_logs:', e);
+      return this.store.feeActivityLog || [];
+    }
   },
 
   initStudentsSubcollectionListener: function(schoolId) {
@@ -1348,7 +1437,7 @@ window.SchoolApp = {
     return null; // valid
   },
 
-  saveFeeTransaction: async function(txn, bypassLoader) {
+  saveFeeTransaction: async function(txn, bypassLoader, logEntry) {
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");
@@ -1397,6 +1486,24 @@ window.SchoolApp = {
         var monthTxns = (this._feesYears[yr] || []).filter(function(f) {
           return f.date && String(f.date).startsWith(ymPrefix);
         });
+
+        // Gated: When feeLogMigrated is enabled, write log to subcollection in same batch
+        if (this.isFeeLogMigrated(currentSchoolId)) {
+          var batch = window.firestore.writeBatch(window.db);
+          batch.set(docRef, { transactions: JSON.parse(JSON.stringify(monthTxns)) });
+          if (logEntry && logEntry.id) {
+            var logDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', logEntry.id);
+            batch.set(logDocRef, JSON.parse(JSON.stringify(logEntry)));
+          }
+          var saveFn = () => batch.commit();
+          var success = await this.saveWithRetry(saveFn);
+          if (success) {
+            console.log('[Fees] Successfully saved transaction and fee_activity_log via batch.');
+            return true;
+          }
+          return false;
+        }
+
         var saveFn = () => window.firestore.setDoc(docRef, { transactions: JSON.parse(JSON.stringify(monthTxns)) });
         var success = await this.saveWithRetry(saveFn);
         if (success) {
@@ -1419,7 +1526,7 @@ window.SchoolApp = {
     return await this.save(bypassLoader);
   },
 
-  saveFeeTransactions: async function(txns, bypassLoader) {
+  saveFeeTransactions: async function(txns, bypassLoader, logEntries) {
     if (!Array.isArray(txns) || txns.length === 0) return true;
     // SEC-10: Validate every transaction before any write
     var self = this;
@@ -1486,6 +1593,33 @@ window.SchoolApp = {
           }
         }
         console.log('[Fees] Bulk saved ' + txns.length + ' transactions across months.');
+
+        // Gated: When feeLogMigrated is enabled, write logs to subcollection without writing root
+        if (this.isFeeLogMigrated(currentSchoolId)) {
+          if (Array.isArray(logEntries) && logEntries.length > 0) {
+            var batch = window.firestore.writeBatch(window.db);
+            var opCount = 0;
+            for (var li = 0; li < logEntries.length; li++) {
+              var le = logEntries[li];
+              if (le && le.id) {
+                var lDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', le.id);
+                batch.set(lDocRef, JSON.parse(JSON.stringify(le)));
+                opCount++;
+                if (opCount >= 400) {
+                  await batch.commit();
+                  batch = window.firestore.writeBatch(window.db);
+                  opCount = 0;
+                }
+              }
+            }
+            if (opCount > 0) {
+              await batch.commit();
+            }
+            console.log('[Fees] Bulk saved ' + logEntries.length + ' fee logs to subcollection.');
+          }
+          return true;
+        }
+
         if (self.store.feeActivityLog) {
           await self.save(true);
         }

@@ -120,19 +120,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Subcollections — per-school access or super-admin (excluding student/teacher profiles, core students, and private)
+    // Fee Activity Logs Subcollection — school admin & super admin only (teachers blocked)
+    match /tenant_data/{schoolId}/fee_activity_logs/{logId} {
+      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Subcollections — per-school access or super-admin (excluding student/teacher profiles, core students, private, and fee_activity_logs)
     match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
       allow read:  if subcollection != 'student_profiles'
                       && subcollection != 'student_profiles_shared'
                       && subcollection != 'teacher_profiles'
                       && subcollection != 'students'
                       && subcollection != 'private'
+                      && subcollection != 'fee_activity_logs'
                       && (canAccessSchool(schoolId) || isSuperAdmin());
       allow write: if subcollection != 'student_profiles'
                       && subcollection != 'student_profiles_shared'
                       && subcollection != 'teacher_profiles'
                       && subcollection != 'students'
                       && subcollection != 'private'
+                      && subcollection != 'fee_activity_logs'
                       && (canAccessSchool(schoolId) || isSuperAdmin())
                       && (subcollection != 'fees_years' || validFeeMonthDoc());
     }
