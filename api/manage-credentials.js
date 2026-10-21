@@ -106,13 +106,8 @@ module.exports = async function handler(req, res) {
   }
   const uid = decodedToken.uid;
 
-  // 2. Authorize Caller: Must be verified Super Admin OR verified School Admin in school_access
-  const isSuperAdmin = (
-    uid === 'cq647u1GfCXISzf7XMw8pxH76I72' ||
-    decodedToken.email === 'superadmin@ctrlshifts.in' ||
-    decodedToken.role === 'super_admin' ||
-    decodedToken.superAdmin === true
-  );
+  // 2. Authorize Caller: Must be verified Super Admin UID ONLY or verified School Admin in school_access
+  const isSuperAdmin = (uid === 'cq647u1GfCXISzf7XMw8pxH76I72');
 
   if (!isSuperAdmin) {
     const accessSnap = await db.collection('school_access').doc(uid).get();
