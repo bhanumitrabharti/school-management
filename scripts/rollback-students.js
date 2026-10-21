@@ -73,16 +73,18 @@ async function rollback() {
   subSnap.forEach(d => subDocsArray.push(d.data()));
 
   // 3. Reconstruct root students array from subcollection
+  // Include all students as-is (including soft-deleted with inTrash / statusBeforeDelete) so the recycle bin survives rollback
   const rebuiltStudents = [];
+  let trashedCount = 0;
   for (const s of subDocsArray) {
-    if (s.status === 'Deleted' || s.inTrash === true) {
-      continue;
-    }
     const cleanStudent = Object.assign({}, s);
+    if (cleanStudent.inTrash === true || cleanStudent.status === 'Deleted') {
+      trashedCount++;
+    }
     rebuiltStudents.push(cleanStudent);
   }
 
-  console.log(`[RECONSTRUCT] Rebuilt ${rebuiltStudents.length} active/retained students from subcollection.`);
+  console.log(`[RECONSTRUCT] Rebuilt ${rebuiltStudents.length} total students from subcollection (Active: ${rebuiltStudents.length - trashedCount}, In Trash / Soft-deleted: ${trashedCount}).`);
 
   // 4. Size check
   const simulatedRoot = Object.assign({}, rootData, {
@@ -102,7 +104,10 @@ async function rollback() {
   }
 
   if (isDryRun) {
-    console.log(`\n[DRY-RUN COMPLETE] Size check PASSED (< 1 MB). ${rebuiltStudents.length} students rebuilt. Zero Firestore writes committed.`);
+    console.log(`\n[DRY-RUN COMPLETE] Size check PASSED (< 1 MB). ${rebuiltStudents.length} students rebuilt (Active: ${rebuiltStudents.length - trashedCount}, In Trash: ${trashedCount}). Zero Firestore writes committed.`);
+    if (trashedCount > 0) {
+      console.log(`[VERIFY TRASH] Soft-deleted / inTrash students confirmed present in rebuilt array (${trashedCount} found).`);
+    }
     return;
   }
 
