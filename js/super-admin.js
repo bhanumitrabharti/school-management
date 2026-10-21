@@ -2979,19 +2979,33 @@ window.saAuth = auth;
                 }
                 var existingTenantData = tenantSnap.data();
 
-                // If user didn't change password ('********'), preserve existing tenant password
-                var finalAdminPassword = (adminPasswordInput && adminPasswordInput !== '********')
-                    ? adminPasswordHashed
-                    : ((existingTenantData.settings && existingTenantData.settings.adminPassword) || currentAdminPasswordHash || '');
+                // Server-side credential management (PART A):
+                // If super admin modified admin password, route securely through server endpoint
+                if (adminPasswordInput && adminPasswordInput !== '********') {
+                    var idToken = (auth.currentUser && typeof auth.currentUser.getIdToken === 'function') ? await auth.currentUser.getIdToken() : '';
+                    var credRes = await fetch('/api/manage-credentials', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + idToken
+                        },
+                        body: JSON.stringify({
+                            idToken: idToken,
+                            schoolId: schoolId,
+                            action: 'set-admin-password',
+                            newPassword: adminPasswordInput,
+                            adminUsername: adminUsername
+                        })
+                    });
+                    var credData = await credRes.json();
+                    if (!credRes.ok || !credData.success) {
+                        throw new Error(credData.error || 'Server rejected credential update.');
+                    }
+                }
 
                 // Merge settings cleanly — never touch rosters or subcollections
                 var updatedSettings = {
                     schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
-                    // Also write the FLAT fields — the School Admin Settings page
-                    // (admin.js) reads/writes settings.schoolName / .phone / etc
-                    // directly, not settings.schoolInfo.*. Without these, a newly
-                    // onboarded school's Settings form shows blank until the admin
-                    // manually retypes everything already entered here.
                     schoolName: name,
                     tagline: tagline,
                     phone: phone,
@@ -3000,7 +3014,7 @@ window.saAuth = auth;
                     affiliation: affiliation,
                     udiseCode: udiseCode,
                     adminUsername: adminUsername,
-                    adminPassword: finalAdminPassword,
+                    // Client never writes passwords; server endpoint manages credentials
                     adminEmail: adminEmail,
                     classes: formClasses,
                     sections: formSections,
@@ -3015,8 +3029,13 @@ window.saAuth = auth;
                     restructured: (existingTenantData.settings && existingTenantData.settings.restructured !== undefined) ? existingTenantData.settings.restructured : true
                 };
 
-                // Guard for isolated credentials: never write root password for isolated schools
-                if (existingTenantData.settings && existingTenantData.settings.credentialsIsolated === true) {
+                // For legacy schools without credentialsIsolated, preserve existing root password;
+                // for isolated schools, NEVER write adminPassword to root
+                if (existingTenantData.settings && existingTenantData.settings.credentialsIsolated !== true) {
+                    if (existingTenantData.settings.adminPassword) {
+                        updatedSettings.adminPassword = existingTenantData.settings.adminPassword;
+                    }
+                } else {
                     delete updatedSettings.adminPassword;
                 }
 
@@ -3089,6 +3108,7 @@ window.saAuth = auth;
                     theme: 'dark',
                     attendanceTime: '09:00',
                     academicYear: '2025-2026',
+                    credentialsIsolated: true,
                     restructured: true
                 },
                 restructured: true
@@ -3126,7 +3146,7 @@ window.saAuth = auth;
                     affiliation: affiliation,
                     udiseCode: udiseCode,
                     adminUsername: adminUsername,
-                    adminPassword: adminPasswordHashed,
+                    // Security: NEVER write adminPassword into root tenant_data!
                     adminEmail: adminEmail,
                     classes: formClasses,
                     sections: formSections,
@@ -3137,6 +3157,7 @@ window.saAuth = auth;
                     theme: 'dark',
                     attendanceTime: '09:00',
                     academicYear: '2025-2026',
+                    credentialsIsolated: true,
                     restructured: true
                 },
                 restructured: true,
@@ -3174,6 +3195,30 @@ window.saAuth = auth;
                 batch.set(doc(db, 'schools', newSchoolId), newSchool);
                 batch.set(doc(db, 'tenant_data', newSchoolId), tenantData);
                 await batch.commit();
+
+                // Server-side credential isolation (PART A):
+                // Write admin hash ONLY to tenant_data/{id}/private/credentials via verified server endpoint
+                var idToken = (auth.currentUser && typeof auth.currentUser.getIdToken === 'function') ? await auth.currentUser.getIdToken() : '';
+                var credRes = await fetch('/api/manage-credentials', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + idToken
+                    },
+                    body: JSON.stringify({
+                        idToken: idToken,
+                        schoolId: newSchoolId,
+                        action: 'set-admin-password',
+                        newPassword: adminPasswordInput,
+                        adminUsername: adminUsername
+                    })
+                });
+                var credResult = await credRes.json();
+                if (!credRes.ok || !credResult.success) {
+                    console.error('Failed to set isolated admin credentials on server:', credResult);
+                    showToast('School created, but admin password setup failed: ' + (credResult.error || 'Server error'), 'error');
+                    return;
+                }
 
                 // Only update in-memory state after successful atomic commit!
                 data.schools.push(newSchool);

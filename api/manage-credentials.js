@@ -106,14 +106,23 @@ module.exports = async function handler(req, res) {
   }
   const uid = decodedToken.uid;
 
-  // 2. Authorize Caller: Must be verified School Admin in school_access
-  const accessSnap = await db.collection('school_access').doc(uid).get();
-  if (!accessSnap.exists) {
-    return res.status(403).json({ error: 'Access denied: No verified school access record found.' });
-  }
-  const accessData = accessSnap.data();
-  if (accessData.schoolId !== schoolId || accessData.role !== 'admin') {
-    return res.status(403).json({ error: 'Access denied: Only a verified school admin can manage credentials.' });
+  // 2. Authorize Caller: Must be verified Super Admin OR verified School Admin in school_access
+  const isSuperAdmin = (
+    uid === 'cq647u1GfCXISzf7XMw8pxH76I72' ||
+    decodedToken.email === 'superadmin@ctrlshifts.in' ||
+    decodedToken.role === 'super_admin' ||
+    decodedToken.superAdmin === true
+  );
+
+  if (!isSuperAdmin) {
+    const accessSnap = await db.collection('school_access').doc(uid).get();
+    if (!accessSnap.exists) {
+      return res.status(403).json({ error: 'Access denied: No verified school access record found.' });
+    }
+    const accessData = accessSnap.data();
+    if (accessData.schoolId !== schoolId || accessData.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied: Only a verified school admin can manage credentials.' });
+    }
   }
 
   const schoolRef = db.collection('tenant_data').doc(schoolId);
