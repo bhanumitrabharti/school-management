@@ -135,7 +135,11 @@ module.exports = async function handler(req, res) {
         const rootData = rootSnap.data();
         const settings = Object.assign({}, rootData.settings || {});
 
-        settings.adminPassword = passwordHash;
+        if (settings.credentialsIsolated === true) {
+          delete settings.adminPassword;
+        } else {
+          settings.adminPassword = passwordHash;
+        }
         if (adminUsername && typeof adminUsername === 'string') {
           settings.adminUsername = adminUsername.trim();
         }
@@ -178,7 +182,11 @@ module.exports = async function handler(req, res) {
         }
 
         const targetTeacher = Object.assign({}, teachers[teacherIdx]);
-        targetTeacher.password = passwordHash;
+        if (rootData.settings && rootData.settings.credentialsIsolated === true) {
+          delete targetTeacher.password;
+        } else {
+          targetTeacher.password = passwordHash;
+        }
         teachers[teacherIdx] = targetTeacher;
 
         const credSnap = await t.get(privateCredRef);
@@ -233,9 +241,13 @@ module.exports = async function handler(req, res) {
         }
 
         const newTeacherRecord = Object.assign({}, teacherData, {
-          id: createdTeacherId,
-          password: passwordHash
+          id: createdTeacherId
         });
+        if (rootData.settings && rootData.settings.credentialsIsolated === true) {
+          delete newTeacherRecord.password;
+        } else {
+          newTeacherRecord.password = passwordHash;
+        }
         teachers.push(newTeacherRecord);
 
         const credSnap = await t.get(privateCredRef);
@@ -372,11 +384,15 @@ module.exports = async function handler(req, res) {
           };
         }
 
-        // Dual-write during probation: root teacher gets passwordHash so old fallback works byte-identical
+        // Phase 1b: If isolated, root teacher stays hash-free; otherwise dual-write for legacy
         const finalTeacherRecord = Object.assign({}, restoredTeacherData, {
-          id: teacherId,
-          password: passwordHash || restoredTeacherData.password || 'PROTECTED'
+          id: teacherId
         });
+        if (rootData.settings && rootData.settings.credentialsIsolated === true) {
+          delete finalTeacherRecord.password;
+        } else {
+          finalTeacherRecord.password = passwordHash || restoredTeacherData.password || 'PROTECTED';
+        }
 
         const existingIdx = teachers.findIndex(tch => tch.id === teacherId);
         if (existingIdx !== -1) {
