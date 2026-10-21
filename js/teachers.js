@@ -401,6 +401,11 @@
 
       var prep = (typeof SchoolApp.prepareSavePayload === 'function') ? SchoolApp.prepareSavePayload() : null;
       var rootPayload = (prep && prep.success) ? prep.payload : { teachers: currentTeachers };
+      if (SchoolApp.store.settings && SchoolApp.store.settings.credentialsIsolated === true) {
+        if (Array.isArray(rootPayload.teachers)) {
+          rootPayload.teachers.forEach(function(t) { if (t) delete t.password; });
+        }
+      }
       if (prep && !prep.success) {
         SchoolApp.store.teachers = prevStoreTeachers; // revert on validation failure
         return { success: false, reason: prep.reason || 'Validation failed' };
