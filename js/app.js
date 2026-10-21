@@ -337,6 +337,8 @@ window.SchoolApp = {
     }
     const docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
     const payload = JSON.parse(JSON.stringify(this.store));
+    // PRUNE FOREIGN METADATA: Never persist payload.schools into tenant_data for ANY school
+    delete payload.schools;
     if (!payload.settings) payload.settings = {};
 
     // HARD FAILSAFE 1: Refuse to save if tenant data has not finished loading from Firestore
@@ -1910,7 +1912,15 @@ window.SchoolApp = {
       var urlParams = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
       var querySchoolId = urlParams ? urlParams.get('impersonate_school_id') : null;
       var isImpersonationSession = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('isImpersonating') === 'true');
-      var targetSchoolId = (!sub) ? ((isImpersonationSession ? querySchoolId : null) || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('impersonate_school_id')) || localStorage.getItem('impersonate_school_id') || null) : null;
+      var targetSchoolId = (!sub) ? (
+        (isImpersonationSession ? querySchoolId : null) ||
+        (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('impersonate_school_id')) ||
+        (typeof localStorage !== 'undefined' && localStorage.getItem('impersonate_school_id')) ||
+        (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('current_school_id')) ||
+        (typeof localStorage !== 'undefined' && localStorage.getItem('current_school_id')) ||
+        (self.store && self.store.currentSchoolId) ||
+        null
+      ) : null;
 
       var processSchoolsList = function(schoolsList) {
         self.store.schools = schoolsList;
@@ -1999,14 +2009,31 @@ window.SchoolApp = {
           processSchoolsList(schoolsList);
         }, errorHandler);
       } else {
-        const schoolsCol = window.firestore.collection(window.db, 'schools');
-        self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(schoolsCol, function(querySnapshot) {
-          var schoolsList = [];
-          querySnapshot.forEach(function(docSnap) {
-            schoolsList.push(docSnap.data());
-          });
-          processSchoolsList(schoolsList);
-        }, errorHandler);
+        // Regular school users must never load the full schools collection.
+        // Restrict full collection reads strictly to verified Super Admin sessions.
+        var isSuperAdmin = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('is_super_admin') === 'true') ||
+                           (typeof localStorage !== 'undefined' && localStorage.getItem('is_super_admin') === 'true') ||
+                           (typeof window !== 'undefined' && window.location && window.location.pathname.includes('super-admin'));
+        if (isSuperAdmin) {
+          const schoolsCol = window.firestore.collection(window.db, 'schools');
+          self.schoolsListenerUnsubscribe = window.firestore.onSnapshot(schoolsCol, function(querySnapshot) {
+            var schoolsList = [];
+            querySnapshot.forEach(function(docSnap) {
+              schoolsList.push(docSnap.data());
+            });
+            processSchoolsList(schoolsList);
+          }, errorHandler);
+        } else {
+          console.warn('[Security] Full schools collection read blocked for regular school user without school context.');
+          if (!bypassLoader) self.hideLoader();
+          var errEl = document.getElementById('login-error-msg');
+          if (errEl) {
+            errEl.textContent = 'School context missing. Please access via your school subdomain.';
+            errEl.style.display = 'block';
+          }
+          self.setupLoginButtonGate();
+          resolve(false);
+        }
       }
     });
   },

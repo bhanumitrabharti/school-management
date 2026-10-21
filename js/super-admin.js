@@ -2948,7 +2948,7 @@ window.saAuth = auth;
                 affiliation: affiliation,
                 udiseCode: udiseCode,
                 adminUsername: adminUsername,
-                adminPassword: adminPasswordHashed,
+                // Security: NEVER write adminPassword into public schools/{id}
                 adminEmail: adminEmail,
                 classes: formClasses,
                 sections: formSections,
@@ -2960,6 +2960,11 @@ window.saAuth = auth;
                 attendanceTime: (data.schools[idx].settings && data.schools[idx].settings.attendanceTime) || '09:00',
                 academicYear: (data.schools[idx].settings && data.schools[idx].settings.academicYear) || '2025-2026'
             };
+
+            delete data.schools[idx].adminPassword;
+            if (data.schools[idx].settings) {
+                delete data.schools[idx].settings.adminPassword;
+            }
 
             saveData(data);
             try {
@@ -2973,6 +2978,11 @@ window.saAuth = auth;
                     throw new Error('Integrity check failed: Tenant document for "' + schoolId + '" does not exist in Firestore. Aborting update to prevent accidental data loss.');
                 }
                 var existingTenantData = tenantSnap.data();
+
+                // If user didn't change password ('********'), preserve existing tenant password
+                var finalAdminPassword = (adminPasswordInput && adminPasswordInput !== '********')
+                    ? adminPasswordHashed
+                    : ((existingTenantData.settings && existingTenantData.settings.adminPassword) || currentAdminPasswordHash || '');
 
                 // Merge settings cleanly — never touch rosters or subcollections
                 var updatedSettings = {
@@ -2990,7 +3000,7 @@ window.saAuth = auth;
                     affiliation: affiliation,
                     udiseCode: udiseCode,
                     adminUsername: adminUsername,
-                    adminPassword: adminPasswordHashed,
+                    adminPassword: finalAdminPassword,
                     adminEmail: adminEmail,
                     classes: formClasses,
                     sections: formSections,
@@ -3004,6 +3014,11 @@ window.saAuth = auth;
                     academicYear: (existingTenantData.settings && existingTenantData.settings.academicYear) || '2025-2026',
                     restructured: (existingTenantData.settings && existingTenantData.settings.restructured !== undefined) ? existingTenantData.settings.restructured : true
                 };
+
+                // Guard for isolated credentials: never write root password for isolated schools
+                if (existingTenantData.settings && existingTenantData.settings.credentialsIsolated === true) {
+                    delete updatedSettings.adminPassword;
+                }
 
                 var updatePayload = {
                     settings: updatedSettings
@@ -3063,7 +3078,7 @@ window.saAuth = auth;
                 affiliation: affiliation,
                 udiseCode: udiseCode,
                     adminUsername: adminUsername,
-                    adminPassword: adminPasswordHashed,
+                    // Security: NEVER write adminPassword into public schools/{id}
                     adminEmail: adminEmail,
                     classes: formClasses,
                     sections: formSections,
