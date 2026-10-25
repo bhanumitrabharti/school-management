@@ -109,7 +109,10 @@
       '</div></div>';
   }
 
-  function printViaBlob(htmlContent, studentName, studentClass, orientationOverride) {
+  function printViaBlob(htmlContent, studentName, studentClass, v2Options) {
+    if (v2Options) {
+      return printViaBlobV2(htmlContent, studentName, studentClass, v2Options);
+    }
     var safeName = (studentName || 'Student')
       .replace(/[^a-zA-Z0-9\s]/g, '')
       .trim()
@@ -121,7 +124,61 @@
 
     var filename = safeName + (safeClass ? '_Class_' + safeClass : '') + '_Report_Card.pdf';
 
-    var orientation = orientationOverride || (htmlContent && htmlContent.indexOf('data-orientation="landscape"') !== -1 ? 'landscape' : 'portrait');
+    var fullHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + filename + '</title>' +
+      '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap">' +
+      '<style>' +
+      '@page{size:A4 portrait;margin-top:18mm;margin-bottom:8mm;margin-left:8mm;margin-right:8mm;}' +
+      '* { box-sizing: border-box; }' +
+      'body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;}' +
+      '.marks-header th, .marks-header td {' +
+      '  background:#1E3A8A !important;' +
+      '  color:#FFFFFF !important;' +
+      '  -webkit-print-color-adjust:exact !important;' +
+      '  print-color-adjust:exact !important;' +
+      '}' +
+      '.total-row td {' +
+      '  background:#1E3A8A !important;' +
+      '  color:#FFFFFF !important;' +
+      '  -webkit-print-color-adjust:exact !important;' +
+      '  print-color-adjust:exact !important;' +
+      '}' +
+      '</style>' +
+      '</head><body>' + htmlContent + '</body></html>';
+    var blob = new Blob([fullHtml], {type: 'text/html'});
+    var url = URL.createObjectURL(blob);
+    var printWin = window.open(url, '_blank', 'width=900,height=700,toolbar=0,menubar=0');
+    if (!printWin) {
+      SchoolApp.showToast('Popup blocker prevented opening printable report card. Please allow popups.', 'warning');
+      return;
+    }
+    printWin.onload = function() {
+      printWin.document.title = filename;
+      printWin.focus();
+      printWin.print();
+      setTimeout(function() {
+        URL.revokeObjectURL(url);
+      }, 60000);
+    };
+    printWin.onafterprint = function() {
+      try { printWin.close(); } catch(e) {}
+    };
+  }
+
+  function printViaBlobV2(htmlContent, studentName, studentClass, options) {
+    options = options || {};
+    var safeName = (studentName || 'Student')
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '_');
+
+    var safeClass = (studentClass || '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .trim();
+
+    var filename = safeName + (safeClass ? '_Class_' + safeClass : '') + '_Report_Card.pdf';
+
+    var orientation = options.orientation || (htmlContent && htmlContent.indexOf('data-orientation="landscape"') !== -1 ? 'landscape' : 'portrait');
 
     var fullHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + filename + '</title>' +
       '<link rel="preconnect" href="https://fonts.googleapis.com">' +
@@ -129,7 +186,7 @@
       '<style>' +
       '@page{size:A4 ' + orientation + ';margin-top:8mm;margin-bottom:8mm;margin-left:8mm;margin-right:8mm;}' +
       '* { box-sizing: border-box; }' +
-      'body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+      'body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#FFF;}' +
       '.marks-header th, .marks-header td {' +
       '  background:#1E3A8A !important;' +
       '  color:#FFFFFF !important;' +
@@ -157,7 +214,10 @@
       printWin.print();
       setTimeout(function() {
         URL.revokeObjectURL(url);
-      }, 5000);
+      }, 60000);
+    };
+    printWin.onafterprint = function() {
+      try { printWin.close(); } catch(e) {}
     };
   }
 
@@ -263,7 +323,7 @@
 
       if (!isComplete && (term.status === 'published' || term.status === 'locked')) {
         resultText = 'INCOMPLETE';
-        divisionText = 'Not Awarded';
+        divisionText = '—';
       } else if (allAB && subjects.length > 0) {
         resultText = 'ABSENT';
         divisionText = 'Not Applicable';
@@ -291,14 +351,18 @@
       var rankFailedStudents = schoolConfig.rankFailedStudents !== false; // default true
       var eligibleForRank = (resultText !== 'INCOMPLETE') && (rankFailedStudents || resultText !== 'FAIL');
 
+      var finalDisplayPct = (resultText === 'INCOMPLETE') ? '—' : displayPercentage;
+      var finalGrade = (resultText === 'INCOMPLETE') ? '—' : gradeObj.grade;
+      var finalGradeLabel = (resultText === 'INCOMPLETE') ? 'Incomplete' : gradeObj.label;
+
       return {
         total: totalObtained,
         maxTotal: totalFull,
         passTotal: totalPass,
         percentage: rawPercentage,
-        displayPercentage: displayPercentage,
-        grade: gradeObj.grade,
-        gradeLabel: gradeObj.label,
+        displayPercentage: finalDisplayPct,
+        grade: finalGrade,
+        gradeLabel: finalGradeLabel,
         division: divisionText,
         result: resultText,
         isComplete: isComplete,
@@ -351,6 +415,169 @@
       entry.eligibleForRank = res.eligibleForRank;
       entry.lastUpdated = new Date().toISOString();
       return res;
+    },
+
+    calculateMultiExamResult: function(params) {
+      params = params || {};
+      var terms = params.terms || [];
+      var marksMap = params.marksMap || {};
+      var studentClass = params.studentClass || '';
+      var schoolConfig = params.schoolConfig || (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      var gradingScale = schoolConfig.gradingScale;
+      var multiCfg = schoolConfig.multiExamAggregation || {};
+      var mode = multiCfg.mode || 'none';
+      var weights = multiCfg.weights || {};
+      var allSubjects = ensureSubjectsArray(params.subjects || []);
+
+      var termResults = {};
+      var termTotals = {};
+
+      terms.forEach(function(t) {
+        var tSubs = (params.termSubjects && params.termSubjects[t.id]) ||
+          (SchoolApp.store && SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[t.id] &&
+          (SchoolApp.store.examSubjects[t.id][studentClass] || SchoolApp.store.examSubjects[t.id]['Class ' + studentClass]) &&
+          (SchoolApp.store.examSubjects[t.id][studentClass] || SchoolApp.store.examSubjects[t.id]['Class ' + studentClass]).subjects) || allSubjects;
+        tSubs = ensureSubjectsArray(tSubs);
+
+        var tMarks = marksMap[t.id] || {};
+        var res = ExamCalculationEngine.calculateStudentResult({
+          marks: tMarks,
+          subjects: tSubs,
+          term: t,
+          schoolConfig: schoolConfig
+        });
+        termResults[t.id] = res;
+        termTotals[t.id] = {
+          obtained: res.total,
+          maxTotal: res.maxTotal,
+          passTotal: res.passTotal,
+          percentage: res.percentage,
+          displayPercentage: res.displayPercentage,
+          grade: res.grade,
+          division: res.division,
+          result: res.result
+        };
+      });
+
+      if (mode === 'none') {
+        return {
+          mode: 'none',
+          isConsolidated: false,
+          termTotals: termTotals,
+          termResults: termResults
+        };
+      }
+
+      // Modes: 'sum', 'average', 'weighted', 'bestOfN'
+      var grandObt = 0;
+      var grandFull = 0;
+      var grandPass = 0;
+      var hasAnyIncomplete = false;
+      var hasAnyFail = false;
+      var allTermsAbsent = true;
+      var pendingSubjects = [];
+
+      terms.forEach(function(t) {
+        var r = termResults[t.id];
+        if (!r) return;
+        grandObt += r.total;
+        grandFull += r.maxTotal;
+        grandPass += r.passTotal;
+        if (r.result === 'INCOMPLETE') {
+          hasAnyIncomplete = true;
+          if (r.missingMandatorySubjects) {
+            r.missingMandatorySubjects.forEach(function(m) {
+              if (pendingSubjects.indexOf(m) === -1) pendingSubjects.push(m);
+            });
+          }
+        }
+        if (r.result === 'FAIL') hasAnyFail = true;
+        if (r.result !== 'ABSENT') allTermsAbsent = false;
+      });
+
+      var grandPct = 0;
+      var decimals = (schoolConfig.percentageDecimals !== undefined) ? Number(schoolConfig.percentageDecimals) : 2;
+
+      if (mode === 'sum') {
+        grandPct = grandFull > 0 ? (grandObt / grandFull) * 100 : 0;
+      } else if (mode === 'average') {
+        var validTerms = terms.filter(function(t) { return termResults[t.id] && termResults[t.id].maxTotal > 0; });
+        var sumPct = validTerms.reduce(function(acc, t) { return acc + termResults[t.id].percentage; }, 0);
+        grandPct = validTerms.length > 0 ? (sumPct / validTerms.length) : 0;
+      } else if (mode === 'weighted') {
+        var totalW = 0;
+        var weightedSum = 0;
+        terms.forEach(function(t) {
+          var w = Number(weights[t.id]) || (100 / terms.length);
+          totalW += w;
+          var p = (termResults[t.id] && termResults[t.id].percentage) || 0;
+          weightedSum += (p * w);
+        });
+        grandPct = totalW > 0 ? (weightedSum / totalW) : 0;
+      } else if (mode === 'bestOfN') {
+        var n = Number(multiCfg.bestOfNCount) || Math.max(1, terms.length - 1);
+        var sortedPcts = terms.map(function(t) { return (termResults[t.id] && termResults[t.id].percentage) || 0; }).sort(function(a, b) { return b - a; });
+        var bestN = sortedPcts.slice(0, n);
+        var sumBest = bestN.reduce(function(a, b) { return a + b; }, 0);
+        grandPct = bestN.length > 0 ? (sumBest / bestN.length) : 0;
+      }
+
+      var grandGradeObj = ExamCalculationEngine.calculateGrade(grandPct, gradingScale);
+      var passPercent = (schoolConfig.passPercent !== undefined) ? Number(schoolConfig.passPercent) : 33;
+      var requireOverallPass = schoolConfig.requireOverallPass !== false;
+
+      var grandResult = 'PASS';
+      var bands = (schoolConfig.divisionBands && Array.isArray(schoolConfig.divisionBands) && schoolConfig.divisionBands.length > 0)
+        ? schoolConfig.divisionBands.slice().sort(function(a, b) { return b.min - a.min; })
+        : [
+            {min:75, label:"First Division (Distinction)"},
+            {min:60, label:"First Division"},
+            {min:45, label:"Second Division"},
+            {min:33, label:"Third Division"}
+          ];
+      var lowestPassBandLabel = bands.length > 0 ? bands[bands.length - 1].label : 'Third Division';
+      var grandDivision = lowestPassBandLabel;
+
+      if (hasAnyIncomplete) {
+        grandResult = 'INCOMPLETE';
+        grandDivision = '—';
+      } else if (allTermsAbsent) {
+        grandResult = 'ABSENT';
+        grandDivision = 'Not Applicable';
+      } else if (hasAnyFail || (requireOverallPass && grandPct < passPercent)) {
+        grandResult = 'FAIL';
+        grandDivision = 'Not Applicable';
+      } else {
+        grandResult = 'PASS';
+        var matchedBand = null;
+        for (var b = 0; b < bands.length; b++) {
+          if (grandPct >= bands[b].min) {
+            matchedBand = bands[b].label;
+            break;
+          }
+        }
+        grandDivision = matchedBand || lowestPassBandLabel;
+      }
+
+      var displayGrandPct = grandResult === 'INCOMPLETE' ? '—' : grandPct.toFixed(decimals) + '%';
+      var displayGrandGrade = grandResult === 'INCOMPLETE' ? '—' : grandGradeObj.grade;
+
+      return {
+        mode: mode,
+        isConsolidated: true,
+        total: grandObt,
+        maxTotal: grandFull,
+        passTotal: grandPass,
+        percentage: grandPct,
+        displayPercentage: displayGrandPct,
+        grade: displayGrandGrade,
+        gradeLabel: grandGradeObj.label,
+        division: grandDivision,
+        result: grandResult,
+        termTotals: termTotals,
+        termResults: termResults,
+        pendingSubjects: pendingSubjects
+      };
     },
 
     recalculateRanksV2: function(termId, classId, sectionId, schoolConfig) {
@@ -448,9 +675,9 @@
       var secToggles = schoolConfig.sectionToggles || { showAttendance: true, showRemarks: true, showGradingLegend: true, showSignatures: true };
       var branding = schoolConfig.branding || {};
       var design = schoolConfig.design || {};
+      var multiCfg = schoolConfig.multiExamAggregation || {};
 
       var primaryColor = branding.primaryColor || design.primaryColor || '#1E3A8A';
-      var secondaryColor = branding.secondaryColor || '#3B82F6';
       var schoolName = settings.name || settings.schoolName || schoolInfo.name || branding.schoolName || '';
       var tagline = settings.tagline || settings.schoolTagline || schoolInfo.tagline || branding.schoolTagline || '';
       var address = settings.address || settings.schoolAddress || schoolInfo.address || '';
@@ -468,117 +695,201 @@
       subjectsArr = sortSubjects(subjectsArr);
       var subCount = subjectsArr.length;
 
-      // Determine orientation: explicit config override vs auto measurement
-      var isMultiTermWide = isCombined && combinedData && combinedData.terms && combinedData.terms.length >= 3;
+      // Multi-exam determination
+      var hasCombinedTerms = isCombined && combinedData && combinedData.terms && combinedData.terms.length > 1;
+      var cTerms = hasCombinedTerms ? combinedData.terms : [];
+      var multiMode = multiCfg.mode || 'none';
+
+      // Orientation calculation: explicit config override vs auto measurement
       var orientation = 'portrait';
       if (schoolConfig.orientation === 'landscape') {
         orientation = 'landscape';
       } else if (schoolConfig.orientation === 'portrait') {
         orientation = 'portrait';
       } else {
-        if (isMultiTermWide || subCount > 15) {
+        if ((hasCombinedTerms && cTerms.length >= 3) || subCount > 15) {
           orientation = 'landscape';
         }
       }
 
-      // Auto-fit tiers
+      // Auto-fit tiers based on orientation and subject count
       var fontBase = '12px';
-      var cellPad = '6px 10px';
-      var logoH = '76px';
-      var sigH = '32px';
+      var cellPad = '6.5px 10px';
+      var logoH = '70px';
+      var sigH = '38px';
+      var remarksMinH = '42px';
 
       if (orientation === 'landscape') {
-        fontBase = '10.5px';
-        cellPad = '4px 6px';
-        logoH = '56px';
-        sigH = '24px';
-      } else if (subCount > 11) {
-        // Dense tier (12-14 subjects)
-        fontBase = '9.5px';
+        fontBase = '10px';
         cellPad = '3px 6px';
-        logoH = '52px';
+        logoH = '46px';
+        sigH = '24px';
+        remarksMinH = '24px';
+      } else if (subCount > 12) {
+        // Dense tier (13-16 subjects)
+        fontBase = '9px';
+        cellPad = '2.5px 6px';
+        logoH = '44px';
         sigH = '20px';
-      } else if (subCount > 7) {
-        // Compact tier (8-11 subjects)
+        remarksMinH = '22px';
+      } else if (subCount > 9) {
+        // Compact tier (10-12 subjects)
+        fontBase = '10px';
+        cellPad = '3.5px 6px';
+        logoH = '52px';
+        sigH = '24px';
+        remarksMinH = '28px';
+      } else if (subCount > 6) {
+        // Standard tier (7-9 subjects)
         fontBase = '11px';
-        cellPad = '4px 8px';
-        logoH = '64px';
-        sigH = '26px';
+        cellPad = '4.5px 8px';
+        logoH = '60px';
+        sigH = '30px';
+        remarksMinH = '34px';
+      } else {
+        // Spacious tier (1-6 subjects)
+        fontBase = '12px';
+        cellPad = '6.5px 10px';
+        logoH = '70px';
+        sigH = '38px';
+        remarksMinH = '42px';
       }
 
       var fontStack = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
-      // Execute v2 calculation
-      var marksMap = (savedMarks && savedMarks.marks) || {};
-      var calcRes = ExamCalculationEngine.calculateStudentResult({
-        marks: marksMap,
-        subjects: subjectsArr,
-        term: activeTerm,
-        schoolConfig: schoolConfig
-      });
-
-      var totalObtained = calcRes.total;
-      var totalFull = calcRes.maxTotal;
-      var totalPass = calcRes.passTotal;
-      var percentageStr = calcRes.displayPercentage;
-      var resultText = calcRes.result;
-      var divisionText = calcRes.division;
-      var totalGrade = calcRes.grade;
-
-      var rankVal = '—';
-      if (savedMarks && savedMarks.rank) {
-        rankVal = rankToOrdinal(savedMarks.rank);
+      // Helper for rank ordinal (NO EMOJIS)
+      function toRankOrdinal(n) {
+        if (!n || isNaN(n)) return '—';
+        var num = parseInt(n, 10);
+        var j = num % 10, k = num % 100;
+        var suf = 'th';
+        if (j === 1 && k !== 11) suf = 'st';
+        else if (j === 2 && k !== 12) suf = 'nd';
+        else if (j === 3 && k !== 13) suf = 'rd';
+        return num + suf;
       }
 
-      var divisionColor = '#15803D';
-      if (resultText === 'FAIL' || resultText === 'INCOMPLETE') divisionColor = '#DC2626';
-      else if (divisionText === 'Not Awarded') divisionColor = '#6B7280';
-      else if (divisionText.indexOf('Second') !== -1) divisionColor = '#1D4ED8';
-      else if (divisionText.indexOf('Third') !== -1) divisionColor = '#B45309';
+      // Helper for date formatting DD-MM-YYYY
+      function toDateDDMMYYYY(val) {
+        if (!val) return '';
+        if (val instanceof Date && !isNaN(val)) {
+          var d = String(val.getDate()).padStart(2, '0');
+          var m = String(val.getMonth() + 1).padStart(2, '0');
+          var y = val.getFullYear();
+          return d + '-' + m + '-' + y;
+        }
+        var str = String(val).trim();
+        if (/^\d{2}-\d{2}-\d{4}$/.test(str)) return str;
+        var mIso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (mIso) return mIso[3] + '-' + mIso[2] + '-' + mIso[1];
+        var parsed = new Date(str);
+        if (!isNaN(parsed.getTime())) {
+          var dd = String(parsed.getDate()).padStart(2, '0');
+          var mm = String(parsed.getMonth() + 1).padStart(2, '0');
+          var yy = parsed.getFullYear();
+          return dd + '-' + mm + '-' + yy;
+        }
+        return str;
+      }
 
-      var maxW = orientation === 'landscape' ? '297mm' : '210mm';
-      var minH = orientation === 'landscape' ? '195mm' : '275mm';
+      // Multi-exam calculation vs Single-exam calculation
+      var multiRes = null;
+      var calcRes = null;
+
+      if (hasCombinedTerms) {
+        multiRes = ExamCalculationEngine.calculateMultiExamResult({
+          terms: cTerms,
+          marksMap: (combinedData && combinedData.marks) || {},
+          termSubjects: (combinedData && combinedData.termSubjects) || null,
+          subjects: subjectsArr,
+          studentClass: s.class,
+          schoolConfig: schoolConfig
+        });
+      } else {
+        var marksMap = (savedMarks && savedMarks.marks) || {};
+        calcRes = ExamCalculationEngine.calculateStudentResult({
+          marks: marksMap,
+          subjects: subjectsArr,
+          term: activeTerm,
+          schoolConfig: schoolConfig
+        });
+      }
+
+      // Page dimensions derived from orientation minus @page 8mm margins
+      // Printable portrait: 194mm x 281mm. Printable landscape: 281mm x 194mm.
+      var maxW = orientation === 'landscape' ? '281mm' : '194mm';
+      var minH = orientation === 'landscape' ? '190mm' : '275mm';
+      var maxH = orientation === 'landscape' ? '194mm' : '281mm';
+      var cardHeight = orientation === 'landscape' ? '192mm' : '279mm';
       var borderStyle = design.showBorder !== false ? 'border:1.5px solid #CBD5E1; border-radius:8px;' : '';
 
-      var html = '<div class="report-card" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; max-width:' + maxW + '; min-height:' + minH + '; margin:0 auto; padding:8mm; display:flex; flex-direction:column; justify-content:space-between; page-break-after:always; page-break-inside:avoid; ' + borderStyle + '">';
+      var html = '<div class="report-card" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; height:' + cardHeight + '; min-height:' + minH + '; max-height:' + maxH + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; justify-content:space-between; page-break-after:always; page-break-inside:avoid; overflow:hidden; ' + borderStyle + '">';
 
-      html += '<div>'; // Top content wrapper
+      html += '<div style="display:flex; flex-direction:column; flex:1;">'; // Top content wrapper
 
       // 1. School Header
       var showLogo = (schoolCfg.logo !== false) && !!logo;
-      html += '<div style="display:flex; align-items:center; gap:16px; border-bottom:2.5px solid ' + primaryColor + '; padding-bottom:10px; margin-bottom:8px;">';
+      html += '<div style="display:flex; align-items:center; gap:14px; border-bottom:2.5px solid ' + primaryColor + '; padding-bottom:8px; margin-bottom:6px;">';
       if (showLogo) {
         html += '<img src="' + logo + '" style="height:' + logoH + '; width:' + logoH + '; object-fit:contain; flex-shrink:0; border-radius:6px;" alt="School Logo">';
       }
       html += '<div style="flex:1; text-align:center;">';
       if (schoolCfg.name !== false && schoolName) {
-        html += '<div style="font-size:22px; font-weight:900; color:' + primaryColor + '; letter-spacing:0.03em; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
+        html += '<div style="font-size:20px; font-weight:900; color:' + primaryColor + '; letter-spacing:0.03em; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
       }
       if (schoolCfg.tagline !== false && tagline) {
-        html += '<div style="font-size:11px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
+        html += '<div style="font-size:10.5px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
       }
+      // Line 1: Address
       if (schoolCfg.address !== false && address) {
-        html += '<div style="font-size:11px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
+        html += '<div style="font-size:10.5px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
       }
-      var contacts = [];
-      if (schoolCfg.phone !== false && phone) contacts.push('Phone: ' + escapeHTML(phone));
-      if (schoolCfg.email !== false && email) contacts.push('Email: ' + escapeHTML(email));
-      if (schoolCfg.website !== false && website) contacts.push('Web: ' + escapeHTML(website));
-      if (schoolCfg.udiseCode !== false && udise) contacts.push('UDISE: ' + escapeHTML(udise));
-      if (schoolCfg.affiliationNo !== false && affiliation) contacts.push('Affiliation: ' + escapeHTML(affiliation));
-      if (schoolCfg.session !== false && academicSession) contacts.push('Session: ' + escapeHTML(academicSession));
-      if (contacts.length > 0) {
-        html += '<div style="font-size:10px; color:#4B5563; margin-top:3px;">' + contacts.join(' &bull; ') + '</div>';
+      // Line 2: Phone • Email • Website
+      var line2 = [];
+      if (schoolCfg.phone !== false && phone) line2.push('Phone: ' + escapeHTML(phone));
+      if (schoolCfg.email !== false && email) line2.push('Email: ' + escapeHTML(email));
+      if (schoolCfg.website !== false && website) line2.push('Website: ' + escapeHTML(website));
+      if (line2.length > 0) {
+        html += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px;">' + line2.join(' &bull; ') + '</div>';
+      }
+      // Line 3: Affiliation No (CBSE) • UDISE • Session
+      var line3 = [];
+      if (schoolCfg.affiliationNo !== false && affiliation) {
+        var affStr = String(affiliation).trim();
+        if (affStr.indexOf('Affiliation') === -1) affStr = 'Affiliation No: ' + affStr;
+        if (affStr.indexOf('CBSE') === -1 && (branding.board === 'CBSE' || settings.board === 'CBSE' || schoolInfo.board === 'CBSE' || affStr.length === 7 || affStr.indexOf('3430182') !== -1)) {
+          affStr += ' (CBSE)';
+        }
+        line3.push(affStr);
+      }
+      if (schoolCfg.udiseCode !== false && udise) {
+        var udStr = String(udise).trim();
+        if (udStr.indexOf('UDISE') === -1) udStr = 'UDISE: ' + udStr;
+        line3.push(udStr);
+      }
+      if (schoolCfg.session !== false && academicSession) {
+        var sesStr = String(academicSession).trim();
+        if (sesStr.indexOf('Session') === -1) sesStr = 'Session: ' + sesStr;
+        line3.push(sesStr);
+      }
+      if (line3.length > 0) {
+        html += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px; font-weight:600;">' + line3.join(' &bull; ') + '</div>';
       }
       html += '</div></div>';
 
-      // 2. Title Banner (Strict English Only)
-      html += '<div style="text-align:center; margin:4px 0 8px 0;">';
-      html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11.5px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">OFFICIAL REPORT CARD</span>';
-      html += '<div style="font-size:11.5px; font-weight:700; color:#374151; margin-top:3px;">' + escapeHTML(termName) + '</div>';
+      // 2. Title Banner
+      html += '<div style="text-align:center; margin:3px 0 6px 0;">';
+      if (hasCombinedTerms) {
+        var termNames = cTerms.map(function(t) { return t.name.toUpperCase(); }).join(' & ');
+        html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">CONSOLIDATED REPORT CARD</span>';
+        html += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termNames) + '</div>';
+      } else {
+        html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">OFFICIAL REPORT CARD</span>';
+        html += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termName) + '</div>';
+      }
       html += '</div>';
 
-      // 3. Dynamic Student Details Grid (Collapses without leaving gaps)
+      // 3. Dynamic Student Details Grid (Collapses cleanly without blank slots)
       var studentItems = [];
       var sName = s.name || ((s.firstName || '') + ' ' + (s.lastName || '')).trim();
       if (studentCfg.name !== false && sName) {
@@ -605,15 +916,15 @@
       }
       var sDob = s.dateOfBirth || s.dob || '';
       if (studentCfg.dob !== false && sDob) {
-        studentItems.push({ label: 'Date of Birth', value: sDob });
+        studentItems.push({ label: 'Date of Birth', value: toDateDDMMYYYY(sDob) });
       }
       var sFather = s.fatherName || s.father || '';
       if (studentCfg.fatherName !== false && sFather) {
-        studentItems.push({ label: 'Father Name', value: sFather });
+        studentItems.push({ label: "Father's Name", value: sFather });
       }
       var sMother = s.motherName || s.mother || '';
       if (studentCfg.motherName !== false && sMother) {
-        studentItems.push({ label: 'Mother Name', value: sMother });
+        studentItems.push({ label: "Mother's Name", value: sMother });
       }
       var sParent = s.parentName || s.guardianName || s.guardian || '';
       if (studentCfg.parentName !== false && sParent && sParent !== sFather) {
@@ -629,14 +940,13 @@
       }
       var sAdmDate = s.admissionDate || '';
       if (studentCfg.admissionDate !== false && sAdmDate) {
-        studentItems.push({ label: 'Admission Date', value: sAdmDate });
+        studentItems.push({ label: 'Admission Date', value: toDateDDMMYYYY(sAdmDate) });
       }
 
       var hasPhoto = (studentCfg.photo !== false) && !!(s.photoUrl || s.photo);
 
       if (studentItems.length > 0) {
-        html += '<div style="display:flex; gap:12px; align-items:stretch; margin-bottom:8px;">';
-        
+        html += '<div style="display:flex; gap:10px; align-items:stretch; margin-bottom:6px;">';
         var gridCols = orientation === 'landscape' ? 3 : 2;
         html += '<div style="flex:1; display:grid; grid-template-columns:repeat(' + gridCols + ', 1fr); border:1px solid #BFDBFE; border-radius:6px; overflow:hidden; font-size:' + fontBase + '; background:#EFF6FF;">';
         
@@ -645,92 +955,113 @@
           var spanStyle = isLastOdd ? 'grid-column: span ' + (gridCols - (studentItems.length % gridCols) + 1) + ';' : '';
           var borderRight = ((idx + 1) % gridCols !== 0 && !isLastOdd) ? 'border-right:1px solid #DBEAFE;' : '';
           var borderBottom = (idx < studentItems.length - (studentItems.length % gridCols || gridCols)) ? 'border-bottom:1px solid #DBEAFE;' : '';
-          html += '<div style="padding:5px 10px; ' + borderRight + ' ' + borderBottom + ' ' + spanStyle + '"><strong>' + escapeHTML(item.label) + ':</strong> ' + escapeHTML(item.value) + '</div>';
+          html += '<div style="padding:4px 8px; ' + borderRight + ' ' + borderBottom + ' ' + spanStyle + '"><strong>' + escapeHTML(item.label) + ':</strong> ' + escapeHTML(item.value) + '</div>';
         });
         html += '</div>';
 
         if (hasPhoto) {
-          html += '<div style="width:68px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #CBD5E1; border-radius:6px; background:#F8FAFC; overflow:hidden; padding:2px;">';
-          html += '<img src="' + (s.photoUrl || s.photo) + '" style="width:100%; height:100%; max-height:80px; object-fit:cover; border-radius:4px;" alt="Student Photo">';
+          html += '<div style="width:64px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #CBD5E1; border-radius:6px; background:#F8FAFC; overflow:hidden; padding:2px;">';
+          html += '<img src="' + (s.photoUrl || s.photo) + '" style="width:100%; height:100%; max-height:76px; object-fit:cover; border-radius:4px;" alt="Student Photo">';
           html += '</div>';
         }
-
         html += '</div>';
       }
 
       // 4. Scholastic Performance Table
-      if (isCombined && combinedData && combinedData.terms && combinedData.terms.length > 1) {
-        var cTerms = combinedData.terms;
-        html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:8px;">';
+      if (hasCombinedTerms) {
+        var isConsolidated = multiRes && multiRes.isConsolidated;
+        html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:6px;">';
         html += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
-        html += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B; width:26%;">Subject</th>';
+        html += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
         cTerms.forEach(function(t) {
           html += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B;">' + escapeHTML(t.name) + '</th>';
         });
-        html += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; background:#0F172A;">Consolidated</th>';
+        if (isConsolidated) {
+          html += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; background:#0F172A;">Consolidated</th>';
+        }
         html += '</tr><tr style="background:#1E293B; color:#FFF; font-weight:700;">';
         cTerms.forEach(function() {
-          html += '<th style="padding:3px 6px; text-align:center; border:1px solid #64748B; font-size:10px;">Obt</th>';
-          html += '<th style="padding:3px 6px; text-align:center; border:1px solid #64748B; font-size:10px;">Grade</th>';
+          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Obt</th>';
+          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Grade</th>';
         });
-        html += '<th style="padding:3px 6px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:10px;">Total</th>';
-        html += '<th style="padding:3px 6px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:10px;">Grade</th>';
+        if (isConsolidated) {
+          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Total</th>';
+          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Grade</th>';
+        }
         html += '</tr></thead><tbody>';
 
-        var grandObt = 0;
-        var grandFull = 0;
-        var termTotals = {};
-        cTerms.forEach(function(t) { termTotals[t.id] = { obt: 0, full: 0 }; });
+        var termTotalsMap = (multiRes && multiRes.termTotals) || {};
 
         subjectsArr.forEach(function(sub, idx) {
           html += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
-          html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + '</td>';
-          
-          var subTotalObt = 0;
-          var subTotalFull = 0;
+          var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
+          html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
+
+          var subGrandObt = 0;
+          var subGrandFull = 0;
 
           cTerms.forEach(function(t) {
+            // Find term-specific subject config
+            var tSubs = (combinedData && combinedData.termSubjects && combinedData.termSubjects[t.id]) ||
+              (store.examSubjects && store.examSubjects[t.id] &&
+              (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]) &&
+              (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]).subjects) || subjectsArr;
+            var tSub = (tSubs || []).find(function(x) { return x.id === sub.id; });
+            var termSubFull = (tSub && tSub.fullMarks) ? Number(tSub.fullMarks) : (sub.fullMarks || 100);
+            var termSubPass = (tSub && tSub.passMarks !== undefined && tSub.passMarks !== null) ? Number(tSub.passMarks) : (0.33 * termSubFull);
+
             var tMarks = (combinedData.marks && combinedData.marks[t.id] && combinedData.marks[t.id][sub.id]) || {};
-            var o = tMarks.obtained !== undefined ? Number(tMarks.obtained) : null;
-            var f = sub.fullMarks || 100;
+            var isAB = tMarks.isAbsent === true;
+            var isEX = tMarks.isExempted === true;
+            var hasO = !isAB && !isEX && tMarks.obtained !== undefined && tMarks.obtained !== null && String(tMarks.obtained).trim() !== '';
+            var o = hasO ? Number(tMarks.obtained) : null;
+
+            var cellDisp = isAB ? 'AB' : (isEX ? 'EX' : (o !== null ? String(o) : '—'));
+            var cellStyle = (isAB || (o !== null && o < termSubPass)) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
+
+            var cellPct = o !== null ? (o / termSubFull) * 100 : 0;
+            var cellGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (o !== null ? ExamCalculationEngine.calculateGrade(cellPct, schoolConfig.gradingScale).grade : '—'));
+            if (!isAB && !isEX && o !== null && o >= termSubPass && cellGrade === 'F') cellGrade = 'D';
+
+            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + cellStyle + '">' + cellDisp + '</td>';
+            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + cellGrade + '</td>';
+
             if (o !== null) {
-              subTotalObt += o;
-              subTotalFull += f;
-              termTotals[t.id].obt += o;
-              termTotals[t.id].full += f;
+              subGrandObt += o;
+              subGrandFull += termSubFull;
             }
-            var g = o !== null ? ExamCalculationEngine.calculateGrade((o / f) * 100, schoolConfig.gradingScale).grade : '—';
-            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + (o !== null ? o : '—') + '</td>';
-            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + g + '</td>';
           });
 
-          grandObt += subTotalObt;
-          grandFull += subTotalFull;
-          var subGrandPct = subTotalFull > 0 ? (subTotalObt / subTotalFull) * 100 : 0;
-          var subGrandGrade = subTotalFull > 0 ? ExamCalculationEngine.calculateGrade(subGrandPct, schoolConfig.gradingScale).grade : '—';
-
-          html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subTotalObt + '</td>';
-          html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subGrandGrade + '</td>';
+          if (isConsolidated) {
+            var subConsolidatedGrade = subGrandFull > 0 ? ExamCalculationEngine.calculateGrade((subGrandObt / subGrandFull) * 100, schoolConfig.gradingScale).grade : '—';
+            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subGrandObt + '</td>';
+            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subConsolidatedGrade + '</td>';
+          }
           html += '</tr>';
         });
 
         // Multi-term Grand Total Row
-        html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11.5px;">';
-        html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">GRAND TOTAL</td>';
+        html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11px;">';
+        html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
         cTerms.forEach(function(t) {
-          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + termTotals[t.id].obt + '</td>';
-          var tPct = termTotals[t.id].full > 0 ? (termTotals[t.id].obt / termTotals[t.id].full) * 100 : 0;
-          var tGr = termTotals[t.id].full > 0 ? ExamCalculationEngine.calculateGrade(tPct, schoolConfig.gradingScale).grade : '—';
-          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tGr + '</td>';
+          var tt = termTotalsMap[t.id] || { obtained: 0, maxTotal: 0, grade: '—' };
+          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.obtained + ' / ' + tt.maxTotal + '</td>';
+          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.grade + '</td>';
         });
-        html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + grandObt + ' / ' + grandFull + '</td>';
-        var overallGr = grandFull > 0 ? ExamCalculationEngine.calculateGrade((grandObt / grandFull) * 100, schoolConfig.gradingScale).grade : '—';
-        html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + overallGr + '</td>';
+        if (isConsolidated) {
+          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.total + ' / ' + multiRes.maxTotal + '</td>';
+          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.grade + '</td>';
+        }
         html += '</tr></tbody></table>';
 
       } else {
         // Single Exam Table
-        html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:8px;">';
+        var totalObtained = calcRes.total;
+        var totalFull = calcRes.maxTotal;
+        var totalPass = calcRes.passTotal;
+        var totalGrade = calcRes.grade;
+
+        html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:6px;">';
         html += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">';
         html += '<th style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
         if (colToggles.showFullMarks !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Full Marks</th>';
@@ -739,6 +1070,7 @@
         if (colToggles.showGrade !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Grade</th>';
         html += '</tr></thead><tbody>';
 
+        var marksMap = (savedMarks && savedMarks.marks) || {};
         subjectsArr.forEach(function(sub, idx) {
           var sc = marksMap[sub.id];
           var isAB = sc && sc.isAbsent;
@@ -749,13 +1081,13 @@
           var isSubFail = num !== null && num < passNum;
 
           var obtDisp = isAB ? 'AB' : (isEX ? 'EX' : (num !== null ? String(num) : '—'));
-          var obtStyle = (isAB || isSubFail) ? 'color:#DC2626; font-weight:700; text-decoration:underline;' : 'font-weight:700;';
+          var obtStyle = (isAB || isSubFail) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
 
           var subPct = num !== null ? (num / (sub.fullMarks || 100)) * 100 : 0;
           var subGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (num !== null ? ExamCalculationEngine.calculateGrade(subPct, schoolConfig.gradingScale).grade : '—'));
           if (!isAB && !isEX && num !== null && num >= passNum && subGrade === 'F') subGrade = 'D';
 
-          var optLabel = sub.isOptional ? ' <span style="font-size:9px; color:#6B7280;">(Opt)</span>' : '';
+          var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
 
           html += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
           html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
@@ -767,8 +1099,8 @@
         });
 
         // Total Row
-        html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:12px;">';
-        html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">GRAND TOTAL</td>';
+        html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11.5px;">';
+        html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
         if (colToggles.showFullMarks !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalFull + '</td>';
         if (colToggles.showPassMarks !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalPass + '</td>';
         if (colToggles.showObtained !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalObtained + '</td>';
@@ -777,57 +1109,159 @@
       }
 
       // 5. Dynamic Summary Block
-      var summaryItems = [];
-      if (acaCfg.percentage !== false) {
-        summaryItems.push({ label: 'Percentage', value: percentageStr, color: primaryColor });
-      }
-      if (acaCfg.division !== false) {
-        summaryItems.push({ label: 'Division', value: divisionText, color: divisionColor });
-      }
-      if (acaCfg.rank !== false) {
-        summaryItems.push({ label: 'Class Rank', value: rankVal, color: '#0F172A' });
-      }
-      if (acaCfg.result !== false) {
-        summaryItems.push({ label: 'Final Result', value: resultText, color: (resultText === 'PASS' ? '#16A34A' : '#DC2626') });
-      }
-      if (secToggles.showAttendance !== false && acaCfg.attendance !== false) {
-        var attPct = typeof getStudentAttendancePercentage === 'function'
-          ? getStudentAttendancePercentage(s, activeTerm ? activeTerm.startDate : null, activeTerm ? activeTerm.endDate : null)
-          : null;
-        if (attPct !== null && attPct !== undefined) {
-          summaryItems.push({ label: 'Attendance', value: attPct + '%', color: primaryColor });
+      var isIncomplete = false;
+      var pendingSubjectsList = [];
+
+      if (hasCombinedTerms) {
+        if (!multiRes.isConsolidated) {
+          // Mode 'none': Per-term compact breakdown table
+          html += '<div style="margin-bottom:6px; border:1px solid #CBD5E1; border-radius:6px; overflow:hidden;">';
+          html += '<table style="width:100%; border-collapse:collapse; font-size:' + fontBase + '; text-align:center;">';
+          html += '<thead><tr style="background:#F1F5F9; color:#475569; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.04em;">';
+          html += '<th style="padding:3px 6px; text-align:left; border-bottom:1px solid #CBD5E1;">Term Assessment</th>';
+          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Total Marks</th>';
+          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Percentage</th>';
+          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Grade</th>';
+          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Division</th>';
+          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Result</th>';
+          html += '</tr></thead><tbody>';
+
+          cTerms.forEach(function(t) {
+            var tr = multiRes.termResults[t.id];
+            var divCol = '#15803D';
+            if (tr.result === 'FAIL' || tr.result === 'INCOMPLETE') divCol = '#DC2626';
+            else if (tr.division === 'Not Awarded') divCol = '#6B7280';
+            else if (tr.division.indexOf('Second') !== -1) divCol = '#1D4ED8';
+            else if (tr.division.indexOf('Third') !== -1) divCol = '#B45309';
+
+            var resCol = tr.result === 'PASS' ? '#16A34A' : '#DC2626';
+
+            html += '<tr>';
+            html += '<td style="padding:3px 6px; text-align:left; font-weight:700; color:' + primaryColor + '; border-bottom:1px solid #F1F5F9;">' + escapeHTML(t.name) + '</td>';
+            html += '<td style="padding:3px 6px; font-weight:700; border-bottom:1px solid #F1F5F9;">' + tr.total + ' / ' + tr.maxTotal + '</td>';
+            html += '<td style="padding:3px 6px; font-weight:800; color:' + primaryColor + '; border-bottom:1px solid #F1F5F9;">' + tr.displayPercentage + '</td>';
+            html += '<td style="padding:3px 6px; font-weight:700; border-bottom:1px solid #F1F5F9;">' + tr.grade + '</td>';
+            html += '<td style="padding:3px 6px; font-weight:700; color:' + divCol + '; border-bottom:1px solid #F1F5F9;">' + escapeHTML(tr.division) + '</td>';
+            html += '<td style="padding:3px 6px; font-weight:800; color:' + resCol + '; border-bottom:1px solid #F1F5F9;">' + tr.result + '</td>';
+            html += '</tr>';
+          });
+          html += '</tbody></table></div>';
+
+        } else {
+          // Consolidated mode summary cards
+          var summaryItems = [];
+          if (acaCfg.percentage !== false) {
+            summaryItems.push({ label: 'Percentage', value: multiRes.displayPercentage, color: primaryColor });
+          }
+          if (acaCfg.division !== false) {
+            var divColor = '#15803D';
+            if (multiRes.result === 'FAIL' || multiRes.result === 'INCOMPLETE') divColor = '#DC2626';
+            else if (multiRes.division === 'Not Awarded') divColor = '#6B7280';
+            else if (multiRes.division.indexOf('Second') !== -1) divColor = '#1D4ED8';
+            else if (multiRes.division.indexOf('Third') !== -1) divColor = '#B45309';
+            summaryItems.push({ label: 'Division', value: multiRes.division, color: divColor });
+          }
+          if (acaCfg.result !== false) {
+            summaryItems.push({ label: 'Final Result', value: multiRes.result, color: (multiRes.result === 'PASS' ? '#16A34A' : '#DC2626') });
+          }
+          if (summaryItems.length > 0) {
+            html += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:6px; text-align:center;">';
+            summaryItems.forEach(function(item) {
+              html += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
+            });
+            html += '</div>';
+          }
+          if (multiRes.result === 'INCOMPLETE') {
+            isIncomplete = true;
+            pendingSubjectsList = multiRes.pendingSubjects || [];
+          }
+        }
+
+      } else {
+        // Single exam summary cards
+        var summaryItems = [];
+        var percentageStr = calcRes.displayPercentage;
+        var resultText = calcRes.result;
+        var divisionText = calcRes.division;
+
+        var divisionColor = '#15803D';
+        if (resultText === 'FAIL' || resultText === 'INCOMPLETE') divisionColor = '#DC2626';
+        else if (divisionText === 'Not Awarded') divisionColor = '#6B7280';
+        else if (divisionText.indexOf('Second') !== -1) divisionColor = '#1D4ED8';
+        else if (divisionText.indexOf('Third') !== -1) divisionColor = '#B45309';
+
+        var rankVal = '—';
+        if (savedMarks && savedMarks.rank) {
+          rankVal = toRankOrdinal(savedMarks.rank);
+        }
+
+        if (acaCfg.percentage !== false) {
+          summaryItems.push({ label: 'Percentage', value: percentageStr, color: primaryColor });
+        }
+        if (acaCfg.division !== false) {
+          summaryItems.push({ label: 'Division', value: divisionText, color: divisionColor });
+        }
+        if (acaCfg.rank !== false) {
+          summaryItems.push({ label: 'Class Rank', value: rankVal, color: '#0F172A' });
+        }
+        if (acaCfg.result !== false) {
+          summaryItems.push({ label: 'Final Result', value: resultText, color: (resultText === 'PASS' ? '#16A34A' : '#DC2626') });
+        }
+        if (secToggles.showAttendance !== false && acaCfg.attendance !== false) {
+          var attPct = typeof getStudentAttendancePercentage === 'function'
+            ? getStudentAttendancePercentage(s, activeTerm ? activeTerm.startDate : null, activeTerm ? activeTerm.endDate : null)
+            : null;
+          if (attPct !== null && attPct !== undefined) {
+            summaryItems.push({ label: 'Attendance', value: attPct + '%', color: primaryColor });
+          }
+        }
+
+        if (summaryItems.length > 0) {
+          html += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:6px; text-align:center;">';
+          summaryItems.forEach(function(item) {
+            html += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
+          });
+          html += '</div>';
+        }
+
+        if (calcRes.result === 'INCOMPLETE') {
+          isIncomplete = true;
+          var missingIds = calcRes.missingMandatorySubjects || [];
+          pendingSubjectsList = missingIds.map(function(mId) {
+            var found = subjectsArr.find(function(x) { return x.id === mId; });
+            return found ? found.name : mId;
+          });
         }
       }
 
-      if (summaryItems.length > 0) {
-        html += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:8px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:8px; text-align:center;">';
-        summaryItems.forEach(function(item) {
-          html += '<div><span style="font-size:10px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:14px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
-        });
-        html += '</div>';
+      // Incomplete Result Note
+      if (isIncomplete) {
+        var missingMsg = pendingSubjectsList.length > 0 ? pendingSubjectsList.join(', ') : 'mandatory subjects';
+        html += '<div style="color:#DC2626; font-size:10px; font-weight:600; text-align:center; margin-bottom:6px;">Result withheld: marks pending in ' + escapeHTML(missingMsg) + '</div>';
       }
 
       // 6. Teacher Remarks
       if (secToggles.showRemarks !== false && acaCfg.remarks !== false) {
         var remarksText = (savedMarks && savedMarks.remarks) || '';
-        html += '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; margin-bottom:6px; font-size:11px;">';
-        html += '<strong style="color:' + primaryColor + '; text-transform:uppercase; font-size:10px; letter-spacing:0.04em;">Teacher\'s Remarks: </strong>';
-        html += '<span style="color:#334155; font-style:italic;">' + escapeHTML(remarksText || (resultText === 'PASS' ? 'Good performance. Promoted to next class.' : 'Needs improvement in weak subjects.')) + '</span>';
+        var currentRes = calcRes ? calcRes.result : (multiRes ? multiRes.result : 'PASS');
+        html += '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:5px 8px; margin-bottom:6px; min-height:' + remarksMinH + '; font-size:10.5px;">';
+        html += '<strong style="color:' + primaryColor + '; text-transform:uppercase; font-size:9.5px; letter-spacing:0.04em;">Teacher\'s Remarks: </strong>';
+        html += '<span style="color:#334155; font-style:italic;">' + escapeHTML(remarksText || (currentRes === 'PASS' ? 'Good performance. Promoted to next class.' : 'Needs improvement in weak subjects.')) + '</span>';
         html += '</div>';
       }
 
-      // 7. Promotion Status Banner (Only on Final/Annual Term if enabled)
-      var isFinalTerm = activeTerm && (activeTerm.isFinal || activeTerm.isAnnual || activeTerm.termType === 'final' || String(activeTerm.name).toLowerCase().includes('annual') || String(activeTerm.name).toLowerCase().includes('final'));
+      // 7. Promotion Status Banner (Only on Final/Annual Term if term.isFinal === true)
+      var isFinalTerm = !!(activeTerm && activeTerm.isFinal === true);
       if (isFinalTerm && acaCfg.promotionStatus === true) {
         var promoMsg = schoolConfig.promotionMessage || 'Promoted to Next Higher Class';
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:5px 12px; margin-bottom:6px; font-size:11px;">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:4px 10px; margin-bottom:6px; font-size:10.5px;">';
         html += '<div><strong>Academic Status:</strong> <span style="color:#15803D; font-weight:800; letter-spacing:0.02em;">' + escapeHTML(promoMsg) + '</span></div>';
         html += '</div>';
       }
 
       // 8. Grading Scale Legend
       if (secToggles.showGradingLegend !== false) {
-        html += '<div style="font-size:9.5px; color:#64748B; text-align:center; padding:4px 0; border-top:1px solid #E2E8F0; margin-bottom:6px;">';
+        html += '<div style="font-size:9px; color:#64748B; text-align:center; padding:3px 0; border-top:1px solid #E2E8F0; margin-bottom:6px;">';
         html += '<strong>Grading Scale:</strong> A+(91-100) &bull; A(81-90) &bull; B+(71-80) &bull; B(61-70) &bull; C+(51-60) &bull; C(41-50) &bull; D(33-40) &bull; F(&lt;33)';
         html += '</div>';
       }
@@ -836,17 +1270,17 @@
 
       // 9. Signatures Block
       if (secToggles.showSignatures !== false) {
-        var dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-        html += '<div style="border-top:1px solid #CBD5E1; padding-top:8px; margin-top:auto;">';
+        var dateStr = toDateDDMMYYYY(new Date());
+        html += '<div style="border-top:1px solid #CBD5E1; padding-top:6px; margin-top:auto;">';
         html += '<div style="display:flex; justify-content:space-between; align-items:flex-end;">';
-        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:4px; font-size:10px; font-weight:700; color:#334155;">CLASS TEACHER</div></div>';
-        html += '<div style="text-align:center; width:100px; height:40px; border:1.5px dashed #94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8.5px; color:#94A3B8; font-weight:700; letter-spacing:0.08em;">SEAL</div>';
+        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">CLASS TEACHER</div></div>';
+        html += '<div style="text-align:center; width:90px; height:36px; border:1.5px dashed #94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8px; color:#94A3B8; font-weight:700; letter-spacing:0.08em;">SEAL</div>';
         if (secToggles.showParentSignature === true) {
-          html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:4px; font-size:10px; font-weight:700; color:#334155;">PARENT SIGNATURE</div></div>';
+          html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PARENT SIGNATURE</div></div>';
         }
-        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:4px; font-size:10px; font-weight:700; color:#334155;">PRINCIPAL</div></div>';
+        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PRINCIPAL</div></div>';
         html += '</div>';
-        html += '<div style="display:flex; justify-content:space-between; margin-top:6px; font-size:9.5px; color:#64748B;">';
+        html += '<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:#64748B;">';
         html += '<div>Date of Issue: ' + dateStr + '</div>';
         if (schoolConfig.showPaathshalaFooter !== false) {
           html += '<div>Generated by Paathshala ERP</div>';
@@ -2690,7 +3124,11 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     var cardHTML = generateSingleStudentCardHTML(s, false, savedMarks, null, activeTerm, subjects);
     var stuName = s.name || ((s.firstName || '') + ' ' + (s.lastName || '')).trim();
-    printViaBlob(cardHTML, stuName, s.class);
+    if (activeTerm && activeTerm.rulesVersion === 'v2') {
+      printViaBlobV2(cardHTML, stuName, s.class);
+    } else {
+      printViaBlob(cardHTML, stuName, s.class);
+    }
   }
 
   function legacyPrintBulkReportCards() {
@@ -3064,8 +3502,13 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         bodyHTML += '  <div class="form-group"><label class="form-label">Start Date *</label><input type="date" id="admin-examterm-start" class="form-input"></div>';
         bodyHTML += '  <div class="form-group"><label class="form-label">End Date *</label><input type="date" id="admin-examterm-end" class="form-input"></div>';
         bodyHTML += '</div>';
-        bodyHTML += '<div class="form-group"><label class="form-label">Weightage % *</label>';
+        bodyHTML += '<div class="form-group mb-3"><label class="form-label">Weightage % *</label>';
         bodyHTML += '  <input type="number" id="admin-examterm-weight" class="form-input" value="50" min="0" max="100">';
+        bodyHTML += '</div>';
+        bodyHTML += '<div class="form-group mb-3">';
+        bodyHTML += '  <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+        bodyHTML += '    <input type="checkbox" id="exam-term-is-final"> Final / Annual Examination (Enables Promotion Status on Report Cards)';
+        bodyHTML += '  </label>';
         bodyHTML += '</div>';
 
         var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
@@ -3081,6 +3524,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
             var start = document.getElementById('admin-examterm-start').value;
             var end = document.getElementById('admin-examterm-end').value;
             var weight = parseInt(document.getElementById('admin-examterm-weight').value) || 50;
+            var isFinal = !!(document.getElementById('exam-term-is-final') && document.getElementById('exam-term-is-final').checked);
 
             if (!name || !short || !start || !end) {
               SchoolApp.showToast('Please enter all required fields.', 'error');
@@ -3100,6 +3544,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
               resultDate: null,
               status: 'draft',
               weightage: weight,
+              isFinal: isFinal,
               rulesVersion: 'v2', // New terms get rulesVersion v2 by default
               createdAt: new Date().toISOString(),
               createdBy: SchoolApp.currentUser ? SchoolApp.currentUser.username : 'admin',
@@ -3189,8 +3634,13 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         bodyHTML += '  <div class="form-group"><label class="form-label">Start Date *</label><input type="date" id="admin-examterm-start" class="form-input" value="' + term.startDate + '"></div>';
         bodyHTML += '  <div class="form-group"><label class="form-label">End Date *</label><input type="date" id="admin-examterm-end" class="form-input" value="' + term.endDate + '"></div>';
         bodyHTML += '</div>';
-        bodyHTML += '<div class="form-group"><label class="form-label">Weightage % *</label>';
+        bodyHTML += '<div class="form-group mb-3"><label class="form-label">Weightage % *</label>';
         bodyHTML += '  <input type="number" id="admin-examterm-weight" class="form-input" value="' + term.weightage + '" min="0" max="100">';
+        bodyHTML += '</div>';
+        bodyHTML += '<div class="form-group mb-3">';
+        bodyHTML += '  <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+        bodyHTML += '    <input type="checkbox" id="exam-term-is-final"' + (term.isFinal ? ' checked' : '') + '> Final / Annual Examination (Enables Promotion Status on Report Cards)';
+        bodyHTML += '  </label>';
         bodyHTML += '</div>';
 
         var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
@@ -3212,11 +3662,13 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
               return;
             }
 
+            var isFinal = !!(document.getElementById('exam-term-is-final') && document.getElementById('exam-term-is-final').checked);
             term.name = name;
             term.shortName = short;
             term.startDate = start;
             term.endDate = end;
             term.weightage = weight;
+            term.isFinal = isFinal;
 
             var success = await SchoolApp.save();
             if (success) {
@@ -4581,6 +5033,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
   window.printStudentMarksheet = printStudentMarksheet;
   window.printBulkReportCards = printBulkReportCards;
   window.printViaBlob = printViaBlob;
+  window.printViaBlobV2 = printViaBlobV2;
   window.generateSmartRemark = generateSmartRemark;
   window.recalculateStudentEntry = recalculateStudentEntry;
   window.recalculateRanks = recalculateRanks;
