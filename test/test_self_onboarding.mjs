@@ -239,7 +239,9 @@ async function runTests() {
       state: 'Jharkhand',
       subdomain: 'test-school-c5',
       phone: '9999999999',
-      email: 'admin@testschool.edu'
+      email: 'admin@testschool.edu',
+      adminPhone: '9999999999',
+      adminEmail: 'admin@testschool.edu'
     });
 
     assert.equal(schoolRec.adminUsername, undefined, 'adminUsername must not be in root school doc');
@@ -247,7 +249,22 @@ async function runTests() {
     assert.equal(schoolRec.settings.adminUsername, undefined, 'adminUsername must not be in school settings');
     assert.equal(schoolRec.settings.adminEmail, undefined, 'adminEmail must not be in school settings');
     assert.equal(schoolRec.settings.adminPassword, undefined, 'adminPassword must not be in school settings');
+    assert.equal(schoolRec.phone, '', 'phone must be empty in public school doc unless separate schoolPhone exists');
+    assert.equal(schoolRec.email, '', 'email must be empty in public school doc unless separate schoolEmail exists');
+    assert.equal(schoolRec.tagline, '', 'tagline must default to empty string');
     assert.equal(schoolRec.settings.academicYear, getCurrentAcademicYear(), 'Academic year must be dynamic');
+
+    // With separate school phone and email
+    const schoolRecOfficial = buildSchoolRecord({
+      schoolName: 'Official School',
+      subdomain: 'official-school',
+      schoolPhone: '06542-123456',
+      schoolEmail: 'contact@officialschool.edu',
+      tagline: 'Custom Tagline'
+    });
+    assert.equal(schoolRecOfficial.phone, '06542-123456');
+    assert.equal(schoolRecOfficial.email, 'contact@officialschool.edu');
+    assert.equal(schoolRecOfficial.tagline, 'Custom Tagline');
   });
 
   // ──────────────────────────────────────────────────────────────────────────
