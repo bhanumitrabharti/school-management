@@ -414,9 +414,11 @@
       return res;
     },
 
-    calculateMultiExamResult: function(params) {
+calculateMultiExamResult: function(params) {
       params = params || {};
       var terms = params.terms || [];
+      if (terms.length === 0) return { total: 0, maxTotal: 0, percentage: 0, displayPercentage: '0.00%', grade: '—', division: '—', result: '—' };
+
       var marksMap = params.marksMap || {};
       var studentClass = params.studentClass || '';
       var schoolConfig = params.schoolConfig || (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
@@ -428,6 +430,14 @@
 
       var termResults = {};
       var termTotals = {};
+
+      var unitTerms = terms.filter(function(t) { return t.examType === 'unit_test'; });
+      var mainTerms = terms.filter(function(t) { return t.examType !== 'unit_test'; });
+      var hasUnitTests = unitTerms.length > 0;
+
+      var utMode = schoolConfig.unitTestMode || (multiCfg && multiCfg.unitTestMode) || 'display_only';
+      var utWeight = Number(schoolConfig.unitTestWeight !== undefined ? schoolConfig.unitTestWeight : (multiCfg.unitTestWeight !== undefined ? multiCfg.unitTestWeight : 20));
+      var utBestOf = Number(schoolConfig.unitTestBestOf !== undefined ? schoolConfig.unitTestBestOf : (multiCfg.unitTestBestOf !== undefined ? multiCfg.unitTestBestOf : 1));
 
       terms.forEach(function(t) {
         var tSubs = (params.termSubjects && params.termSubjects[t.id]) ||
@@ -456,16 +466,20 @@
         };
       });
 
-      if (mode === 'none') {
+      if (mode === 'none' && !hasUnitTests) {
         return {
           mode: 'none',
           isConsolidated: false,
           termTotals: termTotals,
-          termResults: termResults
+          termResults: termResults,
+          basisNote: '',
+          hasUnitTests: false,
+          unitTerms: [],
+          mainTerms: terms
         };
       }
 
-      // Modes: 'sum', 'average', 'weighted', 'bestOfN'
+      var grandPct = 0;
       var grandObt = 0;
       var grandFull = 0;
       var grandPass = 0;
@@ -473,50 +487,98 @@
       var hasAnyFail = false;
       var allTermsAbsent = true;
       var pendingSubjects = [];
-
-      terms.forEach(function(t) {
-        var r = termResults[t.id];
-        if (!r) return;
-        grandObt += r.total;
-        grandFull += r.maxTotal;
-        grandPass += r.passTotal;
-        if (r.result === 'INCOMPLETE') {
-          hasAnyIncomplete = true;
-          if (r.missingMandatorySubjects) {
-            r.missingMandatorySubjects.forEach(function(m) {
-              if (pendingSubjects.indexOf(m) === -1) pendingSubjects.push(m);
-            });
-          }
-        }
-        if (r.result === 'FAIL') hasAnyFail = true;
-        if (r.result !== 'ABSENT') allTermsAbsent = false;
-      });
-
-      var grandPct = 0;
+      var isConsolidated = true;
+      var basisNote = '';
       var decimals = (schoolConfig.percentageDecimals !== undefined) ? Number(schoolConfig.percentageDecimals) : 2;
 
-      if (mode === 'sum') {
-        grandPct = grandFull > 0 ? (grandObt / grandFull) * 100 : 0;
-      } else if (mode === 'average') {
-        var validTerms = terms.filter(function(t) { return termResults[t.id] && termResults[t.id].maxTotal > 0; });
-        var sumPct = validTerms.reduce(function(acc, t) { return acc + termResults[t.id].percentage; }, 0);
-        grandPct = validTerms.length > 0 ? (sumPct / validTerms.length) : 0;
-      } else if (mode === 'weighted') {
-        var totalW = 0;
-        var weightedSum = 0;
+      if (hasUnitTests) {
+        var evalMainTerms = mainTerms.length > 0 ? mainTerms : terms;
+        var mainGrandObt = evalMainTerms.reduce(function(a, t) { return a + (termTotals[t.id] ? termTotals[t.id].obtained : 0); }, 0);
+        var mainGrandFull = evalMainTerms.reduce(function(a, t) { return a + (termTotals[t.id] ? termTotals[t.id].maxTotal : 0); }, 0);
+        grandPass = evalMainTerms.reduce(function(a, t) { return a + ((termResults[t.id] && termResults[t.id].passTotal) || 0); }, 0);
+        var mainPct = mainGrandFull > 0 ? (mainGrandObt / mainGrandFull) * 100 : 0;
+
+        var utGrandObt = unitTerms.reduce(function(a, t) { return a + (termTotals[t.id] ? termTotals[t.id].obtained : 0); }, 0);
+        var utGrandFull = unitTerms.reduce(function(a, t) { return a + (termTotals[t.id] ? termTotals[t.id].maxTotal : 0); }, 0);
+        var utPct = utGrandFull > 0 ? (utGrandObt / utGrandFull) * 100 : 0;
+
+        if (utMode === 'display_only') {
+          grandObt = mainGrandObt;
+          grandFull = mainGrandFull;
+          grandPct = mainPct;
+          isConsolidated = (mode !== 'none');
+          basisNote = 'Final result based on Main Examinations (Unit Tests shown for reference)';
+        } else if (utMode === 'weighted') {
+          var wUT = utWeight;
+          var wMain = 100 - wUT;
+          grandPct = (utPct * wUT + mainPct * wMain) / 100;
+          grandObt = mainGrandObt + utGrandObt;
+          grandFull = mainGrandFull + utGrandFull;
+          isConsolidated = true;
+          basisNote = 'Final result: Unit Tests ' + wUT + '% + Main Examinations ' + wMain + '%';
+        } else if (utMode === 'best_of_n') {
+          var n = Math.min(Math.max(1, utBestOf), unitTerms.length);
+          var utPcts = unitTerms.map(function(t) { return (termResults[t.id] && termResults[t.id].percentage) || 0; }).sort(function(a, b) { return b - a; });
+          var bestNPcts = utPcts.slice(0, n);
+          var utBestPct = bestNPcts.length > 0 ? (bestNPcts.reduce(function(a, b) { return a + b; }, 0) / bestNPcts.length) : 0;
+          var wUT = utWeight;
+          var wMain = 100 - wUT;
+          grandPct = (utBestPct * wUT + mainPct * wMain) / 100;
+          grandObt = mainGrandObt;
+          grandFull = mainGrandFull;
+          isConsolidated = true;
+          basisNote = 'Final result: Best ' + n + ' of ' + unitTerms.length + ' Unit Tests (' + wUT + '%) + Main Examinations (' + wMain + '%)';
+        }
+
+        hasAnyIncomplete = evalMainTerms.some(function(t) { return termResults[t.id] && termResults[t.id].result === 'INCOMPLETE'; });
+        hasAnyFail = evalMainTerms.some(function(t) { return termResults[t.id] && termResults[t.id].result === 'FAIL'; });
+        allTermsAbsent = evalMainTerms.every(function(t) { return termResults[t.id] && termResults[t.id].result === 'ABSENT'; });
+      } else {
         terms.forEach(function(t) {
-          var w = Number(weights[t.id]) || (100 / terms.length);
-          totalW += w;
-          var p = (termResults[t.id] && termResults[t.id].percentage) || 0;
-          weightedSum += (p * w);
+          var r = termResults[t.id];
+          if (!r) return;
+          grandObt += r.total;
+          grandFull += r.maxTotal;
+          grandPass += r.passTotal;
+          if (r.result === 'INCOMPLETE') {
+            hasAnyIncomplete = true;
+            if (r.missingMandatorySubjects) {
+              r.missingMandatorySubjects.forEach(function(m) {
+                if (pendingSubjects.indexOf(m) === -1) pendingSubjects.push(m);
+              });
+            }
+          }
+          if (r.result === 'FAIL') hasAnyFail = true;
+          if (r.result !== 'ABSENT') allTermsAbsent = false;
         });
-        grandPct = totalW > 0 ? (weightedSum / totalW) : 0;
-      } else if (mode === 'bestOfN') {
-        var n = Number(multiCfg.bestOfNCount) || Math.max(1, terms.length - 1);
-        var sortedPcts = terms.map(function(t) { return (termResults[t.id] && termResults[t.id].percentage) || 0; }).sort(function(a, b) { return b - a; });
-        var bestN = sortedPcts.slice(0, n);
-        var sumBest = bestN.reduce(function(a, b) { return a + b; }, 0);
-        grandPct = bestN.length > 0 ? (sumBest / bestN.length) : 0;
+
+        if (mode === 'sum') {
+          grandPct = grandFull > 0 ? (grandObt / grandFull) * 100 : 0;
+        } else if (mode === 'average') {
+          var validTerms = terms.filter(function(t) { return termResults[t.id] && termResults[t.id].maxTotal > 0; });
+          var sumPct = validTerms.reduce(function(acc, t) { return acc + termResults[t.id].percentage; }, 0);
+          grandPct = validTerms.length > 0 ? (sumPct / validTerms.length) : 0;
+        } else if (mode === 'weighted') {
+          var totalW = 0;
+          var weightedSum = 0;
+          terms.forEach(function(t) {
+            var hasExplicitW = (weights && weights[t.id] !== undefined && weights[t.id] !== null && String(weights[t.id]).trim() !== '');
+            var w = hasExplicitW ? Number(weights[t.id]) : (100 / terms.length);
+            if (isNaN(w) || w < 0) w = 0;
+            totalW += w;
+            var p = (termResults[t.id] && termResults[t.id].percentage) || 0;
+            weightedSum += (p * w);
+          });
+          grandPct = totalW > 0 ? (weightedSum / totalW) : 0;
+        } else if (mode === 'bestOfN') {
+          var n = Number(multiCfg.bestOfNCount) || Math.max(1, terms.length - 1);
+          var sortedPcts = terms.map(function(t) { return (termResults[t.id] && termResults[t.id].percentage) || 0; }).sort(function(a, b) { return b - a; });
+          var bestN = sortedPcts.slice(0, n);
+          var sumBest = bestN.reduce(function(a, b) { return a + b; }, 0);
+          grandPct = bestN.length > 0 ? (sumBest / bestN.length) : 0;
+        }
+        isConsolidated = (mode !== 'none');
+        basisNote = '';
       }
 
       var grandGradeObj = ExamCalculationEngine.calculateGrade(grandPct, gradingScale);
@@ -561,7 +623,7 @@
 
       return {
         mode: mode,
-        isConsolidated: true,
+        isConsolidated: isConsolidated,
         total: grandObt,
         maxTotal: grandFull,
         passTotal: grandPass,
@@ -573,11 +635,14 @@
         result: grandResult,
         termTotals: termTotals,
         termResults: termResults,
-        pendingSubjects: pendingSubjects
+        basisNote: basisNote,
+        unitTerms: unitTerms,
+        mainTerms: mainTerms,
+        hasUnitTests: hasUnitTests
       };
     },
 
-    recalculateRanksV2: function(termId, classId, sectionId, schoolConfig) {
+        recalculateRanksV2: function(termId, classId, sectionId, schoolConfig) {
       schoolConfig = schoolConfig || {};
       var rankScope = schoolConfig.rankScope || 'section';
       var rankFailedStudents = schoolConfig.rankFailedStudents !== false;
@@ -701,14 +766,19 @@
       var hasCombinedTerms = isCombined && combinedData && combinedData.terms && combinedData.terms.length > 1;
       var cTerms = hasCombinedTerms ? combinedData.terms : [];
 
-      // Orientation calculation: explicit config override vs auto measurement
+      // Split combined terms into unit tests and main exams
+      var cUnitTerms = cTerms.filter(function(t) { return t.examType === 'unit_test'; });
+      var cMainTerms = cTerms.filter(function(t) { return t.examType !== 'unit_test'; });
+      var hasUnitTestsInCard = cUnitTerms.length > 0;
+
+      // Orientation calculation: explicit config override vs auto measurement (portrait preferred)
       var orientation = 'portrait';
       if (schoolConfig.orientation === 'landscape') {
         orientation = 'landscape';
       } else if (schoolConfig.orientation === 'portrait') {
         orientation = 'portrait';
       } else {
-        if (hasCombinedTerms && cTerms.length >= 3) {
+        if (hasCombinedTerms && !hasUnitTestsInCard && cTerms.length >= 3) {
           orientation = 'landscape';
         }
       }
@@ -859,6 +929,9 @@
         h += (gRows * rH);
         var tHdr = hasCombinedTerms ? (orient === 'landscape' ? 12 : 14) : 7.0;
         h += tHdr + (subCount * t.rowHMm) + 6.5; // Table header + rows + total
+        if (hasUnitTestsInCard) {
+          h += 6.5 + (subCount * t.rowHMm) + 6.5 + 8; // Unit tests table + header + title
+        }
         if (hasCombinedTerms && !multiRes.isConsolidated) {
           h += (orient === 'landscape' ? 8 : 10) + (cTerms.length * (orient === 'landscape' ? 4.5 : 5.5));
         } else {
@@ -1019,6 +1092,135 @@
         var mHtml = '';
         if (hasCombinedTerms) {
           var isConsolidated = multiRes && multiRes.isConsolidated;
+          var termTotalsMap = (multiRes && multiRes.termTotals) || {};
+
+          if (hasUnitTestsInCard) {
+            // TABLE 1: Periodic / Unit Tests (marks only, no per-test grade column)
+            mHtml += '<div style="font-size:10px; font-weight:800; color:' + primaryColor + '; text-transform:uppercase; margin-top:4px; margin-bottom:3px; letter-spacing:0.04em;">Periodic / Unit Tests</div>';
+            mHtml += '<table class="marks-table unit-tests-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:6px;">';
+            mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
+            mHtml += '<th style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
+            cUnitTerms.forEach(function(t) {
+              mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B;">' + escapeHTML(t.name) + '</th>';
+            });
+            mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; background:#1E293B;">Total</th>';
+            mHtml += '</tr></thead><tbody>';
+
+            subjectsArr.forEach(function(sub, idx) {
+              mHtml += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
+              var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
+              var subUtTotal = 0;
+              cUnitTerms.forEach(function(t) {
+                var tMarks = (combinedData.marks && combinedData.marks[t.id] && combinedData.marks[t.id][sub.id]) || {};
+                var isAB = tMarks.isAbsent === true;
+                var isEX = tMarks.isExempted === true;
+                var hasO = !isAB && !isEX && tMarks.obtained !== undefined && tMarks.obtained !== null && String(tMarks.obtained).trim() !== '';
+                var o = hasO ? Number(tMarks.obtained) : null;
+                var cellDisp = isAB ? 'AB' : (isEX ? 'EX' : (o !== null ? String(o) : '—'));
+                var cellStyle = isAB ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
+                mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + cellStyle + '">' + cellDisp + '</td>';
+                if (o !== null) subUtTotal += o;
+              });
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subUtTotal + '</td>';
+              mHtml += '</tr>';
+            });
+
+            mHtml += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:10px;">';
+            mHtml += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
+            var utGrandSum = 0;
+            cUnitTerms.forEach(function(t) {
+              var tt = termTotalsMap[t.id] || { obtained: 0, maxTotal: 0 };
+              mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.obtained + ' / ' + tt.maxTotal + '</td>';
+              utGrandSum += tt.obtained;
+            });
+            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + utGrandSum + '</td>';
+            mHtml += '</tr></tbody></table>';
+
+            // TABLE 2: Main Examinations (Obt + Grade)
+            mHtml += '<div style="font-size:10px; font-weight:800; color:' + primaryColor + '; text-transform:uppercase; margin-top:4px; margin-bottom:3px; letter-spacing:0.04em;">Main Examinations</div>';
+            mHtml += '<table class="marks-table main-exams-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + ';">';
+            mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
+            mHtml += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
+            cMainTerms.forEach(function(t) {
+              mHtml += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B;">' + escapeHTML(t.name) + '</th>';
+            });
+            if (isConsolidated) {
+              mHtml += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; background:#0F172A;">Consolidated</th>';
+            }
+            mHtml += '</tr><tr style="background:#1E293B; color:#FFF; font-weight:700;">';
+            cMainTerms.forEach(function() {
+              mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Obt</th>';
+              mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Grade</th>';
+            });
+            if (isConsolidated) {
+              mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Total</th>';
+              mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Grade</th>';
+            }
+            mHtml += '</tr></thead><tbody>';
+
+            subjectsArr.forEach(function(sub, idx) {
+              mHtml += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
+              var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
+
+              var subGrandObt = 0;
+              var subGrandFull = 0;
+
+              cMainTerms.forEach(function(t) {
+                var tSubs = (combinedData && combinedData.termSubjects && combinedData.termSubjects[t.id]) ||
+                  (store.examSubjects && store.examSubjects[t.id] &&
+                  (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]) &&
+                  (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]).subjects) || subjectsArr;
+                var tSub = (tSubs || []).find(function(x) { return x.id === sub.id; });
+                var termSubFull = (tSub && tSub.fullMarks) ? Number(tSub.fullMarks) : (sub.fullMarks || 100);
+                var termSubPass = (tSub && tSub.passMarks !== undefined && tSub.passMarks !== null) ? Number(tSub.passMarks) : (0.33 * termSubFull);
+
+                var tMarks = (combinedData.marks && combinedData.marks[t.id] && combinedData.marks[t.id][sub.id]) || {};
+                var isAB = tMarks.isAbsent === true;
+                var isEX = tMarks.isExempted === true;
+                var hasO = !isAB && !isEX && tMarks.obtained !== undefined && tMarks.obtained !== null && String(tMarks.obtained).trim() !== '';
+                var o = hasO ? Number(tMarks.obtained) : null;
+
+                var cellDisp = isAB ? 'AB' : (isEX ? 'EX' : (o !== null ? String(o) : '—'));
+                var cellStyle = (isAB || (o !== null && o < termSubPass)) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
+
+                var cellPct = o !== null ? (o / termSubFull) * 100 : 0;
+                var cellGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (o !== null ? ExamCalculationEngine.calculateGrade(cellPct, schoolConfig.gradingScale).grade : '—'));
+                if (!isAB && !isEX && o !== null && o >= termSubPass && cellGrade === 'F') cellGrade = 'D';
+
+                mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + cellStyle + '">' + cellDisp + '</td>';
+                mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + cellGrade + '</td>';
+
+                if (o !== null) {
+                  subGrandObt += o;
+                  subGrandFull += termSubFull;
+                }
+              });
+
+              if (isConsolidated) {
+                var subConsolidatedGrade = subGrandFull > 0 ? ExamCalculationEngine.calculateGrade((subGrandObt / subGrandFull) * 100, schoolConfig.gradingScale).grade : '—';
+                mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subGrandObt + '</td>';
+                mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subConsolidatedGrade + '</td>';
+              }
+              mHtml += '</tr>';
+            });
+
+            mHtml += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11px;">';
+            mHtml += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
+            cMainTerms.forEach(function(t) {
+              var tt = termTotalsMap[t.id] || { obtained: 0, maxTotal: 0, grade: '—' };
+              mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.obtained + ' / ' + tt.maxTotal + '</td>';
+              mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.grade + '</td>';
+            });
+            if (isConsolidated) {
+              mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.total + ' / ' + multiRes.maxTotal + '</td>';
+              mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.grade + '</td>';
+            }
+            mHtml += '</tr></tbody></table>';
+          } else {
+
+          var isConsolidated = multiRes && multiRes.isConsolidated;
           mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + ';">';
           mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
           mHtml += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
@@ -1101,6 +1303,8 @@
           }
           mHtml += '</tr></tbody></table>';
 
+
+          }
         } else {
           // Single exam marks table
           var totalObtained = calcRes.total;
@@ -1209,6 +1413,9 @@
             }
             if (acaCfg.result !== false) {
               summaryItems.push({ label: 'Final Result', value: multiRes.result, color: (multiRes.result === 'PASS' ? '#16A34A' : '#DC2626') });
+            }
+            if (multiRes && multiRes.basisNote) {
+              smHtml += '<div style="font-size:9.5px; font-weight:700; color:#475569; text-align:center; margin-bottom:5px; font-style:italic;">' + escapeHTML(multiRes.basisNote) + '</div>';
             }
             if (summaryItems.length > 0) {
               smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; text-align:center;">';
@@ -3588,6 +3795,12 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         bodyHTML += '<div class="form-group mb-3"><label class="form-label">Short Code *</label>';
         bodyHTML += '  <input type="text" id="admin-examterm-short" class="form-input" placeholder="e.g. T1" maxlength="5">';
         bodyHTML += '</div>';
+        bodyHTML += '<div class="form-group mb-3"><label class="form-label">Exam Type *</label>';
+        bodyHTML += '  <select id="admin-examterm-type" class="form-input">';
+        bodyHTML += '    <option value="main" selected>Main Examination</option>';
+        bodyHTML += '    <option value="unit_test">Periodic / Unit Test</option>';
+        bodyHTML += '  </select>';
+        bodyHTML += '</div>';
         bodyHTML += '<div class="form-grid mb-3" style="grid-template-columns: 1fr 1fr; gap:16px;">';
         bodyHTML += '  <div class="form-group"><label class="form-label">Start Date *</label><input type="date" id="admin-examterm-start" class="form-input"></div>';
         bodyHTML += '  <div class="form-group"><label class="form-label">End Date *</label><input type="date" id="admin-examterm-end" class="form-input"></div>';
@@ -3615,6 +3828,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
             var end = document.getElementById('admin-examterm-end').value;
             var weight = parseInt(document.getElementById('admin-examterm-weight').value) || 50;
             var isFinal = !!(document.getElementById('exam-term-is-final') && document.getElementById('exam-term-is-final').checked);
+            var examType = (document.getElementById('admin-examterm-type') && document.getElementById('admin-examterm-type').value) || 'main';
 
             if (!name || !short || !start || !end) {
               SchoolApp.showToast('Please enter all required fields.', 'error');
@@ -3635,6 +3849,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
               status: 'draft',
               weightage: weight,
               isFinal: isFinal,
+              examType: examType,
               rulesVersion: 'v2', // New terms get rulesVersion v2 by default
               createdAt: new Date().toISOString(),
               createdBy: SchoolApp.currentUser ? SchoolApp.currentUser.username : 'admin',
@@ -3720,6 +3935,12 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         bodyHTML += '<div class="form-group mb-3"><label class="form-label">Short Code *</label>';
         bodyHTML += '  <input type="text" id="admin-examterm-short" class="form-input" value="' + escapeAttr(term.shortName) + '" maxlength="5">';
         bodyHTML += '</div>';
+        bodyHTML += '<div class="form-group mb-3"><label class="form-label">Exam Type *</label>';
+        bodyHTML += '  <select id="admin-examterm-type" class="form-input">';
+        bodyHTML += '    <option value="main"' + (term.examType !== 'unit_test' ? ' selected' : '') + '>Main Examination</option>';
+        bodyHTML += '    <option value="unit_test"' + (term.examType === 'unit_test' ? ' selected' : '') + '>Periodic / Unit Test</option>';
+        bodyHTML += '  </select>';
+        bodyHTML += '</div>';
         bodyHTML += '<div class="form-grid mb-3" style="grid-template-columns: 1fr 1fr; gap:16px;">';
         bodyHTML += '  <div class="form-group"><label class="form-label">Start Date *</label><input type="date" id="admin-examterm-start" class="form-input" value="' + term.startDate + '"></div>';
         bodyHTML += '  <div class="form-group"><label class="form-label">End Date *</label><input type="date" id="admin-examterm-end" class="form-input" value="' + term.endDate + '"></div>';
@@ -3758,6 +3979,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
             term.startDate = start;
             term.endDate = end;
             term.weightage = weight;
+            term.examType = (document.getElementById('admin-examterm-type') && document.getElementById('admin-examterm-type').value) || 'main';
             term.isFinal = isFinal;
 
             var success = await SchoolApp.save();

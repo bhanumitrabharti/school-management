@@ -2323,6 +2323,9 @@
         weights: {},
         bestN: 1
       },
+      unitTestMode: 'display_only',
+      unitTestWeight: 20,
+      unitTestBestOf: 3,
       columnToggles: {
         showPassMarks: true,
         showFullMarks: true,
@@ -2377,6 +2380,18 @@
         if (cfg.divisionBands[i].min <= cfg.divisionBands[i + 1].min) {
           throw new Error('Division bands must be strictly decreasing without overlap.');
         }
+      }
+    }
+    if (cfg.unitTestMode === 'weighted') {
+      var utW = Number(cfg.unitTestWeight);
+      if (isNaN(utW) || utW < 0 || utW > 100) {
+        throw new Error('Unit test weight must be between 0% and 100%.');
+      }
+    }
+    if (cfg.unitTestMode === 'best_of_n') {
+      var bestN = Number(cfg.unitTestBestOf);
+      if (isNaN(bestN) || bestN < 1) {
+        throw new Error('Unit test best-of N must be at least 1.');
       }
     }
     if (cfg.multiExamAggregation && cfg.multiExamAggregation.mode === 'weighted') {
@@ -2459,6 +2474,13 @@
 
     var reqOverallCb = document.getElementById('rc-require-overall-pass');
     if (reqOverallCb) cfg.requireOverallPass = reqOverallCb.checked;
+
+    var utModeInp = document.getElementById('rc-unit-test-mode');
+    if (utModeInp) cfg.unitTestMode = utModeInp.value || 'display_only';
+    var utWeightInp = document.getElementById('rc-unit-test-weight');
+    if (utWeightInp) cfg.unitTestWeight = parseFloat(utWeightInp.value) !== undefined && !isNaN(parseFloat(utWeightInp.value)) ? parseFloat(utWeightInp.value) : 20;
+    var utBestOfInp = document.getElementById('rc-unit-test-best-of');
+    if (utBestOfInp) cfg.unitTestBestOf = parseInt(utBestOfInp.value, 10) || 1;
 
     if (!cfg.columnToggles) cfg.columnToggles = {};
     var colPass = document.getElementById('rc-col-pass-marks');
@@ -2760,6 +2782,25 @@
     html += '            <option value="average"' + (curMode === 'average' ? ' selected' : '') + '>Average of Exam Percentages</option>';
     html += '            <option value="weighted"' + (curMode === 'weighted' ? ' selected' : '') + '>Weighted Result (Configured Weights)</option>';
     html += '          </select>';
+    html += '        </div>';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Unit Test / Periodic Test Counting Rule</label>';
+    html += '          <select id="rc-unit-test-mode" class="form-select">';
+    var curUtMode = cfg.unitTestMode || 'display_only';
+    html += '            <option value="display_only"' + (curUtMode === 'display_only' ? ' selected' : '') + '>Display Only (Shown for reference, excluded from final result)</option>';
+    html += '            <option value="weighted"' + (curUtMode === 'weighted' ? ' selected' : '') + '>Weighted Assessment (Unit tests % + Main exams remaining %)</option>';
+    html += '            <option value="best_of_n"' + (curUtMode === 'best_of_n' ? ' selected' : '') + '>Best of N Unit Tests (Average best N tests)</option>';
+    html += '          </select>';
+    html += '        </div>';
+    html += '        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">';
+    html += '          <div class="form-group">';
+    html += '            <label class="form-label" style="font-size:12px; font-weight:600;">Unit Test Weightage (%)</label>';
+    html += '            <input type="number" id="rc-unit-test-weight" class="form-input" value="' + (cfg.unitTestWeight !== undefined ? cfg.unitTestWeight : 20) + '" min="0" max="100">';
+    html += '          </div>';
+    html += '          <div class="form-group">';
+    html += '            <label class="form-label" style="font-size:12px; font-weight:600;">Unit Test Best of N (Count)</label>';
+    html += '            <input type="number" id="rc-unit-test-best-of" class="form-input" value="' + (cfg.unitTestBestOf || 3) + '" min="1" max="10">';
+    html += '          </div>';
     html += '        </div>';
     html += '        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">';
     html += '          <div class="form-group">';
