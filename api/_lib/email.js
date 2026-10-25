@@ -1,24 +1,38 @@
+'use strict';
+
 /**
- * Email & Messaging Module for Onboarding
+ * Email & Messaging Module for Onboarding (CommonJS)
  * Sends OTP emails and Welcome emails via Hostinger SMTP / nodemailer.
  */
-import nodemailer from 'nodemailer';
+const nodemailer = require('nodemailer');
 
 // D1: WhatsApp template flag (disabled in this phase per decision D1)
-export const WHATSAPP_OTP_TEMPLATE = false;
+const WHATSAPP_OTP_TEMPLATE = false;
+
+// F5: Production guard — mock mode is completely inert in production
+function isProductionEnv() {
+  return process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+}
+
+function isMockMode() {
+  if (isProductionEnv()) return false;
+  return process.env.MOCK_ONBOARDING_MODE === 'true';
+}
 
 // In-memory capture for test verification when MOCK_ONBOARDING_MODE === 'true'
-export const capturedEmails = [];
+const capturedEmails = [];
 
-export function getCapturedEmails() {
+function getCapturedEmails() {
+  if (isProductionEnv()) return [];
   return capturedEmails;
 }
 
-export function clearCapturedEmails() {
+function clearCapturedEmails() {
   capturedEmails.length = 0;
 }
 
-export function getLastOtpFor(email) {
+function getLastOtpFor(email) {
+  if (isProductionEnv()) return null;
   const norm = (email || '').toLowerCase().trim();
   const found = capturedEmails.slice().reverse().find(m => m.to.toLowerCase().trim() === norm && m.otp);
   return found ? found.otp : null;
@@ -35,7 +49,7 @@ function getSmtpTransport() {
   const pass = process.env.SMTP_PASS;
 
   if (!host || !user || !pass) {
-    if (process.env.MOCK_ONBOARDING_MODE === 'true') {
+    if (isMockMode()) {
       return null; // Mock transport will handle it
     }
     const err = new Error('Registration temporarily unavailable. Please contact connect@ctrlshifts.in.');
@@ -58,10 +72,8 @@ function getSmtpTransport() {
 /**
  * Sends OTP Email (10-minute expiry)
  */
-export async function sendOtpEmail({ email, otp, schoolName }) {
-  const isMock = process.env.MOCK_ONBOARDING_MODE === 'true';
-
-  if (isMock) {
+async function sendOtpEmail({ email, otp, schoolName }) {
+  if (isMockMode()) {
     capturedEmails.push({
       to: email,
       type: 'otp',
@@ -117,11 +129,10 @@ export async function sendOtpEmail({ email, otp, schoolName }) {
  * D4: Sends Welcome Email containing ERP URL, username, and first-steps guide.
  * NEVER includes password.
  */
-export async function sendWelcomeEmail({ email, schoolName, subdomain, adminUsername }) {
-  const isMock = process.env.MOCK_ONBOARDING_MODE === 'true';
+async function sendWelcomeEmail({ email, schoolName, subdomain, adminUsername }) {
   const erpUrl = `https://${subdomain}.ctrlshifts.in`;
 
-  if (isMock) {
+  if (isMockMode()) {
     capturedEmails.push({
       to: email,
       type: 'welcome',
@@ -161,36 +172,47 @@ export async function sendWelcomeEmail({ email, schoolName, subdomain, adminUser
         </p>
       </div>
 
-      <div style="text-align: center; margin: 28px 0;">
-        <a href="${erpUrl}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 28px; font-size: 15px; font-weight: 700; text-decoration: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(37,99,235,0.3);">
-          Go to Your School ERP &rarr;
+      <div style="margin: 24px 0;">
+        <h4 style="margin: 0 0 8px 0; color: #0f172a; font-size: 14px;">Next Steps:</h4>
+        <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: #475569; line-height: 1.7;">
+          <li>Log in to your dashboard at <a href="${erpUrl}" style="color: #2563eb;">${erpUrl}</a> using your admin username and password.</li>
+          <li>Set up your class fees and fee structures in the <strong>Fee Ledger</strong>.</li>
+          <li>Add your teachers and students (bulk Excel upload available).</li>
+          <li>Send automatic WhatsApp fee receipts and marksheet cards.</li>
+        </ol>
+      </div>
+
+      <div style="text-align: center; margin: 32px 0 16px;">
+        <a href="${erpUrl}" style="background: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">
+          Open School ERP Dashboard &rarr;
         </a>
       </div>
 
-      <h4 style="color: #0f172a; margin: 24px 0 10px 0; font-size: 15px;">Quick First Steps:</h4>
-      <ol style="font-size: 14px; color: #334155; line-height: 1.7; padding-left: 20px; margin: 0 0 24px 0;">
-        <li>Log in at <strong><a href="${erpUrl}" style="color: #2563eb;">${erpUrl}</a></strong> using your admin username (<code>${adminUsername}</code>).</li>
-        <li>Open <strong>Admin &gt; School Settings</strong> to upload your school logo and adjust class names if needed.</li>
-        <li>Add your teachers and staff in the <strong>Teachers</strong> section.</li>
-        <li>Enroll your students in <strong>Students</strong> to start marking attendance and issuing fee receipts immediately.</li>
-      </ol>
-
-      <p style="font-size: 14px; color: #475569; line-height: 1.6;">Our dedicated support team is here to assist you anytime. Simply reply to this email or reach us on WhatsApp at +91 91555 15505.</p>
-      
       <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 28px 0;" />
-      <p style="font-size: 12px; color: #94a3b8; text-align: center;">
-        Paathshala School ERP &middot; Powered by Ctrl Shift Solutions &middot; <a href="https://ctrlshifts.in" style="color: #3b82f6; text-decoration: none;">ctrlshifts.in</a>
+      <p style="font-size: 12px; color: #94a3b8; text-align: center; line-height: 1.5;">
+        Need technical assistance? We are here to help.<br/>
+        Email: <a href="mailto:connect@ctrlshifts.in" style="color: #3b82f6; text-decoration: none;">connect@ctrlshifts.in</a> &middot; WhatsApp: +91 91555 15505<br/>
+        &copy; 2026 Ctrl Shift Solutions. All rights reserved.
       </p>
     </div>
   `;
 
   await transporter.sendMail({
-    from: `"Paathshala Onboarding" <${senderEmail}>`,
+    from: `"Paathshala Team" <${senderEmail}>`,
     to: email,
-    subject: `Welcome to Paathshala ERP — Your School is Live! (${schoolName})`,
-    text: `Welcome to Paathshala ERP!\n\nYour school ${schoolName} is ready.\nERP URL: ${erpUrl}\nAdmin Username: ${adminUsername}\nLog in with the password you set during registration.`,
+    subject: `Your School ERP is Ready: ${schoolName} — Paathshala`,
+    text: `Your school ${schoolName} ERP is live at ${erpUrl}. Admin username: ${adminUsername}.`,
     html: html
   });
 
   return { success: true };
 }
+
+module.exports = {
+  WHATSAPP_OTP_TEMPLATE,
+  getCapturedEmails,
+  clearCapturedEmails,
+  getLastOtpFor,
+  sendOtpEmail,
+  sendWelcomeEmail
+};

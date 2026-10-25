@@ -4,22 +4,29 @@
  */
 
 import { strict as assert } from 'assert';
-import { getFirebaseAdmin, getDb } from '../api/lib/firebase-admin.js';
-import {
+import firebaseAdminPkg from '../api/_lib/firebase-admin.js';
+const { getFirebaseAdmin, getDb } = firebaseAdminPkg;
+
+import schoolTemplatePkg from '../api/_lib/school-template.js';
+const {
   CANONICAL_FULL_FEATURES,
   getCurrentAcademicYear,
   buildSchoolRecord,
   buildTenantRecord,
   buildPrivateCredentialsRecord
-} from '../api/lib/school-template.js';
-import {
+} = schoolTemplatePkg;
+
+import validationPkg from '../api/_lib/validation.js';
+const {
   suggestAdminUsername,
   validateAdminUsername,
   validateSubdomain,
   hashPassword,
   hashIp
-} from '../api/lib/validation.js';
-import { getLastOtpFor } from '../api/lib/email.js';
+} = validationPkg;
+
+import emailPkg from '../api/_lib/email.js';
+const { getLastOtpFor } = emailPkg;
 
 import handlerSubdomainCheck from '../api/subdomain-check.js';
 import handlerRegistrationStart from '../api/registration-start.js';

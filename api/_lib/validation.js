@@ -1,11 +1,13 @@
+'use strict';
+
 /**
- * Validation & Cryptographic Helpers for Onboarding
+ * Validation & Cryptographic Helpers for Onboarding (CommonJS)
  */
-import crypto from 'crypto';
-import bcrypt from 'bcryptjs';
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 // C3: Hostname special cases and reserved keywords
-export const RESERVED_SUBDOMAINS = new Set([
+const RESERVED_SUBDOMAINS = new Set([
   // Hostname special cases in js/app.js
   'shishu-vikash-mandir',
   'svm',
@@ -68,7 +70,7 @@ export const RESERVED_SUBDOMAINS = new Set([
  * E.g. "Greenwood Public School" -> "gpsadmin" (initials + "admin")
  * Fallback to first word + "admin" if initials < 2 letters.
  */
-export function suggestAdminUsername(schoolName) {
+function suggestAdminUsername(schoolName) {
   if (!schoolName || typeof schoolName !== 'string') return 'admin';
   const clean = schoolName.trim().replace(/[^a-zA-Z0-9\s]/g, '');
   const words = clean.split(/\s+/).filter(Boolean);
@@ -95,7 +97,7 @@ export function suggestAdminUsername(schoolName) {
 /**
  * D2: Validates admin username (4-30 chars, lowercase, digits, . and _)
  */
-export function validateAdminUsername(username) {
+function validateAdminUsername(username) {
   if (!username || typeof username !== 'string') {
     return { valid: false, error: 'Admin username is required.' };
   }
@@ -119,7 +121,7 @@ export function validateAdminUsername(username) {
  *  - Not in reserved list
  *  - Not in existing subdomains
  */
-export function validateSubdomain(subdomain, existingSubdomains = new Set()) {
+function validateSubdomain(subdomain, existingSubdomains = new Set()) {
   if (!subdomain || typeof subdomain !== 'string') {
     return { valid: false, error: 'Subdomain is required.' };
   }
@@ -156,28 +158,28 @@ export function validateSubdomain(subdomain, existingSubdomains = new Set()) {
 /**
  * D5: Generates a 6-digit OTP using crypto RNG
  */
-export function generateOtp() {
+function generateOtp() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
 /**
  * D5: Hashes OTP for secure storage
  */
-export function hashOtp(otp, salt = 'paathshala_otp_salt_v1') {
+function hashOtp(otp, salt = 'paathshala_otp_salt_v1') {
   return crypto.createHmac('sha256', salt).update(String(otp)).digest('hex');
 }
 
 /**
  * C1: Bcrypt hash password for credentials
  */
-export function hashPassword(password) {
+function hashPassword(password) {
   return bcrypt.hashSync(password, 10);
 }
 
 /**
  * C6: Hashes client IP with salt (zero raw IP persistence)
  */
-export function hashIp(ip, salt = process.env.IP_HASH_SALT || 'paathshala_ip_salt_2026') {
+function hashIp(ip, salt = process.env.IP_HASH_SALT || 'paathshala_ip_salt_2026') {
   const cleanIp = (ip || '').replace(/^.*:/, '').trim();
   return crypto.createHmac('sha256', salt).update(cleanIp).digest('hex');
 }
@@ -185,7 +187,7 @@ export function hashIp(ip, salt = process.env.IP_HASH_SALT || 'paathshala_ip_sal
 /**
  * Masks email for display (e.g. "a***k@gmail.com")
  */
-export function maskEmail(email) {
+function maskEmail(email) {
   if (!email || !email.includes('@')) return '***@***';
   const [local, domain] = email.split('@');
   if (local.length <= 2) {
@@ -197,10 +199,23 @@ export function maskEmail(email) {
 /**
  * Normalizes school name for comparison
  */
-export function normalizeSchoolName(name) {
+function normalizeSchoolName(name) {
   if (!name) return '';
   return name.toLowerCase()
     .replace(/[^a-z0-9]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+module.exports = {
+  RESERVED_SUBDOMAINS,
+  suggestAdminUsername,
+  validateAdminUsername,
+  validateSubdomain,
+  generateOtp,
+  hashOtp,
+  hashPassword,
+  hashIp,
+  maskEmail,
+  normalizeSchoolName
+};

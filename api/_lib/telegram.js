@@ -1,9 +1,11 @@
+'use strict';
+
 /**
- * Internal Telegram Notification Helper (C8)
+ * Internal Telegram Notification Helper (C8) (CommonJS)
  * Sends notification directly to configured Telegram bot chat without self-HTTP calls.
  */
 
-export async function sendTelegramAlert(text) {
+async function sendTelegramAlert(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -30,3 +32,7 @@ export async function sendTelegramAlert(text) {
     return { success: false, error: err.message };
   }
 }
+
+module.exports = {
+  sendTelegramAlert
+};

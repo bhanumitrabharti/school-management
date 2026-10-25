@@ -1,11 +1,13 @@
+'use strict';
+
 /**
- * POST /api/registration-verify-otp
+ * POST /api/registration-verify-otp (CommonJS)
  * Verifies the 6-digit OTP code against the hashed registration record,
  * enforces 5-attempt limit and 10-minute expiry, and handles 60s cooldown resends.
  */
-import { hashOtp, generateOtp } from './lib/validation.js';
-import { sendOtpEmail } from './lib/email.js';
-import { getDb } from './lib/firebase-admin.js';
+const { hashOtp, generateOtp } = require('./_lib/validation');
+const { sendOtpEmail } = require('./_lib/email');
+const { getDb } = require('./_lib/firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [
@@ -24,7 +26,7 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -33,6 +35,10 @@ export default async function handler(req, res) {
   const regId = (body.regId || '').trim();
   const action = body.action || 'verify'; // 'verify' or 'resend'
   const inputOtp = (body.otp || '').trim();
+
+  // F5: Production Guard on Mock Mode
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const isMock = !isProduction && process.env.MOCK_ONBOARDING_MODE === 'true';
 
   if (!regId) {
     return res.status(400).json({ error: 'Registration ID (regId) is required.' });
@@ -210,4 +216,4 @@ export default async function handler(req, res) {
     adminUsername: regData.adminUsername,
     schoolName: regData.schoolName
   });
-}
+};

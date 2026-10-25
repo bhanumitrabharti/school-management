@@ -1,5 +1,7 @@
+'use strict';
+
 /**
- * POST /api/registration-provision
+ * POST /api/registration-provision (CommonJS)
  * Idempotently provisions a verified school registration:
  *  - Writes canonical public schools/{schoolId} doc (C5)
  *  - Writes root tenant_data/{schoolId} doc with default arrays (C4)
@@ -7,14 +9,14 @@
  *  - Updates subdomain_reservations & referral_codes
  *  - Dispatches welcome email (D4) and internal Telegram alert (C8)
  */
-import {
+const {
   buildSchoolRecord,
   buildTenantRecord,
   buildPrivateCredentialsRecord
-} from './lib/school-template.js';
-import { sendWelcomeEmail } from './lib/email.js';
-import { sendTelegramAlert } from './lib/telegram.js';
-import { getFirebaseAdmin, getDb } from './lib/firebase-admin.js';
+} = require('./_lib/school-template');
+const { sendWelcomeEmail } = require('./_lib/email');
+const { sendTelegramAlert } = require('./_lib/telegram');
+const { getFirebaseAdmin, getDb } = require('./_lib/firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [
@@ -33,13 +35,17 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const body = req.body || {};
   const regId = (body.regId || '').trim();
+
+  // F5: Production Guard on Mock Mode
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const isMock = !isProduction && process.env.MOCK_ONBOARDING_MODE === 'true';
 
   if (!regId) {
     return res.status(400).json({ error: 'Registration ID (regId) is required.' });
@@ -80,7 +86,6 @@ export default async function handler(req, res) {
   }
 
   // Generate canonical schoolId
-  // E.g. sub_random8, or if test tenant starting with zz-test-, zz_test_...
   let schoolId = regData.schoolId;
   if (!schoolId) {
     const cleanSub = regData.subdomain.replace(/-/g, '_');
@@ -211,4 +216,4 @@ export default async function handler(req, res) {
     schoolName: schoolName,
     trialEndDate: publicSchoolRecord.trial_end
   });
-}
+};

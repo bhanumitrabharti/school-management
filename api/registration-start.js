@@ -1,9 +1,11 @@
+'use strict';
+
 /**
- * POST /api/registration-start
+ * POST /api/registration-start (CommonJS)
  * Initiates self-service school onboarding: validates inputs, reserves subdomain,
  * generates 6-digit OTP, stores hashed record, and dispatches verification email.
  */
-import {
+const {
   suggestAdminUsername,
   validateAdminUsername,
   validateSubdomain,
@@ -13,10 +15,10 @@ import {
   hashIp,
   maskEmail,
   normalizeSchoolName
-} from './lib/validation.js';
-import { sendOtpEmail } from './lib/email.js';
-import { sendTelegramAlert } from './lib/telegram.js';
-import { getFirebaseAdmin, getDb } from './lib/firebase-admin.js';
+} = require('./_lib/validation');
+const { sendOtpEmail } = require('./_lib/email');
+const { sendTelegramAlert } = require('./_lib/telegram');
+const { getFirebaseAdmin, getDb } = require('./_lib/firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [
@@ -35,13 +37,15 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const body = req.body || {};
-  const isMock = process.env.MOCK_ONBOARDING_MODE === 'true';
+  // F5: Production Guard on Mock Mode
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const isMock = !isProduction && process.env.MOCK_ONBOARDING_MODE === 'true';
 
   // C10: Validate required environment variables in production
   if (!isMock) {
@@ -53,12 +57,21 @@ export default async function handler(req, res) {
     }
   }
 
-  // Cloudflare Turnstile Verification (C10)
-  const turnstileToken = body.turnstileToken || body['cf-turnstile-response'];
-  if (!isMock && process.env.TURNSTILE_SECRET_KEY) {
+  // F4: Cloudflare Turnstile Verification (Fail-Closed)
+  if (!isMock) {
+    if (!process.env.TURNSTILE_SECRET_KEY) {
+      console.error('[registration-start] TURNSTILE_SECRET_KEY missing in production environment.');
+      return res.status(503).json({
+        error: 'Security verification service unavailable. Please contact support.'
+      });
+    }
+
+    const turnstileToken = body.turnstileToken || body['cf-turnstile-response'];
     if (!turnstileToken) {
       return res.status(400).json({ error: 'Security verification failed. Please complete the captcha.' });
     }
+
+    let verifyJson;
     try {
       const verifyResp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
         method: 'POST',
@@ -67,14 +80,19 @@ export default async function handler(req, res) {
           secret: process.env.TURNSTILE_SECRET_KEY,
           response: turnstileToken,
           remoteip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
-        })
+        }),
+        signal: AbortSignal.timeout(5000)
       });
-      const verifyJson = await verifyResp.json();
-      if (!verifyJson.success) {
-        return res.status(400).json({ error: 'Captcha verification failed. Please refresh and try again.' });
-      }
+      verifyJson = await verifyResp.json();
     } catch (tErr) {
-      console.warn('[registration-start] Turnstile verify error:', tErr.message);
+      console.error('[registration-start] Turnstile siteverify error or timeout:', tErr.message);
+      return res.status(503).json({
+        error: 'Security verification service temporarily unavailable. Please try again.'
+      });
+    }
+
+    if (!verifyJson || !verifyJson.success) {
+      return res.status(400).json({ error: 'Captcha verification failed. Please refresh and try again.' });
     }
   }
 
@@ -382,4 +400,4 @@ export default async function handler(req, res) {
     otpExpiresAt: otpExpiresAt,
     resendCooldownSeconds: 60
   });
-}
+};

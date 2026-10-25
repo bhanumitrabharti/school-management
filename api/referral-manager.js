@@ -1,8 +1,10 @@
+'use strict';
+
 /**
- * /api/referral-manager
+ * /api/referral-manager (CommonJS)
  * Super Admin endpoints to manage referral codes and generate employee-wise reports.
  */
-import { getFirebaseAdmin, getDb } from './lib/firebase-admin.js';
+const { getFirebaseAdmin, getDb } = require('./_lib/firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [
@@ -17,16 +19,20 @@ function applyCors(req, res) {
   } else {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-test-super-admin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const adm = getFirebaseAdmin();
   const db = getDb();
+
+  // F5: Production Guard on Mock Mode
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const isMock = !isProduction && process.env.MOCK_ONBOARDING_MODE === 'true';
 
   // Verify Super Admin token
   const authHeader = req.headers.authorization || '';
@@ -44,8 +50,8 @@ export default async function handler(req, res) {
     }
   }
 
-  // Fallback for internal test runner
-  if (process.env.MOCK_ONBOARDING_MODE === 'true' && req.headers['x-test-super-admin'] === 'true') {
+  // F5: Fallback ONLY for test runner in non-production mock mode
+  if (isMock && req.headers['x-test-super-admin'] === 'true') {
     isVerifiedSuperAdmin = true;
   }
 
@@ -161,4 +167,4 @@ export default async function handler(req, res) {
     console.error('[referral-manager] Error:', err);
     return res.status(500).json({ error: 'Server error processing referral management request.' });
   }
-}
+};

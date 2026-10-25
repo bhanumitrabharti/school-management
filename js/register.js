@@ -301,7 +301,19 @@
     if (window.turnstile && document.getElementById('turnstile-container')) {
       if (turnstileWidgetId === null) {
         try {
-          const sitekey = window.TURNSTILE_SITE_KEY || '1x00000000000000000000AA'; // Mock or Cloudflare test key
+          const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+          let sitekey = window.TURNSTILE_SITE_KEY;
+          if (!sitekey && isLocalhost) {
+            sitekey = '1x00000000000000000000AA';
+          }
+          if (!sitekey) {
+            console.error('Turnstile site key missing in production.');
+            const container = document.getElementById('turnstile-container');
+            if (container) {
+              container.innerHTML = '<div style="color:var(--red);font-size:0.85rem;padding:8px 0;">Security verification service unavailable. Please refresh or contact support.</div>';
+            }
+            return;
+          }
           turnstileWidgetId = window.turnstile.render('#turnstile-container', {
             sitekey: sitekey,
             callback: function (token) {
@@ -370,6 +382,12 @@
         return;
       }
 
+      const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (!turnstileToken && !isLocalhost) {
+        showAlert('Please complete the security verification (captcha) to proceed.');
+        return;
+      }
+
       // Prepare payload
       const payload = {
         schoolName: schoolNameInput.value.trim(),
@@ -385,7 +403,7 @@
         adminPassword,
         termsAccepted: true,
         marketingConsent: marketingConsent,
-        turnstileToken: turnstileToken || 'mock-client-token'
+        turnstileToken: turnstileToken || (isLocalhost ? 'mock-client-token' : '')
       };
 
       btnSubmitStep2.disabled = true;

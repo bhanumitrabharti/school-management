@@ -1,9 +1,11 @@
+'use strict';
+
 /**
- * GET / POST /api/subdomain-check
+ * GET / POST /api/subdomain-check (CommonJS)
  * Checks if a requested subdomain is available for registration.
  */
-import { validateSubdomain } from './lib/validation.js';
-import { getDb } from './lib/firebase-admin.js';
+const { validateSubdomain } = require('./_lib/validation');
+const { getDb } = require('./_lib/firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [
@@ -22,7 +24,7 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -93,4 +95,4 @@ export default async function handler(req, res) {
       error: 'Failed to verify subdomain availability. Please try again.'
     });
   }
-}
+};

@@ -1,11 +1,13 @@
+'use strict';
+
 /**
- * Canonical School Template & Constants
+ * Canonical School Template & Constants (CommonJS)
  * Single source of truth for Paathshala ERP school documents across
  * Self-Service Onboarding and Super Admin creation.
  */
 
 // C2: Canonical full-feature list derived from Super Admin source (17 modules)
-export const CANONICAL_FULL_FEATURES = [
+const CANONICAL_FULL_FEATURES = [
   'dashboard',
   'admin',
   'teacher-attendance',
@@ -25,7 +27,7 @@ export const CANONICAL_FULL_FEATURES = [
   'help'
 ];
 
-export const STANDARD_FEE_HEADS = [
+const STANDARD_FEE_HEADS = [
   { id: 'fh_tuition', name: 'Tuition Fee' },
   { id: 'fh_transport', name: 'Transport Fee' },
   { id: 'fh_exam', name: 'Examination Fee' },
@@ -33,18 +35,18 @@ export const STANDARD_FEE_HEADS = [
   { id: 'fh_annual', name: 'Annual Development Fee' }
 ];
 
-export const DEFAULT_CLASSES = [
+const DEFAULT_CLASSES = [
   'Nursery', 'LKG', 'UKG',
   'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5',
   'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
 ];
 
-export const DEFAULT_SECTIONS = ['A'];
+const DEFAULT_SECTIONS = ['A'];
 
 /**
  * Computes current April-March academic year (e.g. 2026-2027)
  */
-export function getCurrentAcademicYear(referenceDate = new Date()) {
+function getCurrentAcademicYear(referenceDate = new Date()) {
   const d = new Date(referenceDate);
   const year = d.getFullYear();
   const month = d.getMonth(); // 0 = Jan, 3 = April
@@ -56,7 +58,7 @@ export function getCurrentAcademicYear(referenceDate = new Date()) {
  * Builds public school document for schools/{schoolId}
  * C5 Security: Never contains adminUsername, adminEmail, or adminPassword.
  */
-export function buildSchoolRecord(options = {}) {
+function buildSchoolRecord(options = {}) {
   const nowIso = new Date().toISOString();
   const academicYear = options.academicYear || getCurrentAcademicYear();
 
@@ -105,7 +107,7 @@ export function buildSchoolRecord(options = {}) {
 /**
  * Builds root tenant_data/{schoolId} document
  */
-export function buildTenantRecord(options = {}, publicSchoolRecord = null) {
+function buildTenantRecord(options = {}, publicSchoolRecord = null) {
   const academicYear = options.academicYear || getCurrentAcademicYear();
   const schoolRecord = publicSchoolRecord || buildSchoolRecord(options);
   const nowIso = new Date().toISOString();
@@ -180,10 +182,21 @@ export function buildTenantRecord(options = {}, publicSchoolRecord = null) {
  * Builds private credentials record for tenant_data/{schoolId}/private/credentials
  * C1 Security: { adminUsername, adminPassword: <bcrypt hash>, teachers: {} }
  */
-export function buildPrivateCredentialsRecord(options = {}) {
+function buildPrivateCredentialsRecord(options = {}) {
   return {
     adminUsername: options.adminUsername,
     adminPassword: options.adminPasswordHash, // 60-character bcrypt hash
     teachers: {}
   };
 }
+
+module.exports = {
+  CANONICAL_FULL_FEATURES,
+  STANDARD_FEE_HEADS,
+  DEFAULT_CLASSES,
+  DEFAULT_SECTIONS,
+  getCurrentAcademicYear,
+  buildSchoolRecord,
+  buildTenantRecord,
+  buildPrivateCredentialsRecord
+};

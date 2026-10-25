@@ -1,17 +1,19 @@
+'use strict';
+
 /**
- * /api/registration-admin
+ * /api/registration-admin (CommonJS)
  * Super Admin Management API for Self-Service Registrations,
  * Subdomains, Referral Attribution and Provisioning Controls.
  */
 
-import { getFirebaseAdmin, getDb } from './lib/firebase-admin.js';
-import {
+const { getFirebaseAdmin, getDb } = require('./_lib/firebase-admin');
+const {
   buildSchoolRecord,
   buildTenantRecord,
   buildPrivateCredentialsRecord
-} from './lib/school-template.js';
-import { sendWelcomeEmail } from './lib/email.js';
-import { sendTelegramAlert } from './lib/telegram.js';
+} = require('./_lib/school-template');
+const { sendWelcomeEmail } = require('./_lib/email');
+const { sendTelegramAlert } = require('./_lib/telegram');
 
 function applyCors(req, res) {
   const allowed = [
@@ -30,12 +32,16 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const adm = getFirebaseAdmin();
   const db = getDb();
+
+  // F5: Production Guard on Mock Mode
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const isMock = !isProduction && process.env.MOCK_ONBOARDING_MODE === 'true';
 
   // Super Admin Authorization Check
   const authHeader = req.headers.authorization || '';
@@ -53,8 +59,8 @@ export default async function handler(req, res) {
     }
   }
 
-  // Test runner authorization fallback
-  if (process.env.MOCK_ONBOARDING_MODE === 'true' && req.headers['x-test-super-admin'] === 'true') {
+  // F5: Test runner authorization fallback ONLY in non-production mock mode
+  if (isMock && req.headers['x-test-super-admin'] === 'true') {
     isSuperAdmin = true;
   }
 
@@ -308,4 +314,4 @@ export default async function handler(req, res) {
     console.error('[registration-admin] Error:', err);
     return res.status(500).json({ error: 'Server error processing admin request: ' + err.message });
   }
-}
+};

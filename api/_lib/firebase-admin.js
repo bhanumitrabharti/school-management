@@ -1,15 +1,13 @@
+'use strict';
+
 /**
- * Firebase Admin Initialization Helper
+ * Firebase Admin Initialization Helper (CommonJS)
  */
-import admin from 'firebase-admin';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+const admin = require('firebase-admin');
+const path = require('path');
+const fs = require('fs');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-export function getFirebaseAdmin() {
+function getFirebaseAdmin() {
   if (!admin.apps.length) {
     let credential = null;
     let projectId = null;
@@ -20,7 +18,7 @@ export function getFirebaseAdmin() {
         credential = admin.credential.cert(sa);
         projectId = sa.project_id;
       } catch (e) {
-        console.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:', e);
+        console.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:', e.message);
       }
     }
 
@@ -58,7 +56,12 @@ export function getFirebaseAdmin() {
   return admin;
 }
 
-export function getDb() {
+function getDb() {
   const adm = getFirebaseAdmin();
   return adm.firestore();
 }
+
+module.exports = {
+  getFirebaseAdmin,
+  getDb
+};
