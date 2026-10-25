@@ -217,7 +217,9 @@
     if (!sc) return '—';
     if (sc.isExempted) return 'EX';
     if (sc.isAbsent) return '<span style="color:#DC2626; text-decoration:underline; font-weight:700;">AB</span>';
-    var val = Number(sc.obtained) || 0;
+    if (sc.obtained === undefined || sc.obtained === null || String(sc.obtained).trim() === '') return '—';
+    var val = Number(sc.obtained);
+    if (isNaN(val)) return '—';
     if (val < (sub.passMarks || 0)) {
       return '<span style="color:#DC2626; text-decoration:underline; font-weight:700;">' + val + '</span>';
     }
@@ -1229,6 +1231,24 @@
       html += '</div>';
     }
 
+    // Check if the currently selected class has any Inactive or Left students
+    var hasInactiveOrLeft = (SchoolApp.store.students || []).some(function(s) {
+      if (s.inTrash || s.status === 'Deleted') return false;
+      var matchCls = String(s.class || '').toLowerCase().trim() === String(state.classVal || '').toLowerCase().trim();
+      return matchCls && (s.status === 'Inactive' || s.status === 'Left');
+    });
+
+    var disabledAttr = hasInactiveOrLeft ? '' : ' disabled';
+    var titleAttr = hasInactiveOrLeft ? '' : ' title="No Inactive or Left students in this class"';
+    var labelStyle = hasInactiveOrLeft ? 'cursor:pointer;' : 'opacity:0.6; cursor:not-allowed;';
+
+    html += '<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border-color); display:flex; align-items:center;">';
+    html += '  <label style="font-size:13px; font-weight:500; display:inline-flex; align-items:center; gap:8px; ' + labelStyle + '"' + titleAttr + '>';
+    html += '    <input type="checkbox" id="exam-include-inactive-toggle"' + (state.includeInactiveLeft && hasInactiveOrLeft ? ' checked' : '') + disabledAttr + '> ';
+    html += '    Include Inactive / Left students with marks';
+    html += '  </label>';
+    html += '</div>';
+
     html += '</div></div>';
 
     if (!state.isCombined) {
@@ -1263,8 +1283,8 @@
       if (!matchCls || !matchSec) return false;
       if (s.status === 'Active') return true;
       if (includeInactiveLeft && (s.status === 'Inactive' || s.status === 'Left')) {
-        var statusInfo = getStudentMarksStatus(s.id, state.examTerm, subjects);
-        return statusInfo && statusInfo.status !== 'none' && statusInfo.status !== 'no_subjects' && !!statusInfo.marks;
+        var m = getStudentExamMarks(s.id, state.examTerm);
+        return !!(m && (m.isComplete || m.total !== undefined || (m.marks && Object.keys(m.marks).length > 0)));
       }
       return false;
     });
@@ -1272,12 +1292,9 @@
     // Card 2: Report Card Status & Printing
     html += '<div class="card mt-3"><div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
     html += '  <h3><span class="material-icons-round">print</span> Report Card Status & Printing</h3>';
-    html += '  <div style="display:flex; align-items:center; gap:12px; margin-left:auto;">';
-    html += '    <label style="font-size:12px; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="exam-include-inactive-toggle"' + (state.includeInactiveLeft ? ' checked' : '') + '> Include Inactive / Left students with marks</label>';
     if (students.length > 0) {
       html += '  <button class="btn btn-secondary btn-sm" id="exam-bulk-reportcard-btn-lower"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Generate All Report Cards</button>';
     }
-    html += '  </div>';
     html += '</div><div class="card-body">';
 
     if (students.length === 0) {
@@ -1289,21 +1306,38 @@
       html += '</tr></thead><tbody>';
 
       students.forEach(function(s, idx) {
-        var statusInfo = getStudentMarksStatus(s.id, state.examTerm, subjects);
-        
+        var savedMarks = getStudentExamMarks(s.id, state.examTerm);
+        var subjectsArr = ensureSubjectsArray(subjects);
+        var missingSubjects = [];
+        if (savedMarks && savedMarks.marks && subjectsArr.length > 0) {
+          subjectsArr.forEach(function(sub) {
+            var scoreObj = savedMarks.marks[sub.id];
+            var hasEntry = scoreObj && (scoreObj.isAbsent || scoreObj.isExempted || (scoreObj.obtained !== undefined && scoreObj.obtained !== null && String(scoreObj.obtained).trim() !== ''));
+            if (!hasEntry) {
+              missingSubjects.push(sub.name || sub.id);
+            }
+          });
+        }
+
         html += '<tr>';
         html += '<td>' + (idx + 1) + '</td>';
-        html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></td>';
+        html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong>';
+        if (s.status === 'Inactive' || s.status === 'Left') {
+          var badgeCls = s.status === 'Left' ? 'badge-danger' : 'badge-warning';
+          html += ' <span class="badge ' + badgeCls + '" style="font-size:10px; margin-left:6px;">' + s.status + '</span>';
+        }
+        html += '</td>';
 
-        if (statusInfo.status === 'none' || statusInfo.status === 'no_subjects' || !statusInfo.marks) {
-          var noMarksLabel = statusInfo.status === 'no_subjects' ? 'No subjects' : 'No marks';
-          html += '<td class="center"><span style="color: var(--danger); font-weight: 600;">' + noMarksLabel + '</span></td>';
+        var hasValidMarks = savedMarks && (savedMarks.isComplete || savedMarks.total !== undefined);
+
+        if (!savedMarks || (!savedMarks.marks && savedMarks.total === undefined)) {
+          html += '<td class="center"><span style="color: var(--danger); font-weight: 600;">No marks</span></td>';
           html += '<td class="center text-muted">—</td>';
           html += '<td class="center text-muted">—</td>';
           html += '<td class="center">';
-          html += '  <button class="btn btn-secondary btn-sm" disabled title="Enter all marks first" style="cursor: not-allowed;"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Report Card</button>';
+          html += '  <button class="btn btn-secondary btn-sm" disabled title="No marks entered" style="cursor: not-allowed;"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Report Card</button>';
           html += '</td>';
-        } else if (statusInfo.status === 'incomplete') {
+        } else if (!hasValidMarks) {
           html += '<td class="center"><span style="color: #f97316; font-weight: 600;">Marks incomplete</span></td>';
           html += '<td class="center text-muted">—</td>';
           html += '<td class="center text-muted">—</td>';
@@ -1311,14 +1345,19 @@
           html += '  <button class="btn btn-secondary btn-sm" disabled title="Enter all marks first" style="cursor: not-allowed;"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Report Card</button>';
           html += '</td>';
         } else {
-          var m = statusInfo.marks || {};
-          var isPass = (m.result === 'Pass');
+          var isPass = (savedMarks.result === 'Pass');
           var stColor = isPass ? 'badge-success' : 'badge-danger';
-          var statusText = isPass ? 'Pass ✅' : (m.result ? 'Fail ❌' : '—');
-          var totalDisp = (m.total !== undefined && m.maxTotal !== undefined) ? (m.total + ' / ' + m.maxTotal) : '—';
-          var gradeDisp = m.grade || '—';
+          var statusText = isPass ? 'Pass ✅' : (savedMarks.result ? (savedMarks.result + ' ❌') : '—');
+          var totalDisp = (savedMarks.total !== undefined && savedMarks.maxTotal !== undefined) ? (savedMarks.total + ' / ' + savedMarks.maxTotal) : (savedMarks.total !== undefined ? String(savedMarks.total) : '—');
+          var gradeDisp = savedMarks.grade || '—';
           
-          html += '<td class="center font-semibold">' + totalDisp + '</td>';
+          html += '<td class="center font-semibold">';
+          html += totalDisp;
+          if (missingSubjects.length > 0) {
+            var enteredCount = subjectsArr.length - missingSubjects.length;
+            html += '<br><span class="badge badge-warning" style="font-size:10px; cursor:help; margin-top:2px;" title="Missing configured subjects: ' + escapeHTML(missingSubjects.join(', ')) + '">Partial (' + enteredCount + '/' + subjectsArr.length + ')</span>';
+          }
+          html += '</td>';
           html += '<td class="center"><span class="badge badge-purple">' + gradeDisp + '</span></td>';
           html += '<td class="center"><span class="badge ' + stColor + '">' + statusText + '</span></td>';
           html += '<td class="center">';
@@ -1579,12 +1618,29 @@
     var percentage = totalFull > 0 ? Math.round((totalObtained / totalFull) * 100) : 0;
     var resultText = mandatoryFailed ? 'FAIL' : 'PASS';
 
+    // Override with saved totals if available to match Result tab
+    if (savedMarks && savedMarks.total !== undefined) {
+      totalObtained = savedMarks.total;
+      if (savedMarks.maxTotal !== undefined) totalFull = savedMarks.maxTotal;
+      if (savedMarks.percentage !== undefined) percentage = savedMarks.percentage;
+      if (savedMarks.result) resultText = savedMarks.result.toUpperCase();
+    }
+
     var divisionText = '';
     var divisionColor = '#3730A3';
     var divisionBg = '#EEF2FF';
     var divisionBorder = '#A5B4FC';
 
-    if (mandatoryFailed) {
+    if (savedMarks && savedMarks.division) {
+      divisionText = savedMarks.division;
+      if (resultText === 'FAIL' || mandatoryFailed) {
+        divisionColor = '#991B1B';
+      } else if (optionalFailedOrAbsent) {
+        divisionColor = '#6B7280';
+      } else {
+        divisionColor = '#15803D';
+      }
+    } else if (mandatoryFailed) {
       divisionText = 'Not Applicable';
       divisionColor = '#991B1B';
     } else if (optionalFailedOrAbsent) {
@@ -1615,7 +1671,7 @@
       var sc = marksMap[sub.id];
       return sc && sc.isAbsent;
     });
-    var totalGrade = allMandatoryAbsent ? 'Ab' : (typeof calculateGrade === 'function' ? (calculateGrade(percentage).grade || '—') : '—');
+    var totalGrade = (savedMarks && savedMarks.grade) ? savedMarks.grade : (allMandatoryAbsent ? 'Ab' : (typeof calculateGrade === 'function' ? (calculateGrade(percentage).grade || '—') : '—'));
 
     var studentName = escapeHTML(((s.firstName || '') + ' ' + (s.lastName || '')).trim());
     var studentClass = escapeHTML(s.class || '—');
@@ -1730,7 +1786,9 @@
       var sc = marksMap[sub.id];
       var isAbsent = sc && sc.isAbsent;
       var isExempted = sc && sc.isExempted;
-      var obtNum = (sc && !isAbsent && !isExempted) ? (Number(sc.obtained) || 0) : null;
+      var hasScore = sc && !isAbsent && !isExempted && sc.obtained !== undefined && sc.obtained !== null && String(sc.obtained).trim() !== '';
+      var obtNum = hasScore ? Number(sc.obtained) : null;
+      if (obtNum !== null && isNaN(obtNum)) obtNum = null;
       var passNum = sub.passMarks || 33;
       var isFail = obtNum !== null && obtNum < passNum;
       var obtDisp = isAbsent ? 'AB' : (isExempted ? 'Ex' : (obtNum !== null ? String(obtNum) : '—'));
@@ -1817,7 +1875,8 @@
     if (!s) return;
 
     var activeTerm = SchoolApp.store.examTerms[state.examTerm];
-    var subjects = (SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[state.examTerm] && SchoolApp.store.examSubjects[state.examTerm][s.class] && SchoolApp.store.examSubjects[state.examTerm][s.class].subjects) || [];
+    var classSubjectsObj = SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[state.examTerm] && (SchoolApp.store.examSubjects[state.examTerm][s.class] || SchoolApp.store.examSubjects[state.examTerm]['Class ' + s.class]);
+    var subjects = (classSubjectsObj && classSubjectsObj.subjects) || [];
     var savedMarks = getStudentExamMarks(s.id, state.examTerm);
 
     var cardHTML = generateSingleStudentCardHTML(s, false, savedMarks, null, activeTerm, subjects);
@@ -1835,8 +1894,8 @@
       if (!matchCls || !matchSec) return false;
       if (s.status === 'Active') return true;
       if (includeInactiveLeft && (s.status === 'Inactive' || s.status === 'Left')) {
-        var statusInfo = getStudentMarksStatus(s.id, state.examTerm, subjects);
-        return statusInfo && statusInfo.status !== 'none' && statusInfo.status !== 'no_subjects' && !!statusInfo.marks;
+        var m = getStudentExamMarks(s.id, state.examTerm);
+        return !!(m && (m.isComplete || m.total !== undefined || (m.marks && Object.keys(m.marks).length > 0)));
       }
       return false;
     });
@@ -1957,10 +2016,12 @@
             var obtDisp = getObtainedDisplay(scoreObj, sub);
 
             var gradeText = '—';
-            if (!scoreObj.isAbsent && !scoreObj.isExempted && scoreObj.obtained !== undefined) {
+            if (!scoreObj.isAbsent && !scoreObj.isExempted && scoreObj.obtained !== undefined && scoreObj.obtained !== null && String(scoreObj.obtained).trim() !== '') {
               var num = parseFloat(scoreObj.obtained);
-              var gradeObj = calculateGrade(Math.round((num / sub.fullMarks) * 100));
-              gradeText = gradeObj.grade;
+              if (!isNaN(num)) {
+                var gradeObj = calculateGrade(Math.round((num / (sub.fullMarks || 100)) * 100));
+                gradeText = gradeObj.grade || '—';
+              }
             }
 
             html += '<tr>';
