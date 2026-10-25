@@ -62,6 +62,16 @@
       "continue": false
     },
     {
+      "src": "/register\\.html",
+      "dest": "/register.html",
+      "continue": false
+    },
+    {
+      "src": "/register",
+      "dest": "/register.html",
+      "continue": false
+    },
+    {
       "src": "/privacy\\.html",
       "dest": "/privacy.html",
       "continue": false

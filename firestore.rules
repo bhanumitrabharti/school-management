@@ -177,5 +177,23 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    // ── Self-Service Onboarding & Referral Collections ──────────────────────
+    match /registrations/{regId} {
+      allow read, write: if false;
+    }
+
+    match /subdomain_reservations/{subdomain} {
+      allow read, write: if false;
+    }
+
+    match /registration_rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    match /referral_codes/{codeId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+
   }
 }

@@ -1067,6 +1067,10 @@
             <span class="material-icons-round">contact_mail</span>
             <span>Leads & Demos</span>
           </a>
+          <a class="sa-nav-item" data-tab="registrations">
+            <span class="material-icons-round">how_to_reg</span>
+            <span>Registrations</span>
+          </a>
           <a class="sa-nav-item" data-tab="archived">
             <span class="material-icons-round">archive</span>
             <span>Archived Schools</span>
@@ -1124,6 +1128,95 @@
                 </tr>
               </thead>
               <tbody id="sa-schools-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Registrations Tab -->
+        <div id="tab-registrations" class="sa-tab-page">
+          <div class="sa-section-title">
+            <span class="material-icons-round">how_to_reg</span>
+            School Registrations & Onboarding
+          </div>
+          <p style="color:rgba(255,255,255,0.5); font-size:13px; margin-bottom:20px; margin-top:-16px;" class="sa-tab-subtitle">
+            Track self-service school signups, employee referral attribution, and instant cloud ERP provisioning.
+          </p>
+
+          <div class="sa-metrics-grid" id="sa-reg-metrics-grid" style="grid-template-columns: repeat(5, 1fr); margin-bottom: 24px;">
+            <div class="sa-metric-card">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #60a5fa;">how_to_reg</span></div>
+              <div class="sa-metric-value" id="sa-reg-kpi-total">0</div>
+              <div class="sa-metric-label">Total Signups</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #10b981;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #10b981;">check_circle</span></div>
+              <div class="sa-metric-value" id="sa-reg-kpi-provisioned" style="color: #10b981;">0</div>
+              <div class="sa-metric-label">Active / Live</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #f59e0b;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #f59e0b;">pending_actions</span></div>
+              <div class="sa-metric-value" id="sa-reg-kpi-pending" style="color: #f59e0b;">0</div>
+              <div class="sa-metric-label">Pending Verification</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #ef4444;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #ef4444;">error_outline</span></div>
+              <div class="sa-metric-value" id="sa-reg-kpi-failed" style="color: #ef4444;">0</div>
+              <div class="sa-metric-label">Failed / Suspended</div>
+            </div>
+            <div class="sa-metric-card" style="border-left: 4px solid #8b5cf6;">
+              <div class="sa-metric-icon"><span class="material-icons-round" style="color: #8b5cf6;">badge</span></div>
+              <div class="sa-metric-value" id="sa-reg-kpi-referral" style="color: #8b5cf6;">0 / 0</div>
+              <div class="sa-metric-label">Referral / Organic</div>
+            </div>
+          </div>
+
+          <div class="sa-action-bar">
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+              <div class="sa-search-wrapper">
+                <span class="material-icons-round">search</span>
+                <input type="text" id="sa-reg-search" placeholder="Search by school, city, email, code...">
+              </div>
+              <select id="sa-reg-filter-status" class="sa-filter-select" style="background:#1e293b; color:#f8fafc; border:1px solid rgba(255,255,255,0.12); padding:8px 12px; border-radius:8px; font-size:13px;">
+                <option value="all">All Statuses</option>
+                <option value="provisioned">Active (Provisioned)</option>
+                <option value="verified">Verified</option>
+                <option value="pending_otp">Pending OTP</option>
+                <option value="failed">Failed</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-btn-referral-codes">
+                <span class="material-icons-round" style="font-size:16px;">loyalty</span>
+                Referral Codes
+              </button>
+              <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-btn-employee-report">
+                <span class="material-icons-round" style="font-size:16px;">assessment</span>
+                Employee Attribution
+              </button>
+              <button class="sa-btn sa-btn-primary sa-btn-sm" id="sa-btn-refresh-reg">
+                <span class="material-icons-round" style="font-size:16px;">refresh</span>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="sa-table-card">
+            <table class="sa-table">
+              <thead>
+                <tr>
+                  <th>Date & ID</th>
+                  <th>School & Location</th>
+                  <th>Subdomain</th>
+                  <th>Admin Contact</th>
+                  <th>Source / Code</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sa-registrations-tbody">
+                <tr><td colspan="7" style="text-align:center; padding:32px; color:rgba(255,255,255,0.4);">Loading registrations...</td></tr>
+              </tbody>
             </table>
           </div>
         </div>
@@ -1830,5 +1923,118 @@
   <script type="module" src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js"></script>
   <script type="module" src="js/super-admin.js"></script>
+
+  <!-- Modal: Registration Detail -->
+  <div class="sa-modal-backdrop" id="sa-modal-reg-detail">
+    <div class="sa-modal" style="max-width: 680px; width: 90vw;">
+      <div class="sa-modal-header">
+        <h3 style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
+          <span class="material-icons-round" style="color:#60a5fa;">description</span>
+          Registration Details
+        </h3>
+        <button class="sa-modal-close" id="sa-reg-detail-close">&times;</button>
+      </div>
+      <div class="sa-modal-body" id="sa-reg-detail-body" style="padding: 20px 24px; max-height: 70vh; overflow-y: auto;">
+        <!-- Filled dynamically -->
+      </div>
+      <div class="sa-modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-reg-detail-dismiss">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Referral Codes Manager -->
+  <div class="sa-modal-backdrop" id="sa-modal-referral-codes">
+    <div class="sa-modal" style="max-width: 720px; width: 90vw;">
+      <div class="sa-modal-header">
+        <h3 style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
+          <span class="material-icons-round" style="color:#a78bfa;">loyalty</span>
+          Employee & Referral Codes Manager
+        </h3>
+        <button class="sa-modal-close" id="sa-ref-codes-close">&times;</button>
+      </div>
+      <div class="sa-modal-body" style="padding: 20px 24px; max-height: 72vh; overflow-y: auto;">
+        <!-- Create new code -->
+        <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; margin-bottom:20px;">
+          <h4 style="font-size:14px; font-weight:700; margin-bottom:12px; color:#f8fafc;">Create New Referral Code</h4>
+          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:12px;">
+            <div>
+              <label style="font-size:12px; color:rgba(255,255,255,0.6); display:block; margin-bottom:4px;">Referral Code</label>
+              <input type="text" id="sa-new-ref-code" placeholder="EMP-BHANU" style="width:100%; text-transform:uppercase; background:#1e293b; color:#fff; border:1px solid rgba(255,255,255,0.15); padding:8px 10px; border-radius:8px; font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:12px; color:rgba(255,255,255,0.6); display:block; margin-bottom:4px;">Employee Name</label>
+              <input type="text" id="sa-new-ref-name" placeholder="Bhanu Pratap" style="width:100%; background:#1e293b; color:#fff; border:1px solid rgba(255,255,255,0.15); padding:8px 10px; border-radius:8px; font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:12px; color:rgba(255,255,255,0.6); display:block; margin-bottom:4px;">Employee ID / Dept</label>
+              <input type="text" id="sa-new-ref-dept" placeholder="Sales / EMP01" style="width:100%; background:#1e293b; color:#fff; border:1px solid rgba(255,255,255,0.15); padding:8px 10px; border-radius:8px; font-size:13px;">
+            </div>
+          </div>
+          <div style="display:flex; justify-content:flex-end;">
+            <button class="sa-btn sa-btn-primary sa-btn-sm" id="sa-btn-create-ref-code">Create Code</button>
+          </div>
+        </div>
+
+        <h4 style="font-size:14px; font-weight:700; margin-bottom:10px; color:#f8fafc;">Existing Codes</h4>
+        <div class="sa-table-card" style="background:transparent; border:1px solid rgba(255,255,255,0.08);">
+          <table class="sa-table" style="font-size:13px;">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Employee</th>
+                <th>Dept / ID</th>
+                <th>Uses</th>
+                <th>Status</th>
+                <th>Toggle</th>
+              </tr>
+            </thead>
+            <tbody id="sa-ref-codes-tbody">
+              <tr><td colspan="6" style="text-align:center; padding:16px;">Loading codes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sa-modal-footer">
+        <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-ref-codes-dismiss">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Employee Attribution Report -->
+  <div class="sa-modal-backdrop" id="sa-modal-employee-report">
+    <div class="sa-modal" style="max-width: 780px; width: 90vw;">
+      <div class="sa-modal-header">
+        <h3 style="font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
+          <span class="material-icons-round" style="color:#34d399;">assessment</span>
+          Employee Referral Attribution Report
+        </h3>
+        <button class="sa-modal-close" id="sa-emp-report-close">&times;</button>
+      </div>
+      <div class="sa-modal-body" style="padding: 20px 24px; max-height: 72vh; overflow-y: auto;">
+        <div class="sa-table-card" style="background:transparent; border:1px solid rgba(255,255,255,0.08);">
+          <table class="sa-table" style="font-size:13px;">
+            <thead>
+              <tr>
+                <th>Referral Code</th>
+                <th>Employee</th>
+                <th>Total Signups</th>
+                <th>Verified</th>
+                <th>Active ERPs</th>
+                <th>Conversion Rate</th>
+              </tr>
+            </thead>
+            <tbody id="sa-emp-report-tbody">
+              <tr><td colspan="6" style="text-align:center; padding:20px;">Loading report...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="sa-modal-footer">
+        <button class="sa-btn sa-btn-secondary sa-btn-sm" id="sa-emp-report-dismiss">Close</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

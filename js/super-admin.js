@@ -58,6 +58,15 @@ window.saAuth = auth;
     var currentAdminPasswordHash = '';
     var currentEditRequestId = 0;
     var currentEditingSchoolId = null;
+
+    function getCurrentAcademicYear(referenceDate) {
+        var d = referenceDate ? new Date(referenceDate) : new Date();
+        var year = d.getFullYear();
+        var month = d.getMonth(); // 0 = Jan, 3 = April
+        var startYear = month >= 3 ? year : year - 1;
+        return startYear + '-' + (startYear + 1);
+    }
+
     var currentEditingTenantData = null;
 
     // ─── Constants ──────────────────────────────────────
@@ -2684,10 +2693,10 @@ window.saAuth = auth;
                         
                         document.getElementById('sf-affiliation').value = (s.schoolInfo && s.schoolInfo.affiliation) || '';
                         document.getElementById('sf-udise-code').value = (s.schoolInfo && s.schoolInfo.udiseCode) || '';
-                        document.getElementById('sf-admin-username').value = s.adminUsername || '';
+                        document.getElementById('sf-admin-username').value = s.adminUsername || (s.settings && s.settings.adminUsername) || '';
                         document.getElementById('sf-admin-password').value = '********'; // masked
                         document.getElementById('sf-admin-password').required = false;
-                        document.getElementById('sf-admin-email').value = s.adminEmail || '';
+                        document.getElementById('sf-admin-email').value = s.adminEmail || (s.settings && s.settings.adminEmail) || '';
                         
                         currentAdminPasswordHash = s.adminPassword || '';
                         
@@ -2953,9 +2962,6 @@ window.saAuth = auth;
                 address: address,
                 affiliation: affiliation,
                 udiseCode: udiseCode,
-                adminUsername: adminUsername,
-                // Security: NEVER write adminPassword into public schools/{id}
-                adminEmail: adminEmail,
                 classes: formClasses,
                 sections: formSections,
                 feeStructure: formFeeStructure,
@@ -2964,7 +2970,7 @@ window.saAuth = auth;
                 clientCanEdit: true,
                 theme: (data.schools[idx].settings && data.schools[idx].settings.theme) || 'dark',
                 attendanceTime: (data.schools[idx].settings && data.schools[idx].settings.attendanceTime) || '09:00',
-                academicYear: (data.schools[idx].settings && data.schools[idx].settings.academicYear) || '2025-2026'
+                academicYear: (data.schools[idx].settings && data.schools[idx].settings.academicYear) || getCurrentAcademicYear()
             };
 
             delete data.schools[idx].adminPassword;
@@ -3031,7 +3037,7 @@ window.saAuth = auth;
                     // Keep compatibility settings
                     theme: (existingTenantData.settings && existingTenantData.settings.theme) || 'dark',
                     attendanceTime: (existingTenantData.settings && existingTenantData.settings.attendanceTime) || '09:00',
-                    academicYear: (existingTenantData.settings && existingTenantData.settings.academicYear) || '2025-2026',
+                    academicYear: (existingTenantData.settings && existingTenantData.settings.academicYear) || getCurrentAcademicYear(),
                     restructured: (existingTenantData.settings && existingTenantData.settings.restructured !== undefined) ? existingTenantData.settings.restructured : true
                 };
 
@@ -3102,9 +3108,6 @@ window.saAuth = auth;
                 address: address,
                 affiliation: affiliation,
                 udiseCode: udiseCode,
-                    adminUsername: adminUsername,
-                    // Security: NEVER write adminPassword into public schools/{id}
-                    adminEmail: adminEmail,
                     classes: formClasses,
                     sections: formSections,
                     feeStructure: formFeeStructure,
@@ -3113,7 +3116,7 @@ window.saAuth = auth;
                     clientCanEdit: true,
                     theme: 'dark',
                     attendanceTime: '09:00',
-                    academicYear: '2025-2026',
+                    academicYear: getCurrentAcademicYear(),
                     credentialsIsolated: true,
                     restructured: true
                 },
@@ -3162,7 +3165,7 @@ window.saAuth = auth;
                     clientCanEdit: true,
                     theme: 'dark',
                     attendanceTime: '09:00',
-                    academicYear: '2025-2026',
+                    academicYear: getCurrentAcademicYear(),
                     credentialsIsolated: true,
                     restructured: true
                 },
@@ -3531,6 +3534,8 @@ window.saAuth = auth;
                     renderArchivedSchools();
                 } else if (targetTab === 'billing') {
                     renderBillingTab();
+                } else if (targetTab === 'registrations') {
+                    renderRegistrationsTab();
                 }
             });
         }
@@ -4129,5 +4134,390 @@ window.saAuth = auth;
             }
         });
     }
+
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // REGISTRATIONS & ONBOARDING TAB CONTROLLER
+    // ══════════════════════════════════════════════════════════════════════════
+
+    var registrationsData = [];
+    var referralCodesData = [];
+
+    async function getSuperAdminIdToken() {
+        if (auth && auth.currentUser && typeof auth.currentUser.getIdToken === 'function') {
+            try {
+                return await auth.currentUser.getIdToken();
+            } catch (e) {
+                console.warn('Could not get idToken:', e.message);
+            }
+        }
+        return '';
+    }
+
+    async function renderRegistrationsTab() {
+        var tbody = document.getElementById('sa-registrations-tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:32px; color:rgba(255,255,255,0.4);"><span class="spinner" style="border-top-color:#60a5fa; width:20px; height:20px; display:inline-block;"></span> Loading registrations...</td></tr>';
+        }
+
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/registration-admin?action=list', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            var data = await res.json();
+
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Failed to load registrations');
+            }
+
+            registrationsData = data.registrations || [];
+
+            // Update KPI counters
+            var kpis = data.kpis || {};
+            var elTotal = document.getElementById('sa-reg-kpi-total');
+            var elProv = document.getElementById('sa-reg-kpi-provisioned');
+            var elPend = document.getElementById('sa-reg-kpi-pending');
+            var elFail = document.getElementById('sa-reg-kpi-failed');
+            var elRef = document.getElementById('sa-reg-kpi-referral');
+
+            if (elTotal) elTotal.textContent = kpis.total || 0;
+            if (elProv) elProv.textContent = kpis.provisioned || 0;
+            if (elPend) elPend.textContent = (kpis.pending_otp || 0) + (kpis.verified || 0);
+            if (elFail) elFail.textContent = (kpis.failed || 0) + (kpis.suspended || 0);
+            if (elRef) elRef.textContent = (kpis.referral || 0) + ' / ' + (kpis.organic || 0);
+
+            filterAndRenderRegistrationsTable();
+
+        } catch (err) {
+            console.error('Registrations load error:', err);
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:32px; color:#ef4444;">Error loading registrations: ' + err.message + '</td></tr>';
+            }
+        }
+    }
+
+    function filterAndRenderRegistrationsTable() {
+        var tbody = document.getElementById('sa-registrations-tbody');
+        if (!tbody) return;
+
+        var searchQuery = (document.getElementById('sa-reg-search')?.value || '').toLowerCase().trim();
+        var statusFilter = document.getElementById('sa-reg-filter-status')?.value || 'all';
+
+        var filtered = registrationsData.filter(function (r) {
+            if (statusFilter !== 'all') {
+                if (statusFilter === 'pending_otp' && r.status !== 'pending_otp' && r.status !== 'verified') return false;
+                else if (statusFilter !== 'pending_otp' && r.status !== statusFilter) return false;
+            }
+            if (searchQuery) {
+                var match = (r.schoolName || '').toLowerCase().includes(searchQuery) ||
+                            (r.city || '').toLowerCase().includes(searchQuery) ||
+                            (r.subdomain || '').toLowerCase().includes(searchQuery) ||
+                            (r.adminEmail || '').toLowerCase().includes(searchQuery) ||
+                            (r.referralCode || '').toLowerCase().includes(searchQuery);
+                if (!match) return false;
+            }
+            return true;
+        });
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:32px; color:rgba(255,255,255,0.4);">No registrations found matching the filter.</td></tr>';
+            return;
+        }
+
+        var html = '';
+        filtered.forEach(function (r) {
+            var dateStr = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+            
+            // Status badge
+            var statusBadge = '';
+            if (r.status === 'provisioned') {
+                statusBadge = '<span class="sa-badge" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);">Active (Live)</span>';
+            } else if (r.status === 'verified') {
+                statusBadge = '<span class="sa-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3);">OTP Verified</span>';
+            } else if (r.status === 'pending_otp') {
+                statusBadge = '<span class="sa-badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);">Pending OTP</span>';
+            } else if (r.status === 'suspended') {
+                statusBadge = '<span class="sa-badge" style="background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3);">Suspended</span>';
+            } else {
+                statusBadge = '<span class="sa-badge" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3);">Failed</span>';
+            }
+
+            var duplicateWarning = r.possibleDuplicate ? '<span title="Potential duplicate detected" style="color:#f59e0b; margin-left:4px; font-size:14px; vertical-align:middle;">⚠️</span>' : '';
+
+            // Source badge
+            var sourceBadge = r.referralCode ? 
+                '<span class="sa-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.3);">' + r.referralCode + '</span>' :
+                '<span style="color:rgba(255,255,255,0.4); font-size:12px;">Direct</span>';
+
+            html += '<tr>' +
+                '<td><div style="font-weight:600; font-size:12px;">' + (r.regId ? r.regId.substring(0, 14) + '...' : '—') + '</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + dateStr + '</div></td>' +
+                '<td><div style="font-weight:600; color:#f8fafc;">' + r.schoolName + duplicateWarning + '</div><div style="font-size:12px; color:rgba(255,255,255,0.5);">' + r.city + ', ' + r.state + '</div></td>' +
+                '<td><a href="https://' + r.subdomain + '.ctrlshifts.in" target="_blank" style="color:#60a5fa; font-family:monospace; text-decoration:none;">' + r.subdomain + '</a></td>' +
+                '<td><div>' + r.adminName + ' (' + r.adminUsername + ')</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + r.adminEmail + ' · ' + r.adminMobile + '</div></td>' +
+                '<td>' + sourceBadge + '</td>' +
+                '<td>' + statusBadge + '</td>' +
+                '<td>' +
+                    '<div style="display:flex; gap:6px; align-items:center;">' +
+                        '<button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.viewRegDetail(\'' + r.regId + '\')" title="View Details"><span class="material-icons-round" style="font-size:15px;">visibility</span></button>' +
+                        (r.status === 'failed' || r.status === 'verified' ? '<button class="sa-btn sa-btn-primary sa-btn-sm" onclick="window.retryRegProvision(\'' + r.regId + '\')" title="Retry Provisioning"><span class="material-icons-round" style="font-size:15px;">replay</span></button>' : '') +
+                        (r.status === 'provisioned' ? '<button class="sa-btn sa-btn-sm" style="background:rgba(239,68,68,0.2); color:#ef4444;" onclick="window.toggleRegSuspend(\'' + r.regId + '\', \'' + (r.schoolId || '') + '\', true)" title="Suspend School"><span class="material-icons-round" style="font-size:15px;">pause_circle</span></button>' : '') +
+                        (r.status === 'suspended' ? '<button class="sa-btn sa-btn-sm" style="background:rgba(16,185,129,0.2); color:#10b981;" onclick="window.toggleRegSuspend(\'' + r.regId + '\', \'' + (r.schoolId || '') + '\', false)" title="Reactivate School"><span class="material-icons-round" style="font-size:15px;">play_circle</span></button>' : '') +
+                    '</div>' +
+                '</td>' +
+            '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    // Expose helpers on window for inline event handlers
+    window.viewRegDetail = async function (regId) {
+        var modal = document.getElementById('sa-modal-reg-detail');
+        var body = document.getElementById('sa-reg-detail-body');
+        if (!modal || !body) return;
+
+        body.innerHTML = '<div style="text-align:center; padding:20px;"><span class="spinner"></span> Loading details...</div>';
+        modal.classList.add('active');
+
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/registration-admin?action=detail&regId=' + encodeURIComponent(regId), {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            var data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load details');
+
+            var r = data.registration;
+            body.innerHTML = 
+                '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">School Name</label><div style="font-weight:600; font-size:14px; color:#fff;">' + r.schoolName + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Subdomain</label><div><a href="https://' + r.subdomain + '.ctrlshifts.in" target="_blank" style="color:#60a5fa; font-family:monospace;">https://' + r.subdomain + '.ctrlshifts.in</a></div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Location</label><div>' + r.city + ', ' + r.state + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Status</label><div style="font-weight:700; text-transform:uppercase;">' + r.status + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Admin Name & Username</label><div>' + r.adminName + ' (<b>' + r.adminUsername + '</b>)</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Contact</label><div>' + r.adminEmail + ' · ' + (r.adminMobile || r.adminPhone) + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Referral Code</label><div>' + (r.referralCode || 'None (Direct)') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Provisioned School ID</label><div>' + (r.schoolId || 'None') + '</div></div>' +
+                '</div>' +
+                (r.possibleDuplicate ? '<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px; margin-bottom:14px; font-size:13px; color:#f59e0b;">⚠️ Possible duplicate detected during registration. Matching school ID: ' + (r.matchingSchoolId || 'Unknown') + '</div>' : '') +
+                (r.lastError ? '<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:10px; margin-bottom:14px; font-size:13px; color:#ef4444;">Error: ' + r.lastError + '</div>' : '') +
+                '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Timestamps</label><div style="font-size:12px; color:rgba(255,255,255,0.6);">' +
+                    'Created: ' + (r.createdAt || '—') + '<br>' +
+                    'Verified: ' + (r.verifiedAt || '—') + '<br>' +
+                    'Provisioned: ' + (r.provisionedAt || '—') +
+                '</div></div>';
+
+        } catch (e) {
+            body.innerHTML = '<div style="color:#ef4444; padding:20px;">' + e.message + '</div>';
+        }
+    };
+
+    window.retryRegProvision = async function (regId) {
+        if (!confirm('Attempt retry provisioning for registration ' + regId + '?')) return;
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/registration-admin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ action: 'retry', regId: regId })
+            });
+            var data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Retry failed');
+            showToast('School ERP provisioned successfully!', 'success');
+            renderRegistrationsTab();
+        } catch (e) {
+            showToast('Retry error: ' + e.message, 'error');
+        }
+    };
+
+    window.toggleRegSuspend = async function (regId, schoolId, isSuspend) {
+        var actionName = isSuspend ? 'suspend' : 'reactivate';
+        if (!confirm('Are you sure you want to ' + actionName + ' this school?')) return;
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/registration-admin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ action: actionName, regId: regId, schoolId: schoolId })
+            });
+            var data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Operation failed');
+            showToast('School status updated to ' + actionName + 'ed.', 'success');
+            renderRegistrationsTab();
+        } catch (e) {
+            showToast('Status update error: ' + e.message, 'error');
+        }
+    };
+
+    // Referral Codes Modal Handlers
+    async function loadReferralCodes() {
+        var tbody = document.getElementById('sa-ref-codes-tbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:16px;">Loading codes...</td></tr>';
+
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/referral-manager?action=list', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            var data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load codes');
+
+            referralCodesData = data.codes || [];
+            if (referralCodesData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:16px; color:rgba(255,255,255,0.4);">No referral codes created yet.</td></tr>';
+                return;
+            }
+
+            var html = '';
+            referralCodesData.forEach(function (c) {
+                var isAct = c.active !== false;
+                html += '<tr>' +
+                    '<td style="font-weight:700; font-family:monospace; color:#a78bfa;">' + c.code + '</td>' +
+                    '<td>' + (c.employeeName || '—') + '</td>' +
+                    '<td>' + (c.department || c.employeeId || '—') + '</td>' +
+                    '<td><span class="sa-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa;">' + (c.usesCount || 0) + '</span></td>' +
+                    '<td>' + (isAct ? '<span style="color:#10b981;">Active</span>' : '<span style="color:#ef4444;">Inactive</span>') + '</td>' +
+                    '<td><button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.toggleRefCode(\'' + c.code + '\', ' + (!isAct) + ')">' + (isAct ? 'Deactivate' : 'Activate') + '</button></td>' +
+                '</tr>';
+            });
+            tbody.innerHTML = html;
+
+        } catch (e) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:16px;">Error: ' + e.message + '</td></tr>';
+        }
+    }
+
+    window.toggleRefCode = async function (code, newActive) {
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/referral-manager', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ action: 'toggle', code: code, active: newActive })
+            });
+            var data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to toggle code');
+            showToast('Referral code updated.', 'success');
+            loadReferralCodes();
+        } catch (e) {
+            showToast('Toggle error: ' + e.message, 'error');
+        }
+    };
+
+    // Employee Report Modal Handlers
+    async function loadEmployeeReport() {
+        var tbody = document.getElementById('sa-emp-report-tbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Generating report...</td></tr>';
+
+        try {
+            var token = await getSuperAdminIdToken();
+            var res = await fetch('/api/referral-manager?action=employee_report', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            var data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Failed to generate report');
+
+            var report = data.report || [];
+            if (report.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:rgba(255,255,255,0.4);">No attribution records available.</td></tr>';
+                return;
+            }
+
+            var html = '';
+            report.forEach(function (item) {
+                var convRate = item.totalStarted > 0 ? Math.round((item.provisioned / item.totalStarted) * 100) + '%' : '0%';
+                html += '<tr>' +
+                    '<td style="font-weight:700; font-family:monospace; color:#a78bfa;">' + item.code + '</td>' +
+                    '<td>' + item.employeeName + '</td>' +
+                    '<td><b>' + item.totalStarted + '</b></td>' +
+                    '<td><span style="color:#60a5fa;">' + item.verified + '</span></td>' +
+                    '<td><span style="color:#10b981; font-weight:700;">' + item.provisioned + '</span></td>' +
+                    '<td><span class="sa-badge" style="background:rgba(16,185,129,0.15); color:#10b981;">' + convRate + '</span></td>' +
+                '</tr>';
+            });
+            tbody.innerHTML = html;
+
+        } catch (e) {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:20px;">Error: ' + e.message + '</td></tr>';
+        }
+    }
+
+    // Modal Close and Button Listeners
+    document.addEventListener('DOMContentLoaded', function () {
+        var btnRef = document.getElementById('sa-btn-referral-codes');
+        var modalRef = document.getElementById('sa-modal-referral-codes');
+        if (btnRef && modalRef) {
+            btnRef.addEventListener('click', function () {
+                modalRef.classList.add('active');
+                loadReferralCodes();
+            });
+            document.getElementById('sa-ref-codes-close')?.addEventListener('click', function () { modalRef.classList.remove('active'); });
+            document.getElementById('sa-ref-codes-dismiss')?.addEventListener('click', function () { modalRef.classList.remove('active'); });
+        }
+
+        var btnEmp = document.getElementById('sa-btn-employee-report');
+        var modalEmp = document.getElementById('sa-modal-employee-report');
+        if (btnEmp && modalEmp) {
+            btnEmp.addEventListener('click', function () {
+                modalEmp.classList.add('active');
+                loadEmployeeReport();
+            });
+            document.getElementById('sa-emp-report-close')?.addEventListener('click', function () { modalEmp.classList.remove('active'); });
+            document.getElementById('sa-emp-report-dismiss')?.addEventListener('click', function () { modalEmp.classList.remove('active'); });
+        }
+
+        var modalDetail = document.getElementById('sa-modal-reg-detail');
+        if (modalDetail) {
+            document.getElementById('sa-reg-detail-close')?.addEventListener('click', function () { modalDetail.classList.remove('active'); });
+            document.getElementById('sa-reg-detail-dismiss')?.addEventListener('click', function () { modalDetail.classList.remove('active'); });
+        }
+
+        document.getElementById('sa-btn-refresh-reg')?.addEventListener('click', function () {
+            renderRegistrationsTab();
+        });
+
+        document.getElementById('sa-reg-search')?.addEventListener('input', function () {
+            filterAndRenderRegistrationsTable();
+        });
+
+        document.getElementById('sa-reg-filter-status')?.addEventListener('change', function () {
+            filterAndRenderRegistrationsTable();
+        });
+
+        document.getElementById('sa-btn-create-ref-code')?.addEventListener('click', async function () {
+            var code = (document.getElementById('sa-new-ref-code')?.value || '').trim().toUpperCase();
+            var name = (document.getElementById('sa-new-ref-name')?.value || '').trim();
+            var dept = (document.getElementById('sa-new-ref-dept')?.value || '').trim();
+
+            if (!code || code.length < 3) {
+                showToast('Referral code must be at least 3 characters.', 'error');
+                return;
+            }
+            if (!name) {
+                showToast('Employee name is required.', 'error');
+                return;
+            }
+
+            try {
+                var token = await getSuperAdminIdToken();
+                var res = await fetch('/api/referral-manager', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ action: 'create', code: code, employeeName: name, department: dept })
+                });
+                var data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create code');
+
+                showToast('Referral code "' + code + '" created!', 'success');
+                document.getElementById('sa-new-ref-code').value = '';
+                document.getElementById('sa-new-ref-name').value = '';
+                document.getElementById('sa-new-ref-dept').value = '';
+                loadReferralCodes();
+            } catch (e) {
+                showToast(e.message, 'error');
+            }
+        });
+    });
 
 })();
