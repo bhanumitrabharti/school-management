@@ -2338,7 +2338,7 @@
         showSignatures: true,
         showStudentPhoto: false
       },
-      bilingualHeader: false,
+      requireOverallPass: true,
       branding: {
         primaryColor: '#1E3A8A',
         secondaryColor: '#3B82F6',
@@ -2454,8 +2454,8 @@
       cfg.multiExamAggregation.mode = multiExamModeInp.value || 'none';
     }
 
-    var bilingualCb = document.getElementById('rc-bilingual-header');
-    if (bilingualCb) cfg.bilingualHeader = bilingualCb.checked;
+    var reqOverallCb = document.getElementById('rc-require-overall-pass');
+    if (reqOverallCb) cfg.requireOverallPass = reqOverallCb.checked;
 
     if (!cfg.columnToggles) cfg.columnToggles = {};
     var colPass = document.getElementById('rc-col-pass-marks');
@@ -2716,6 +2716,68 @@
     html += '      </div>';
     html += '    </div>';
 
+    // Section C.2: Academic Calculation & Evaluation Rules (Phase 3)
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">calculate</span> SECTION C.2: Calculation & Grading Rules</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body" style="padding:14px; display:flex; flex-direction:column; gap:12px;">';
+    html += '        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">';
+    html += '          <div class="form-group"><label class="form-label" style="font-size:12px; font-weight:600;">Overall Pass Percentage (%)</label><input type="number" id="rc-pass-percent" class="form-input" value="' + (cfg.passPercent || 33) + '" min="1" max="100"></div>';
+    html += '          <div class="form-group"><label class="form-label" style="font-size:12px; font-weight:600;">Percentage Decimals (0-4)</label><input type="number" id="rc-pct-decimals" class="form-input" value="' + (cfg.percentageDecimals !== undefined ? cfg.percentageDecimals : 2) + '" min="0" max="4"></div>';
+    html += '        </div>';
+    html += '        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">';
+    html += '          <div class="form-group"><label class="form-label" style="font-size:12px; font-weight:600;">Rank Calculation Scope</label><select id="rc-rank-scope" class="form-select"><option value="section"' + (cfg.rankScope === 'section' ? ' selected' : '') + '>Per Section (Default)</option><option value="class"' + (cfg.rankScope === 'class' ? ' selected' : '') + '>Across Whole Class</option></select></div>';
+    html += '          <div class="form-group" style="display:flex; flex-direction:column; justify-content:center; gap:8px;">';
+    html += '            <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '              <input type="checkbox" id="rc-require-overall-pass" ' + (cfg.requireOverallPass !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Require Overall Pass Percentage';
+    html += '            </label>';
+    html += '            <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '              <input type="checkbox" id="rc-rank-failed" ' + (cfg.rankFailedStudents !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Rank Failed Students';
+    html += '            </label>';
+    html += '          </div>';
+    html += '        </div>';
+    html += '        <div class="form-group">';
+    html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Multi-Exam Aggregation Mode</label>';
+    html += '          <select id="rc-multi-exam-mode" class="form-select">';
+    var curMode = (cfg.multiExamAggregation && cfg.multiExamAggregation.mode) || 'none';
+    html += '            <option value="none"' + (curMode === 'none' ? ' selected' : '') + '>Side-by-Side (No Combined Total - Default)</option>';
+    html += '            <option value="sum"' + (curMode === 'sum' ? ' selected' : '') + '>Sum of Stored Totals</option>';
+    html += '            <option value="average"' + (curMode === 'average' ? ' selected' : '') + '>Average of Exam Percentages</option>';
+    html += '            <option value="weighted"' + (curMode === 'weighted' ? ' selected' : '') + '>Weighted Result (Configured Weights)</option>';
+    html += '          </select>';
+    html += '        </div>';
+    html += '      </div>';
+    html += '    </div>';
+
+    // Section C.3: Column & Section Toggles (Phase 3)
+    var colT = cfg.columnToggles || {};
+    var secT = cfg.sectionToggles || {};
+    html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
+    html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';
+    html += '        <h4 style="margin:0; font-size:14px; font-weight:700;"><span class="material-icons-round" style="font-size:16px; vertical-align:middle; margin-right:4px;">view_column</span> SECTION C.3: Table Columns & Section Toggles</h4>';
+    html += '      </div>';
+    html += '      <div class="card-body rc-section-grid rc-checkbox-grid" style="padding:14px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-col-pass-marks" ' + (colT.showPassMarks !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Pass Marks Column';
+    html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-col-full-marks" ' + (colT.showFullMarks !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Full Marks Column';
+    html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-sec-attendance" ' + (secT.showAttendance !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Attendance Section';
+    html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-sec-remarks" ' + (secT.showRemarks !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Teacher Remarks';
+    html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-sec-grading" ' + (secT.showGradingLegend !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Grading Scale Legend';
+    html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-sec-signatures" ' + (secT.showSignatures !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Signatures Block';
+    html += '        </label>';
+    html += '      </div>';
+    html += '    </div>';
     // Section D: Design Settings
     html += '    <div class="card" style="border: 1px solid var(--border-color); border-radius:10px;">';
     html += '      <div class="card-header" style="background:var(--bg-glass); border-bottom:1px solid var(--border-color); padding:12px 16px;">';

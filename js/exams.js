@@ -243,8 +243,21 @@
       var rawPercentage = totalFull > 0 ? (totalObtained / totalFull) * 100 : 0;
       var displayPercentage = rawPercentage.toFixed(decimals) + '%';
 
+      var requireOverallPass = schoolConfig.requireOverallPass !== false; // default true
+
+      // Sorted descending division bands
+      var bands = (schoolConfig.divisionBands && Array.isArray(schoolConfig.divisionBands) && schoolConfig.divisionBands.length > 0)
+        ? schoolConfig.divisionBands.slice().sort(function(a, b) { return b.min - a.min; })
+        : [
+            {min:75, label:"First Division (Distinction)"},
+            {min:60, label:"First Division"},
+            {min:45, label:"Second Division"},
+            {min:33, label:"Third Division"}
+          ];
+      var lowestPassBandLabel = bands.length > 0 ? bands[bands.length - 1].label : 'Third Division';
+
       var resultText = 'PASS';
-      var divisionText = 'Pass Division';
+      var divisionText = lowestPassBandLabel;
 
       if (!isComplete && (term.status === 'published' || term.status === 'locked')) {
         resultText = 'INCOMPLETE';
@@ -252,7 +265,7 @@
       } else if (allAB && subjects.length > 0) {
         resultText = 'ABSENT';
         divisionText = 'Not Applicable';
-      } else if (mandatoryFailed) {
+      } else if (mandatoryFailed || (requireOverallPass && rawPercentage < passPercent)) {
         resultText = 'FAIL';
         divisionText = 'Not Applicable';
       } else {
@@ -260,12 +273,14 @@
         if (optionalFailedOrAbsent) {
           divisionText = 'Not Awarded'; // Decision 2: Optional subject fail never fails overall
         } else {
-          // Compare unrounded rawPercentage against division bands
-          if (rawPercentage >= 75) divisionText = 'First Division (Distinction)';
-          else if (rawPercentage >= 60) divisionText = 'First Division';
-          else if (rawPercentage >= 45) divisionText = 'Second Division';
-          else if (rawPercentage >= passPercent) divisionText = 'Third Division';
-          else divisionText = 'Pass Division'; // Edge-case: passed every subject individually -> Pass Division (never 'Fail' when result is PASS)
+          var matchedBand = null;
+          for (var b = 0; b < bands.length; b++) {
+            if (rawPercentage >= bands[b].min) {
+              matchedBand = bands[b].label;
+              break;
+            }
+          }
+          divisionText = matchedBand || lowestPassBandLabel;
         }
       }
 
@@ -521,7 +536,7 @@
       html += '</div></div>';
 
       // Title Banner (Bilingual support)
-      var titleText = schoolConfig.bilingualHeader ? 'प्रगति पत्रक &bull; REPORT CARD' : 'OFFICIAL REPORT CARD';
+      var titleText = 'OFFICIAL REPORT CARD';
       html += '<div style="text-align:center; margin:4px 0 8px 0;">';
       html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:4px 20px; font-size:12px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">' + titleText + '</span>';
       html += '<div style="font-size:11.5px; font-weight:700; color:#374151; margin-top:3px;">' + escapeHTML(termName) + '</div>';
