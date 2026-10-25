@@ -2690,7 +2690,7 @@
     html += '        <div class="form-group"><label class="form-label">UDISE Code (11 digits)</label><input type="text" class="form-input" name="udiseCode" value="' + escapeAttr(udiseCode) + '" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>';
     html += '        <div class="form-group"><label class="form-label">Academic Year</label><input type="text" class="form-input" name="academicYear" value="' + escapeAttr(s.academicYear || '') + '"></div>';
     html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
-    html += '        <div class="form-group"><label class="form-label">App Version</label><input type="text" class="form-input" value="v52" disabled readonly style="opacity:0.85;background:rgba(255,255,255,0.05);font-weight:600;"></div>';
+    
     
         var logoSrc = s.schoolLogo || s.logoUrl || (s.schoolInfo && (s.schoolInfo.schoolLogo || s.schoolInfo.logoUrl)) || '';
     html += '        <div class="form-group">';

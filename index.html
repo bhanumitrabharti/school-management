@@ -273,17 +273,19 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="user-profile">
-          <div class="avatar avatar-sm" id="sidebar-avatar">AD</div>
-          <div class="user-info">
-            <span class="user-name" id="sidebar-user-name">Admin</span>
-            <span class="user-role badge badge-purple" id="sidebar-user-role">Admin</span>
+        <div class="sidebar-user-row">
+          <div class="user-profile">
+            <div class="avatar avatar-sm" id="sidebar-avatar">AD</div>
+            <div class="user-info">
+              <span class="user-name" id="sidebar-user-name">Admin</span>
+              <span class="user-role badge badge-purple" id="sidebar-user-role">Admin</span>
+            </div>
           </div>
+          <button id="logout-btn" class="btn-icon logout-btn" title="Logout" aria-label="Logout">
+            <span class="material-icons-round">logout</span>
+          </button>
         </div>
-        <button id="logout-btn" class="btn-icon logout-btn" title="Logout">
-          <span class="material-icons-round">logout</span>
-        </button>
-        <div class="sidebar-version" style="width: 100%; font-size: 10px; color: var(--text-muted); text-align: center; margin-top: 6px; opacity: 0.65;">Paathshala v57</div>
+        <div class="sidebar-version" id="sidebar-version-tag">Paathshala v57</div>
       </div>
     </aside>
     <!-- Sidebar Overlay for mobile -->
