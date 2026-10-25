@@ -1892,6 +1892,16 @@ window.SchoolApp = {
   },
 
   saveMarks: async function(termId, classId, sectionId, studentId, markEntry) {
+    // A7 Hard Freeze: Block writes if term is locked or published
+    var frozenTerm = this.store && this.store.examTerms && this.store.examTerms[termId];
+    if (frozenTerm && (frozenTerm.status === 'locked' || frozenTerm.status === 'published')) {
+      console.warn('[Exam Marks] Write blocked: Term is frozen (' + frozenTerm.status + ').');
+      if (typeof this.showToast === 'function') {
+        this.showToast('Term is locked/published. Marks cannot be modified.', 'error');
+      }
+      return false;
+    }
+
     if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
       console.warn("[Security] Write blocked: Super Admin impersonation mode.");
       this.showToast("View-only mode. Changes not saved during impersonation.", "warning");

@@ -2229,6 +2229,31 @@
   ];
 
 
+  function normalizeClassKey(cls) {
+    if (!cls) return '';
+    var s = String(cls).trim().toLowerCase();
+    s = s.replace(/^class\s*/i, '');
+    return 'cls_' + s.replace(/[^a-z0-9]/g, '_');
+  }
+  window.normalizeClassKey = normalizeClassKey;
+
+  function cascadeClassRenameToTemplates(oldClassName, newClassName) {
+    var oldKey = normalizeClassKey(oldClassName);
+    var newKey = normalizeClassKey(newClassName);
+    var cfg = SchoolApp.store && SchoolApp.store.reportCardConfig;
+    if (!cfg || !cfg.templates) return;
+    Object.keys(cfg.templates).forEach(function(tId) {
+      var t = cfg.templates[tId];
+      if (t && Array.isArray(t.applicableClasses)) {
+        var idx = t.applicableClasses.indexOf(oldKey);
+        if (idx !== -1) t.applicableClasses[idx] = newKey;
+        var idxName = t.applicableClasses.indexOf(oldClassName);
+        if (idxName !== -1) t.applicableClasses[idxName] = newClassName;
+      }
+    });
+  }
+  window.cascadeClassRenameToTemplates = cascadeClassRenameToTemplates;
+
   function getDefaultReportCardConfig() {
     var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
     return {
@@ -2272,11 +2297,60 @@
         promotionStatus: true,
         division: true
       },
+      passPercent: 33,
+      percentageDecimals: 2,
+      rankScope: 'section',
+      rankFailedStudents: true,
+      optionalSubjectRule: 'exclude_from_fail',
+      gradingScale: [
+        {min:91, max:100, grade:"A+", label:"Outstanding"},
+        {min:81, max:90,  grade:"A",  label:"Excellent"},
+        {min:71, max:80,  grade:"B+", label:"Very Good"},
+        {min:61, max:70,  grade:"B",  label:"Good"},
+        {min:51, max:60,  grade:"C+", label:"Above Average"},
+        {min:41, max:50,  grade:"C",  label:"Average"},
+        {min:33, max:40,  grade:"D",  label:"Pass"},
+        {min:0,  max:32,  grade:"F",  label:"Fail"}
+      ],
+      divisionBands: [
+        {min:75, label:"First Division (Distinction)"},
+        {min:60, label:"First Division"},
+        {min:45, label:"Second Division"},
+        {min:33, label:"Third Division"}
+      ],
+      multiExamAggregation: {
+        mode: 'none',
+        weights: {},
+        bestN: 1
+      },
+      columnToggles: {
+        showPassMarks: true,
+        showFullMarks: true,
+        showObtained: true,
+        showGrade: true,
+        showTheoryPractical: false
+      },
+      sectionToggles: {
+        showAttendance: true,
+        showCoScholastic: false,
+        showRemarks: true,
+        showGradingLegend: true,
+        showSignatures: true,
+        showStudentPhoto: false
+      },
+      bilingualHeader: false,
+      branding: {
+        primaryColor: '#1E3A8A',
+        secondaryColor: '#3B82F6',
+        schoolName: '',
+        schoolTagline: ''
+      },
       design: {
         primaryColor: '#1E40AF',
         showBorder: true,
         headerStyle: 'centered'
       },
+      templates: {},
       remarkTemplates: Object.assign({}, defs)
     };
   }
@@ -2288,15 +2362,41 @@
     return SchoolApp.store.reportCardConfig;
   }
 
+  function validateReportCardConfig(cfg) {
+    if (cfg.passPercent !== undefined && (cfg.passPercent < 1 || cfg.passPercent > 100)) {
+      throw new Error('Pass percentage must be between 1 and 100.');
+    }
+    if (cfg.percentageDecimals !== undefined && (cfg.percentageDecimals < 0 || cfg.percentageDecimals > 4)) {
+      throw new Error('Percentage decimals must be between 0 and 4.');
+    }
+    if (Array.isArray(cfg.divisionBands)) {
+      for (var i = 0; i < cfg.divisionBands.length - 1; i++) {
+        if (cfg.divisionBands[i].min <= cfg.divisionBands[i + 1].min) {
+          throw new Error('Division bands must be strictly decreasing without overlap.');
+        }
+      }
+    }
+    if (cfg.multiExamAggregation && cfg.multiExamAggregation.mode === 'weighted') {
+      var sum = 0;
+      var weights = cfg.multiExamAggregation.weights || {};
+      Object.keys(weights).forEach(function(k) { sum += Number(weights[k]) || 0; });
+      if (Math.abs(sum - 100) > 0.01) {
+        throw new Error('Multi-exam weights must sum exactly to 100% (currently ' + sum + '%).');
+      }
+    }
+    return true;
+  }
+
   function saveReportCardConfig() {
     try {
       var cfg = extractReportCardConfigFromForm();
+      validateReportCardConfig(cfg);
       SchoolApp.store.reportCardConfig = cfg;
       SchoolApp.save(true);
       SchoolApp.showToast('✅ Report Card Configuration saved!', 'success');
     } catch(e) {
       console.error('Error saving report card config:', e);
-      SchoolApp.showToast('❌ Failed to save configuration', 'error');
+      SchoolApp.showToast('❌ ' + (e.message || 'Failed to save configuration'), 'error');
     }
   }
 
@@ -2335,6 +2435,43 @@
     if (borderCb) {
       cfg.design.showBorder = borderCb.checked;
     }
+
+    var passPctInp = document.getElementById('rc-pass-percent');
+    if (passPctInp) cfg.passPercent = parseFloat(passPctInp.value) || 33;
+
+    var pctDecInp = document.getElementById('rc-pct-decimals');
+    if (pctDecInp) cfg.percentageDecimals = parseInt(pctDecInp.value) || 2;
+
+    var rankScopeInp = document.getElementById('rc-rank-scope');
+    if (rankScopeInp) cfg.rankScope = rankScopeInp.value || 'section';
+
+    var rankFailedCb = document.getElementById('rc-rank-failed');
+    if (rankFailedCb) cfg.rankFailedStudents = rankFailedCb.checked;
+
+    var multiExamModeInp = document.getElementById('rc-multi-exam-mode');
+    if (multiExamModeInp) {
+      if (!cfg.multiExamAggregation) cfg.multiExamAggregation = {};
+      cfg.multiExamAggregation.mode = multiExamModeInp.value || 'none';
+    }
+
+    var bilingualCb = document.getElementById('rc-bilingual-header');
+    if (bilingualCb) cfg.bilingualHeader = bilingualCb.checked;
+
+    if (!cfg.columnToggles) cfg.columnToggles = {};
+    var colPass = document.getElementById('rc-col-pass-marks');
+    if (colPass) cfg.columnToggles.showPassMarks = colPass.checked;
+    var colFull = document.getElementById('rc-col-full-marks');
+    if (colFull) cfg.columnToggles.showFullMarks = colFull.checked;
+
+    if (!cfg.sectionToggles) cfg.sectionToggles = {};
+    var secAtt = document.getElementById('rc-sec-attendance');
+    if (secAtt) cfg.sectionToggles.showAttendance = secAtt.checked;
+    var secRemarks = document.getElementById('rc-sec-remarks');
+    if (secRemarks) cfg.sectionToggles.showRemarks = secRemarks.checked;
+    var secGrading = document.getElementById('rc-sec-grading');
+    if (secGrading) cfg.sectionToggles.showGradingLegend = secGrading.checked;
+    var secSigs = document.getElementById('rc-sec-signatures');
+    if (secSigs) cfg.sectionToggles.showSignatures = secSigs.checked;
 
     var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
     var templates = {};

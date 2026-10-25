@@ -265,7 +265,7 @@
           else if (rawPercentage >= 60) divisionText = 'First Division';
           else if (rawPercentage >= 45) divisionText = 'Second Division';
           else if (rawPercentage >= passPercent) divisionText = 'Third Division';
-          else divisionText = 'Fail';
+          else divisionText = 'Pass Division'; // Edge-case: passed every subject individually -> Pass Division (never 'Fail' when result is PASS)
         }
       }
 
@@ -399,12 +399,282 @@
       });
     },
 
+    hasAnyMarksForTerm: function(termId) {
+      var tm = (SchoolApp.store && SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId]) || {};
+      var classes = Object.keys(tm);
+      for (var i = 0; i < classes.length; i++) {
+        var cKey = classes[i];
+        if (cKey.startsWith('_') || cKey === 'updatedAt' || cKey === 'migratedAt' || cKey === 'id') continue;
+        var secObj = tm[cKey];
+        if (typeof secObj === 'object' && secObj !== null) {
+          var sections = Object.keys(secObj);
+          for (var j = 0; j < sections.length; j++) {
+            var stuObj = secObj[sections[j]];
+            if (typeof stuObj === 'object' && stuObj !== null && Object.keys(stuObj).length > 0) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    },
+
     generateSingleStudentCardHTMLV2: function(s, isCombined, savedMarks, combinedData, activeTerm, subjects, schoolConfig) {
-      return legacyGenerateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects);
+      schoolConfig = schoolConfig || (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      var store = (SchoolApp && SchoolApp.store) || {};
+      var settings = store.settings || {};
+      var schoolInfo = settings.schoolInfo || {};
+      var schoolCfg = schoolConfig.school || {};
+      var studentCfg = schoolConfig.student || {};
+      var acaCfg = schoolConfig.academic || {};
+      var colToggles = schoolConfig.columnToggles || { showPassMarks: true, showFullMarks: true, showObtained: true, showGrade: true };
+      var secToggles = schoolConfig.sectionToggles || { showAttendance: true, showRemarks: true, showGradingLegend: true, showSignatures: true };
+      var branding = schoolConfig.branding || {};
+
+      var primaryColor = branding.primaryColor || '#1E3A8A';
+      var secondaryColor = branding.secondaryColor || '#3B82F6';
+      var schoolName = settings.name || settings.schoolName || schoolInfo.name || branding.schoolName || '';
+      var tagline = settings.tagline || settings.schoolTagline || schoolInfo.tagline || branding.schoolTagline || '';
+      var address = settings.address || settings.schoolAddress || schoolInfo.address || '';
+      var phone = settings.phone || settings.schoolPhone || schoolInfo.phone || '';
+      var email = settings.email || settings.schoolEmail || schoolInfo.email || '';
+      var udise = settings.udiseCode || settings.udiseNo || schoolInfo.udiseCode || '';
+      var logo = settings.logoUrl || schoolInfo.logoUrl || '';
+
+      var termName = activeTerm ? activeTerm.name : 'TERM EXAMINATION';
+      var academicSession = (settings && settings.academicYear) || '2025-26';
+
+      var subjectsArr = ensureSubjectsArray(subjects || []);
+      subjectsArr = sortSubjects(subjectsArr);
+      var subCount = subjectsArr.length;
+
+      // Auto-fit tier detection (minimum font 9px, no content clipping)
+      var fontBase = '12px';
+      var cellPad = '6px 10px';
+      var logoH = '80px';
+      var sigH = '32px';
+      var isLandscapeFallback = (subCount > 15) || (isCombined && combinedData && Object.keys(combinedData).length >= 3);
+
+      if (subCount > 11) {
+        fontBase = '9.5px';
+        cellPad = '3px 6px';
+        logoH = '52px';
+        sigH = '20px';
+      } else if (subCount > 7) {
+        fontBase = '11px';
+        cellPad = '4px 8px';
+        logoH = '65px';
+        sigH = '26px';
+      }
+
+      var fontStack = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+      // Execute v2 calculation
+      var marksMap = (savedMarks && savedMarks.marks) || {};
+      var calcRes = ExamCalculationEngine.calculateStudentResult({
+        marks: marksMap,
+        subjects: subjectsArr,
+        term: activeTerm,
+        schoolConfig: schoolConfig
+      });
+
+      var totalObtained = calcRes.total;
+      var totalFull = calcRes.maxTotal;
+      var totalPass = calcRes.passTotal;
+      var percentageStr = calcRes.displayPercentage;
+      var resultText = calcRes.result;
+      var divisionText = calcRes.division;
+      var totalGrade = calcRes.grade;
+
+      var rankVal = '—';
+      if (savedMarks && savedMarks.rank) {
+        rankVal = rankToOrdinal(savedMarks.rank);
+      }
+
+      var divisionColor = '#15803D';
+      if (resultText === 'FAIL' || resultText === 'INCOMPLETE') divisionColor = '#DC2626';
+      else if (divisionText === 'Not Awarded') divisionColor = '#6B7280';
+      else if (divisionText.indexOf('Second') !== -1) divisionColor = '#1D4ED8';
+      else if (divisionText.indexOf('Third') !== -1) divisionColor = '#B45309';
+
+      var html = '<div class="report-card" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; max-width:210mm; margin:0 auto; padding:8mm; display:flex; flex-direction:column; justify-content:space-between; min-height:275mm; page-break-after:always; page-break-inside:avoid;">';
+
+      // Header
+      html += '<div style="display:flex; align-items:center; gap:16px; border-bottom:2px solid ' + primaryColor + '; padding-bottom:10px; margin-bottom:8px;">';
+      if (logo) {
+        html += '<img src="' + logo + '" style="height:' + logoH + '; width:' + logoH + '; object-fit:contain; flex-shrink:0;" alt="School Logo">';
+      }
+      html += '<div style="flex:1; text-align:center;">';
+      html += '<div style="font-size:22px; font-weight:800; color:' + primaryColor + '; letter-spacing:0.04em; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
+      if (tagline) {
+        html += '<div style="font-size:11px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
+      }
+      if (address) {
+        html += '<div style="font-size:11px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
+      }
+      var contacts = [];
+      if (phone) contacts.push('Phone: ' + escapeHTML(phone));
+      if (email) contacts.push('Email: ' + escapeHTML(email));
+      if (udise) contacts.push('UDISE: ' + escapeHTML(udise));
+      contacts.push('Session: ' + escapeHTML(academicSession));
+      html += '<div style="font-size:10px; color:#4B5563; margin-top:3px;">' + contacts.join(' &bull; ') + '</div>';
+      html += '</div></div>';
+
+      // Title Banner (Bilingual support)
+      var titleText = schoolConfig.bilingualHeader ? 'प्रगति पत्रक &bull; REPORT CARD' : 'OFFICIAL REPORT CARD';
+      html += '<div style="text-align:center; margin:4px 0 8px 0;">';
+      html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:4px 20px; font-size:12px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">' + titleText + '</span>';
+      html += '<div style="font-size:11.5px; font-weight:700; color:#374151; margin-top:3px;">' + escapeHTML(termName) + '</div>';
+      html += '</div>';
+
+      // Student Details (2-column structured table)
+      var stuName = s.name || ((s.firstName || '') + ' ' + (s.lastName || '')).trim();
+      var stuClass = ['Nursery','LKG','UKG'].indexOf(s.class) !== -1 ? s.class : 'Class ' + s.class;
+      var guardian = s.parentName || s.fatherName || s.motherName || '—';
+
+      html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid #BFDBFE; border-radius:6px; overflow:hidden; margin-bottom:8px; font-size:' + fontBase + ';">';
+      html += '<div style="padding:5px 10px; background:#EFF6FF; border-bottom:1px solid #BFDBFE; border-right:1px solid #BFDBFE;"><strong>Student Name:</strong> ' + escapeHTML(stuName) + '</div>';
+      html += '<div style="padding:5px 10px; background:#EFF6FF; border-bottom:1px solid #BFDBFE;"><strong>Class & Sec:</strong> ' + escapeHTML(stuClass) + ' - ' + escapeHTML(s.section || 'A') + '</div>';
+      html += '<div style="padding:5px 10px; border-right:1px solid #BFDBFE;"><strong>Guardian:</strong> ' + escapeHTML(guardian) + '</div>';
+      html += '<div style="padding:5px 10px;"><strong>Roll Number:</strong> ' + escapeHTML(s.rollNumber || '—') + '</div>';
+      html += '</div>';
+
+      // Scholastic Marks Table
+      html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:8px;">';
+      html += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">';
+      html += '<th style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
+      if (colToggles.showFullMarks !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Full Marks</th>';
+      if (colToggles.showPassMarks !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Pass Marks</th>';
+      if (colToggles.showObtained !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:18%;">Marks Obtained</th>';
+      if (colToggles.showGrade !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Grade</th>';
+      html += '</tr></thead><tbody>';
+
+      subjectsArr.forEach(function(sub, idx) {
+        var sc = marksMap[sub.id];
+        var isAB = sc && sc.isAbsent;
+        var isEX = sc && sc.isExempted;
+        var hasVal = sc && !isAB && !isEX && sc.obtained !== undefined && sc.obtained !== null && String(sc.obtained).trim() !== '';
+        var num = hasVal ? Number(sc.obtained) : null;
+        var passNum = (sub.passMarks !== undefined && sub.passMarks !== null) ? Number(sub.passMarks) : (33 / 100) * (sub.fullMarks || 100);
+        var isSubFail = num !== null && num < passNum;
+
+        var obtDisp = isAB ? 'AB' : (isEX ? 'EX' : (num !== null ? String(num) : '—'));
+        var obtStyle = (isAB || isSubFail) ? 'color:#DC2626; font-weight:700; text-decoration:underline;' : 'font-weight:700;';
+
+        var subPct = num !== null ? (num / (sub.fullMarks || 100)) * 100 : 0;
+        var subGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (num !== null ? ExamCalculationEngine.calculateGrade(subPct, schoolConfig.gradingScale).grade : '—'));
+        if (!isAB && !isEX && num !== null && num >= passNum && subGrade === 'F') subGrade = 'D';
+
+        var optLabel = sub.isOptional ? ' <span style="font-size:9px; color:#6B7280;">(Opt)</span>' : '';
+
+        html += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
+        html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
+        if (colToggles.showFullMarks !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + (sub.fullMarks || 100) + '</td>';
+        if (colToggles.showPassMarks !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + passNum + '</td>';
+        if (colToggles.showObtained !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + obtStyle + '">' + obtDisp + '</td>';
+        if (colToggles.showGrade !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + subGrade + '</td>';
+        html += '</tr>';
+      });
+
+      // Total Row
+      html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:12px;">';
+      html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">GRAND TOTAL</td>';
+      if (colToggles.showFullMarks !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalFull + '</td>';
+      if (colToggles.showPassMarks !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalPass + '</td>';
+      if (colToggles.showObtained !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalObtained + '</td>';
+      if (colToggles.showGrade !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalGrade + '</td>';
+      html += '</tr></tbody></table>';
+
+      // Summary Footer Grid
+      html += '<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; padding:8px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:8px; text-align:center;">';
+      html += '<div><span style="font-size:10px; color:#64748B; font-weight:600; text-transform:uppercase;">Percentage</span><div style="font-size:14px; font-weight:800; color:' + primaryColor + ';">' + percentageStr + '</div></div>';
+      html += '<div><span style="font-size:10px; color:#64748B; font-weight:600; text-transform:uppercase;">Division</span><div style="font-size:13px; font-weight:800; color:' + divisionColor + ';">' + escapeHTML(divisionText) + '</div></div>';
+      html += '<div><span style="font-size:10px; color:#64748B; font-weight:600; text-transform:uppercase;">Class Rank</span><div style="font-size:14px; font-weight:800; color:#0F172A;">' + rankVal + '</div></div>';
+      html += '<div><span style="font-size:10px; color:#64748B; font-weight:600; text-transform:uppercase;">Final Result</span><div style="font-size:14px; font-weight:800; color:' + (resultText === 'PASS' ? '#16A34A' : '#DC2626') + ';">' + resultText + '</div></div>';
+      html += '</div>';
+
+      // Teacher Remarks
+      if (secToggles.showRemarks !== false) {
+        var remarksText = (savedMarks && savedMarks.remarks) || '';
+        html += '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; margin-bottom:6px;">';
+        html += '<span style="font-size:10px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Teacher\\\'s Remarks: </span>';
+        html += '<span style="font-size:11.5px; color:#334155; font-style:italic;">' + escapeHTML(remarksText || (resultText === 'PASS' ? 'Good performance. Promoted to next class.' : 'Needs improvement in weak subjects.')) + '</span>';
+        html += '</div>';
+      }
+
+      // Grading Scale Legend
+      if (secToggles.showGradingLegend !== false) {
+        html += '<div style="font-size:9.5px; color:#64748B; text-align:center; padding:4px 0; border-top:1px solid #E2E8F0; margin-bottom:6px;">';
+        html += '<strong>Grading Scale:</strong> A+(91-100) &bull; A(81-90) &bull; B+(71-80) &bull; B(61-70) &bull; C+(51-60) &bull; C(41-50) &bull; D(33-40) &bull; F(&lt;33)';
+        html += '</div>';
+      }
+
+      // Signatures
+      if (secToggles.showSignatures !== false) {
+        var dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        html += '<div style="border-top:1px solid #CBD5E1; padding-top:8px; margin-top:auto;">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:flex-end;">';
+        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:4px; font-size:10px; font-weight:700; color:#334155;">CLASS TEACHER</div></div>';
+        html += '<div style="text-align:center; width:100px; height:42px; border:1px dashed #94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8.5px; color:#94A3B8; font-weight:600;">SEAL</div>';
+        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:4px; font-size:10px; font-weight:700; color:#334155;">PRINCIPAL</div></div>';
+        html += '</div>';
+        html += '<div style="margin-top:6px; font-size:9.5px; color:#64748B;">Date of Issue: ' + dateStr + '</div>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+      return html;
     },
 
     printBulkReportCardsV2: function(state, schoolConfig) {
-      return legacyPrintBulkReportCards();
+      schoolConfig = schoolConfig || (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      var termId = state.examTerm;
+      var classId = state.classVal;
+      var sectionId = state.sectionVal;
+      var activeTerm = SchoolApp.store.examTerms && SchoolApp.store.examTerms[termId];
+      var subjects = (SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[termId] && SchoolApp.store.examSubjects[termId][classId] && SchoolApp.store.examSubjects[termId][classId].subjects) || [];
+
+      var students = (SchoolApp.store.students || []).filter(function(s) {
+        if (s.inTrash || s.status === 'Deleted') return false;
+        var matchCls = String(s.class).toLowerCase().trim() === String(classId).toLowerCase().trim();
+        var matchSec = String(s.section).toLowerCase().trim() === String(sectionId).toLowerCase().trim();
+        if (!matchCls || !matchSec) return false;
+        if (s.status === 'Active') return true;
+        if (state.includeInactiveLeft && (s.status === 'Inactive' || s.status === 'Left')) {
+          var m = getStudentExamMarks(s.id, termId);
+          return !!(m && (m.isComplete || m.total !== undefined || (m.marks && Object.keys(m.marks).length > 0)));
+        }
+        return false;
+      });
+
+      if (students.length === 0) {
+        SchoolApp.showToast('No students to print report cards for.', 'warning');
+        return;
+      }
+
+      var fullHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bulk Report Cards - Class ' + classId + ' ' + sectionId + '</title>';
+      fullHtml += '<style>';
+      fullHtml += '@page { size: A4 portrait; margin: 8mm; }';
+      fullHtml += 'body { margin: 0; padding: 0; font-family: "Inter", sans-serif; background: #FFF; }';
+      fullHtml += '.report-card { page-break-after: always; page-break-inside: avoid; }';
+      fullHtml += '</style></head><body>';
+
+      students.forEach(function(s) {
+        var m = getStudentExamMarks(s.id, termId);
+        fullHtml += ExamCalculationEngine.generateSingleStudentCardHTMLV2(s, false, m, null, activeTerm, subjects, schoolConfig);
+      });
+
+      fullHtml += '</body></html>';
+
+      var blob = new Blob([fullHtml], {type: 'text/html'});
+      var url = URL.createObjectURL(blob);
+      var printWin = window.open(url, '_blank', 'width=900,height=700');
+      if (printWin) {
+        printWin.onload = function() {
+          printWin.focus();
+          printWin.print();
+        };
+      }
     }
   };
 
@@ -810,7 +1080,7 @@
 
     var terms = Object.values(SchoolApp.store.examTerms || {}).sort(function(a, b) { return a.order - b.order; });
     if (terms.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Term Name</th><th>Short Code</th><th>Dates</th><th>Weightage</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Term Name</th><th>Short Code</th><th>Dates</th><th>Weightage</th><th>Status</th><th>Rules</th><th>Actions</th></tr></thead><tbody>';
       terms.forEach(function(t) {
         html += '<tr>';
         html += '<td><strong>' + escapeHTML(t.name) + '</strong></td>';
@@ -818,9 +1088,25 @@
         html += '<td>' + (t.startDate ? t.startDate + ' to ' + t.endDate : '—') + '</td>';
         html += '<td>' + t.weightage + '%</td>';
         html += '<td>' + getStatusBadge(t.status) + '</td>';
-        html += '<td><div class="table-actions" style="display:flex; gap:8px;">';
+        var rulesBadge = (t.rulesVersion === 'v2')
+          ? '<span class="badge badge-success" style="font-size:11px;">Rules v2</span>'
+          : '<span class="badge badge-secondary" style="font-size:11px;">Legacy (v1)</span>';
+        html += '<td>' + rulesBadge + '</td>';
+        html += '<td><div class="table-actions" style="display:flex; gap:6px; align-items:center;">';
         html += '  <button class="btn-icon exam-edit-term-btn" data-id="' + t.id + '" title="Edit Term" style="color:var(--accent-primary)"><span class="material-icons-round">edit</span></button>';
         html += '  <button class="btn-icon exam-delete-term-btn" data-id="' + t.id + '" title="Delete Term" style="color:var(--danger)"><span class="material-icons-round">delete</span></button>';
+        
+        // Upgrade v2 button: ONLY available when term has ZERO marks records
+        var hasMarks = ExamCalculationEngine.hasAnyMarksForTerm(t.id);
+        if ((!t.rulesVersion || t.rulesVersion === 'v1') && !hasMarks) {
+          html += '  <button class="btn btn-xs btn-outline-primary exam-upgrade-term-btn" data-id="' + t.id + '" title="Upgrade to calculation rules v2" style="font-size:11px; padding:2px 8px;"><span class="material-icons-round" style="font-size:13px; vertical-align:middle; margin-right:2px;">upgrade</span> Upgrade v2</button>';
+        }
+
+        // Unlock button for locked or published terms (A7)
+        if (t.status === 'locked' || t.status === 'published') {
+          html += '  <button class="btn btn-xs btn-outline-warning exam-unlock-term-btn" data-id="' + t.id + '" title="Unlock Term" style="font-size:11px; padding:2px 8px;"><span class="material-icons-round" style="font-size:13px; vertical-align:middle; margin-right:2px;">lock_open</span> Unlock</button>';
+        }
+
         html += '</div></td></tr>';
       });
       html += '</tbody></table></div>';
@@ -1064,6 +1350,17 @@
       html += '    </div>';
       html += '  </div>';
 
+      // A7 Hard Freeze Check
+      var activeTermObj = SchoolApp.store.examTerms && SchoolApp.store.examTerms[state.examTerm];
+      var isTermFrozen = activeTermObj && (activeTermObj.status === 'locked' || activeTermObj.status === 'published');
+
+      if (isTermFrozen) {
+        html += '  <div class="alert alert-warning mb-3" style="background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; padding:12px 16px; border-radius:8px; display:flex; align-items:center; gap:10px;">';
+        html += '    <span class="material-icons-round" style="font-size:22px; color:#D97706;">lock</span>';
+        html += '    <div><strong>Term is ' + (activeTermObj.status === 'published' ? 'Published' : 'Locked') + ':</strong> Marks entry and modifications are frozen for this term. (Client-side enforcement).</div>';
+        html += '  </div>';
+      }
+
       // Table
       html += '  <div class="table-container"><table class="data-table"><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th class="center">Obtained Marks</th><th class="center">Absent</th><th class="center">Exempted</th><th class="center">Status</th></tr></thead><tbody>';
       
@@ -1115,17 +1412,17 @@
         html += '    data-pass="' + activeSub.passMarks + '" ';
         html += '    value="' + val + '" ';
         html += '    style="width: 80px; text-align: center; font-weight:bold; ' + inputStyle + '" ';
-        html += '    ' + ((isAB || isEX) ? 'disabled' : '') + '>';
+        html += '    ' + ((isAB || isEX || isTermFrozen) ? 'disabled' : '') + '>';
         html += '</td>';
 
         // Absent Button
         html += '<td class="center">';
-        html += '  <button class="btn ' + (isAB ? 'btn-danger' : 'btn-secondary') + ' btn-xs mark-entry-ab-btn" data-student-id="' + s.id + '">AB</button>';
+        html += '  <button class="btn ' + (isAB ? 'btn-danger' : 'btn-secondary') + ' btn-xs mark-entry-ab-btn" data-student-id="' + s.id + '" ' + (isTermFrozen ? 'disabled' : '') + '>AB</button>';
         html += '</td>';
 
         // Exempt Button
         html += '<td class="center">';
-        html += '  <button class="btn ' + (isEX ? 'btn-primary' : 'btn-secondary') + ' btn-xs mark-entry-ex-btn" data-student-id="' + s.id + '">EX</button>';
+        html += '  <button class="btn ' + (isEX ? 'btn-primary' : 'btn-secondary') + ' btn-xs mark-entry-ex-btn" data-student-id="' + s.id + '" ' + (isTermFrozen ? 'disabled' : '') + '>EX</button>';
         html += '</td>';
 
         // Status
@@ -2562,6 +2859,7 @@
               resultDate: null,
               status: 'draft',
               weightage: weight,
+              rulesVersion: 'v2', // New terms get rulesVersion v2 by default
               createdAt: new Date().toISOString(),
               createdBy: SchoolApp.currentUser ? SchoolApp.currentUser.username : 'admin',
               order: Object.keys(SchoolApp.store.examTerms).length + 1
@@ -2577,6 +2875,50 @@
         }
       });
     }
+
+    // Term Upgrade to v2 listener
+    document.querySelectorAll('.exam-upgrade-term-btn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var tId = this.getAttribute('data-id');
+        var term = SchoolApp.store.examTerms && SchoolApp.store.examTerms[tId];
+        if (!term) return;
+        if (ExamCalculationEngine.hasAnyMarksForTerm(tId)) {
+          SchoolApp.showToast('Cannot upgrade term: marks entries already exist.', 'error');
+          return;
+        }
+        if (!confirm('Upgrade examination term "' + term.name + '" to Calculation Rules v2?\n\nThis enables strict pass/fail criteria, unrounded percentages, and modern report cards. This action cannot be undone.')) {
+          return;
+        }
+        term.rulesVersion = 'v2';
+        var ok = await SchoolApp.save(true);
+        if (ok) {
+          SchoolApp.showToast('Term upgraded to Rules v2 successfully!', 'success');
+          render();
+        } else {
+          SchoolApp.showToast('Failed to save term upgrade.', 'error');
+        }
+      });
+    });
+
+    // Term Unlock listener (A7)
+    document.querySelectorAll('.exam-unlock-term-btn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var tId = this.getAttribute('data-id');
+        var term = SchoolApp.store.examTerms && SchoolApp.store.examTerms[tId];
+        if (!term) return;
+        if (!confirm('Unlock examination term "' + term.name + '"?\n\nThis will reopen marks entry and allow modifications. (Client-side enforcement).')) {
+          return;
+        }
+        term.status = 'marks_entry';
+        var ok = await SchoolApp.save(true);
+        if (ok) {
+          SchoolApp.showToast('Term unlocked successfully!', 'success');
+          render();
+        } else {
+          SchoolApp.showToast('Failed to unlock term.', 'error');
+        }
+      });
+    });
 
     // Edit Term
     document.querySelectorAll('.exam-edit-term-btn').forEach(function(btn) {
@@ -3262,6 +3604,11 @@
     if (!student) return;
 
     var termId = state.examTerm;
+    var frozenTerm = SchoolApp.store.examTerms && SchoolApp.store.examTerms[termId];
+    if (frozenTerm && (frozenTerm.status === 'locked' || frozenTerm.status === 'published')) {
+      console.warn('[autoSaveMark] Frozen: Term is ' + frozenTerm.status + '. Writes blocked.');
+      return;
+    }
     // BUG 1 FIX: Normalize classId so Nursery/LKG/UKG always match examSubjects keys.
     // Try student.class first, then state.classVal as fallback.
     var classId = student.class;
@@ -3804,6 +4151,7 @@
               resultDate: null,
               status: 'draft',
               weightage: term.weightage,
+              rulesVersion: 'v2', // Wizard-created terms get v2 rules
               createdAt: new Date().toISOString(),
               createdBy: SchoolApp.currentUser ? SchoolApp.currentUser.username : 'admin',
               order: idx + 1
