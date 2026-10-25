@@ -4,7 +4,7 @@
  * ===================================================
  */
 
-const BUILD_VERSION = 'v60';
+const BUILD_VERSION = 'v61';
 const CACHE_NAME = `erp-cache-${BUILD_VERSION}`;
 
 // Assets to pre-cache on service worker install
@@ -12,6 +12,7 @@ const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/super-admin.html',
+  '/register.html',
   '/landing.html',
   '/privacy.html',
   '/terms.html',
@@ -19,6 +20,7 @@ const ASSETS_TO_CACHE = [
   `/js/app.js?v=${BUILD_VERSION}`,
   `/js/admin.js?v=${BUILD_VERSION}`,
   `/js/super-admin.js?v=${BUILD_VERSION}`,
+  `/js/register.js?v=${BUILD_VERSION}`,
   `/js/students.js?v=${BUILD_VERSION}`,
   `/js/teachers.js?v=${BUILD_VERSION}`,
   `/js/attendance.js?v=${BUILD_VERSION}`,
