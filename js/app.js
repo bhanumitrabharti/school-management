@@ -691,6 +691,17 @@ window.SchoolApp = {
       try { this._studentsSubcollectionUnsubscribe(); } catch (e) { console.warn('Error unsubscribing students listener:', e); }
       this._studentsSubcollectionUnsubscribe = null;
     }
+    if (this._studentsSubcollectionRetryTimer) {
+      clearTimeout(this._studentsSubcollectionRetryTimer);
+      this._studentsSubcollectionRetryTimer = null;
+    }
+    this._studentsSubcollectionSchoolId = null;
+    this._studentsSubcollectionActive = false;
+    this._studentsSubcollectionErrored = false;
+    this._studentsSubcollectionErrorCount = 0;
+    this.studentsSubcollectionReady = null;
+    this._resolveStudentsSubcollectionReady = null;
+    this._rejectStudentsSubcollectionReady = null;
     this._lastServerStudentsMap = null;
     this._subcollectionEverLoaded = false;
     this._frozenRootStudents = null;
@@ -900,22 +911,68 @@ window.SchoolApp = {
 
   initStudentsSubcollectionListener: function(schoolId) {
     var self = this;
+    if (!window.firestore || !window.db || !schoolId) return;
+
+    // Attached ONCE per school per session. Re-attached only if schoolId changes or listener errored.
+    if (this._studentsSubcollectionSchoolId === schoolId &&
+        this._studentsSubcollectionActive &&
+        !this._studentsSubcollectionErrored) {
+      return;
+    }
+
+    // If switching to a different school, clean up old listener and reset state
+    if (this._studentsSubcollectionSchoolId && this._studentsSubcollectionSchoolId !== schoolId) {
+      if (this._studentsSubcollectionUnsubscribe) {
+        try { this._studentsSubcollectionUnsubscribe(); } catch (e) {}
+        this._studentsSubcollectionUnsubscribe = null;
+      }
+      if (this._studentsSubcollectionRetryTimer) {
+        clearTimeout(this._studentsSubcollectionRetryTimer);
+        this._studentsSubcollectionRetryTimer = null;
+      }
+      this._studentsSubcollectionErrorCount = 0;
+      this._studentsSubcollectionErrored = false;
+      this._studentsSubcollectionActive = false;
+      this._subcollectionEverLoaded = false;
+      this.studentsSubcollectionReady = null;
+      this._resolveStudentsSubcollectionReady = null;
+      this._rejectStudentsSubcollectionReady = null;
+    }
+
+    this._studentsSubcollectionSchoolId = schoolId;
+
+    // Keep studentsSubcollectionReady stable across snapshots
+    if (!this.studentsSubcollectionReady) {
+      var resolveReady, rejectReady;
+      this.studentsSubcollectionReady = new Promise(function(resolve, reject) {
+        resolveReady = resolve;
+        rejectReady = reject;
+      });
+      this._resolveStudentsSubcollectionReady = resolveReady;
+      this._rejectStudentsSubcollectionReady = rejectReady;
+    }
+
+    this._attachStudentsSubcollectionListener(schoolId);
+  },
+
+  _attachStudentsSubcollectionListener: function(schoolId) {
+    console.log('[Students Subcollection] Attached listener for ' + schoolId);
+    var self = this;
     if (this._studentsSubcollectionUnsubscribe) {
       try { this._studentsSubcollectionUnsubscribe(); } catch (e) {}
       this._studentsSubcollectionUnsubscribe = null;
     }
-    if (!window.firestore || !window.db) return;
 
-    var resolveReady, rejectReady;
-    this.studentsSubcollectionReady = new Promise(function(resolve, reject) {
-      resolveReady = resolve;
-      rejectReady = reject;
-    });
+    this._studentsSubcollectionActive = true;
+    this._studentsSubcollectionErrored = false;
 
     try {
       var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'students');
       this._studentsSubcollectionUnsubscribe = window.firestore.onSnapshot(collRef, function(snap) {
         if (!snap) return;
+        self._studentsSubcollectionErrorCount = 0;
+        self._studentsSubcollectionErrored = false;
+
         var subStudents = [];
         var newServerMap = new Map();
         snap.forEach(function(d) {
@@ -927,7 +984,11 @@ window.SchoolApp = {
         // Dual-read fallback: if subcollection is empty but root has students, fallback to root
         if (subStudents.length === 0 && Array.isArray(self.store.students) && self.store.students.length > 0 && !self._subcollectionEverLoaded) {
           console.warn('[Students Subcollection] Subcollection empty; retaining root fallback students.');
-          if (resolveReady) { resolveReady(self.store.students); resolveReady = null; }
+          if (self._resolveStudentsSubcollectionReady) {
+            self._resolveStudentsSubcollectionReady(self.store.students);
+            self._resolveStudentsSubcollectionReady = null;
+            self._rejectStudentsSubcollectionReady = null;
+          }
           return;
         }
 
@@ -938,9 +999,10 @@ window.SchoolApp = {
         self.initialServerStudentCount = subStudents.length;
         self._serverStudentsBaseline = subStudents.slice();
 
-        if (resolveReady) {
-          resolveReady(subStudents);
-          resolveReady = null;
+        if (self._resolveStudentsSubcollectionReady) {
+          self._resolveStudentsSubcollectionReady(subStudents);
+          self._resolveStudentsSubcollectionReady = null;
+          self._rejectStudentsSubcollectionReady = null;
         }
 
         // Auto-refresh active tab if relevant
@@ -949,16 +1011,49 @@ window.SchoolApp = {
         }
       }, function(err) {
         console.error('[Students Subcollection] Listener error:', err);
-        if (rejectReady) {
-          rejectReady(err);
-          rejectReady = null;
+        self._studentsSubcollectionActive = false;
+        self._studentsSubcollectionErrored = true;
+        if (self._studentsSubcollectionUnsubscribe) {
+          try { self._studentsSubcollectionUnsubscribe(); } catch (e) {}
+          self._studentsSubcollectionUnsubscribe = null;
+        }
+
+        self._studentsSubcollectionErrorCount = (self._studentsSubcollectionErrorCount || 0) + 1;
+        if (self._studentsSubcollectionErrorCount <= 3) {
+          var backoffMs = Math.min(1000 * Math.pow(2, self._studentsSubcollectionErrorCount - 1), 8000);
+          console.warn('[Students Subcollection] Retrying listener in ' + backoffMs + 'ms (attempt ' + self._studentsSubcollectionErrorCount + '/3)...');
+          if (self._studentsSubcollectionRetryTimer) clearTimeout(self._studentsSubcollectionRetryTimer);
+          self._studentsSubcollectionRetryTimer = setTimeout(function() {
+            self._studentsSubcollectionRetryTimer = null;
+            self._attachStudentsSubcollectionListener(schoolId);
+          }, backoffMs);
+        } else {
+          console.error('[Students Subcollection] Max retries (3) reached. Listener stopped.');
+          if (self._rejectStudentsSubcollectionReady) {
+            self._rejectStudentsSubcollectionReady(err);
+            self._rejectStudentsSubcollectionReady = null;
+            self._resolveStudentsSubcollectionReady = null;
+          }
         }
       });
     } catch (e) {
       console.error('[Students Subcollection] Failed to initialize listener:', e);
-      if (rejectReady) {
-        rejectReady(e);
-        rejectReady = null;
+      self._studentsSubcollectionActive = false;
+      self._studentsSubcollectionErrored = true;
+      self._studentsSubcollectionErrorCount = (self._studentsSubcollectionErrorCount || 0) + 1;
+      if (self._studentsSubcollectionErrorCount <= 3) {
+        var backoffMs = Math.min(1000 * Math.pow(2, self._studentsSubcollectionErrorCount - 1), 8000);
+        if (self._studentsSubcollectionRetryTimer) clearTimeout(self._studentsSubcollectionRetryTimer);
+        self._studentsSubcollectionRetryTimer = setTimeout(function() {
+          self._studentsSubcollectionRetryTimer = null;
+          self._attachStudentsSubcollectionListener(schoolId);
+        }, backoffMs);
+      } else {
+        if (self._rejectStudentsSubcollectionReady) {
+          self._rejectStudentsSubcollectionReady(e);
+          self._rejectStudentsSubcollectionReady = null;
+          self._resolveStudentsSubcollectionReady = null;
+        }
       }
     }
   },
@@ -2272,14 +2367,50 @@ window.SchoolApp = {
       var _lastExamsRender = 0;
       var EXAMS_RENDER_THROTTLE = 5000;
 
-      // Watchdog: after 25s with no usable snapshot, hide loader and show Retry option
-      var _watchdogTimer = setTimeout(function() {
+      // Watchdog: stage 1 notice at 45s, retry option only at 90s. Never reload automatically.
+      var _watchdogNoticeTimer = null;
+      var _watchdogRetryTimer = null;
+
+      function _clearWatchdogTimers() {
+        if (_watchdogNoticeTimer) {
+          clearTimeout(_watchdogNoticeTimer);
+          _watchdogNoticeTimer = null;
+        }
+        if (_watchdogRetryTimer) {
+          clearTimeout(_watchdogRetryTimer);
+          _watchdogRetryTimer = null;
+        }
+        var errEl = document.getElementById('login-error-msg');
+        if (errEl && (errEl.textContent.includes('Loading is taking longer') || errEl.textContent.includes('Slow connection'))) {
+          errEl.style.display = 'none';
+          errEl.textContent = '';
+        }
+      }
+
+      // Stage 1 Watchdog (45s): Friendly notice, keep waiting, do NOT show reload button
+      _watchdogNoticeTimer = setTimeout(function() {
         if (!self.tenantInitialized && !firstResolveCalled) {
-          console.warn('[Watchdog] 25s elapsed with no usable tenant snapshot for ' + schoolId);
+          console.warn('[Watchdog] 45s elapsed with no usable tenant snapshot for ' + schoolId);
+          var loaderTextEl = document.querySelector('#app-loading-overlay .app-loader-text');
+          if (loaderTextEl) {
+            loaderTextEl.textContent = 'Loading is taking longer than usual on a slow connection — please wait…';
+          }
+          var errEl = document.getElementById('login-error-msg');
+          if (errEl) {
+            errEl.textContent = 'Loading is taking longer than usual on a slow connection — please wait…';
+            errEl.style.display = 'block';
+          }
+        }
+      }, 45000);
+
+      // Stage 2 Watchdog (90s): Show Retry button only after 90 seconds. Never reload automatically.
+      _watchdogRetryTimer = setTimeout(function() {
+        if (!self.tenantInitialized && !firstResolveCalled) {
+          console.warn('[Watchdog] 90s elapsed with no usable tenant snapshot for ' + schoolId);
           if (!bypassLoader) self.hideLoader();
           var errEl = document.getElementById('login-error-msg');
           if (errEl) {
-            errEl.innerHTML = 'Slow connection — <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
+            errEl.innerHTML = 'Loading is taking longer than usual. <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
             errEl.style.display = 'block';
             var retryBtn = document.getElementById('btn-retry-connection');
             if (retryBtn) {
@@ -2291,7 +2422,7 @@ window.SchoolApp = {
             }
           }
         }
-      }, 25000);
+      }, 90000);
 
       self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
         self.updateConnectionIndicator(docSnap.metadata.fromCache);
@@ -2306,7 +2437,7 @@ window.SchoolApp = {
         if (!docExists) {
           if (docSnap.metadata && docSnap.metadata.fromCache === false) {
             console.warn('[initTenantStore] Tenant document confirmed missing from server for ' + schoolId);
-            if (_watchdogTimer) clearTimeout(_watchdogTimer);
+            _clearWatchdogTimers();
             if (!bypassLoader) self.hideLoader();
             var errEl = document.getElementById('login-error-msg');
             if (errEl) {
@@ -2323,10 +2454,11 @@ window.SchoolApp = {
           return;
         }
 
-        if (_watchdogTimer) clearTimeout(_watchdogTimer);
+        _clearWatchdogTimers();
 
         if (parsed) {
           var preservedSchools = (self.store && self.store.schools) ? self.store.schools : [];
+          var preservedStudents = (self._subcollectionEverLoaded && self.store && Array.isArray(self.store.students)) ? self.store.students : null;
           var preservedFees = (self.store && self.store.fees && self.store.fees.length > 0 && (!parsed.fees || parsed.fees.length === 0)) ? self.store.fees : [];
           var preservedAttendance = (self.store && self.store.attendance && self.store.attendance.length > 0 && (!parsed.attendance || parsed.attendance.length === 0)) ? self.store.attendance : [];
           var preservedExamMarks = (self.store && self.store.examMarks && Object.keys(self.store.examMarks).length > 0 && (!parsed.examMarks || Object.keys(parsed.examMarks).length === 0)) ? self.store.examMarks : {};
@@ -2335,6 +2467,7 @@ window.SchoolApp = {
             currentSchoolId: schoolId
           });
           self.store.schools = preservedSchools;
+          if (preservedStudents) self.store.students = preservedStudents;
           if (preservedFees.length > 0) self.store.fees = preservedFees;
           if (preservedAttendance.length > 0) self.store.attendance = preservedAttendance;
           if (Object.keys(preservedExamMarks).length > 0) self.store.examMarks = preservedExamMarks;
@@ -2531,7 +2664,7 @@ window.SchoolApp = {
         }
       }, (error) => {
         console.error("Firestore tenant onSnapshot error:", error);
-        if (_watchdogTimer) clearTimeout(_watchdogTimer);
+        _clearWatchdogTimers();
         self.updateConnectionIndicator(true);
 
         // Security / session expired error handling
@@ -3528,7 +3661,10 @@ window.SchoolApp = {
         this.hideLoader();
         this.enableLoginButton();
         var errMsg = apiResult && apiResult.error ? apiResult.error : 'Login verification failed.';
-        throw new Error(errMsg);
+        var loginErr = new Error(errMsg);
+        loginErr.status = resp.status;
+        loginErr.rawError = errMsg;
+        throw loginErr;
       }
     } catch (fetchErr) {
       this.hideLoader();
@@ -3625,7 +3761,10 @@ window.SchoolApp = {
       return true;
     } else {
       this._loginInProgress = false;
-      throw new Error((apiResult && apiResult.error) ? apiResult.error : "Invalid credentials.");
+      var failMsg = (apiResult && apiResult.error) ? apiResult.error : "Invalid credentials.";
+      var failErr = new Error(failMsg);
+      failErr.rawError = failMsg;
+      throw failErr;
     }
   },
 
@@ -6099,11 +6238,15 @@ window.SchoolApp = {
         console.error("Login attempt failed:", error);
         
         let friendlyMsg = "Login failed. Please try again.";
-        const errMsg = (error && error.message) ? error.message.toLowerCase() : String(error).toLowerCase();
+        const rawMsg = (error && (error.rawError || error.message)) ? String(error.rawError || error.message) : String(error);
+        const errMsg = rawMsg.toLowerCase();
         const errCode = (error && error.code) ? error.code.toLowerCase() : '';
+        const errStatus = error && error.status;
 
-        // Check network status
-        if (
+        // Check 429 / Lockout first: preserve server's exact lockout message & remaining minutes
+        if (errStatus === 429 || errMsg.includes('account locked') || errMsg.includes('too many failed attempts') || errMsg.includes('try again in')) {
+          friendlyMsg = rawMsg;
+        } else if (
           !navigator.onLine ||
           errCode.includes('network') ||
           errMsg.includes('network') ||
@@ -6113,6 +6256,8 @@ window.SchoolApp = {
           errMsg.includes('fetch')
         ) {
           friendlyMsg = "Connection error. Check your internet.";
+        } else if (errMsg.includes('no teacher found with this email') || errMsg.includes('no teacher found')) {
+          friendlyMsg = "No teacher found with this email. Use the email registered by your school admin.";
         } else if (
           errCode === 'auth/wrong-password' ||
           errCode === 'auth/invalid-credential' ||
@@ -6128,8 +6273,7 @@ window.SchoolApp = {
           errMsg.includes('user-not-found') ||
           errMsg.includes('invalid-email') ||
           errMsg.includes('account not found') ||
-          errMsg.includes('invalid admin username') ||
-          errMsg.includes('no teacher found')
+          errMsg.includes('invalid admin username')
         ) {
           friendlyMsg = "Account not found. Check your credentials.";
         }
@@ -6758,11 +6902,28 @@ document.addEventListener('DOMContentLoaded', async function() {
   var authUser = (window.auth && window.auth.currentUser) || null;
   if (!authUser && window.auth && typeof window.auth.onAuthStateChanged === 'function') {
     authUser = await new Promise(function(resolve) {
-      var unsub = window.auth.onAuthStateChanged(function(u) {
-        if (typeof unsub === 'function') unsub();
+      var settled = false;
+      var timer = null;
+      var unsub = null;
+      function done(u) {
+        if (settled) return;
+        settled = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (typeof unsub === 'function') {
+          try { unsub(); } catch (e) {}
+          unsub = null;
+        }
         resolve(u);
+      }
+      unsub = window.auth.onAuthStateChanged(function(u) {
+        done(u);
       });
-      setTimeout(function() { resolve(null); }, 1500);
+      timer = setTimeout(function() {
+        done(null);
+      }, 6000);
     });
   }
 
