@@ -158,10 +158,7 @@
       printWin.print();
       setTimeout(function() {
         URL.revokeObjectURL(url);
-      }, 60000);
-    };
-    printWin.onafterprint = function() {
-      try { printWin.close(); } catch(e) {}
+      }, 5000);
     };
   }
 
@@ -689,7 +686,12 @@
       var logo = settings.logoUrl || settings.schoolLogo || schoolInfo.logoUrl || '';
 
       var termName = activeTerm ? activeTerm.name : 'TERM EXAMINATION';
-      var academicSession = (settings && settings.academicYear) || (activeTerm && activeTerm.session) || '2025-26';
+      // FIX D: Single source of truth for academic session
+      var academicSession = (activeTerm && activeTerm.session) ||
+        (schoolConfig && schoolConfig.academic && schoolConfig.academic.session) ||
+        (settings && settings.academicYear) ||
+        (store && store.examConfig && store.examConfig.session) ||
+        '2025-26';
 
       var subjectsArr = ensureSubjectsArray(subjects || []);
       subjectsArr = sortSubjects(subjectsArr);
@@ -698,7 +700,6 @@
       // Multi-exam determination
       var hasCombinedTerms = isCombined && combinedData && combinedData.terms && combinedData.terms.length > 1;
       var cTerms = hasCombinedTerms ? combinedData.terms : [];
-      var multiMode = multiCfg.mode || 'none';
 
       // Orientation calculation: explicit config override vs auto measurement
       var orientation = 'portrait';
@@ -712,47 +713,27 @@
         }
       }
 
-      // Auto-fit tiers based on orientation and subject count
-      var fontBase = '12px';
-      var cellPad = '6.5px 10px';
-      var logoH = '70px';
-      var sigH = '38px';
-      var remarksMinH = '42px';
+      // Multi-exam calculation vs Single-exam calculation
+      var multiRes = null;
+      var calcRes = null;
 
-      if (orientation === 'landscape') {
-        fontBase = '10px';
-        cellPad = '3px 6px';
-        logoH = '46px';
-        sigH = '24px';
-        remarksMinH = '24px';
-      } else if (subCount > 12) {
-        // Dense tier (13-16 subjects)
-        fontBase = '9px';
-        cellPad = '2.5px 6px';
-        logoH = '44px';
-        sigH = '20px';
-        remarksMinH = '22px';
-      } else if (subCount > 9) {
-        // Compact tier (10-12 subjects)
-        fontBase = '10px';
-        cellPad = '3.5px 6px';
-        logoH = '52px';
-        sigH = '24px';
-        remarksMinH = '28px';
-      } else if (subCount > 6) {
-        // Standard tier (7-9 subjects)
-        fontBase = '11px';
-        cellPad = '4.5px 8px';
-        logoH = '60px';
-        sigH = '30px';
-        remarksMinH = '34px';
+      if (hasCombinedTerms) {
+        multiRes = ExamCalculationEngine.calculateMultiExamResult({
+          terms: cTerms,
+          marksMap: (combinedData && combinedData.marks) || {},
+          termSubjects: (combinedData && combinedData.termSubjects) || null,
+          subjects: subjectsArr,
+          studentClass: s.class,
+          schoolConfig: schoolConfig
+        });
       } else {
-        // Spacious tier (1-6 subjects)
-        fontBase = '12px';
-        cellPad = '6.5px 10px';
-        logoH = '70px';
-        sigH = '38px';
-        remarksMinH = '42px';
+        var marksMap = (savedMarks && savedMarks.marks) || {};
+        calcRes = ExamCalculationEngine.calculateStudentResult({
+          marks: marksMap,
+          subjects: subjectsArr,
+          term: activeTerm,
+          schoolConfig: schoolConfig
+        });
       }
 
       var fontStack = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -792,104 +773,7 @@
         return str;
       }
 
-      // Multi-exam calculation vs Single-exam calculation
-      var multiRes = null;
-      var calcRes = null;
-
-      if (hasCombinedTerms) {
-        multiRes = ExamCalculationEngine.calculateMultiExamResult({
-          terms: cTerms,
-          marksMap: (combinedData && combinedData.marks) || {},
-          termSubjects: (combinedData && combinedData.termSubjects) || null,
-          subjects: subjectsArr,
-          studentClass: s.class,
-          schoolConfig: schoolConfig
-        });
-      } else {
-        var marksMap = (savedMarks && savedMarks.marks) || {};
-        calcRes = ExamCalculationEngine.calculateStudentResult({
-          marks: marksMap,
-          subjects: subjectsArr,
-          term: activeTerm,
-          schoolConfig: schoolConfig
-        });
-      }
-
-      // Page dimensions derived from orientation minus @page 8mm margins
-      // Printable portrait: 194mm x 281mm. Printable landscape: 281mm x 194mm.
-      var maxW = orientation === 'landscape' ? '281mm' : '194mm';
-      var minH = orientation === 'landscape' ? '190mm' : '275mm';
-      var maxH = orientation === 'landscape' ? '194mm' : '281mm';
-      var cardHeight = orientation === 'landscape' ? '192mm' : '279mm';
-      var borderStyle = design.showBorder !== false ? 'border:1.5px solid #CBD5E1; border-radius:8px;' : '';
-
-      var html = '<div class="report-card" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; height:' + cardHeight + '; min-height:' + minH + '; max-height:' + maxH + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; justify-content:space-between; page-break-after:always; page-break-inside:avoid; overflow:hidden; ' + borderStyle + '">';
-
-      html += '<div style="display:flex; flex-direction:column; flex:1;">'; // Top content wrapper
-
-      // 1. School Header
-      var showLogo = (schoolCfg.logo !== false) && !!logo;
-      html += '<div style="display:flex; align-items:center; gap:14px; border-bottom:2.5px solid ' + primaryColor + '; padding-bottom:8px; margin-bottom:6px;">';
-      if (showLogo) {
-        html += '<img src="' + logo + '" style="height:' + logoH + '; width:' + logoH + '; object-fit:contain; flex-shrink:0; border-radius:6px;" alt="School Logo">';
-      }
-      html += '<div style="flex:1; text-align:center;">';
-      if (schoolCfg.name !== false && schoolName) {
-        html += '<div style="font-size:20px; font-weight:900; color:' + primaryColor + '; letter-spacing:0.03em; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
-      }
-      if (schoolCfg.tagline !== false && tagline) {
-        html += '<div style="font-size:10.5px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
-      }
-      // Line 1: Address
-      if (schoolCfg.address !== false && address) {
-        html += '<div style="font-size:10.5px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
-      }
-      // Line 2: Phone • Email • Website
-      var line2 = [];
-      if (schoolCfg.phone !== false && phone) line2.push('Phone: ' + escapeHTML(phone));
-      if (schoolCfg.email !== false && email) line2.push('Email: ' + escapeHTML(email));
-      if (schoolCfg.website !== false && website) line2.push('Website: ' + escapeHTML(website));
-      if (line2.length > 0) {
-        html += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px;">' + line2.join(' &bull; ') + '</div>';
-      }
-      // Line 3: Affiliation No (CBSE) • UDISE • Session
-      var line3 = [];
-      if (schoolCfg.affiliationNo !== false && affiliation) {
-        var affStr = String(affiliation).trim();
-        if (affStr.indexOf('Affiliation') === -1) affStr = 'Affiliation No: ' + affStr;
-        if (affStr.indexOf('CBSE') === -1 && (branding.board === 'CBSE' || settings.board === 'CBSE' || schoolInfo.board === 'CBSE' || affStr.length === 7 || affStr.indexOf('3430182') !== -1)) {
-          affStr += ' (CBSE)';
-        }
-        line3.push(affStr);
-      }
-      if (schoolCfg.udiseCode !== false && udise) {
-        var udStr = String(udise).trim();
-        if (udStr.indexOf('UDISE') === -1) udStr = 'UDISE: ' + udStr;
-        line3.push(udStr);
-      }
-      if (schoolCfg.session !== false && academicSession) {
-        var sesStr = String(academicSession).trim();
-        if (sesStr.indexOf('Session') === -1) sesStr = 'Session: ' + sesStr;
-        line3.push(sesStr);
-      }
-      if (line3.length > 0) {
-        html += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px; font-weight:600;">' + line3.join(' &bull; ') + '</div>';
-      }
-      html += '</div></div>';
-
-      // 2. Title Banner
-      html += '<div style="text-align:center; margin:3px 0 6px 0;">';
-      if (hasCombinedTerms) {
-        var termNames = cTerms.map(function(t) { return t.name.toUpperCase(); }).join(' & ');
-        html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">CONSOLIDATED REPORT CARD</span>';
-        html += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termNames) + '</div>';
-      } else {
-        html += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">OFFICIAL REPORT CARD</span>';
-        html += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termName) + '</div>';
-      }
-      html += '</div>';
-
-      // 3. Dynamic Student Details Grid (Collapses cleanly without blank slots)
+      // Collect Student details items
       var studentItems = [];
       var sName = s.name || ((s.firstName || '') + ' ' + (s.lastName || '')).trim();
       if (studentCfg.name !== false && sName) {
@@ -944,353 +828,551 @@
       }
 
       var hasPhoto = (studentCfg.photo !== false) && !!(s.photoUrl || s.photo);
+      var remarksText = (savedMarks && savedMarks.remarks) || '';
+      var effectiveRemarks = remarksText || (calcRes && calcRes.result === 'PASS' ? 'Good performance. Promoted to next class.' : 'Needs improvement in weak subjects.');
+      var isFinalTerm = !!(activeTerm && activeTerm.isFinal === true);
+      var hasPromotion = isFinalTerm && (acaCfg.promotionStatus === true);
+      var hasLegend = (secToggles.showGradingLegend !== false);
+      var hasSignatures = (secToggles.showSignatures !== false);
 
-      if (studentItems.length > 0) {
-        html += '<div style="display:flex; gap:10px; align-items:stretch; margin-bottom:6px;">';
+      // FIX B & FIX C: Real measurement-based fitting & 2-page layout
+      // Available printable height: Portrait ~275mm (safety under 281mm), Landscape ~188mm
+      var portraitTiers = [
+        { name: 'spacious', fontBase: '12px', cellPad: '9.5px 12px', studentPad: '6px 10px', logoH: '66px', sigH: '34px', remarksMinH: '42px', sigGapMm: 12, elemSpacing: '8px', rowHMm: 9.0 },
+        { name: 'standard', fontBase: '11px', cellPad: '6.5px 10px', studentPad: '5px 8px', logoH: '56px', sigH: '28px', remarksMinH: '34px', sigGapMm: 10, elemSpacing: '6px', rowHMm: 7.2 },
+        { name: 'compact',  fontBase: '10px', cellPad: '4px 8px',    studentPad: '4px 8px', logoH: '48px', sigH: '24px', remarksMinH: '26px', sigGapMm: 9,  elemSpacing: '5px', rowHMm: 5.6 },
+        { name: 'dense',    fontBase: '9px',  cellPad: '3px 6px',    studentPad: '3px 6px', logoH: '42px', sigH: '20px', remarksMinH: '20px', sigGapMm: 8,  elemSpacing: '4px', rowHMm: 4.8 }
+      ];
+
+      var landscapeTier = { name: 'landscape', fontBase: '10px', cellPad: '4px 7px', studentPad: '3px 6px', logoH: '44px', sigH: '20px', remarksMinH: '22px', sigGapMm: 8, elemSpacing: '4px', rowHMm: 5.2 };
+
+      function estimateHeightMm(t, orient) {
+        var h = 12; // 6mm top + 6mm bottom container padding
+        var hH = t.name === 'spacious' ? 34 : (t.name === 'standard' ? 29 : (t.name === 'compact' ? 26 : 24));
+        if (schoolCfg.logo === false || !logo) hH -= 6;
+        if (orient === 'landscape') hH = 22;
+        h += hH;
+        h += (orient === 'landscape' ? 9 : 12); // Title banner
+        var gCols = orient === 'landscape' ? 3 : 2;
+        var gRows = Math.ceil(studentItems.length / gCols);
+        var rH = t.name === 'spacious' ? 7.5 : (t.name === 'standard' ? 6.5 : (orient === 'landscape' ? 5.0 : 5.5));
+        h += (gRows * rH) + 6;
+        var tHdr = hasCombinedTerms ? (orient === 'landscape' ? 12 : 14) : 7.5;
+        h += tHdr + (subCount * t.rowHMm) + 7.5 + 6;
+        if (hasCombinedTerms && !multiRes.isConsolidated) {
+          h += (orient === 'landscape' ? 8 : 10) + (cTerms.length * (orient === 'landscape' ? 5 : 6)) + 6;
+        } else {
+          h += (t.name === 'spacious' ? 22 : 18) + 6;
+        }
+        if (secToggles.showRemarks !== false && acaCfg.remarks !== false) {
+          var rLines = Math.max(1, Math.ceil(effectiveRemarks.length / (orient === 'landscape' ? 120 : 85)));
+          var rBoxH = Math.max(parseInt(t.remarksMinH, 10) * 0.2646, 12 + (rLines * 4.2));
+          h += rBoxH + 6;
+        }
+        if (hasPromotion) h += 12;
+        if (hasLegend) h += (orient === 'landscape' ? 6 : 7.5);
+        if (hasSignatures) {
+          h += t.sigGapMm + (parseInt(t.sigH, 10) * 0.2646) + 16;
+        }
+        return h;
+      }
+
+      var tier = null;
+      var numPages = 1;
+
+      if (orientation === 'landscape') {
+        tier = landscapeTier;
+        numPages = 1;
+      } else {
+        // Try tiers from largest to smallest to maximize font and page utilization
+        for (var ti = 0; ti < portraitTiers.length; ti++) {
+          var cand = portraitTiers[ti];
+          var estH = estimateHeightMm(cand, 'portrait');
+          if (estH <= 270) {
+            tier = cand;
+            numPages = 1;
+            break;
+          }
+        }
+        // If content genuinely exceeds 1 page even at Dense tier (9px) or if forceTwoPages requested:
+        if (!tier || schoolConfig.forceTwoPages === true) {
+          numPages = 2;
+          tier = portraitTiers[2]; // Use Compact tier (10px >= 10px!) for 2-page layout
+        }
+      }
+
+      var fontBase = tier.fontBase;
+      var cellPad = tier.cellPad;
+      var logoH = tier.logoH;
+      var sigH = tier.sigH;
+      var remarksMinH = tier.remarksMinH;
+      var elemMarginBottom = tier.elemSpacing;
+
+      var maxW = orientation === 'landscape' ? '281mm' : '194mm';
+      var borderStyle = design.showBorder !== false ? 'border:1.5px solid #CBD5E1; border-radius:8px;' : '';
+
+      // RENDER SECTION GENERATORS
+      function renderHeader(isContinuation) {
+        var hHtml = '';
+        var showLogo = (schoolCfg.logo !== false) && !!logo;
+        if (isContinuation) {
+          hHtml += '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid ' + primaryColor + '; padding-bottom:6px; margin-bottom:' + elemMarginBottom + ';">';
+          hHtml += '<div>';
+          hHtml += '<div style="font-size:14px; font-weight:800; color:' + primaryColor + '; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
+          hHtml += '<div style="font-size:9.5px; color:#4B5563; font-weight:600; margin-top:2px;">Official Report Card &bull; Session: ' + escapeHTML(academicSession) + '</div>';
+          hHtml += '</div>';
+          hHtml += '<div style="text-align:right; font-size:9.5px; color:#374151;">';
+          hHtml += '<strong>Student:</strong> ' + escapeHTML(sName) + ' &bull; <strong>Adm No:</strong> ' + escapeHTML(sAdm || '—') + ' &bull; <strong>Class:</strong> ' + escapeHTML(sCls || '—');
+          hHtml += '</div></div>';
+          return hHtml;
+        }
+
+        hHtml += '<div style="display:flex; align-items:center; gap:14px; border-bottom:2.5px solid ' + primaryColor + '; padding-bottom:8px; margin-bottom:' + elemMarginBottom + ';">';
+        if (showLogo) {
+          hHtml += '<img src="' + logo + '" style="height:' + logoH + '; width:' + logoH + '; object-fit:contain; flex-shrink:0; border-radius:6px;" alt="School Logo">';
+        }
+        hHtml += '<div style="flex:1; text-align:center;">';
+        if (schoolCfg.name !== false && schoolName) {
+          hHtml += '<div style="font-size:20px; font-weight:900; color:' + primaryColor + '; letter-spacing:0.03em; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
+        }
+        if (schoolCfg.tagline !== false && tagline) {
+          hHtml += '<div style="font-size:10.5px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
+        }
+        if (schoolCfg.address !== false && address) {
+          hHtml += '<div style="font-size:10.5px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
+        }
+        var line2 = [];
+        if (schoolCfg.phone !== false && phone) line2.push('Phone: ' + escapeHTML(phone));
+        if (schoolCfg.email !== false && email) line2.push('Email: ' + escapeHTML(email));
+        if (schoolCfg.website !== false && website) line2.push('Website: ' + escapeHTML(website));
+        if (line2.length > 0) {
+          hHtml += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px;">' + line2.join(' &bull; ') + '</div>';
+        }
+        var line3 = [];
+        if (schoolCfg.affiliationNo !== false && affiliation) {
+          var affStr = String(affiliation).trim();
+          if (affStr.indexOf('Affiliation') === -1) affStr = 'Affiliation No: ' + affStr;
+          if (affStr.indexOf('CBSE') === -1 && (branding.board === 'CBSE' || settings.board === 'CBSE' || schoolInfo.board === 'CBSE' || affStr.length === 7 || affStr.indexOf('3430182') !== -1)) {
+            affStr += ' (CBSE)';
+          }
+          line3.push(affStr);
+        }
+        if (schoolCfg.udiseCode !== false && udise) {
+          var udStr = String(udise).trim();
+          if (udStr.indexOf('UDISE') === -1) udStr = 'UDISE: ' + udStr;
+          line3.push(udStr);
+        }
+        if (schoolCfg.session !== false && academicSession) {
+          var sesStr = String(academicSession).trim();
+          if (sesStr.indexOf('Session') === -1) sesStr = 'Session: ' + sesStr;
+          line3.push(sesStr);
+        }
+        if (line3.length > 0) {
+          hHtml += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px; font-weight:600;">' + line3.join(' &bull; ') + '</div>';
+        }
+        hHtml += '</div></div>';
+        return hHtml;
+      }
+
+      function renderTitleBanner() {
+        var bHtml = '<div style="text-align:center; margin:3px 0 ' + elemMarginBottom + ' 0;">';
+        if (hasCombinedTerms) {
+          var termNames = cTerms.map(function(t) { return t.name.toUpperCase(); }).join(' & ');
+          bHtml += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">CONSOLIDATED REPORT CARD</span>';
+          bHtml += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termNames) + '</div>';
+        } else {
+          bHtml += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">OFFICIAL REPORT CARD</span>';
+          bHtml += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termName) + '</div>';
+        }
+        bHtml += '</div>';
+        return bHtml;
+      }
+
+      function renderStudentGrid() {
+        if (studentItems.length === 0) return '';
+        var sHtml = '<div style="display:flex; gap:10px; align-items:stretch; margin-bottom:' + elemMarginBottom + ';">';
         var gridCols = orientation === 'landscape' ? 3 : 2;
-        html += '<div style="flex:1; display:grid; grid-template-columns:repeat(' + gridCols + ', 1fr); border:1px solid #BFDBFE; border-radius:6px; overflow:hidden; font-size:' + fontBase + '; background:#EFF6FF;">';
-        
+        sHtml += '<div style="flex:1; display:grid; grid-template-columns:repeat(' + gridCols + ', 1fr); border:1px solid #BFDBFE; border-radius:6px; overflow:hidden; font-size:' + fontBase + '; background:#EFF6FF;">';
         studentItems.forEach(function(item, idx) {
           var isLastOdd = (idx === studentItems.length - 1) && (studentItems.length % gridCols !== 0);
           var spanStyle = isLastOdd ? 'grid-column: span ' + (gridCols - (studentItems.length % gridCols) + 1) + ';' : '';
           var borderRight = ((idx + 1) % gridCols !== 0 && !isLastOdd) ? 'border-right:1px solid #DBEAFE;' : '';
           var borderBottom = (idx < studentItems.length - (studentItems.length % gridCols || gridCols)) ? 'border-bottom:1px solid #DBEAFE;' : '';
-          html += '<div style="padding:4px 8px; ' + borderRight + ' ' + borderBottom + ' ' + spanStyle + '"><strong>' + escapeHTML(item.label) + ':</strong> ' + escapeHTML(item.value) + '</div>';
+          sHtml += '<div style="padding:' + tier.studentPad + '; ' + borderRight + ' ' + borderBottom + ' ' + spanStyle + '"><strong>' + escapeHTML(item.label) + ':</strong> ' + escapeHTML(item.value) + '</div>';
         });
-        html += '</div>';
-
+        sHtml += '</div>';
         if (hasPhoto) {
-          html += '<div style="width:64px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #CBD5E1; border-radius:6px; background:#F8FAFC; overflow:hidden; padding:2px;">';
-          html += '<img src="' + (s.photoUrl || s.photo) + '" style="width:100%; height:100%; max-height:76px; object-fit:cover; border-radius:4px;" alt="Student Photo">';
-          html += '</div>';
+          sHtml += '<div style="width:64px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #CBD5E1; border-radius:6px; background:#F8FAFC; overflow:hidden; padding:2px;">';
+          sHtml += '<img src="' + (s.photoUrl || s.photo) + '" style="width:100%; height:100%; max-height:76px; object-fit:cover; border-radius:4px;" alt="Student Photo">';
+          sHtml += '</div>';
         }
-        html += '</div>';
+        sHtml += '</div>';
+        return sHtml;
       }
 
-      // 4. Scholastic Performance Table
-      if (hasCombinedTerms) {
-        var isConsolidated = multiRes && multiRes.isConsolidated;
-        html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:6px;">';
-        html += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
-        html += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
-        cTerms.forEach(function(t) {
-          html += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B;">' + escapeHTML(t.name) + '</th>';
-        });
-        if (isConsolidated) {
-          html += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; background:#0F172A;">Consolidated</th>';
-        }
-        html += '</tr><tr style="background:#1E293B; color:#FFF; font-weight:700;">';
-        cTerms.forEach(function() {
-          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Obt</th>';
-          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Grade</th>';
-        });
-        if (isConsolidated) {
-          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Total</th>';
-          html += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Grade</th>';
-        }
-        html += '</tr></thead><tbody>';
-
-        var termTotalsMap = (multiRes && multiRes.termTotals) || {};
-
-        subjectsArr.forEach(function(sub, idx) {
-          html += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
-          var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
-          html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
-
-          var subGrandObt = 0;
-          var subGrandFull = 0;
-
+      function renderMarksTable() {
+        var mHtml = '';
+        if (hasCombinedTerms) {
+          var isConsolidated = multiRes && multiRes.isConsolidated;
+          mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:' + elemMarginBottom + ';">';
+          mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
+          mHtml += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
           cTerms.forEach(function(t) {
-            // Find term-specific subject config
-            var tSubs = (combinedData && combinedData.termSubjects && combinedData.termSubjects[t.id]) ||
-              (store.examSubjects && store.examSubjects[t.id] &&
-              (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]) &&
-              (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]).subjects) || subjectsArr;
-            var tSub = (tSubs || []).find(function(x) { return x.id === sub.id; });
-            var termSubFull = (tSub && tSub.fullMarks) ? Number(tSub.fullMarks) : (sub.fullMarks || 100);
-            var termSubPass = (tSub && tSub.passMarks !== undefined && tSub.passMarks !== null) ? Number(tSub.passMarks) : (0.33 * termSubFull);
-
-            var tMarks = (combinedData.marks && combinedData.marks[t.id] && combinedData.marks[t.id][sub.id]) || {};
-            var isAB = tMarks.isAbsent === true;
-            var isEX = tMarks.isExempted === true;
-            var hasO = !isAB && !isEX && tMarks.obtained !== undefined && tMarks.obtained !== null && String(tMarks.obtained).trim() !== '';
-            var o = hasO ? Number(tMarks.obtained) : null;
-
-            var cellDisp = isAB ? 'AB' : (isEX ? 'EX' : (o !== null ? String(o) : '—'));
-            var cellStyle = (isAB || (o !== null && o < termSubPass)) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
-
-            var cellPct = o !== null ? (o / termSubFull) * 100 : 0;
-            var cellGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (o !== null ? ExamCalculationEngine.calculateGrade(cellPct, schoolConfig.gradingScale).grade : '—'));
-            if (!isAB && !isEX && o !== null && o >= termSubPass && cellGrade === 'F') cellGrade = 'D';
-
-            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + cellStyle + '">' + cellDisp + '</td>';
-            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + cellGrade + '</td>';
-
-            if (o !== null) {
-              subGrandObt += o;
-              subGrandFull += termSubFull;
-            }
+            mHtml += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B;">' + escapeHTML(t.name) + '</th>';
           });
-
           if (isConsolidated) {
-            var subConsolidatedGrade = subGrandFull > 0 ? ExamCalculationEngine.calculateGrade((subGrandObt / subGrandFull) * 100, schoolConfig.gradingScale).grade : '—';
-            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subGrandObt + '</td>';
-            html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subConsolidatedGrade + '</td>';
+            mHtml += '<th colspan="2" style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; background:#0F172A;">Consolidated</th>';
           }
-          html += '</tr>';
-        });
-
-        // Multi-term Grand Total Row
-        html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11px;">';
-        html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
-        cTerms.forEach(function(t) {
-          var tt = termTotalsMap[t.id] || { obtained: 0, maxTotal: 0, grade: '—' };
-          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.obtained + ' / ' + tt.maxTotal + '</td>';
-          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.grade + '</td>';
-        });
-        if (isConsolidated) {
-          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.total + ' / ' + multiRes.maxTotal + '</td>';
-          html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.grade + '</td>';
-        }
-        html += '</tr></tbody></table>';
-
-      } else {
-        // Single Exam Table
-        var totalObtained = calcRes.total;
-        var totalFull = calcRes.maxTotal;
-        var totalPass = calcRes.passTotal;
-        var totalGrade = calcRes.grade;
-
-        html += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:6px;">';
-        html += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">';
-        html += '<th style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
-        if (colToggles.showFullMarks !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Full Marks</th>';
-        if (colToggles.showPassMarks !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Pass Marks</th>';
-        if (colToggles.showObtained !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:18%;">Marks Obtained</th>';
-        if (colToggles.showGrade !== false) html += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Grade</th>';
-        html += '</tr></thead><tbody>';
-
-        var marksMap = (savedMarks && savedMarks.marks) || {};
-        subjectsArr.forEach(function(sub, idx) {
-          var sc = marksMap[sub.id];
-          var isAB = sc && sc.isAbsent;
-          var isEX = sc && sc.isExempted;
-          var hasVal = sc && !isAB && !isEX && sc.obtained !== undefined && sc.obtained !== null && String(sc.obtained).trim() !== '';
-          var num = hasVal ? Number(sc.obtained) : null;
-          var passNum = (sub.passMarks !== undefined && sub.passMarks !== null) ? Number(sub.passMarks) : (33 / 100) * (sub.fullMarks || 100);
-          var isSubFail = num !== null && num < passNum;
-
-          var obtDisp = isAB ? 'AB' : (isEX ? 'EX' : (num !== null ? String(num) : '—'));
-          var obtStyle = (isAB || isSubFail) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
-
-          var subPct = num !== null ? (num / (sub.fullMarks || 100)) * 100 : 0;
-          var subGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (num !== null ? ExamCalculationEngine.calculateGrade(subPct, schoolConfig.gradingScale).grade : '—'));
-          if (!isAB && !isEX && num !== null && num >= passNum && subGrade === 'F') subGrade = 'D';
-
-          var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
-
-          html += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
-          html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
-          if (colToggles.showFullMarks !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + (sub.fullMarks || 100) + '</td>';
-          if (colToggles.showPassMarks !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + passNum + '</td>';
-          if (colToggles.showObtained !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + obtStyle + '">' + obtDisp + '</td>';
-          if (colToggles.showGrade !== false) html += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + subGrade + '</td>';
-          html += '</tr>';
-        });
-
-        // Total Row
-        html += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11.5px;">';
-        html += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
-        if (colToggles.showFullMarks !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalFull + '</td>';
-        if (colToggles.showPassMarks !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalPass + '</td>';
-        if (colToggles.showObtained !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalObtained + '</td>';
-        if (colToggles.showGrade !== false) html += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalGrade + '</td>';
-        html += '</tr></tbody></table>';
-      }
-
-      // 5. Dynamic Summary Block
-      var isIncomplete = false;
-      var pendingSubjectsList = [];
-
-      if (hasCombinedTerms) {
-        if (!multiRes.isConsolidated) {
-          // Mode 'none': Per-term compact breakdown table
-          html += '<div style="margin-bottom:6px; border:1px solid #CBD5E1; border-radius:6px; overflow:hidden;">';
-          html += '<table style="width:100%; border-collapse:collapse; font-size:' + fontBase + '; text-align:center;">';
-          html += '<thead><tr style="background:#F1F5F9; color:#475569; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.04em;">';
-          html += '<th style="padding:3px 6px; text-align:left; border-bottom:1px solid #CBD5E1;">Term Assessment</th>';
-          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Total Marks</th>';
-          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Percentage</th>';
-          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Grade</th>';
-          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Division</th>';
-          html += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Result</th>';
-          html += '</tr></thead><tbody>';
-
-          cTerms.forEach(function(t) {
-            var tr = multiRes.termResults[t.id];
-            var divCol = '#15803D';
-            if (tr.result === 'FAIL' || tr.result === 'INCOMPLETE') divCol = '#DC2626';
-            else if (tr.division === 'Not Awarded') divCol = '#6B7280';
-            else if (tr.division.indexOf('Second') !== -1) divCol = '#1D4ED8';
-            else if (tr.division.indexOf('Third') !== -1) divCol = '#B45309';
-
-            var resCol = tr.result === 'PASS' ? '#16A34A' : '#DC2626';
-
-            html += '<tr>';
-            html += '<td style="padding:3px 6px; text-align:left; font-weight:700; color:' + primaryColor + '; border-bottom:1px solid #F1F5F9;">' + escapeHTML(t.name) + '</td>';
-            html += '<td style="padding:3px 6px; font-weight:700; border-bottom:1px solid #F1F5F9;">' + tr.total + ' / ' + tr.maxTotal + '</td>';
-            html += '<td style="padding:3px 6px; font-weight:800; color:' + primaryColor + '; border-bottom:1px solid #F1F5F9;">' + tr.displayPercentage + '</td>';
-            html += '<td style="padding:3px 6px; font-weight:700; border-bottom:1px solid #F1F5F9;">' + tr.grade + '</td>';
-            html += '<td style="padding:3px 6px; font-weight:700; color:' + divCol + '; border-bottom:1px solid #F1F5F9;">' + escapeHTML(tr.division) + '</td>';
-            html += '<td style="padding:3px 6px; font-weight:800; color:' + resCol + '; border-bottom:1px solid #F1F5F9;">' + tr.result + '</td>';
-            html += '</tr>';
+          mHtml += '</tr><tr style="background:#1E293B; color:#FFF; font-weight:700;">';
+          cTerms.forEach(function() {
+            mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Obt</th>';
+            mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #64748B; font-size:9.5px;">Grade</th>';
           });
-          html += '</tbody></table></div>';
+          if (isConsolidated) {
+            mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Total</th>';
+            mHtml += '<th style="padding:2px 4px; text-align:center; border:1px solid #0F172A; background:#0F172A; font-size:9.5px;">Grade</th>';
+          }
+          mHtml += '</tr></thead><tbody>';
+
+          var termTotalsMap = (multiRes && multiRes.termTotals) || {};
+
+          subjectsArr.forEach(function(sub, idx) {
+            mHtml += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
+            var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
+            mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
+
+            var subGrandObt = 0;
+            var subGrandFull = 0;
+
+            cTerms.forEach(function(t) {
+              var tSubs = (combinedData && combinedData.termSubjects && combinedData.termSubjects[t.id]) ||
+                (store.examSubjects && store.examSubjects[t.id] &&
+                (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]) &&
+                (store.examSubjects[t.id][s.class] || store.examSubjects[t.id]['Class ' + s.class]).subjects) || subjectsArr;
+              var tSub = (tSubs || []).find(function(x) { return x.id === sub.id; });
+              var termSubFull = (tSub && tSub.fullMarks) ? Number(tSub.fullMarks) : (sub.fullMarks || 100);
+              var termSubPass = (tSub && tSub.passMarks !== undefined && tSub.passMarks !== null) ? Number(tSub.passMarks) : (0.33 * termSubFull);
+
+              var tMarks = (combinedData.marks && combinedData.marks[t.id] && combinedData.marks[t.id][sub.id]) || {};
+              var isAB = tMarks.isAbsent === true;
+              var isEX = tMarks.isExempted === true;
+              var hasO = !isAB && !isEX && tMarks.obtained !== undefined && tMarks.obtained !== null && String(tMarks.obtained).trim() !== '';
+              var o = hasO ? Number(tMarks.obtained) : null;
+
+              var cellDisp = isAB ? 'AB' : (isEX ? 'EX' : (o !== null ? String(o) : '—'));
+              var cellStyle = (isAB || (o !== null && o < termSubPass)) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
+
+              var cellPct = o !== null ? (o / termSubFull) * 100 : 0;
+              var cellGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (o !== null ? ExamCalculationEngine.calculateGrade(cellPct, schoolConfig.gradingScale).grade : '—'));
+              if (!isAB && !isEX && o !== null && o >= termSubPass && cellGrade === 'F') cellGrade = 'D';
+
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + cellStyle + '">' + cellDisp + '</td>';
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + cellGrade + '</td>';
+
+              if (o !== null) {
+                subGrandObt += o;
+                subGrandFull += termSubFull;
+              }
+            });
+
+            if (isConsolidated) {
+              var subConsolidatedGrade = subGrandFull > 0 ? ExamCalculationEngine.calculateGrade((subGrandObt / subGrandFull) * 100, schoolConfig.gradingScale).grade : '—';
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subGrandObt + '</td>';
+              mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:800; background:#F1F5F9;">' + subConsolidatedGrade + '</td>';
+            }
+            mHtml += '</tr>';
+          });
+
+          mHtml += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11px;">';
+          mHtml += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
+          cTerms.forEach(function(t) {
+            var tt = termTotalsMap[t.id] || { obtained: 0, maxTotal: 0, grade: '—' };
+            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.obtained + ' / ' + tt.maxTotal + '</td>';
+            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.grade + '</td>';
+          });
+          if (isConsolidated) {
+            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.total + ' / ' + multiRes.maxTotal + '</td>';
+            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + multiRes.grade + '</td>';
+          }
+          mHtml += '</tr></tbody></table>';
 
         } else {
-          // Consolidated mode summary cards
+          // Single exam marks table
+          var totalObtained = calcRes.total;
+          var totalFull = calcRes.maxTotal;
+          var totalPass = calcRes.passTotal;
+          var totalGrade = calcRes.grade;
+
+          mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:' + elemMarginBottom + ';">';
+          mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">';
+          mHtml += '<th style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
+          if (colToggles.showFullMarks !== false) mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Full Marks</th>';
+          if (colToggles.showPassMarks !== false) mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Pass Marks</th>';
+          if (colToggles.showObtained !== false) mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:18%;">Marks Obtained</th>';
+          if (colToggles.showGrade !== false) mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Grade</th>';
+          mHtml += '</tr></thead><tbody>';
+
+          var marksMap = (savedMarks && savedMarks.marks) || {};
+          subjectsArr.forEach(function(sub, idx) {
+            var sc = marksMap[sub.id];
+            var isAB = sc && sc.isAbsent;
+            var isEX = sc && sc.isExempted;
+            var hasVal = sc && !isAB && !isEX && sc.obtained !== undefined && sc.obtained !== null && String(sc.obtained).trim() !== '';
+            var num = hasVal ? Number(sc.obtained) : null;
+            var passNum = (sub.passMarks !== undefined && sub.passMarks !== null) ? Number(sub.passMarks) : (33 / 100) * (sub.fullMarks || 100);
+            var isSubFail = num !== null && num < passNum;
+
+            var obtDisp = isAB ? 'AB' : (isEX ? 'EX' : (num !== null ? String(num) : '—'));
+            var obtStyle = (isAB || isSubFail) ? 'color:#DC2626; font-weight:700;' : 'font-weight:700;';
+
+            var subPct = num !== null ? (num / (sub.fullMarks || 100)) * 100 : 0;
+            var subGrade = isAB ? 'Ab' : (isEX ? 'Ex' : (num !== null ? ExamCalculationEngine.calculateGrade(subPct, schoolConfig.gradingScale).grade : '—'));
+            if (!isAB && !isEX && num !== null && num >= passNum && subGrade === 'F') subGrade = 'D';
+
+            var optLabel = sub.isOptional ? ' <span style="font-size:8.5px; color:#6B7280;">(Opt)</span>' : '';
+
+            mHtml += '<tr style="background:' + (idx % 2 === 0 ? '#F8FAFC' : '#FFFFFF') + ';">';
+            mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:left; font-weight:600;">' + escapeHTML(sub.name) + optLabel + '</td>';
+            if (colToggles.showFullMarks !== false) mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + (sub.fullMarks || 100) + '</td>';
+            if (colToggles.showPassMarks !== false) mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center;">' + passNum + '</td>';
+            if (colToggles.showObtained !== false) mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; ' + obtStyle + '">' + obtDisp + '</td>';
+            if (colToggles.showGrade !== false) mHtml += '<td style="padding:' + cellPad + '; border:1px solid #CBD5E1; text-align:center; font-weight:700;">' + subGrade + '</td>';
+            mHtml += '</tr>';
+          });
+
+          mHtml += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11.5px;">';
+          mHtml += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
+          if (colToggles.showFullMarks !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalFull + '</td>';
+          if (colToggles.showPassMarks !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalPass + '</td>';
+          if (colToggles.showObtained !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalObtained + '</td>';
+          if (colToggles.showGrade !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalGrade + '</td>';
+          mHtml += '</tr></tbody></table>';
+        }
+        return mHtml;
+      }
+
+      function renderSummaryBlock() {
+        var smHtml = '';
+        var isIncomplete = false;
+        var pendingSubjectsList = [];
+
+        if (hasCombinedTerms) {
+          if (!multiRes.isConsolidated) {
+            smHtml += '<div style="margin-bottom:' + elemMarginBottom + '; border:1px solid #CBD5E1; border-radius:6px; overflow:hidden;">';
+            smHtml += '<table style="width:100%; border-collapse:collapse; font-size:' + fontBase + '; text-align:center;">';
+            smHtml += '<thead><tr style="background:#F1F5F9; color:#475569; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.04em;">';
+            smHtml += '<th style="padding:3px 6px; text-align:left; border-bottom:1px solid #CBD5E1;">Term Assessment</th>';
+            smHtml += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Total Marks</th>';
+            smHtml += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Percentage</th>';
+            smHtml += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Grade</th>';
+            smHtml += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Division</th>';
+            smHtml += '<th style="padding:3px 6px; border-bottom:1px solid #CBD5E1;">Result</th>';
+            smHtml += '</tr></thead><tbody>';
+
+            cTerms.forEach(function(t) {
+              var tr = multiRes.termResults[t.id];
+              var divCol = '#15803D';
+              if (tr.result === 'FAIL' || tr.result === 'INCOMPLETE') divCol = '#DC2626';
+              else if (tr.division === 'Not Awarded') divCol = '#6B7280';
+              else if (tr.division.indexOf('Second') !== -1) divCol = '#1D4ED8';
+              else if (tr.division.indexOf('Third') !== -1) divCol = '#B45309';
+
+              var resCol = tr.result === 'PASS' ? '#16A34A' : '#DC2626';
+
+              smHtml += '<tr>';
+              smHtml += '<td style="padding:3px 6px; text-align:left; font-weight:700; color:' + primaryColor + '; border-bottom:1px solid #F1F5F9;">' + escapeHTML(t.name) + '</td>';
+              smHtml += '<td style="padding:3px 6px; font-weight:700; border-bottom:1px solid #F1F5F9;">' + tr.total + ' / ' + tr.maxTotal + '</td>';
+              smHtml += '<td style="padding:3px 6px; font-weight:800; color:' + primaryColor + '; border-bottom:1px solid #F1F5F9;">' + tr.displayPercentage + '</td>';
+              smHtml += '<td style="padding:3px 6px; font-weight:700; border-bottom:1px solid #F1F5F9;">' + tr.grade + '</td>';
+              smHtml += '<td style="padding:3px 6px; font-weight:700; color:' + divCol + '; border-bottom:1px solid #F1F5F9;">' + escapeHTML(tr.division) + '</td>';
+              smHtml += '<td style="padding:3px 6px; font-weight:800; color:' + resCol + '; border-bottom:1px solid #F1F5F9;">' + tr.result + '</td>';
+              smHtml += '</tr>';
+            });
+            smHtml += '</tbody></table></div>';
+          } else {
+            var summaryItems = [];
+            if (acaCfg.percentage !== false) {
+              summaryItems.push({ label: 'Percentage', value: multiRes.displayPercentage, color: primaryColor });
+            }
+            if (acaCfg.division !== false) {
+              var divColor = '#15803D';
+              if (multiRes.result === 'FAIL' || multiRes.result === 'INCOMPLETE') divColor = '#DC2626';
+              else if (multiRes.division === 'Not Awarded') divColor = '#6B7280';
+              else if (multiRes.division.indexOf('Second') !== -1) divColor = '#1D4ED8';
+              else if (multiRes.division.indexOf('Third') !== -1) divColor = '#B45309';
+              summaryItems.push({ label: 'Division', value: multiRes.division, color: divColor });
+            }
+            if (acaCfg.result !== false) {
+              summaryItems.push({ label: 'Final Result', value: multiRes.result, color: (multiRes.result === 'PASS' ? '#16A34A' : '#DC2626') });
+            }
+            if (summaryItems.length > 0) {
+              smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:' + elemMarginBottom + '; text-align:center;">';
+              summaryItems.forEach(function(item) {
+                smHtml += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
+              });
+              smHtml += '</div>';
+            }
+            if (multiRes.result === 'INCOMPLETE') {
+              isIncomplete = true;
+              pendingSubjectsList = multiRes.pendingSubjects || [];
+            }
+          }
+        } else {
           var summaryItems = [];
+          var percentageStr = calcRes.displayPercentage;
+          var resultText = calcRes.result;
+          var divisionText = calcRes.division;
+
+          var divisionColor = '#15803D';
+          if (resultText === 'FAIL' || resultText === 'INCOMPLETE') divisionColor = '#DC2626';
+          else if (divisionText === 'Not Awarded') divisionColor = '#6B7280';
+          else if (divisionText.indexOf('Second') !== -1) divisionColor = '#1D4ED8';
+          else if (divisionText.indexOf('Third') !== -1) divisionColor = '#B45309';
+
+          var rankVal = '—';
+          if (savedMarks && savedMarks.rank) {
+            rankVal = toRankOrdinal(savedMarks.rank);
+          }
+
           if (acaCfg.percentage !== false) {
-            summaryItems.push({ label: 'Percentage', value: multiRes.displayPercentage, color: primaryColor });
+            summaryItems.push({ label: 'Percentage', value: percentageStr, color: primaryColor });
           }
           if (acaCfg.division !== false) {
-            var divColor = '#15803D';
-            if (multiRes.result === 'FAIL' || multiRes.result === 'INCOMPLETE') divColor = '#DC2626';
-            else if (multiRes.division === 'Not Awarded') divColor = '#6B7280';
-            else if (multiRes.division.indexOf('Second') !== -1) divColor = '#1D4ED8';
-            else if (multiRes.division.indexOf('Third') !== -1) divColor = '#B45309';
-            summaryItems.push({ label: 'Division', value: multiRes.division, color: divColor });
+            summaryItems.push({ label: 'Division', value: divisionText, color: divisionColor });
+          }
+          if (acaCfg.rank !== false) {
+            summaryItems.push({ label: 'Class Rank', value: rankVal, color: '#0F172A' });
           }
           if (acaCfg.result !== false) {
-            summaryItems.push({ label: 'Final Result', value: multiRes.result, color: (multiRes.result === 'PASS' ? '#16A34A' : '#DC2626') });
+            summaryItems.push({ label: 'Final Result', value: resultText, color: (resultText === 'PASS' ? '#16A34A' : '#DC2626') });
           }
+          if (secToggles.showAttendance !== false && acaCfg.attendance !== false) {
+            var attPct = typeof getStudentAttendancePercentage === 'function'
+              ? getStudentAttendancePercentage(s, activeTerm ? activeTerm.startDate : null, activeTerm ? activeTerm.endDate : null)
+              : null;
+            if (attPct !== null && attPct !== undefined) {
+              summaryItems.push({ label: 'Attendance', value: attPct + '%', color: primaryColor });
+            }
+          }
+
           if (summaryItems.length > 0) {
-            html += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:6px; text-align:center;">';
+            smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:' + elemMarginBottom + '; text-align:center;">';
             summaryItems.forEach(function(item) {
-              html += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
+              smHtml += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
             });
-            html += '</div>';
+            smHtml += '</div>';
           }
-          if (multiRes.result === 'INCOMPLETE') {
+
+          if (calcRes.result === 'INCOMPLETE') {
             isIncomplete = true;
-            pendingSubjectsList = multiRes.pendingSubjects || [];
+            var missingIds = calcRes.missingMandatorySubjects || [];
+            pendingSubjectsList = missingIds.map(function(mId) {
+              var found = subjectsArr.find(function(x) { return x.id === mId; });
+              return found ? found.name : mId;
+            });
           }
         }
 
-      } else {
-        // Single exam summary cards
-        var summaryItems = [];
-        var percentageStr = calcRes.displayPercentage;
-        var resultText = calcRes.result;
-        var divisionText = calcRes.division;
-
-        var divisionColor = '#15803D';
-        if (resultText === 'FAIL' || resultText === 'INCOMPLETE') divisionColor = '#DC2626';
-        else if (divisionText === 'Not Awarded') divisionColor = '#6B7280';
-        else if (divisionText.indexOf('Second') !== -1) divisionColor = '#1D4ED8';
-        else if (divisionText.indexOf('Third') !== -1) divisionColor = '#B45309';
-
-        var rankVal = '—';
-        if (savedMarks && savedMarks.rank) {
-          rankVal = toRankOrdinal(savedMarks.rank);
+        if (isIncomplete) {
+          var missingMsg = pendingSubjectsList.length > 0 ? pendingSubjectsList.join(', ') : 'mandatory subjects';
+          smHtml += '<div style="color:#DC2626; font-size:10px; font-weight:600; text-align:center; margin-bottom:' + elemMarginBottom + ';">Result withheld: marks pending in ' + escapeHTML(missingMsg) + '</div>';
         }
-
-        if (acaCfg.percentage !== false) {
-          summaryItems.push({ label: 'Percentage', value: percentageStr, color: primaryColor });
-        }
-        if (acaCfg.division !== false) {
-          summaryItems.push({ label: 'Division', value: divisionText, color: divisionColor });
-        }
-        if (acaCfg.rank !== false) {
-          summaryItems.push({ label: 'Class Rank', value: rankVal, color: '#0F172A' });
-        }
-        if (acaCfg.result !== false) {
-          summaryItems.push({ label: 'Final Result', value: resultText, color: (resultText === 'PASS' ? '#16A34A' : '#DC2626') });
-        }
-        if (secToggles.showAttendance !== false && acaCfg.attendance !== false) {
-          var attPct = typeof getStudentAttendancePercentage === 'function'
-            ? getStudentAttendancePercentage(s, activeTerm ? activeTerm.startDate : null, activeTerm ? activeTerm.endDate : null)
-            : null;
-          if (attPct !== null && attPct !== undefined) {
-            summaryItems.push({ label: 'Attendance', value: attPct + '%', color: primaryColor });
-          }
-        }
-
-        if (summaryItems.length > 0) {
-          html += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:6px; text-align:center;">';
-          summaryItems.forEach(function(item) {
-            html += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
-          });
-          html += '</div>';
-        }
-
-        if (calcRes.result === 'INCOMPLETE') {
-          isIncomplete = true;
-          var missingIds = calcRes.missingMandatorySubjects || [];
-          pendingSubjectsList = missingIds.map(function(mId) {
-            var found = subjectsArr.find(function(x) { return x.id === mId; });
-            return found ? found.name : mId;
-          });
-        }
+        return smHtml;
       }
 
-      // Incomplete Result Note
-      if (isIncomplete) {
-        var missingMsg = pendingSubjectsList.length > 0 ? pendingSubjectsList.join(', ') : 'mandatory subjects';
-        html += '<div style="color:#DC2626; font-size:10px; font-weight:600; text-align:center; margin-bottom:6px;">Result withheld: marks pending in ' + escapeHTML(missingMsg) + '</div>';
+      function renderRemarks() {
+        if (secToggles.showRemarks === false || acaCfg.remarks === false) return '';
+        var rHtml = '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; margin-bottom:' + elemMarginBottom + '; min-height:' + remarksMinH + '; font-size:10.5px; line-height:1.4;">';
+        rHtml += '<strong style="color:' + primaryColor + '; text-transform:uppercase; font-size:9.5px; letter-spacing:0.04em;">Teacher&#039;s Remarks: </strong>';
+        rHtml += '<span style="color:#334155; font-style:italic;">' + escapeHTML(effectiveRemarks) + '</span>';
+        rHtml += '</div>';
+        return rHtml;
       }
 
-      // 6. Teacher Remarks
-      if (secToggles.showRemarks !== false && acaCfg.remarks !== false) {
-        var remarksText = (savedMarks && savedMarks.remarks) || '';
-        var currentRes = calcRes ? calcRes.result : (multiRes ? multiRes.result : 'PASS');
-        html += '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:5px 8px; margin-bottom:6px; min-height:' + remarksMinH + '; font-size:10.5px;">';
-        html += '<strong style="color:' + primaryColor + '; text-transform:uppercase; font-size:9.5px; letter-spacing:0.04em;">Teacher\'s Remarks: </strong>';
-        html += '<span style="color:#334155; font-style:italic;">' + escapeHTML(remarksText || (currentRes === 'PASS' ? 'Good performance. Promoted to next class.' : 'Needs improvement in weak subjects.')) + '</span>';
-        html += '</div>';
-      }
-
-      // 7. Promotion Status Banner (Only on Final/Annual Term if term.isFinal === true)
-      var isFinalTerm = !!(activeTerm && activeTerm.isFinal === true);
-      if (isFinalTerm && acaCfg.promotionStatus === true) {
+      function renderPromotion() {
+        if (!hasPromotion) return '';
         var promoMsg = schoolConfig.promotionMessage || 'Promoted to Next Higher Class';
-        html += '<div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:4px 10px; margin-bottom:6px; font-size:10.5px;">';
-        html += '<div><strong>Academic Status:</strong> <span style="color:#15803D; font-weight:800; letter-spacing:0.02em;">' + escapeHTML(promoMsg) + '</span></div>';
-        html += '</div>';
+        var pHtml = '<div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:5px 10px; margin-bottom:' + elemMarginBottom + '; font-size:10.5px;">';
+        pHtml += '<div><strong>Academic Status:</strong> <span style="color:#15803D; font-weight:800; letter-spacing:0.02em;">' + escapeHTML(promoMsg) + '</span></div>';
+        pHtml += '</div>';
+        return pHtml;
       }
 
-      // 8. Grading Scale Legend
-      if (secToggles.showGradingLegend !== false) {
-        html += '<div style="font-size:9px; color:#64748B; text-align:center; padding:3px 0; border-top:1px solid #E2E8F0; margin-bottom:6px;">';
-        html += '<strong>Grading Scale:</strong> A+(91-100) &bull; A(81-90) &bull; B+(71-80) &bull; B(61-70) &bull; C+(51-60) &bull; C(41-50) &bull; D(33-40) &bull; F(&lt;33)';
-        html += '</div>';
+      function renderGradingLegend() {
+        if (!hasLegend) return '';
+        var gHtml = '<div style="font-size:9px; color:#64748B; text-align:center; padding:3px 0; border-top:1px solid #E2E8F0; margin-bottom:' + elemMarginBottom + ';">';
+        gHtml += '<strong>Grading Scale:</strong> A+(91-100) &bull; A(81-90) &bull; B+(71-80) &bull; B(61-70) &bull; C+(51-60) &bull; C(41-50) &bull; D(33-40) &bull; F(&lt;33)';
+        gHtml += '</div>';
+        return gHtml;
       }
 
-      html += '</div>'; // End Top content wrapper
-
-      // 9. Signatures Block
-      if (secToggles.showSignatures !== false) {
+      function renderSignatures(sigGapOverride) {
+        if (!hasSignatures) return '';
         var dateStr = toDateDDMMYYYY(new Date());
-        html += '<div style="border-top:1px solid #CBD5E1; padding-top:6px; margin-top:auto;">';
-        html += '<div style="display:flex; justify-content:space-between; align-items:flex-end;">';
-        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">CLASS TEACHER</div></div>';
-        html += '<div style="text-align:center; width:90px; height:36px; border:1.5px dashed #94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8px; color:#94A3B8; font-weight:700; letter-spacing:0.08em;">SEAL</div>';
+        var gapMm = (sigGapOverride !== undefined) ? sigGapOverride : tier.sigGapMm;
+        var sHtml = '<div style="border-top:1px solid #CBD5E1; padding-top:6px; margin-top:' + gapMm + 'mm;">';
+        sHtml += '<div style="display:flex; justify-content:space-between; align-items:flex-end;">';
+        sHtml += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">CLASS TEACHER</div></div>';
+        sHtml += '<div style="text-align:center; width:90px; height:36px; border:1.5px dashed #94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8px; color:#94A3B8; font-weight:700; letter-spacing:0.08em;">SEAL</div>';
         if (secToggles.showParentSignature === true) {
-          html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PARENT SIGNATURE</div></div>';
+          sHtml += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PARENT SIGNATURE</div></div>';
         }
-        html += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PRINCIPAL</div></div>';
-        html += '</div>';
-        html += '<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:#64748B;">';
-        html += '<div>Date of Issue: ' + dateStr + '</div>';
+        sHtml += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PRINCIPAL</div></div>';
+        sHtml += '</div>';
+        sHtml += '<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:#64748B;">';
+        sHtml += '<div>Date of Issue: ' + dateStr + '</div>';
         if (schoolConfig.showPaathshalaFooter !== false) {
-          html += '<div>Generated by Paathshala ERP</div>';
+          sHtml += '<div>Generated by Paathshala ERP</div>';
         }
-        html += '</div>';
-        html += '</div>';
+        sHtml += '</div>';
+        sHtml += '</div>';
+        return sHtml;
       }
 
-      html += '</div>';
-      return html;
+      // 1-PAGE OR 2-PAGE OUTPUT
+      if (numPages === 1) {
+        var card = '<div class="report-card" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; page-break-after:always; page-break-inside:avoid; ' + borderStyle + '">';
+        card += renderHeader(false);
+        card += renderTitleBanner();
+        card += renderStudentGrid();
+        card += renderMarksTable();
+        card += renderSummaryBlock();
+        card += renderRemarks();
+        card += renderPromotion();
+        card += renderGradingLegend();
+        card += renderSignatures();
+        card += '</div>';
+        return card;
+      } else {
+        // 2-PAGE NUMBERED LAYOUT (Decision 5 Approved)
+        var p1 = '<div class="report-card report-card-page" data-page="1" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; page-break-after:always; break-after:page; ' + borderStyle + '">';
+        p1 += renderHeader(false);
+        p1 += renderTitleBanner();
+        p1 += renderStudentGrid();
+        p1 += renderMarksTable();
+        p1 += '<div style="margin-top:auto; padding-top:6px; border-top:1px solid #CBD5E1; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
+        p1 += '<div>' + escapeHTML(schoolName) + ' &bull; Official Report Card</div>';
+        p1 += '<div style="font-weight:700;">Page 1 of 2</div>';
+        p1 += '</div></div>';
+
+        var p2 = '<div class="report-card report-card-page" data-page="2" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; page-break-inside:avoid; ' + borderStyle + '">';
+        p2 += renderHeader(true);
+        p2 += renderSummaryBlock();
+        p2 += renderRemarks();
+        p2 += renderPromotion();
+        p2 += renderGradingLegend();
+        p2 += renderSignatures(10);
+        p2 += '<div style="margin-top:auto; padding-top:6px; border-top:1px solid #CBD5E1; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
+        if (schoolConfig.showPaathshalaFooter !== false) {
+          p2 += '<div>Generated by Paathshala ERP</div>';
+        } else {
+          p2 += '<div></div>';
+        }
+        p2 += '<div style="font-weight:700;">Page 2 of 2</div>';
+        p2 += '</div></div>';
+
+        return p1 + p2;
+      }
     },
 
     printBulkReportCardsV2: function(state, schoolConfig) {
