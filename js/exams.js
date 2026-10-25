@@ -686,12 +686,12 @@
       var logo = settings.logoUrl || settings.schoolLogo || schoolInfo.logoUrl || '';
 
       var termName = activeTerm ? activeTerm.name : 'TERM EXAMINATION';
-      // FIX D: Single source of truth for academic session
+      // FIX 3: No invented session in v2 code (empty string if no session configured)
       var academicSession = (activeTerm && activeTerm.session) ||
         (schoolConfig && schoolConfig.academic && schoolConfig.academic.session) ||
         (settings && settings.academicYear) ||
         (store && store.examConfig && store.examConfig.session) ||
-        '2025-26';
+        '';
 
       var subjectsArr = ensureSubjectsArray(subjects || []);
       subjectsArr = sortSubjects(subjectsArr);
@@ -708,7 +708,7 @@
       } else if (schoolConfig.orientation === 'portrait') {
         orientation = 'portrait';
       } else {
-        if ((hasCombinedTerms && cTerms.length >= 3) || subCount > 15) {
+        if (hasCombinedTerms && cTerms.length >= 3) {
           orientation = 'landscape';
         }
       }
@@ -835,44 +835,45 @@
       var hasLegend = (secToggles.showGradingLegend !== false);
       var hasSignatures = (secToggles.showSignatures !== false);
 
-      // FIX B & FIX C: Real measurement-based fitting & 2-page layout
-      // Available printable height: Portrait ~275mm (safety under 281mm), Landscape ~188mm
+      // FIX 1 & FIX 2: Tiers and genuine overflow height estimation
       var portraitTiers = [
-        { name: 'spacious', fontBase: '12px', cellPad: '9.5px 12px', studentPad: '6px 10px', logoH: '66px', sigH: '34px', remarksMinH: '42px', sigGapMm: 12, elemSpacing: '8px', rowHMm: 9.0 },
-        { name: 'standard', fontBase: '11px', cellPad: '6.5px 10px', studentPad: '5px 8px', logoH: '56px', sigH: '28px', remarksMinH: '34px', sigGapMm: 10, elemSpacing: '6px', rowHMm: 7.2 },
-        { name: 'compact',  fontBase: '10px', cellPad: '4px 8px',    studentPad: '4px 8px', logoH: '48px', sigH: '24px', remarksMinH: '26px', sigGapMm: 9,  elemSpacing: '5px', rowHMm: 5.6 },
-        { name: 'dense',    fontBase: '9px',  cellPad: '3px 6px',    studentPad: '3px 6px', logoH: '42px', sigH: '20px', remarksMinH: '20px', sigGapMm: 8,  elemSpacing: '4px', rowHMm: 4.8 }
+        { name: 'spacious', fontBase: '12px', cellPad: '9px 12px',  studentPad: '6px 10px', logoH: '66px', sigH: '36px', remarksMinH: '46px', rowHMm: 9.0 },
+        { name: 'standard', fontBase: '11px', cellPad: '7px 10px',  studentPad: '5px 8px',  logoH: '56px', sigH: '30px', remarksMinH: '36px', rowHMm: 7.2 },
+        { name: 'compact',  fontBase: '10px', cellPad: '4.5px 8px', studentPad: '4px 8px',  logoH: '48px', sigH: '26px', remarksMinH: '26px', rowHMm: 5.4 },
+        { name: 'dense',    fontBase: '9px',  cellPad: '3.5px 6px', studentPad: '3px 6px',  logoH: '42px', sigH: '22px', remarksMinH: '22px', rowHMm: 5.0 }
       ];
 
-      var landscapeTier = { name: 'landscape', fontBase: '10px', cellPad: '4px 7px', studentPad: '3px 6px', logoH: '44px', sigH: '20px', remarksMinH: '22px', sigGapMm: 8, elemSpacing: '4px', rowHMm: 5.2 };
+      var landscapeTier = { name: 'landscape', fontBase: '10px', cellPad: '4.5px 8px', studentPad: '3.5px 6px', logoH: '44px', sigH: '22px', remarksMinH: '24px', rowHMm: 5.2 };
 
-      function estimateHeightMm(t, orient) {
-        var h = 12; // 6mm top + 6mm bottom container padding
-        var hH = t.name === 'spacious' ? 34 : (t.name === 'standard' ? 29 : (t.name === 'compact' ? 26 : 24));
+      // Accurate estimation of minimum required content height (interior budget: 268mm)
+      function estimateContentHeight(t, orient) {
+        var h = 0;
+        var hH = t.name === 'spacious' ? 32 : (t.name === 'standard' ? 28 : (t.name === 'compact' ? 24 : 22));
         if (schoolCfg.logo === false || !logo) hH -= 6;
-        if (orient === 'landscape') hH = 22;
+        if (orient === 'landscape') hH = 20;
         h += hH;
-        h += (orient === 'landscape' ? 9 : 12); // Title banner
+        h += (orient === 'landscape' ? 8 : 10); // Title banner
         var gCols = orient === 'landscape' ? 3 : 2;
         var gRows = Math.ceil(studentItems.length / gCols);
-        var rH = t.name === 'spacious' ? 7.5 : (t.name === 'standard' ? 6.5 : (orient === 'landscape' ? 5.0 : 5.5));
-        h += (gRows * rH) + 6;
-        var tHdr = hasCombinedTerms ? (orient === 'landscape' ? 12 : 14) : 7.5;
-        h += tHdr + (subCount * t.rowHMm) + 7.5 + 6;
+        var rH = t.name === 'spacious' ? 6.5 : (t.name === 'standard' ? 5.5 : 4.8);
+        h += (gRows * rH);
+        var tHdr = hasCombinedTerms ? (orient === 'landscape' ? 12 : 14) : 7.0;
+        h += tHdr + (subCount * t.rowHMm) + 6.5; // Table header + rows + total
         if (hasCombinedTerms && !multiRes.isConsolidated) {
-          h += (orient === 'landscape' ? 8 : 10) + (cTerms.length * (orient === 'landscape' ? 5 : 6)) + 6;
+          h += (orient === 'landscape' ? 8 : 10) + (cTerms.length * (orient === 'landscape' ? 4.5 : 5.5));
         } else {
-          h += (t.name === 'spacious' ? 22 : 18) + 6;
+          h += (t.name === 'spacious' ? 18 : 15);
         }
         if (secToggles.showRemarks !== false && acaCfg.remarks !== false) {
-          var rLines = Math.max(1, Math.ceil(effectiveRemarks.length / (orient === 'landscape' ? 120 : 85)));
-          var rBoxH = Math.max(parseInt(t.remarksMinH, 10) * 0.2646, 12 + (rLines * 4.2));
-          h += rBoxH + 6;
+          var charsPerLine = orient === 'landscape' ? 140 : 90;
+          var rLines = Math.max(1, Math.ceil(effectiveRemarks.length / charsPerLine));
+          var rBoxH = Math.max(parseInt(t.remarksMinH, 10) * 0.2646, 6 + (rLines * 3.6));
+          h += rBoxH;
         }
-        if (hasPromotion) h += 12;
-        if (hasLegend) h += (orient === 'landscape' ? 6 : 7.5);
+        if (hasPromotion) h += 10;
+        if (hasLegend) h += (orient === 'landscape' ? 5.5 : 6.5);
         if (hasSignatures) {
-          h += t.sigGapMm + (parseInt(t.sigH, 10) * 0.2646) + 16;
+          h += (parseInt(t.sigH, 10) * 0.2646) + 14;
         }
         return h;
       }
@@ -887,14 +888,15 @@
         // Try tiers from largest to smallest to maximize font and page utilization
         for (var ti = 0; ti < portraitTiers.length; ti++) {
           var cand = portraitTiers[ti];
-          var estH = estimateHeightMm(cand, 'portrait');
-          if (estH <= 270) {
+          var estH = estimateContentHeight(cand, 'portrait');
+          // Available interior height is 268mm (280mm - 12mm padding)
+          if (estH <= 265) {
             tier = cand;
             numPages = 1;
             break;
           }
         }
-        // If content genuinely exceeds 1 page even at Dense tier (9px) or if forceTwoPages requested:
+        // Genuine overflow fallback (Scenario 9: 25+ subjects):
         if (!tier || schoolConfig.forceTwoPages === true) {
           numPages = 2;
           tier = portraitTiers[2]; // Use Compact tier (10px >= 10px!) for 2-page layout
@@ -906,20 +908,23 @@
       var logoH = tier.logoH;
       var sigH = tier.sigH;
       var remarksMinH = tier.remarksMinH;
-      var elemMarginBottom = tier.elemSpacing;
 
+      // FIX 1: Exact dimensions so distance to printable bottom edge is <= 3mm (strictly 1.0mm)
       var maxW = orientation === 'landscape' ? '281mm' : '194mm';
+      var cardH = orientation === 'landscape' ? '193mm' : '280mm';
       var borderStyle = design.showBorder !== false ? 'border:1.5px solid #CBD5E1; border-radius:8px;' : '';
+      var containerStyle = 'box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; height:' + cardH + '; min-height:' + cardH + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; justify-content:space-between; ' + borderStyle;
 
       // RENDER SECTION GENERATORS
       function renderHeader(isContinuation) {
         var hHtml = '';
         var showLogo = (schoolCfg.logo !== false) && !!logo;
         if (isContinuation) {
-          hHtml += '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid ' + primaryColor + '; padding-bottom:6px; margin-bottom:' + elemMarginBottom + ';">';
+          var sesPart = academicSession ? ' &bull; Session: ' + escapeHTML(academicSession) : '';
+          hHtml += '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid ' + primaryColor + '; padding-bottom:6px;">';
           hHtml += '<div>';
           hHtml += '<div style="font-size:14px; font-weight:800; color:' + primaryColor + '; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
-          hHtml += '<div style="font-size:9.5px; color:#4B5563; font-weight:600; margin-top:2px;">Official Report Card &bull; Session: ' + escapeHTML(academicSession) + '</div>';
+          hHtml += '<div style="font-size:9.5px; color:#4B5563; font-weight:600; margin-top:2px;">Official Report Card Continuation' + sesPart + '</div>';
           hHtml += '</div>';
           hHtml += '<div style="text-align:right; font-size:9.5px; color:#374151;">';
           hHtml += '<strong>Student:</strong> ' + escapeHTML(sName) + ' &bull; <strong>Adm No:</strong> ' + escapeHTML(sAdm || '—') + ' &bull; <strong>Class:</strong> ' + escapeHTML(sCls || '—');
@@ -927,7 +932,7 @@
           return hHtml;
         }
 
-        hHtml += '<div style="display:flex; align-items:center; gap:14px; border-bottom:2.5px solid ' + primaryColor + '; padding-bottom:8px; margin-bottom:' + elemMarginBottom + ';">';
+        hHtml += '<div style="display:flex; align-items:center; gap:14px; border-bottom:2.5px solid ' + primaryColor + '; padding-bottom:6px;">';
         if (showLogo) {
           hHtml += '<img src="' + logo + '" style="height:' + logoH + '; width:' + logoH + '; object-fit:contain; flex-shrink:0; border-radius:6px;" alt="School Logo">';
         }
@@ -936,17 +941,17 @@
           hHtml += '<div style="font-size:20px; font-weight:900; color:' + primaryColor + '; letter-spacing:0.03em; text-transform:uppercase; line-height:1.2;">' + escapeHTML(schoolName) + '</div>';
         }
         if (schoolCfg.tagline !== false && tagline) {
-          hHtml += '<div style="font-size:10.5px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
+          hHtml += '<div style="font-size:10px; font-style:italic; color:#4B5563; margin-top:2px;">&ldquo;' + escapeHTML(tagline) + '&rdquo;</div>';
         }
         if (schoolCfg.address !== false && address) {
-          hHtml += '<div style="font-size:10.5px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
+          hHtml += '<div style="font-size:10px; font-weight:500; color:#374151; margin-top:2px;">' + escapeHTML(address) + '</div>';
         }
         var line2 = [];
         if (schoolCfg.phone !== false && phone) line2.push('Phone: ' + escapeHTML(phone));
         if (schoolCfg.email !== false && email) line2.push('Email: ' + escapeHTML(email));
         if (schoolCfg.website !== false && website) line2.push('Website: ' + escapeHTML(website));
         if (line2.length > 0) {
-          hHtml += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px;">' + line2.join(' &bull; ') + '</div>';
+          hHtml += '<div style="font-size:9px; color:#4B5563; margin-top:2px;">' + line2.join(' &bull; ') + '</div>';
         }
         var line3 = [];
         if (schoolCfg.affiliationNo !== false && affiliation) {
@@ -968,14 +973,14 @@
           line3.push(sesStr);
         }
         if (line3.length > 0) {
-          hHtml += '<div style="font-size:9.5px; color:#4B5563; margin-top:2px; font-weight:600;">' + line3.join(' &bull; ') + '</div>';
+          hHtml += '<div style="font-size:9px; color:#4B5563; margin-top:2px; font-weight:600;">' + line3.join(' &bull; ') + '</div>';
         }
         hHtml += '</div></div>';
         return hHtml;
       }
 
       function renderTitleBanner() {
-        var bHtml = '<div style="text-align:center; margin:3px 0 ' + elemMarginBottom + ' 0;">';
+        var bHtml = '<div style="text-align:center;">';
         if (hasCombinedTerms) {
           var termNames = cTerms.map(function(t) { return t.name.toUpperCase(); }).join(' & ');
           bHtml += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">CONSOLIDATED REPORT CARD</span>';
@@ -990,7 +995,7 @@
 
       function renderStudentGrid() {
         if (studentItems.length === 0) return '';
-        var sHtml = '<div style="display:flex; gap:10px; align-items:stretch; margin-bottom:' + elemMarginBottom + ';">';
+        var sHtml = '<div style="display:flex; gap:10px; align-items:stretch;">';
         var gridCols = orientation === 'landscape' ? 3 : 2;
         sHtml += '<div style="flex:1; display:grid; grid-template-columns:repeat(' + gridCols + ', 1fr); border:1px solid #BFDBFE; border-radius:6px; overflow:hidden; font-size:' + fontBase + '; background:#EFF6FF;">';
         studentItems.forEach(function(item, idx) {
@@ -1014,7 +1019,7 @@
         var mHtml = '';
         if (hasCombinedTerms) {
           var isConsolidated = multiRes && multiRes.isConsolidated;
-          mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:' + elemMarginBottom + ';">';
+          mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + ';">';
           mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">';
           mHtml += '<th rowspan="2" style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
           cTerms.forEach(function(t) {
@@ -1103,7 +1108,7 @@
           var totalPass = calcRes.passTotal;
           var totalGrade = calcRes.grade;
 
-          mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + '; margin-bottom:' + elemMarginBottom + ';">';
+          mHtml += '<table class="marks-table" style="width:100%; border-collapse:collapse; border:1px solid #94A3B8; font-size:' + fontBase + ';">';
           mHtml += '<thead><tr class="marks-header" style="background:' + primaryColor + '; color:#FFFFFF; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">';
           mHtml += '<th style="padding:' + cellPad + '; text-align:left; border:1px solid #64748B;">Subject</th>';
           if (colToggles.showFullMarks !== false) mHtml += '<th style="padding:' + cellPad + '; text-align:center; border:1px solid #64748B; width:14%;">Full Marks</th>';
@@ -1158,7 +1163,7 @@
 
         if (hasCombinedTerms) {
           if (!multiRes.isConsolidated) {
-            smHtml += '<div style="margin-bottom:' + elemMarginBottom + '; border:1px solid #CBD5E1; border-radius:6px; overflow:hidden;">';
+            smHtml += '<div style="border:1px solid #CBD5E1; border-radius:6px; overflow:hidden;">';
             smHtml += '<table style="width:100%; border-collapse:collapse; font-size:' + fontBase + '; text-align:center;">';
             smHtml += '<thead><tr style="background:#F1F5F9; color:#475569; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.04em;">';
             smHtml += '<th style="padding:3px 6px; text-align:left; border-bottom:1px solid #CBD5E1;">Term Assessment</th>';
@@ -1206,7 +1211,7 @@
               summaryItems.push({ label: 'Final Result', value: multiRes.result, color: (multiRes.result === 'PASS' ? '#16A34A' : '#DC2626') });
             }
             if (summaryItems.length > 0) {
-              smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:' + elemMarginBottom + '; text-align:center;">';
+              smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; text-align:center;">';
               summaryItems.forEach(function(item) {
                 smHtml += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
               });
@@ -1256,7 +1261,7 @@
           }
 
           if (summaryItems.length > 0) {
-            smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; margin-bottom:' + elemMarginBottom + '; text-align:center;">';
+            smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; text-align:center;">';
             summaryItems.forEach(function(item) {
               smHtml += '<div><span style="font-size:9px; color:#64748B; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">' + escapeHTML(item.label) + '</span><div style="font-size:13.5px; font-weight:800; color:' + item.color + '; margin-top:2px;">' + escapeHTML(item.value) + '</div></div>';
             });
@@ -1275,14 +1280,15 @@
 
         if (isIncomplete) {
           var missingMsg = pendingSubjectsList.length > 0 ? pendingSubjectsList.join(', ') : 'mandatory subjects';
-          smHtml += '<div style="color:#DC2626; font-size:10px; font-weight:600; text-align:center; margin-bottom:' + elemMarginBottom + ';">Result withheld: marks pending in ' + escapeHTML(missingMsg) + '</div>';
+          smHtml += '<div style="color:#DC2626; font-size:10px; font-weight:600; text-align:center; margin-top:4px;">Result withheld: marks pending in ' + escapeHTML(missingMsg) + '</div>';
         }
         return smHtml;
       }
 
-      function renderRemarks() {
+      function renderRemarks(isPage2) {
         if (secToggles.showRemarks === false || acaCfg.remarks === false) return '';
-        var rHtml = '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; margin-bottom:' + elemMarginBottom + '; min-height:' + remarksMinH + '; font-size:10.5px; line-height:1.4;">';
+        var flexStyle = isPage2 ? 'flex:1; margin:10px 0;' : '';
+        var rHtml = '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; min-height:' + remarksMinH + '; font-size:10.5px; line-height:1.4; ' + flexStyle + '">';
         rHtml += '<strong style="color:' + primaryColor + '; text-transform:uppercase; font-size:9.5px; letter-spacing:0.04em;">Teacher&#039;s Remarks: </strong>';
         rHtml += '<span style="color:#334155; font-style:italic;">' + escapeHTML(effectiveRemarks) + '</span>';
         rHtml += '</div>';
@@ -1292,7 +1298,7 @@
       function renderPromotion() {
         if (!hasPromotion) return '';
         var promoMsg = schoolConfig.promotionMessage || 'Promoted to Next Higher Class';
-        var pHtml = '<div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:5px 10px; margin-bottom:' + elemMarginBottom + '; font-size:10.5px;">';
+        var pHtml = '<div style="display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:5px 10px; font-size:10.5px;">';
         pHtml += '<div><strong>Academic Status:</strong> <span style="color:#15803D; font-weight:800; letter-spacing:0.02em;">' + escapeHTML(promoMsg) + '</span></div>';
         pHtml += '</div>';
         return pHtml;
@@ -1300,17 +1306,16 @@
 
       function renderGradingLegend() {
         if (!hasLegend) return '';
-        var gHtml = '<div style="font-size:9px; color:#64748B; text-align:center; padding:3px 0; border-top:1px solid #E2E8F0; margin-bottom:' + elemMarginBottom + ';">';
+        var gHtml = '<div style="font-size:9px; color:#64748B; text-align:center; padding:3px 0; border-top:1px solid #E2E8F0;">';
         gHtml += '<strong>Grading Scale:</strong> A+(91-100) &bull; A(81-90) &bull; B+(71-80) &bull; B(61-70) &bull; C+(51-60) &bull; C(41-50) &bull; D(33-40) &bull; F(&lt;33)';
         gHtml += '</div>';
         return gHtml;
       }
 
-      function renderSignatures(sigGapOverride) {
+      function renderSignatures(sigGapOverride, hideErpLine) {
         if (!hasSignatures) return '';
         var dateStr = toDateDDMMYYYY(new Date());
-        var gapMm = (sigGapOverride !== undefined) ? sigGapOverride : tier.sigGapMm;
-        var sHtml = '<div style="border-top:1px solid #CBD5E1; padding-top:6px; margin-top:' + gapMm + 'mm;">';
+        var sHtml = '<div style="border-top:1px solid #CBD5E1; padding-top:6px;">';
         sHtml += '<div style="display:flex; justify-content:space-between; align-items:flex-end;">';
         sHtml += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">CLASS TEACHER</div></div>';
         sHtml += '<div style="text-align:center; width:90px; height:36px; border:1.5px dashed #94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8px; color:#94A3B8; font-weight:700; letter-spacing:0.08em;">SEAL</div>';
@@ -1321,7 +1326,7 @@
         sHtml += '</div>';
         sHtml += '<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:#64748B;">';
         sHtml += '<div>Date of Issue: ' + dateStr + '</div>';
-        if (schoolConfig.showPaathshalaFooter !== false) {
+        if (!hideErpLine && schoolConfig.showPaathshalaFooter !== false) {
           sHtml += '<div>Generated by Paathshala ERP</div>';
         }
         sHtml += '</div>';
@@ -1331,7 +1336,7 @@
 
       // 1-PAGE OR 2-PAGE OUTPUT
       if (numPages === 1) {
-        var card = '<div class="report-card" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; page-break-after:always; page-break-inside:avoid; ' + borderStyle + '">';
+        var card = '<div class="report-card" data-orientation="' + orientation + '" style="' + containerStyle + ' page-break-after:always; page-break-inside:avoid;">';
         card += renderHeader(false);
         card += renderTitleBanner();
         card += renderStudentGrid();
@@ -1340,29 +1345,29 @@
         card += renderRemarks();
         card += renderPromotion();
         card += renderGradingLegend();
-        card += renderSignatures();
+        card += renderSignatures(null, false);
         card += '</div>';
         return card;
       } else {
         // 2-PAGE NUMBERED LAYOUT (Decision 5 Approved)
-        var p1 = '<div class="report-card report-card-page" data-page="1" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; page-break-after:always; break-after:page; ' + borderStyle + '">';
+        var p1 = '<div class="report-card report-card-page" data-page="1" data-orientation="' + orientation + '" style="' + containerStyle + ' page-break-after:always; break-after:page;">';
         p1 += renderHeader(false);
         p1 += renderTitleBanner();
         p1 += renderStudentGrid();
         p1 += renderMarksTable();
-        p1 += '<div style="margin-top:auto; padding-top:6px; border-top:1px solid #CBD5E1; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
+        p1 += '<div style="border-top:1px solid #CBD5E1; padding-top:6px; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
         p1 += '<div>' + escapeHTML(schoolName) + ' &bull; Official Report Card</div>';
         p1 += '<div style="font-weight:700;">Page 1 of 2</div>';
         p1 += '</div></div>';
 
-        var p2 = '<div class="report-card report-card-page" data-page="2" data-orientation="' + orientation + '" style="box-sizing:border-box; font-family:' + fontStack + '; font-size:' + fontBase + '; color:#1F2937; background:#FFFFFF; width:' + maxW + '; max-width:' + maxW + '; margin:0 auto; padding:6mm 8mm; display:flex; flex-direction:column; page-break-inside:avoid; ' + borderStyle + '">';
+        var p2 = '<div class="report-card report-card-page" data-page="2" data-orientation="' + orientation + '" style="' + containerStyle + ' page-break-inside:avoid;">';
         p2 += renderHeader(true);
         p2 += renderSummaryBlock();
-        p2 += renderRemarks();
+        p2 += renderRemarks(true);
         p2 += renderPromotion();
         p2 += renderGradingLegend();
-        p2 += renderSignatures(10);
-        p2 += '<div style="margin-top:auto; padding-top:6px; border-top:1px solid #CBD5E1; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
+        p2 += renderSignatures(null, true); // true = hide ERP line so it only appears in footer below
+        p2 += '<div style="border-top:1px solid #CBD5E1; padding-top:6px; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
         if (schoolConfig.showPaathshalaFooter !== false) {
           p2 += '<div>Generated by Paathshala ERP</div>';
         } else {
