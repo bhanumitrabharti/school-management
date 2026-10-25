@@ -1287,8 +1287,8 @@
 
       function renderRemarks(isPage2) {
         if (secToggles.showRemarks === false || acaCfg.remarks === false) return '';
-        var flexStyle = isPage2 ? 'flex:1; margin:10px 0;' : '';
-        var rHtml = '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; min-height:' + remarksMinH + '; font-size:10.5px; line-height:1.4; ' + flexStyle + '">';
+        var minH = isPage2 ? '25mm' : remarksMinH;
+        var rHtml = '<div style="border:1px solid #E2E8F0; border-radius:6px; padding:6px 10px; min-height:' + minH + '; font-size:10.5px; line-height:1.4; ">';
         rHtml += '<strong style="color:' + primaryColor + '; text-transform:uppercase; font-size:9.5px; letter-spacing:0.04em;">Teacher&#039;s Remarks: </strong>';
         rHtml += '<span style="color:#334155; font-style:italic;">' + escapeHTML(effectiveRemarks) + '</span>';
         rHtml += '</div>';
@@ -1361,11 +1361,14 @@
         p1 += '</div></div>';
 
         var p2 = '<div class="report-card report-card-page" data-page="2" data-orientation="' + orientation + '" style="' + containerStyle + ' page-break-inside:avoid;">';
+        p2 += '<div style="display:flex; flex-direction:column; gap:12px;">';
         p2 += renderHeader(true);
         p2 += renderSummaryBlock();
         p2 += renderRemarks(true);
         p2 += renderPromotion();
         p2 += renderGradingLegend();
+        p2 += '</div>';
+        p2 += '<div>';
         p2 += renderSignatures(null, true); // true = hide ERP line so it only appears in footer below
         p2 += '<div style="border-top:1px solid #CBD5E1; padding-top:6px; display:flex; justify-content:space-between; font-size:9.5px; color:#64748B;">';
         if (schoolConfig.showPaathshalaFooter !== false) {
@@ -1374,7 +1377,7 @@
           p2 += '<div></div>';
         }
         p2 += '<div style="font-weight:700;">Page 2 of 2</div>';
-        p2 += '</div></div>';
+        p2 += '</div></div></div>';
 
         return p1 + p2;
       }
