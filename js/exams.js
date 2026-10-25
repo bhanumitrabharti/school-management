@@ -159,7 +159,259 @@
     };
   }
 
-  function recalculateStudentEntry(entry, subjects) {
+    // ==================== EXAM CALCULATION ENGINE (PURE ZERO-DOM) ====================
+  var ExamCalculationEngine = {
+    calculateGrade: function(percentage, customScale) {
+      var scale = customScale || (SchoolApp.store && SchoolApp.store.examConfig && SchoolApp.store.examConfig.gradingScale) || [
+        {min:91, max:100, grade:"A+", label:"Outstanding"},
+        {min:81, max:90,  grade:"A",  label:"Excellent"},
+        {min:71, max:80,  grade:"B+", label:"Very Good"},
+        {min:61, max:70,  grade:"B",  label:"Good"},
+        {min:51, max:60,  grade:"C+", label:"Above Average"},
+        {min:41, max:50,  grade:"C",  label:"Average"},
+        {min:33, max:40,  grade:"D",  label:"Pass"},
+        {min:0,  max:32,  grade:"F",  label:"Fail"}
+      ];
+      for (var i = 0; i < scale.length; i++) {
+        if (percentage >= scale[i].min && percentage <= scale[i].max) {
+          return scale[i];
+        }
+      }
+      return percentage >= 33 ? {grade:"D", label:"Pass"} : {grade:"F", label:"Fail"};
+    },
+
+    calculateStudentResult: function(params) {
+      params = params || {};
+      var marks = params.marks || {};
+      var subjects = ensureSubjectsArray(params.subjects || []);
+      var term = params.term || {};
+      var schoolConfig = params.schoolConfig || {};
+      var passPercent = (schoolConfig.passPercent !== undefined) ? Number(schoolConfig.passPercent) : 33;
+      var decimals = (schoolConfig.percentageDecimals !== undefined) ? Number(schoolConfig.percentageDecimals) : 2;
+
+      var totalObtained = 0;
+      var totalFull = 0;
+      var totalPass = 0;
+      var mandatoryFailed = false;
+      var optionalFailedOrAbsent = false;
+      var missingMandatory = [];
+      var missingOptional = [];
+      var allAB = true;
+      var enteredCount = 0;
+
+      subjects.forEach(function(sub) {
+        var sc = marks[sub.id];
+        var subFull = sub.fullMarks || 100;
+        var defaultSubPass = (passPercent / 100) * subFull;
+        var subPass = (sub.passMarks !== undefined && sub.passMarks !== null) ? Number(sub.passMarks) : defaultSubPass;
+
+        var hasEntry = sc && (sc.isAbsent || sc.isExempted || (sc.obtained !== undefined && sc.obtained !== null && String(sc.obtained).trim() !== ''));
+
+        if (hasEntry) {
+          enteredCount++;
+          if (sc.isExempted) return;
+
+          var obt = sc.isAbsent ? 0 : (parseFloat(sc.obtained) || 0);
+          if (!sc.isAbsent) allAB = false;
+
+          totalObtained += obt;
+          totalFull += subFull;
+          totalPass += subPass;
+
+          var isFail = sc.isAbsent || (obt < subPass);
+          if (sub.isOptional) {
+            if (isFail) optionalFailedOrAbsent = true;
+          } else {
+            if (isFail) mandatoryFailed = true;
+          }
+        } else {
+          // Missing subject entry
+          if (sub.isOptional) {
+            missingOptional.push(sub.id);
+          } else {
+            missingMandatory.push(sub.id);
+            // In finalized/published terms, denominator includes full curriculum for mandatory subjects
+            if (term.status === 'published' || term.status === 'locked') {
+              totalFull += subFull;
+              totalPass += subPass;
+            }
+          }
+        }
+      });
+
+      var isComplete = (missingMandatory.length === 0);
+      var rawPercentage = totalFull > 0 ? (totalObtained / totalFull) * 100 : 0;
+      var displayPercentage = rawPercentage.toFixed(decimals) + '%';
+
+      var resultText = 'PASS';
+      var divisionText = 'Pass Division';
+
+      if (!isComplete && (term.status === 'published' || term.status === 'locked')) {
+        resultText = 'INCOMPLETE';
+        divisionText = 'Not Awarded';
+      } else if (allAB && subjects.length > 0) {
+        resultText = 'ABSENT';
+        divisionText = 'Not Applicable';
+      } else if (mandatoryFailed) {
+        resultText = 'FAIL';
+        divisionText = 'Not Applicable';
+      } else {
+        resultText = 'PASS';
+        if (optionalFailedOrAbsent) {
+          divisionText = 'Not Awarded'; // Decision 2: Optional subject fail never fails overall
+        } else {
+          // Compare unrounded rawPercentage against division bands
+          if (rawPercentage >= 75) divisionText = 'First Division (Distinction)';
+          else if (rawPercentage >= 60) divisionText = 'First Division';
+          else if (rawPercentage >= 45) divisionText = 'Second Division';
+          else if (rawPercentage >= passPercent) divisionText = 'Third Division';
+          else divisionText = 'Fail';
+        }
+      }
+
+      var gradeObj = this.calculateGrade(rawPercentage, schoolConfig.gradingScale);
+
+      var rankFailedStudents = schoolConfig.rankFailedStudents !== false; // default true
+      var eligibleForRank = (resultText !== 'INCOMPLETE') && (rankFailedStudents || resultText !== 'FAIL');
+
+      return {
+        total: totalObtained,
+        maxTotal: totalFull,
+        passTotal: totalPass,
+        percentage: rawPercentage,
+        displayPercentage: displayPercentage,
+        grade: gradeObj.grade,
+        gradeLabel: gradeObj.label,
+        division: divisionText,
+        result: resultText,
+        isComplete: isComplete,
+        missingMandatorySubjects: missingMandatory,
+        missingOptionalSubjects: missingOptional,
+        eligibleForRank: eligibleForRank
+      };
+    },
+
+    recalculateStudentEntryV2: function(entry, subjects, term, schoolConfig) {
+      var res = this.calculateStudentResult({
+        marks: entry.marks,
+        subjects: subjects,
+        term: term,
+        schoolConfig: schoolConfig
+      });
+      entry.total = res.total;
+      entry.maxTotal = res.maxTotal;
+      entry.percentage = Math.round(res.percentage);
+      entry.rawPercentage = res.percentage;
+      entry.displayPercentage = res.displayPercentage;
+      entry.grade = res.grade;
+      entry.gradeLabel = res.gradeLabel;
+      entry.division = res.division;
+      entry.result = res.result;
+      entry.isComplete = res.isComplete;
+      entry.missingMandatorySubjects = res.missingMandatorySubjects;
+      entry.eligibleForRank = res.eligibleForRank;
+      return res;
+    },
+
+    autoSaveRecalculateV2: function(entry, subjectsArr, term, schoolConfig) {
+      var res = this.calculateStudentResult({
+        marks: entry.marks,
+        subjects: subjectsArr,
+        term: term,
+        schoolConfig: schoolConfig
+      });
+      entry.total = res.total;
+      entry.maxTotal = res.maxTotal;
+      entry.percentage = Math.round(res.percentage);
+      entry.rawPercentage = res.percentage;
+      entry.displayPercentage = res.displayPercentage;
+      entry.grade = res.grade;
+      entry.gradeLabel = res.gradeLabel;
+      entry.division = res.division;
+      entry.result = res.result;
+      entry.isComplete = res.isComplete;
+      entry.missingMandatorySubjects = res.missingMandatorySubjects;
+      entry.eligibleForRank = res.eligibleForRank;
+      entry.lastUpdated = new Date().toISOString();
+      return res;
+    },
+
+    recalculateRanksV2: function(termId, classId, sectionId, schoolConfig) {
+      schoolConfig = schoolConfig || {};
+      var rankScope = schoolConfig.rankScope || 'section';
+      var rankFailedStudents = schoolConfig.rankFailedStudents !== false;
+
+      var students = (SchoolApp.store.students || []).filter(function(s) {
+        if (s.inTrash || s.status === 'Deleted' || s.status !== 'Active') return false;
+        var matchCls = String(s.class).toLowerCase().trim() === String(classId).toLowerCase().trim();
+        if (rankScope === 'class') return matchCls;
+        var matchSec = String(s.section).toLowerCase().trim() === String(sectionId).toLowerCase().trim();
+        return matchCls && matchSec;
+      });
+
+      var classMarks = (SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId] && SchoolApp.store.examMarks[termId][classId]) || {};
+      var rankList = [];
+
+      students.forEach(function(s) {
+        var secMarks = classMarks[s.section] || {};
+        var sm = secMarks[s.id];
+        if (sm) {
+          if (!sm.isComplete || sm.result === 'INCOMPLETE' || sm.result === 'N/A') {
+            sm.rank = null;
+            return;
+          }
+          if (sm.result === 'FAIL' && !rankFailedStudents) {
+            sm.rank = null;
+            return;
+          }
+          var pct = (sm.rawPercentage !== undefined) ? sm.rawPercentage : (sm.percentage || 0);
+          rankList.push({
+            studentId: s.id,
+            percentage: pct,
+            total: sm.total || 0,
+            sm: sm
+          });
+        }
+      });
+
+      // Sort descending by percentage, then total
+      rankList.sort(function(a, b) {
+        if (b.percentage !== a.percentage) {
+          return b.percentage - a.percentage;
+        }
+        return b.total - a.total;
+      });
+
+      // Assign tied ranks: 1, 1, 3, 4
+      var currentRank = 1;
+      var skipped = 0;
+      rankList.forEach(function(item, idx) {
+        if (idx > 0) {
+          var prev = rankList[idx - 1];
+          if (item.percentage === prev.percentage && item.total === prev.total) {
+            skipped++;
+          } else {
+            currentRank += skipped + 1;
+            skipped = 0;
+          }
+        }
+        item.sm.rank = currentRank;
+      });
+    },
+
+    generateSingleStudentCardHTMLV2: function(s, isCombined, savedMarks, combinedData, activeTerm, subjects, schoolConfig) {
+      return legacyGenerateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects);
+    },
+
+    printBulkReportCardsV2: function(state, schoolConfig) {
+      return legacyPrintBulkReportCards();
+    }
+  };
+
+  // Expose calculation engine globally
+  window.ExamCalculationEngine = ExamCalculationEngine;
+
+  function legacyRecalculateStudentEntry(entry, subjects) {
     var subjectsArr = ensureSubjectsArray(subjects);
     var totalFull = 0;
     var totalObtained = 0;
@@ -211,6 +463,16 @@
         else entry.division = 'Pass Division';
       }
     }
+  }
+
+  // Version-aware dispatcher
+  function recalculateStudentEntry(entry, subjects, term) {
+    var isV2 = term && term.rulesVersion === 'v2';
+    if (isV2) {
+      var cfg = (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      return ExamCalculationEngine.recalculateStudentEntryV2(entry, subjects, term, cfg);
+    }
+    return legacyRecalculateStudentEntry(entry, subjects);
   }
 
   function getObtainedDisplay(sc, sub) {
@@ -1556,7 +1818,7 @@
     return remark;
   }
 
-  function generateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects) {
+  function legacyGenerateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects) {
     var subjectsArr = ensureSubjectsArray(subjects || []);
     subjectsArr = sortSubjects(subjectsArr);
 
@@ -1869,6 +2131,15 @@
     return html;
   }
 
+  function generateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects) {
+    var isV2 = activeTerm && activeTerm.rulesVersion === 'v2';
+    if (isV2) {
+      var cfg = (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      return ExamCalculationEngine.generateSingleStudentCardHTMLV2(s, isCombined, savedMarks, combinedData, activeTerm, subjects, cfg);
+    }
+    return legacyGenerateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects);
+  }
+
 
   function printStudentMarksheet(studentId) {
     var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
@@ -1884,7 +2155,7 @@
     printViaBlob(cardHTML, stuName, s.class);
   }
 
-  function printBulkReportCards() {
+  function legacyPrintBulkReportCards() {
     var includeInactiveLeft = !!state.includeInactiveLeft;
     var subjects = (SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[state.examTerm] && SchoolApp.store.examSubjects[state.examTerm][state.classVal] && SchoolApp.store.examSubjects[state.examTerm][state.classVal].subjects) || [];
     var students = (SchoolApp.store.students || []).filter(function(s) {
@@ -2083,6 +2354,16 @@
 
     printWindow.document.write(html);
     printWindow.document.close();
+  }
+
+  function printBulkReportCards() {
+    var activeTerm = SchoolApp.store.examTerms && SchoolApp.store.examTerms[state.examTerm];
+    var isV2 = activeTerm && activeTerm.rulesVersion === 'v2';
+    if (isV2) {
+      var cfg = (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      return ExamCalculationEngine.printBulkReportCardsV2(state, cfg);
+    }
+    return legacyPrintBulkReportCards();
   }
 
   // -------------------- EVENT ATTACHMENTS --------------------
@@ -3078,6 +3359,14 @@
        SchoolApp.store.examSubjects[termId][classId] &&
        SchoolApp.store.examSubjects[termId][classId].subjects) || []
     );
+
+    var term = SchoolApp.store.examTerms && SchoolApp.store.examTerms[termId];
+    var isV2 = term && term.rulesVersion === 'v2';
+
+    if (isV2) {
+      var cfg = (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      ExamCalculationEngine.autoSaveRecalculateV2(entry, subjectsArr, term, cfg);
+    } else {
     var totalObtained = 0;
     var maxTotal = 0;
     var passedAll = true;
@@ -3124,6 +3413,7 @@
 
     entry.isComplete = enteredCount === subjects.length;
     entry.lastUpdated = new Date().toISOString();
+    }
 
     // Update save status immediately (UI feedback before actual write)
     var saveStatusEl = document.getElementById('save-status');
@@ -3639,7 +3929,7 @@
   }
 
 
-  function recalculateRanks(termId, classId, sectionId) {
+  function legacyRecalculateRanks(termId, classId, sectionId) {
     var classMarks = (SchoolApp.store.examMarks && SchoolApp.store.examMarks[termId] && SchoolApp.store.examMarks[termId][classId] && SchoolApp.store.examMarks[termId][classId][sectionId]) || {};
     var students = (SchoolApp.store.students || []).filter(function(s) {
       return String(s.class).toLowerCase().trim() === String(classId).toLowerCase().trim() &&
@@ -3685,6 +3975,16 @@
       }
       item.sm.rank = currentRank;
     });
+  }
+
+  function recalculateRanks(termId, classId, sectionId) {
+    var term = SchoolApp.store.examTerms && SchoolApp.store.examTerms[termId];
+    var isV2 = term && term.rulesVersion === 'v2';
+    if (isV2) {
+      var cfg = (SchoolApp.store && SchoolApp.store.reportCardConfig) || {};
+      return ExamCalculationEngine.recalculateRanksV2(termId, classId, sectionId, cfg);
+    }
+    return legacyRecalculateRanks(termId, classId, sectionId);
   }
 
   // Expose module functions on window for cross-module access (e.g. admin.js live preview and inline events)
