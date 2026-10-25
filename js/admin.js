@@ -2264,22 +2264,22 @@
         address: true,
         phone: true,
         email: true,
-        website: false,
-        udiseCode: false,
+        website: true,
+        udiseCode: true,
         session: true,
-        affiliationNo: false
+        affiliationNo: true
       },
       student: {
         name: true,
         rollNumber: true,
         class: true,
-        section: false,
-        admissionNumber: false,
+        section: true,
+        admissionNumber: true,
         address: false,
         parentName: true,
-        fatherName: false,
-        motherName: false,
-        dob: false,
+        fatherName: true,
+        motherName: true,
+        dob: true,
         gender: false,
         photo: false,
         admissionDate: false
@@ -2339,6 +2339,9 @@
         showStudentPhoto: false
       },
       requireOverallPass: true,
+      orientation: 'auto',
+      showPaathshalaFooter: true,
+      promotionMessage: 'Promoted to Next Higher Class',
       branding: {
         primaryColor: '#1E3A8A',
         secondaryColor: '#3B82F6',
@@ -2472,6 +2475,17 @@
     if (secGrading) cfg.sectionToggles.showGradingLegend = secGrading.checked;
     var secSigs = document.getElementById('rc-sec-signatures');
     if (secSigs) cfg.sectionToggles.showSignatures = secSigs.checked;
+    var secParentSig = document.getElementById('rc-sec-parent-signature');
+    if (secParentSig) cfg.sectionToggles.showParentSignature = secParentSig.checked;
+
+    var orientInp = document.getElementById('rc-orientation');
+    if (orientInp) cfg.orientation = orientInp.value || 'auto';
+
+    var promoMsgInp = document.getElementById('rc-promotion-message');
+    if (promoMsgInp) cfg.promotionMessage = promoMsgInp.value.trim() || 'Promoted to Next Higher Class';
+
+    var paathshalaFooterCb = document.getElementById('rc-show-paathshala-footer');
+    if (paathshalaFooterCb) cfg.showPaathshalaFooter = paathshalaFooterCb.checked;
 
     var defs = window.DEFAULT_TEMPLATES || DEFAULT_TEMPLATES;
     var templates = {};
@@ -2747,6 +2761,21 @@
     html += '            <option value="weighted"' + (curMode === 'weighted' ? ' selected' : '') + '>Weighted Result (Configured Weights)</option>';
     html += '          </select>';
     html += '        </div>';
+    html += '        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">';
+    html += '          <div class="form-group">';
+    html += '            <label class="form-label" style="font-size:12px; font-weight:600;">Page Orientation</label>';
+    html += '            <select id="rc-orientation" class="form-select">';
+    var curOrient = cfg.orientation || 'auto';
+    html += '              <option value="auto"' + (curOrient === 'auto' ? ' selected' : '') + '>Auto (Portrait preferred, Landscape for wide tables)</option>';
+    html += '              <option value="portrait"' + (curOrient === 'portrait' ? ' selected' : '') + '>Force Portrait A4</option>';
+    html += '              <option value="landscape"' + (curOrient === 'landscape' ? ' selected' : '') + '>Force Landscape A4</option>';
+    html += '            </select>';
+    html += '          </div>';
+    html += '          <div class="form-group">';
+    html += '            <label class="form-label" style="font-size:12px; font-weight:600;">Promotion Status Message (Final Term)</label>';
+    html += '            <input type="text" id="rc-promotion-message" class="form-input" value="' + escapeAttr(cfg.promotionMessage || 'Promoted to Next Higher Class') + '">';
+    html += '          </div>';
+    html += '        </div>';
     html += '      </div>';
     html += '    </div>';
 
@@ -2776,6 +2805,9 @@
     html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
     html += '          <input type="checkbox" id="rc-sec-signatures" ' + (secT.showSignatures !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Signatures Block';
     html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-sec-parent-signature" ' + (secT.showParentSignature === true ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Parent Signature Line';
+    html += '        </label>';
     html += '      </div>';
     html += '    </div>';
     // Section D: Design Settings
@@ -2793,6 +2825,9 @@
 
     html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
     html += '          <input type="checkbox" id="rc-show-border" ' + (cfg.design.showBorder !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show Outer Border on Report Card';
+    html += '        </label>';
+    html += '        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; cursor:pointer;">';
+    html += '          <input type="checkbox" id="rc-show-paathshala-footer" ' + (cfg.showPaathshalaFooter !== false ? 'checked' : '') + ' style="width:16px; height:16px; accent-color:#1E40AF;"> Show "Generated by Paathshala ERP" Footer';
     html += '        </label>';
 
     html += '      </div>';
