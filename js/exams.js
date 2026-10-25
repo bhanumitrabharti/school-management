@@ -489,6 +489,7 @@ calculateMultiExamResult: function(params) {
       var pendingSubjects = [];
       var isConsolidated = true;
       var basisNote = '';
+      var calculationNote = '';
       var decimals = (schoolConfig.percentageDecimals !== undefined) ? Number(schoolConfig.percentageDecimals) : 2;
 
       if (hasUnitTests) {
@@ -512,14 +513,20 @@ calculateMultiExamResult: function(params) {
           var wUT = utWeight;
           var wMain = 100 - wUT;
           grandPct = (utPct * wUT + mainPct * wMain) / 100;
-          grandObt = mainGrandObt + utGrandObt;
-          grandFull = mainGrandFull + utGrandFull;
+          grandObt = mainGrandObt;
+          grandFull = mainGrandFull;
           isConsolidated = true;
           basisNote = 'Final result: Unit Tests ' + wUT + '% + Main Examinations ' + wMain + '%';
+          calculationNote = 'Unit Tests ' + utPct.toFixed(decimals) + '% × ' + wUT + '% + Main Examinations ' + mainPct.toFixed(decimals) + '% × ' + wMain + '% = ' + grandPct.toFixed(decimals) + '%';
         } else if (utMode === 'best_of_n') {
           var n = Math.min(Math.max(1, utBestOf), unitTerms.length);
-          var utPcts = unitTerms.map(function(t) { return (termResults[t.id] && termResults[t.id].percentage) || 0; }).sort(function(a, b) { return b - a; });
-          var bestNPcts = utPcts.slice(0, n);
+          var sortedUT = unitTerms.slice().sort(function(a, b) {
+            var pA = (termResults[a.id] && termResults[a.id].percentage) || 0;
+            var pB = (termResults[b.id] && termResults[b.id].percentage) || 0;
+            return pB - pA;
+          });
+          var bestNUT = sortedUT.slice(0, n);
+          var bestNPcts = bestNUT.map(function(t) { return (termResults[t.id] && termResults[t.id].percentage) || 0; });
           var utBestPct = bestNPcts.length > 0 ? (bestNPcts.reduce(function(a, b) { return a + b; }, 0) / bestNPcts.length) : 0;
           var wUT = utWeight;
           var wMain = 100 - wUT;
@@ -528,6 +535,9 @@ calculateMultiExamResult: function(params) {
           grandFull = mainGrandFull;
           isConsolidated = true;
           basisNote = 'Final result: Best ' + n + ' of ' + unitTerms.length + ' Unit Tests (' + wUT + '%) + Main Examinations (' + wMain + '%)';
+          var countedUT = unitTerms.filter(function(t) { return bestNUT.indexOf(t) !== -1; });
+          var countedNames = countedUT.map(function(t) { return t.shortName || t.name; });
+          calculationNote = 'Best ' + n + ' of ' + unitTerms.length + ': ' + countedNames.join(', ') + ' — Unit Tests ' + utBestPct.toFixed(decimals) + '% × ' + wUT + '% + Main Examinations ' + mainPct.toFixed(decimals) + '% × ' + wMain + '% = ' + grandPct.toFixed(decimals) + '%';
         }
 
         hasAnyIncomplete = evalMainTerms.some(function(t) { return termResults[t.id] && termResults[t.id].result === 'INCOMPLETE'; });
@@ -636,6 +646,7 @@ calculateMultiExamResult: function(params) {
         termTotals: termTotals,
         termResults: termResults,
         basisNote: basisNote,
+        calculationNote: calculationNote,
         unitTerms: unitTerms,
         mainTerms: mainTerms,
         hasUnitTests: hasUnitTests
@@ -1055,9 +1066,16 @@ calculateMultiExamResult: function(params) {
       function renderTitleBanner() {
         var bHtml = '<div style="text-align:center;">';
         if (hasCombinedTerms) {
-          var termNames = cTerms.map(function(t) { return t.name.toUpperCase(); }).join(' & ');
+          var subtitle = '';
+          if (hasUnitTestsInCard) {
+            var utLabel = cUnitTerms.length === 1 ? '1 Unit Test' : cUnitTerms.length + ' Unit Tests';
+            var mainLabel = cMainTerms.length === 1 ? '1 Term' : cMainTerms.length + ' Terms';
+            subtitle = 'Cumulative Report — ' + utLabel + ' & ' + mainLabel;
+          } else {
+            subtitle = cTerms.map(function(t) { return t.name.toUpperCase(); }).join(' & ');
+          }
           bHtml += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">CONSOLIDATED REPORT CARD</span>';
-          bHtml += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termNames) + '</div>';
+          bHtml += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(subtitle) + '</div>';
         } else {
           bHtml += '<span style="background:' + primaryColor + '; color:#FFFFFF; border-radius:4px; padding:3px 18px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; display:inline-block;">OFFICIAL REPORT CARD</span>';
           bHtml += '<div style="font-size:11px; font-weight:700; color:#374151; margin-top:2px;">' + escapeHTML(termName) + '</div>';
@@ -1129,12 +1147,14 @@ calculateMultiExamResult: function(params) {
             mHtml += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:10px;">';
             mHtml += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
             var utGrandSum = 0;
+            var utGrandMax = 0;
             cUnitTerms.forEach(function(t) {
               var tt = termTotalsMap[t.id] || { obtained: 0, maxTotal: 0 };
               mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + tt.obtained + ' / ' + tt.maxTotal + '</td>';
               utGrandSum += tt.obtained;
+              utGrandMax += tt.maxTotal;
             });
-            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + utGrandSum + '</td>';
+            mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + utGrandSum + ' / ' + utGrandMax + '</td>';
             mHtml += '</tr></tbody></table>';
 
             // TABLE 2: Main Examinations (Obt + Grade)
@@ -1415,7 +1435,10 @@ calculateMultiExamResult: function(params) {
               summaryItems.push({ label: 'Final Result', value: multiRes.result, color: (multiRes.result === 'PASS' ? '#16A34A' : '#DC2626') });
             }
             if (multiRes && multiRes.basisNote) {
-              smHtml += '<div style="font-size:9.5px; font-weight:700; color:#475569; text-align:center; margin-bottom:5px; font-style:italic;">' + escapeHTML(multiRes.basisNote) + '</div>';
+              smHtml += '<div style="font-size:9.5px; font-weight:700; color:#475569; text-align:center; margin-bottom:3px; font-style:italic;">' + escapeHTML(multiRes.basisNote) + '</div>';
+            }
+            if (multiRes && multiRes.calculationNote) {
+              smHtml += '<div style="font-size:9px; font-weight:600; color:#64748B; text-align:center; margin-bottom:5px;">' + escapeHTML(multiRes.calculationNote) + '</div>';
             }
             if (summaryItems.length > 0) {
               smHtml += '<div style="display:grid; grid-template-columns:repeat(' + summaryItems.length + ', 1fr); gap:8px; padding:6px 12px; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:6px; text-align:center;">';
