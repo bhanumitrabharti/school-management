@@ -99,6 +99,18 @@
     });
   }
 
+  function getAllStudentsForCert(certType) {
+    var store = getStore();
+    return (store.students || []).filter(function(st) {
+      if (!st || st.inTrash || st.status === 'Deleted') return false;
+      var status = (st.status || 'Active').toLowerCase();
+      if (certType === 'tc') {
+        return status === 'active' || status === 'left';
+      }
+      return status === 'active';
+    });
+  }
+
   function getStudentInitials(name) {
     if (!name) return 'ST';
     var parts = name.trim().split(/\s+/);
@@ -812,7 +824,7 @@
         return;
       }
 
-      var allStudents = getAllStudents();
+      var allStudents = getAllStudentsForCert(certType);
       var matches = allStudents.filter(function(st) {
         var sName = ((st.name || '') + ' ' + (st.firstName || '') + ' ' + (st.lastName || '')).toLowerCase();
         var roll = String(st.rollNumber || '').toLowerCase();
@@ -844,7 +856,7 @@
     },
 
     selectStudentForCert: function(studentId, certType) {
-      var allStudents = getAllStudents();
+      var allStudents = getAllStudentsForCert(certType);
       selectedStudent = allStudents.find(function(s) { return s.id === studentId; });
       if (!selectedStudent) return;
 
@@ -857,8 +869,41 @@
       var banner = document.getElementById('cert-selected-student-banner');
       if (banner) {
         var sName = selectedStudent.name || ((selectedStudent.firstName || '') + ' ' + (selectedStudent.lastName || '')).trim();
+        var statusLabel = selectedStudent.status === 'Left' ? ' <span class="badge badge-secondary" style="font-size:11px;">Left (TC Issued)</span>' : ' <span class="badge badge-success" style="font-size:11px;">Active</span>';
+        var bannerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
+        bannerHTML += '<div><span class="material-icons-round" style="color:var(--success); font-size:16px; vertical-align:middle;">check_circle</span> Selected Student: <b>' + escapeHTML(sName) + '</b>' + statusLabel + ' (Class ' + escapeHTML(selectedStudent.class || '—') + '-' + escapeHTML(selectedStudent.section || '—') + ', Adm No: ' + escapeHTML(selectedStudent.admissionNumber || '—') + ')</div>';
+        bannerHTML += '</div>';
+
+        if (certType === 'tc') {
+          var pendingDue = 0;
+          if (window.SchoolApp && typeof window.SchoolApp.getStudentFeeStats === 'function') {
+            var feeStats = window.SchoolApp.getStudentFeeStats(selectedStudent.id);
+            if (feeStats && feeStats.outstanding > 0) pendingDue = feeStats.outstanding;
+          }
+
+          if (pendingDue > 0) {
+            bannerHTML += '<div style="margin-top:8px; padding:8px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; color:var(--danger); font-size:12px; display:flex; align-items:center; gap:8px;">';
+            bannerHTML += '<span class="material-icons-round" style="font-size:18px;">warning</span>';
+            bannerHTML += '<span><b>Pending Dues Warning:</b> Student has <b>₹' + pendingDue.toLocaleString('en-IN') + '</b> in outstanding dues. (Dues remain collectable).</span>';
+            bannerHTML += '</div>';
+          }
+
+          if (selectedStudent.status === 'Left') {
+            bannerHTML += '<div style="margin-top:8px; font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">';
+            bannerHTML += '<span class="material-icons-round" style="font-size:16px; color:var(--accent-secondary);">info</span> Student is already marked as Left (TC Issued: <b>' + escapeHTML(selectedStudent.tcNumber || '—') + '</b>). Reprinting will retain this TC number.';
+            bannerHTML += '</div>';
+          } else {
+            bannerHTML += '<div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(99,102,241,0.2);">';
+            bannerHTML += '<label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer; font-size:13px; color:var(--text-primary);">';
+            bannerHTML += '<input type="checkbox" id="cert-tc-mark-left" checked style="width:16px; height:16px; accent-color:var(--accent-primary); cursor:pointer;"> Mark student as Left (TC Issued)?';
+            bannerHTML += '</label>';
+            bannerHTML += '<div style="font-size:11px; color:var(--text-secondary); margin-left:24px; margin-top:2px;">When checked, printing will confirm marking the student as Left. Excludes them from future auto-charges, exams, and attendance.</div>';
+            bannerHTML += '</div>';
+          }
+        }
+
         banner.style.display = 'block';
-        banner.innerHTML = '<span class="material-icons-round" style="color:var(--success); font-size:16px; vertical-align:middle;">check_circle</span> Selected Student: <b>' + escapeHTML(sName) + '</b> (Class ' + escapeHTML(selectedStudent.class || '—') + '-' + escapeHTML(selectedStudent.section || '—') + ', Adm No: ' + escapeHTML(selectedStudent.admissionNumber || '—') + ')';
+        banner.innerHTML = bannerHTML;
       }
 
       var editorContainer = document.getElementById('cert-editor-container');
@@ -1131,10 +1176,34 @@
       var affiliation = settings.affiliation || 'State Board of Education';
       var udise = settings.udiseCode || '—';
       var today = new Date().toISOString().split('T')[0];
+      var yearNum = year.replace(/[^0-9]/g, '').substring(0, 4) || new Date().getFullYear();
 
-      var tcNo = 'TC-' + year.replace(/[^0-9]/g, '').substring(0, 4) + '-' + adm;
+      var tcNo = '';
+      if (student.status === 'Left' && student.tcNumber) {
+        tcNo = student.tcNumber;
+      } else {
+        var tcInput = document.getElementById('cert-tc-no');
+        if (tcInput && tcInput.value.trim()) {
+          tcNo = tcInput.value.trim();
+        } else {
+          var store = getStore();
+          var maxSeq = 0;
+          (store.students || []).forEach(function(st) {
+            if (st.tcNumber) {
+              var m = String(st.tcNumber).match(/(\d+)$/);
+              if (m) {
+                var num = parseInt(m[1], 10);
+                if (num > maxSeq) maxSeq = num;
+              }
+            }
+          });
+          var nextSeq = maxSeq + 1;
+          var padSeq = nextSeq < 1000 ? ('000' + nextSeq).slice(-4) : String(nextSeq);
+          tcNo = 'TC-' + yearNum + '-' + padSeq;
+        }
+      }
 
-      var reason = 'On Request';
+      var reason = (student.status === 'Left' && student.tcReason) ? student.tcReason : 'On Request';
       var reasonInput = document.getElementById('cert-tc-reason');
       if (reasonInput) reason = reasonInput.value;
 
@@ -1146,7 +1215,7 @@
       var remarksInput = document.getElementById('cert-tc-remarks');
       if (remarksInput) remarks = remarksInput.value;
 
-      var dateLeaving = today;
+      var dateLeaving = (student.status === 'Left' && student.leavingDate) ? student.leavingDate : today;
       var dateLeavingInput = document.getElementById('cert-tc-date-leaving');
       if (dateLeavingInput) dateLeaving = dateLeavingInput.value;
 
@@ -1167,7 +1236,11 @@
 
       // Title & Reference
       html += '  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:16px;">';
-      html += '    <div><b>TC No:</b> ' + escapeHTML(tcNo) + '</div>';
+      if (isPrint || (student.status === 'Left' && student.tcNumber)) {
+        html += '    <div><b>TC No:</b> ' + escapeHTML(tcNo) + '</div>';
+      } else {
+        html += '    <div><b>TC No:</b> <input type="text" id="cert-tc-no" class="form-input" style="padding:2px 8px; font-size:12px; font-weight:600; width:170px; display:inline-block;" value="' + escapeHTML(tcNo) + '" placeholder="TC-YYYY-XXXX" onchange="DocumentsModule.renderCertificatePreview(\'' + 'tc' + '\')"></div>';
+      }
       html += '    <div><b>Date of Issue:</b> ' + escapeHTML(today) + '</div>';
       html += '  </div>';
 
@@ -1247,13 +1320,74 @@
         return;
       }
 
+      var self = this;
+
+      if (certType === 'tc') {
+        var tcInput = document.getElementById('cert-tc-no');
+        var tcNo = tcInput ? tcInput.value.trim() : (selectedStudent.tcNumber || '');
+        if (!tcNo) {
+          var yearNum = getAcademicYear().replace(/[^0-9]/g, '').substring(0, 4) || new Date().getFullYear();
+          tcNo = 'TC-' + yearNum + '-0001';
+        }
+
+        var dateLeavingInput = document.getElementById('cert-tc-date-leaving');
+        var dateLeaving = dateLeavingInput ? dateLeavingInput.value : (selectedStudent.leavingDate || new Date().toISOString().split('T')[0]);
+
+        var reasonInput = document.getElementById('cert-tc-reason');
+        var reason = reasonInput ? reasonInput.value : (selectedStudent.tcReason || 'On Request');
+
+        var allStoreStudents = getStore().students || [];
+        var dup = allStoreStudents.find(function(s) {
+          return s.id !== selectedStudent.id && s.tcNumber && s.tcNumber.trim().toLowerCase() === tcNo.toLowerCase();
+        });
+        if (dup) {
+          var dupName = dup.name || ((dup.firstName || '') + ' ' + (dup.lastName || '')).trim();
+          SchoolApp.showToast('Duplicate TC Number: "' + tcNo + '" is already assigned to ' + dupName + '. TC numbers must be unique within the school.', 'error');
+          return;
+        }
+
+        var markLeftCheckbox = document.getElementById('cert-tc-mark-left');
+        var shouldMarkLeft = markLeftCheckbox && markLeftCheckbox.checked && selectedStudent.status !== 'Left';
+
+        if (shouldMarkLeft) {
+          var stuName = selectedStudent.name || ((selectedStudent.firstName || '') + ' ' + (selectedStudent.lastName || '')).trim();
+          SchoolApp.showConfirm(
+            'Mark this student as Left (TC Issued)?\n\nStudent: ' + stuName + '\nTC Number: ' + tcNo + '\nLeaving Date: ' + dateLeaving + '\n\nThis will update student status to Left and save TC details. Existing dues remain collectable.',
+            async function() {
+              var schoolId = SchoolApp.currentSchoolId || (SchoolApp.store && SchoolApp.store.currentSchoolId);
+              var today = new Date().toISOString().split('T')[0];
+              var nowIso = new Date().toISOString();
+              var updates = {
+                status: 'Left',
+                tcNumber: tcNo,
+                tcDate: today,
+                leavingDate: dateLeaving,
+                tcReason: reason,
+                statusDate: nowIso
+              };
+              if (typeof SchoolApp.saveStudentStatus === 'function') {
+                await SchoolApp.saveStudentStatus(schoolId, selectedStudent.id, updates);
+              }
+              Object.assign(selectedStudent, updates);
+              var printHtml = self.buildTCHTML(selectedStudent, true);
+              self.printDocument(printHtml, 'portrait', '15mm');
+              SchoolApp.showToast('Transfer Certificate issued and student marked as Left.', 'success');
+              self.selectStudentForCert(selectedStudent.id, 'tc');
+            }
+          );
+          return;
+        } else {
+          var printHtml = this.buildTCHTML(selectedStudent, true);
+          this.printDocument(printHtml, 'portrait', '15mm');
+          return;
+        }
+      }
+
       var html = '';
       if (certType === 'bonafide') {
         html = this.buildBonafideHTML(selectedStudent, true);
       } else if (certType === 'character') {
         html = this.buildCharacterHTML(selectedStudent, true);
-      } else if (certType === 'tc') {
-        html = this.buildTCHTML(selectedStudent, true);
       }
 
       this.printDocument(html, 'portrait', '15mm');

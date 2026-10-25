@@ -745,6 +745,73 @@ window.SchoolApp = {
     return !!(this.store && this.store.settings && this.store.settings.studentsDualWrite === true);
   },
 
+  saveStudentStatus: async function(schoolId, studentId, updates) {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem("isImpersonating") === "true") {
+      console.warn("[Security] Write blocked: Super Admin impersonation mode.");
+      SchoolApp.showToast("View-only mode. Changes not saved during impersonation.", "warning");
+      return { success: false, reason: 'impersonating' };
+    }
+
+    var sid = schoolId || this.currentSchoolId || (this.store && this.store.currentSchoolId) || '';
+    if (!sid) {
+      console.error('[saveStudentStatus] Missing schoolId');
+      return { success: false, reason: 'missing_school_id' };
+    }
+
+    var db = window.db;
+    var fs = window.firestore;
+    if (!db || !fs) {
+      console.error('[saveStudentStatus] Firestore not initialized');
+      return { success: false, reason: 'firestore_uninitialized' };
+    }
+
+    // 1. Update in-memory SchoolApp.store.students
+    var currentStudents = (this.store && this.store.students || []).slice();
+    var existingIdx = currentStudents.findIndex(function(s) { return s.id === studentId; });
+    if (existingIdx !== -1) {
+      currentStudents[existingIdx] = Object.assign({}, currentStudents[existingIdx], updates);
+    } else {
+      console.warn('[saveStudentStatus] Student ' + studentId + ' not found in local store.');
+    }
+    if (this.store) {
+      this.store.students = currentStudents;
+    }
+
+    // 2. Storage Mode Branch
+    var isMigrated = typeof this.isStudentsMigrated === 'function' && this.isStudentsMigrated(sid);
+
+    if (isMigrated) {
+      // Subcollection Mode: field-level updateDoc on tenant_data/{sid}/students/{studentId}
+      var studentDocRef = fs.doc(db, 'tenant_data', sid, 'students', studentId);
+      await fs.updateDoc(studentDocRef, updates);
+
+      // If dual write is active for probation, also update root students array
+      if (typeof this.isStudentsDualWrite === 'function' && this.isStudentsDualWrite(sid)) {
+        var rootDocRef = fs.doc(db, 'tenant_data', sid);
+        await fs.updateDoc(rootDocRef, { students: currentStudents });
+      }
+    } else {
+      // Root Mode: field-level updateDoc on root doc for students array only
+      // (Never drops other students in the array)
+      var rootDocRef = fs.doc(db, 'tenant_data', sid);
+      await fs.updateDoc(rootDocRef, { students: currentStudents });
+    }
+
+    // 3. Update localStorage cache if present
+    try {
+      var cachedRaw = localStorage.getItem('cached_tenant_data_' + sid);
+      if (cachedRaw) {
+        var cached = JSON.parse(cachedRaw);
+        cached.students = currentStudents;
+        localStorage.setItem('cached_tenant_data_' + sid, JSON.stringify(cached));
+      }
+    } catch (err) {
+      console.warn('Cache update warning:', err);
+    }
+
+    return { success: true };
+  },
+
   isFeeLogMigrated: function(schoolId) {
     var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
     if (!sid) return false;
@@ -2719,6 +2786,14 @@ window.SchoolApp = {
         var chargeDate = m.year + '-' + (m.month < 10 ? '0' + m.month : m.month) + '-' + triggerDayPad;
 
         activeStudents.forEach(function(s) {
+          // Reactivation Guard: Do not back-charge for months prior to reactivation
+          if (s.reactivatedAt) {
+            var reactivatedPeriod = s.reactivatedAt.substring(0, 7);
+            if (m.period < reactivatedPeriod) {
+              return;
+            }
+          }
+
           var alreadyBilled = (self.store.fees || []).some(function(f) {
             if (!f || f.studentId !== s.id || f.type !== 'due') return false;
             var isHeadMatch = (f.feeHeadId === 'fh_tuition' || f.feeHeadId === 'tuition');
@@ -2765,6 +2840,14 @@ window.SchoolApp = {
 
         // Evaluate Student-Specific Monthly Transport Fee
         activeStudents.forEach(function(s) {
+          // Reactivation Guard: Do not back-charge for months prior to reactivation
+          if (s.reactivatedAt) {
+            var reactivatedPeriod = s.reactivatedAt.substring(0, 7);
+            if (m.period < reactivatedPeriod) {
+              return;
+            }
+          }
+
           var tAmt = parseFloat(s.transportFee || s.transport_fee || 0);
           if (tAmt <= 0) return;
 
@@ -5283,7 +5366,10 @@ window.SchoolApp = {
       });
     }
 
-    var totalStudents = (this.store.students || []).length;
+    var allActiveStudents = (this.store.students || []).filter(function(s) { return !s.inTrash && s.status !== 'Deleted'; });
+    var totalStudents = allActiveStudents.filter(function(s) { return s.status === 'Active'; }).length;
+    var inactiveStudentsCount = allActiveStudents.filter(function(s) { return s.status === 'Inactive'; }).length;
+    var leftStudentsCount = allActiveStudents.filter(function(s) { return s.status === 'Left'; }).length;
     var totalTeachers = (this.store.teachers || []).length;
     var settings = this.store.settings || {};
     var totalClasses = (settings.classes || []).length;
@@ -5315,7 +5401,7 @@ window.SchoolApp = {
 
     // Class distribution
     var classDist = {};
-    (this.store.students || []).forEach(function(s) {
+    allActiveStudents.filter(function(s) { return s.status === 'Active'; }).forEach(function(s) {
       var key = 'Class ' + s.class;
       classDist[key] = (classDist[key] || 0) + 1;
     });
@@ -5343,7 +5429,7 @@ window.SchoolApp = {
 
     // Stats Grid
     html += '<div class="stats-grid">';
-    html += '<div class="stat-card purple" style="cursor: pointer;" onclick="SchoolApp.navigate(\'students\')" title="View Students"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalStudents + '">0</div><div class="stat-label">Total Students</div></div></div>';
+    html += '<div class="stat-card purple" style="cursor: pointer;" onclick="SchoolApp.navigate(\'students\')" title="View Students"><div class="stat-icon"><span class="material-icons-round">groups</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalStudents + '">0</div><div class="stat-label">Total Students (Active)</div><div style="font-size:11px; color:var(--text-secondary); margin-top:3px; display:flex; gap:6px; flex-wrap:wrap;"><span class="badge badge-warning" style="font-size:10px; padding:1px 6px;">Inactive: ' + inactiveStudentsCount + '</span><span class="badge badge-secondary" style="font-size:10px; padding:1px 6px;">Left: ' + leftStudentsCount + '</span></div></div></div>';
     html += '<div class="stat-card cyan" style="cursor: pointer;" onclick="SchoolApp.navigate(\'teachers\')" title="View Teachers"><div class="stat-icon"><span class="material-icons-round">person</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalTeachers + '">0</div><div class="stat-label">Total Teachers</div></div></div>';
     html += '<div class="stat-card green" style="cursor: pointer;" onclick="SchoolApp.navigate(\'attendance\')" title="View Attendance"><div class="stat-icon"><span class="material-icons-round">check_circle</span></div><div class="stat-info"><div class="stat-number" data-count="' + attendancePerc + '">0</div><div class="stat-label">Today\'s Attendance %</div></div></div>';
     html += '<div class="stat-card amber" style="cursor: pointer;" onclick="SchoolApp.navigate(\'admin\')" title="View Class Management"><div class="stat-icon"><span class="material-icons-round">class</span></div><div class="stat-info"><div class="stat-number" data-count="' + totalClasses + '">0</div><div class="stat-label">Total Classes</div></div></div>';
@@ -5516,8 +5602,9 @@ window.SchoolApp = {
     var ctClasses = this.currentUser.classTeacherOf || [];
     var stClasses = this.currentUser.subjectTeacherOf || [];
 
-    // 1. My Class Strength: Count unique students belonging to any class/section in classTeacherOf
-    var classTeacherStudents = this.store.students.filter(function(s) {
+    // 1. My Class Strength: Count unique students belonging to any class/section in classTeacherOf (Active only)
+    var classTeacherStudents = (this.store.students || []).filter(function(s) {
+      if (s.inTrash || s.status !== 'Active') return false;
       return ctClasses.some(function(ct) {
         return String(s.class).toLowerCase().trim() === String(ct.class).toLowerCase().trim() &&
                String(s.section).toLowerCase().trim() === String(ct.section).toLowerCase().trim();

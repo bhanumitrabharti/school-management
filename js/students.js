@@ -235,7 +235,7 @@
       shellHtml += '<select class="form-select" id="student-section-filter"><option value="all">All Sections</option>';
       sections.forEach(function(s) { shellHtml += '<option value="' + s + '"' + (state.sectionFilter === s ? ' selected' : '') + '>Section ' + s + '</option>'; });
       shellHtml += '</select>';
-      shellHtml += '<select class="form-select" id="student-status-filter"><option value="all">All Status</option><option value="Active"' + (state.statusFilter === 'Active' ? ' selected' : '') + '>Active</option><option value="Inactive"' + (state.statusFilter === 'Inactive' ? ' selected' : '') + '>Inactive</option></select>';
+      shellHtml += '<select class="form-select" id="student-status-filter"><option value="all">All Status</option><option value="Active"' + (state.statusFilter === 'Active' ? ' selected' : '') + '>Active</option><option value="Inactive"' + (state.statusFilter === 'Inactive' ? ' selected' : '') + '>Inactive</option><option value="Left"' + (state.statusFilter === 'Left' ? ' selected' : '') + '>Left (TC Issued)</option></select>';
       shellHtml += '</div></div>';
 
       // Bulk actions container
@@ -318,8 +318,21 @@
         var safeRoll     = escapeHTML(s.rollNumber);
         var safeParent   = escapeHTML(s.parentName);
         var safePhone    = escapeHTML(s.parentPhone);
-        var safeStatus   = escapeHTML(s.status);
-        var statusBadge  = (s.status === 'Active') ? 'badge-success' : 'badge-danger';
+        var safeStatus   = escapeHTML(s.status || 'Active');
+        var statusBadge  = 'badge-success';
+        var statusTooltip = '';
+        if (s.status === 'Inactive') {
+          statusBadge = 'badge-warning';
+          if (s.inactiveReason) statusTooltip = ' title="' + escapeHTML(s.inactiveReason) + '"';
+        } else if (s.status === 'Left') {
+          statusBadge = 'badge-secondary';
+          var tipParts = [];
+          if (s.tcNumber) tipParts.push('TC: ' + s.tcNumber);
+          if (s.leavingDate) tipParts.push('Left: ' + s.leavingDate);
+          if (s.tcReason) tipParts.push('Reason: ' + s.tcReason);
+          if (tipParts.length > 0) statusTooltip = ' title="' + escapeHTML(tipParts.join(' | ')) + '"';
+        }
+        var statusLabel = (s.status === 'Left') ? 'Left (TC)' : safeStatus;
 
         html += '<tr>';
         if (isAdmin) html += '<td><input type="checkbox" class="student-checkbox" data-id="' + safeId + '"' + (isSelected ? ' checked' : '') + ' style="cursor:pointer"></td>';
@@ -328,7 +341,7 @@
         html += '<td>' + safeRoll + '</td>';
         html += '<td>' + safeParent + '</td>';
         html += '<td>' + safePhone + '</td>';
-        html += '<td><span class="badge ' + statusBadge + '">' + safeStatus + '</span></td>';
+        html += '<td><span class="badge ' + statusBadge + '"' + statusTooltip + '>' + statusLabel + '</span></td>';
         html += '<td><div class="table-actions">';
         if (isAdmin) {
           html += '<button class="btn-icon student-fee-btn" data-id="' + safeId + '" title="Financial Profile" style="color:var(--accent-primary);"><span class="material-icons-round">account_balance_wallet</span></button>';
@@ -903,9 +916,28 @@
 
     bodyHTML += '<div class="form-group full-width"><label class="form-label">Address <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><textarea class="form-textarea" name="address" rows="2">' + (student && student.address ? student.address : '') + '</textarea></div>';
 
-    bodyHTML += '<div class="form-group"><label class="form-label">Status <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><select class="form-select" name="status">';
-    ['Active', 'Inactive'].forEach(function(s) { bodyHTML += '<option value="' + s + '"' + (student && student.status === s ? ' selected' : '') + '>' + s + '</option>'; });
+    bodyHTML += '<div class="form-group"><label class="form-label">Status <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><select class="form-select" name="status" id="student-status-select">';
+    ['Active', 'Inactive', 'Left'].forEach(function(s) {
+      var sLabel = (s === 'Left') ? 'Left (TC Issued)' : s;
+      bodyHTML += '<option value="' + s + '"' + ((student && student.status === s) || (!student && s === 'Active') ? ' selected' : '') + '>' + sLabel + '</option>';
+    });
     bodyHTML += '</select></div>';
+
+    var isLeft = student && student.status === 'Left';
+    bodyHTML += '<div id="status-left-fields" style="display:' + (isLeft ? 'block' : 'none') + '; border-left:3px solid var(--text-secondary); padding-left:12px; margin-bottom:12px; grid-column:1/-1;">';
+    bodyHTML += '  <div style="font-weight:600; font-size:13px; margin-bottom:8px; color:var(--text-primary);">Transfer Certificate / Leaving Details</div>';
+    bodyHTML += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">';
+    bodyHTML += '    <div class="form-group"><label class="form-label">TC Number</label><input type="text" class="form-input" name="tcNumber" value="' + escapeHTML((student && student.tcNumber) || '') + '" placeholder="e.g. TC-2026-001"></div>';
+    bodyHTML += '    <div class="form-group"><label class="form-label">TC Issue Date</label><input type="date" class="form-input" name="tcDate" value="' + escapeHTML((student && student.tcDate) || '') + '"></div>';
+    bodyHTML += '    <div class="form-group"><label class="form-label">Leaving Date</label><input type="date" class="form-input" name="leavingDate" value="' + escapeHTML((student && student.leavingDate) || '') + '"></div>';
+    bodyHTML += '    <div class="form-group"><label class="form-label">Leaving Reason</label><input type="text" class="form-input" name="tcReason" value="' + escapeHTML((student && student.tcReason) || '') + '" placeholder="e.g. Relocation, Course Completed"></div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '</div>';
+
+    var isInactive = student && student.status === 'Inactive';
+    bodyHTML += '<div id="status-inactive-fields" style="display:' + (isInactive ? 'block' : 'none') + '; border-left:3px solid var(--warning); padding-left:12px; margin-bottom:12px; grid-column:1/-1;">';
+    bodyHTML += '  <div class="form-group"><label class="form-label">Inactive Reason <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="text" class="form-input" name="inactiveReason" value="' + escapeHTML((student && student.inactiveReason) || '') + '" placeholder="e.g. Extended medical leave"></div>';
+    bodyHTML += '</div>';
 
     // Other Custom Fields
     bodyHTML += renderCustomFieldsForSection(fieldsBySection.other);
@@ -944,6 +976,15 @@
     SchoolApp.showModal((isEdit ? 'Edit' : 'Add New') + ' Student', bodyHTML, footerHTML);
 
     var form = document.getElementById('student-form');
+    var statusSelect = document.getElementById('student-status-select');
+    if (statusSelect) {
+      statusSelect.addEventListener('change', function() {
+        var leftFields = document.getElementById('status-left-fields');
+        var inactiveFields = document.getElementById('status-inactive-fields');
+        if (leftFields) leftFields.style.display = (this.value === 'Left') ? 'block' : 'none';
+        if (inactiveFields) inactiveFields.style.display = (this.value === 'Inactive') ? 'block' : 'none';
+      });
+    }
     var classSelect = form.querySelector('select[name="class"]');
     var sectionSelect = form.querySelector('select[name="section"]');
 
@@ -1069,6 +1110,25 @@
       valid = false;
     }
 
+    var oldStatus = (existing && existing.status) || 'Active';
+    var newStatus = coreFields.status || 'Active';
+
+    if (existing && existing.status === 'Left') {
+      if (!coreFields.tcNumber && existing.tcNumber) coreFields.tcNumber = existing.tcNumber;
+      if (!coreFields.tcDate && existing.tcDate) coreFields.tcDate = existing.tcDate;
+      if (!coreFields.leavingDate && existing.leavingDate) coreFields.leavingDate = existing.leavingDate;
+      if (!coreFields.tcReason && existing.tcReason) coreFields.tcReason = existing.tcReason;
+    }
+
+    if (oldStatus !== newStatus) {
+      coreFields.statusDate = new Date().toISOString();
+      if (oldStatus === 'Left' && newStatus === 'Active') {
+        coreFields.reactivatedAt = new Date().toISOString();
+      } else if (oldStatus === 'Inactive' && newStatus === 'Active') {
+        coreFields.reactivatedAt = new Date().toISOString();
+      }
+    }
+
     // Validate custom fields with soft validation for old records
     var defs = (SchoolApp.store.settings && SchoolApp.store.settings.customFieldDefinitions && SchoolApp.store.settings.customFieldDefinitions.student) || [];
     var activeDefs = defs.filter(function(d) { return d.status !== 'archived'; });
@@ -1178,6 +1238,18 @@
     var hasCustomFieldDefinitions = defs.length > 0;
     var hasAdditionalPhones = additionalPhones && additionalPhones.length > 0;
 
+    if (existing && oldStatus === 'Left' && newStatus === 'Active' && !form._reactivateConfirmed) {
+      SchoolApp.showConfirm(
+        'Reactivate? Marked Active from today. Attendance, exams, auto-charges resume. History preserved. No retroactive charges.',
+        function() {
+          form._reactivateConfirmed = true;
+          var saveBtn = document.getElementById('student-save-btn');
+          if (saveBtn) saveBtn.click();
+        }
+      );
+      return;
+    }
+
     if (!hasCustomFieldDefinitions && !hasAdditionalPhones && !_currentEditingLoadedUpdatedAt) {
       // ZERO CUSTOM FIELDS SAVE PATH (Schools like SVM, IPS, KKGS before adding custom fields)
       // Save directly via SchoolApp.save() — 100% byte-identical save path and data
@@ -1279,7 +1351,9 @@
     html += getStudentAvatar(student, 80);
     html += '<div><div class="detail-name">' + SchoolApp.escapeHTML(sName) + '</div>';
     html += '<div class="detail-subtitle">Class ' + SchoolApp.escapeHTML(student.class) + '-' + SchoolApp.escapeHTML(student.section) + ' · Roll No. ' + SchoolApp.escapeHTML(student.rollNumber) + '</div>';
-    html += '<span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + SchoolApp.escapeHTML(student.status) + '</span>';
+    var pStBadge = student.status === 'Active' ? 'badge-success' : (student.status === 'Inactive' ? 'badge-warning' : 'badge-secondary');
+    var pStLabel = student.status === 'Left' ? 'Left (TC Issued)' : (student.status || 'Active');
+    html += '<span class="badge ' + pStBadge + '">' + SchoolApp.escapeHTML(pStLabel) + '</span>';
     html += '</div></div>';
 
     // Personal Information
@@ -1309,7 +1383,15 @@
       html += '<div class="detail-item"><span class="detail-item-label">Admission Number</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.admissionNumber) + '</span></div>';
     }
     html += '<div class="detail-item"><span class="detail-item-label">Admission Date</span><span class="detail-item-value">' + SchoolApp.formatDate(student.admissionDate) + '</span></div>';
-    html += '<div class="detail-item"><span class="detail-item-label">Status</span><span class="detail-item-value"><span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '">' + SchoolApp.escapeHTML(student.status) + '</span></span></div>';
+    html += '<div class="detail-item"><span class="detail-item-label">Status</span><span class="detail-item-value"><span class="badge ' + pStBadge + '">' + SchoolApp.escapeHTML(pStLabel) + '</span></span></div>';
+    if (student.status === 'Left') {
+      if (student.tcNumber) html += '<div class="detail-item"><span class="detail-item-label">TC Number</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.tcNumber) + '</span></div>';
+      if (student.tcDate) html += '<div class="detail-item"><span class="detail-item-label">TC Issue Date</span><span class="detail-item-value">' + SchoolApp.formatDate(student.tcDate) + '</span></div>';
+      if (student.leavingDate) html += '<div class="detail-item"><span class="detail-item-label">Date of Leaving</span><span class="detail-item-value">' + SchoolApp.formatDate(student.leavingDate) + '</span></div>';
+      if (student.tcReason) html += '<div class="detail-item full-width"><span class="detail-item-label">Leaving Reason</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.tcReason) + '</span></div>';
+    } else if (student.status === 'Inactive' && student.inactiveReason) {
+      html += '<div class="detail-item full-width"><span class="detail-item-label">Inactive Reason</span><span class="detail-item-value">' + SchoolApp.escapeHTML(student.inactiveReason) + '</span></div>';
+    }
     var tFee = parseFloat(student.transportFee || student.transport_fee || 0);
     if (tFee > 0) {
       html += '<div class="detail-item"><span class="detail-item-label">Monthly Transport Fee</span><span class="detail-item-value" style="color:var(--accent-primary); font-weight:600;">₹' + tFee.toLocaleString('en-IN') + ' / mo</span></div>';
@@ -1802,6 +1884,7 @@
       var duplicateList = [];
       var skippedRows = [];
       var incompleteList = [];
+      var statusWarningList = [];
 
       // Fields the manual "Add Student" form treats as mandatory, beyond the
       // bare minimum (Name + Class) that bulk import blocks on below. A row
@@ -1840,7 +1923,23 @@
             var strVal = (targetField === 'dateOfBirth' || targetField === 'admissionDate')
               ? parseFlexibleDate(val)
               : String(val).trim();
-            if (strVal !== '') student[targetField] = strVal;
+            if (strVal !== '') {
+              if (targetField === 'status') {
+                var rawSt = strVal.toLowerCase();
+                if (rawSt === 'active') {
+                  student.status = 'Active';
+                } else if (rawSt === 'inactive') {
+                  student.status = 'Inactive';
+                } else if (rawSt === 'left' || rawSt.indexOf('left') !== -1 || rawSt.indexOf('tc') !== -1) {
+                  student.status = 'Left';
+                } else {
+                  student.status = 'Active';
+                  statusWarningList.push({ row: index + 2, name: student.name || ('Row ' + (index + 2)), value: strVal });
+                }
+              } else {
+                student[targetField] = strVal;
+              }
+            }
           }
         });
 
@@ -1935,7 +2034,8 @@
         sectionMismatchList: sectionMismatchList,
         duplicateList: duplicateList,
         skippedRows: skippedRows,
-        incompleteList: incompleteList
+        incompleteList: incompleteList,
+        statusWarningList: statusWarningList
       };
     }
 
@@ -1968,6 +2068,12 @@
         var incRowNums = evalRes.incompleteList.slice(0, 5).map(function(r) { return 'Row ' + r.rowNumber; }).join(', ');
         if (evalRes.incompleteList.length > 5) incRowNums += ', +' + (evalRes.incompleteList.length - 5) + ' more';
         html += '<div style="color:#F59E0B; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">info</span> ' + evalRes.incompleteList.length + ' will import but are missing recommended fields — ' + incRowNums + '</div>';
+      }
+
+      if (evalRes.statusWarningList && evalRes.statusWarningList.length > 0) {
+        var warnRows = evalRes.statusWarningList.slice(0, 5).map(function(r) { return 'Row ' + r.row + ' ("' + r.value + '")'; }).join(', ');
+        if (evalRes.statusWarningList.length > 5) warnRows += ', +' + (evalRes.statusWarningList.length - 5) + ' more';
+        html += '<div style="color:#F59E0B; font-weight:600; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">info</span> ' + evalRes.statusWarningList.length + ' rows had unrecognized status values (defaulted to Active) — ' + warnRows + '</div>';
       }
       html += '</div>';
 

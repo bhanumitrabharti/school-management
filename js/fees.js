@@ -791,7 +791,7 @@
     var defaulters = [];
 
     students.forEach(function(s) {
-      if (s.status === 'Inactive') return;
+      if (s.status === 'Inactive' || s.inTrash || s.status === 'Deleted') return;
       var stmt = generateFeeStatement(s.id);
       if (stmt && stmt.netDue > 0) {
         // Defaulter condition: Must have netDue > 0 AND at least one unpaid due that is overdue past dueDate + grace
@@ -845,7 +845,8 @@
       var displayPhone = (phone && phone.length >= 10) ? phone : '<span style="color:var(--danger)">No Phone</span>';
 
       bodyHTML += '<tr class="bulk-reminder-row-' + s.id + '">';
-      bodyHTML += '<td><strong>' + escapeHTML(sName) + '</strong>' + (stmt.rollNumber ? '<br><span style="font-size:11px; color:var(--text-muted);">Roll: ' + escapeHTML(stmt.rollNumber) + '</span>' : '') + '</td>';
+      var leftTag = s.status === 'Left' ? ' <span class="badge badge-secondary" style="font-size:10px; margin-left:4px;">Left</span>' : '';
+      bodyHTML += '<td><strong>' + escapeHTML(sName) + '</strong>' + leftTag + (stmt.rollNumber ? '<br><span style="font-size:11px; color:var(--text-muted);">Roll: ' + escapeHTML(stmt.rollNumber) + '</span>' : '') + '</td>';
       bodyHTML += '<td><span class="badge badge-info">' + escapeHTML(s.class) + (s.section ? '-' + escapeHTML(s.section) : '') + '</span></td>';
       bodyHTML += '<td><strong style="color:var(--danger);">₹' + stmt.netDue.toLocaleString('en-IN') + '</strong></td>';
       bodyHTML += '<td style="font-size:12px;">' + displayPhone + '</td>';
@@ -1680,7 +1681,13 @@
           var stats = getStudentFeeStats(s.id);
 
           html += '<tr>';
-          html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></div></div></td>';
+          var statusTag = '';
+          if (s.status === 'Left') {
+            statusTag = ' <span class="badge badge-secondary" style="font-size:10px; margin-left:4px;">Left</span>';
+          } else if (s.status === 'Inactive') {
+            statusTag = ' <span class="badge badge-warning" style="font-size:10px; margin-left:4px;">Inactive</span>';
+          }
+          html += '<td><div class="table-student-name"><div class="avatar avatar-sm" data-color="' + color + '">' + initials + '</div><div><strong style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + s.id + '\')">' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong>' + statusTag + '</div></div></td>';
           html += '<td><span class="badge badge-info">' + s.class + '-' + s.section + '</span></td>';
           html += '<td>' + s.rollNumber + '</td>';
           html += '<td>₹' + stats.totalDues.toLocaleString('en-IN') + '</td>';
@@ -2541,7 +2548,8 @@
     bodyHTML += '    <div>';
     bodyHTML += '      <h3 style="margin:0 0 4px 0; font-size:18px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">';
     bodyHTML += '        ' + escapeHTML(sFullName);
-    bodyHTML += '        <span class="badge ' + (student.status === 'Active' ? 'badge-success' : 'badge-danger') + '" style="font-size:10px; padding:2px 8px;">' + (student.status || 'Active') + '</span>';
+    var stBadge = student.status === 'Active' ? 'badge-success' : (student.status === 'Inactive' ? 'badge-warning' : 'badge-secondary');
+      bodyHTML += '        <span class="badge ' + stBadge + '" style="font-size:10px; padding:2px 8px;">' + (student.status || 'Active') + '</span>';
     bodyHTML += '      </h3>';
     bodyHTML += '      <div style="font-size:12px; color:var(--text-secondary); display:flex; gap:8px; align-items:center;">';
     bodyHTML += '        <span class="badge badge-info" style="font-size:11px;">Class ' + escapeHTML(student.class) + '-' + escapeHTML(student.section) + '</span>';
@@ -3760,8 +3768,10 @@
           return;
         }
 
-        // Get students to charge
-        var students = SchoolApp.store.students || [];
+        // Get students to charge (Active only, exclude Inactive, Left, inTrash, and Deleted)
+        var students = (SchoolApp.store.students || []).filter(function(s) {
+          return s && s.status === 'Active' && !s.inTrash && s.status !== 'Deleted';
+        });
         if (cls !== 'all') {
           students = students.filter(function(s) { return s.class === cls; });
         }
@@ -4194,6 +4204,7 @@
   SchoolApp.sendWhatsAppReceipt = sendWhatsAppReceipt;
   SchoolApp.getStudentPendingDuesByHead = getStudentPendingDuesByHead;
   SchoolApp.getStudentLedger = getStudentLedger;
+  SchoolApp.getStudentFeeStats = getStudentFeeStats;
   SchoolApp.openStudentFinancialProfile = openStudentFinancialProfile;
   SchoolApp.voidFeeTransaction = voidFeeTransaction;
 

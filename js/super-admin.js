@@ -1037,11 +1037,16 @@ window.saAuth = auth;
             var statusIcon  = school.status === 'Active' ? 'fiber_manual_record' : 'pause_circle';
             var featureCount = (school.allowed_features || []).length;
 
-            // Compute rough stats from main data if available
+            // Compute rough stats from main data if available (Active only)
             var studentCount = 0;
+            var inactiveStudentCount = 0;
+            var leftStudentCount = 0;
             var teacherCount = 0;
             if (data.students && Array.isArray(data.students)) {
-                studentCount = data.students.length;
+                var validStudents = data.students.filter(function(s) { return !s.inTrash && s.status !== 'Deleted'; });
+                studentCount = validStudents.filter(function(s) { return s.status === 'Active'; }).length;
+                inactiveStudentCount = validStudents.filter(function(s) { return s.status === 'Inactive'; }).length;
+                leftStudentCount = validStudents.filter(function(s) { return s.status === 'Left'; }).length;
             }
             if (data.teachers && Array.isArray(data.teachers)) {
                 teacherCount = data.teachers.length;
@@ -1109,7 +1114,8 @@ window.saAuth = auth;
                                 '<h4>Database Stats</h4>' +
                                 '<div class="sa-expand-stat">' +
                                     '<span class="material-icons-round">groups</span>' +
-                                    'Students: <strong>' + studentCount + '</strong>' +
+                                    'Students: <strong>' + studentCount + ' Active</strong>' +
+                                    ((inactiveStudentCount > 0 || leftStudentCount > 0) ? ' <span style="font-size:10px; color:var(--text-muted);">(' + inactiveStudentCount + ' Inactive, ' + leftStudentCount + ' Left)</span>' : '') +
                                 '</div>' +
                                 '<div class="sa-expand-stat">' +
                                     '<span class="material-icons-round">school</span>' +

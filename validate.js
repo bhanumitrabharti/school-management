@@ -10,6 +10,7 @@ const files = [
   'js/fees.js',
   'js/attendance.js',
   'js/students.js',
+  'js/documents.js',
   'js/timetable.js',
   'js/super-admin.js'
 ];

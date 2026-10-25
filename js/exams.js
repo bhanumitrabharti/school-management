@@ -37,6 +37,7 @@
   }
 
   var state = {
+    includeInactiveLeft: false,
     activeSubTab: 'setup', // 'setup', 'marks_entry', 'results', 'report_cards'
     examTerm: '',
     classVal: '',
@@ -836,9 +837,10 @@
           }
         }
 
+        var stBadge = s.status === 'Left' ? ' <span class="badge badge-secondary" style="font-size:10px;">Left</span>' : (s.status === 'Inactive' ? ' <span class="badge badge-warning" style="font-size:10px;">Inactive</span>' : '');
         html += '<tr>';
         html += '<td>' + (idx + 1) + '</td>';
-        html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong></td>';
+        html += '<td><strong>' + escapeHTML(SchoolApp.getStudentFullName(s)) + '</strong>' + stBadge + '</td>';
         html += '<td>' + s.rollNumber + '</td>';
         
         // Obtained input
@@ -1250,21 +1252,32 @@
       }
     }
 
-    // Student List Table & Printing Cards
-    var students = (SchoolApp.store.students || []).filter(function(s) {
-      return String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
-             String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim() &&
-             s.status === 'Active';
-    });
-
     var subjects = (SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[state.examTerm] && SchoolApp.store.examSubjects[state.examTerm][state.classVal] && SchoolApp.store.examSubjects[state.examTerm][state.classVal].subjects) || [];
 
+    // Student List Table & Printing Cards
+    var includeInactiveLeft = !!state.includeInactiveLeft;
+    var students = (SchoolApp.store.students || []).filter(function(s) {
+      if (s.inTrash || s.status === 'Deleted') return false;
+      var matchCls = String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim();
+      var matchSec = String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+      if (!matchCls || !matchSec) return false;
+      if (s.status === 'Active') return true;
+      if (includeInactiveLeft && (s.status === 'Inactive' || s.status === 'Left')) {
+        var statusInfo = getStudentMarksStatus(s.id, state.examTerm, subjects);
+        return statusInfo && statusInfo.status !== 'none' && statusInfo.status !== 'no_subjects' && !!statusInfo.marks;
+      }
+      return false;
+    });
+
     // Card 2: Report Card Status & Printing
-    html += '<div class="card mt-3"><div class="card-header">';
+    html += '<div class="card mt-3"><div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">';
     html += '  <h3><span class="material-icons-round">print</span> Report Card Status & Printing</h3>';
+    html += '  <div style="display:flex; align-items:center; gap:12px; margin-left:auto;">';
+    html += '    <label style="font-size:12px; font-weight:500; display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="exam-include-inactive-toggle"' + (state.includeInactiveLeft ? ' checked' : '') + '> Include Inactive / Left students with marks</label>';
     if (students.length > 0) {
       html += '  <button class="btn btn-secondary btn-sm" id="exam-bulk-reportcard-btn-lower"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:4px;">print</span> Generate All Report Cards</button>';
     }
+    html += '  </div>';
     html += '</div><div class="card-body">';
 
     if (students.length === 0) {
@@ -1813,10 +1826,19 @@
   }
 
   function printBulkReportCards() {
+    var includeInactiveLeft = !!state.includeInactiveLeft;
+    var subjects = (SchoolApp.store.examSubjects && SchoolApp.store.examSubjects[state.examTerm] && SchoolApp.store.examSubjects[state.examTerm][state.classVal] && SchoolApp.store.examSubjects[state.examTerm][state.classVal].subjects) || [];
     var students = (SchoolApp.store.students || []).filter(function(s) {
-      return String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim() &&
-             String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim() &&
-             s.status === 'Active';
+      if (s.inTrash || s.status === 'Deleted') return false;
+      var matchCls = String(s.class).toLowerCase().trim() === String(state.classVal).toLowerCase().trim();
+      var matchSec = String(s.section).toLowerCase().trim() === String(state.sectionVal).toLowerCase().trim();
+      if (!matchCls || !matchSec) return false;
+      if (s.status === 'Active') return true;
+      if (includeInactiveLeft && (s.status === 'Inactive' || s.status === 'Left')) {
+        var statusInfo = getStudentMarksStatus(s.id, state.examTerm, subjects);
+        return statusInfo && statusInfo.status !== 'none' && statusInfo.status !== 'no_subjects' && !!statusInfo.marks;
+      }
+      return false;
     });
 
     if (students.length === 0) {
@@ -2848,6 +2870,13 @@
     if (bulkBtnLower) {
       bulkBtnLower.addEventListener('click', function() {
         printBulkReportCards();
+      });
+    }
+    var incToggle = document.getElementById('exam-include-inactive-toggle');
+    if (incToggle) {
+      incToggle.addEventListener('change', function() {
+        state.includeInactiveLeft = this.checked;
+        render();
       });
     }
 
