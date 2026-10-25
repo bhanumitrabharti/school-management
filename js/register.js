@@ -6,12 +6,22 @@
 (function () {
   'use strict';
 
+  // Generic school words to strip when suggesting subdomains and usernames
+  const GENERIC_SCHOOL_WORDS = new Set([
+    'the', 'school', 'public', 'academy', 'vidyalaya', 'vidya', 'mandir',
+    'high', 'higher', 'senior', 'secondary', 'sr', 'sec', 'english', 'medium',
+    'convent', 'international', 'global', 'model', 'residential', 'co-ed', 'coed',
+    'boys', 'girls', 'college', 'institute', 'institution', 'educational',
+    'central', 'national', 'st', 'saint', 'shri', 'sri', 'dr'
+  ]);
+
   // State
   let currentStep = 1;
   let currentRegId = null;
   let subdomainEditedManually = false;
   let usernameEditedManually = false;
   let subdomainCheckTimer = null;
+  let fetchSuggestionsTimer = null;
   let isSubdomainAvailable = false;
   let turnstileWidgetId = null;
   let turnstileToken = null;
@@ -43,6 +53,7 @@
   const cityInput = document.getElementById('city');
   const stateSelect = document.getElementById('state');
   const subdomainInput = document.getElementById('subdomain');
+  const subdomainSuggestions = document.getElementById('subdomain-suggestions');
   const subdomainFeedback = document.getElementById('subdomain-feedback');
   const portalUrlPreview = document.getElementById('portal-url-preview');
   const referralCodeInput = document.getElementById('referralCode');
@@ -51,6 +62,7 @@
   const adminEmailInput = document.getElementById('adminEmail');
   const adminPhoneInput = document.getElementById('adminPhone');
   const adminUsernameInput = document.getElementById('adminUsername');
+  const usernameSuggestions = document.getElementById('username-suggestions');
   const adminPasswordInput = document.getElementById('adminPassword');
   const adminConfirmPasswordInput = document.getElementById('adminConfirmPassword');
   const agreeTermsCheckbox = document.getElementById('agreeTerms');
@@ -92,34 +104,145 @@
     alertBanner.innerHTML = '';
   }
 
-  // D2 Helper: Suggest Admin Username
-  function suggestUsername(name) {
-    if (!name || typeof name !== 'string') return 'admin';
-    const clean = name.trim().replace(/[^a-zA-Z0-9\s]/g, '');
+  // F: Suggest Admin Usernames (Base + Alternatives)
+  function suggestAdminUsernames(schoolName) {
+    if (!schoolName || typeof schoolName !== 'string') return ['admin', 'schooladmin'];
+    const clean = schoolName
+      .toLowerCase()
+      .replace(/['’]s\b/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     const words = clean.split(/\s+/).filter(Boolean);
-    if (words.length === 0) return 'admin';
+    if (words.length === 0) return ['admin', 'schooladmin'];
 
-    let initials = '';
-    for (const w of words) initials += w[0].toLowerCase();
+    const distinctive = words.filter(w => !GENERIC_SCHOOL_WORDS.has(w));
+    const primaryWords = distinctive.length > 0 ? distinctive : words;
+    const base = primaryWords[0].replace(/[^a-z0-9]/g, '');
 
-    let base = initials.length >= 2 ? initials : words[0].toLowerCase();
-    let username = (base + 'admin').toLowerCase().replace(/[^a-z0-9._]/g, '');
-    if (username.length < 4) username = 'admin';
-    if (username.length > 30) username = username.substring(0, 30);
-    return username;
+    let remainingInitials = '';
+    const remaining = words.filter(w => w !== primaryWords[0]);
+    for (const w of remaining) {
+      if (w.length > 0) remainingInitials += w[0];
+    }
+    let allInitials = '';
+    for (const w of words) {
+      if (w.length > 0) allInitials += w[0];
+    }
+
+    const list = [];
+    // 1. Base: distinctive + "admin" (e.g. greenwoodadmin)
+    if (base.length >= 2) list.push((base + 'admin').substring(0, 30));
+    // 2. Distinctive + initials (e.g. greenwoodps)
+    if (base.length >= 2 && remainingInitials.length >= 1) list.push((base + remainingInitials).substring(0, 30));
+    // 3. Distinctive + "office" (e.g. greenwoodoffice)
+    if (base.length >= 2) list.push((base + 'office').substring(0, 30));
+    // 4. Initials + "admin" (e.g. gpsadmin, svmadmin)
+    if (allInitials.length >= 2) list.push((allInitials + 'admin').substring(0, 30));
+
+    const seen = new Set();
+    const result = [];
+    for (const u of list) {
+      const cleanU = u.toLowerCase().replace(/[^a-z0-9._]/g, '');
+      if (cleanU.length >= 4 && !seen.has(cleanU)) {
+        seen.add(cleanU);
+        result.push(cleanU);
+      }
+    }
+    return result.length > 0 ? result : ['schooladmin'];
   }
 
-  // Suggest Subdomain slug
-  function suggestSubdomain(name) {
-    if (!name) return '';
-    return name
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .substring(0, 30);
+  // Render Subdomain Suggestions Chips
+  function renderSubdomainSuggestions(suggestions, selectedSlug) {
+    if (!subdomainSuggestions) return;
+    if (!suggestions || suggestions.length === 0) {
+      subdomainSuggestions.style.display = 'none';
+      subdomainSuggestions.innerHTML = '';
+      return;
+    }
+
+    let html = '<span class="suggestion-label">Suggestions:</span>';
+    for (const slug of suggestions) {
+      const isActive = slug === selectedSlug ? ' active' : '';
+      html += `<button type="button" class="suggestion-chip${isActive}" data-subdomain="${slug}">${slug}</button>`;
+    }
+    subdomainSuggestions.innerHTML = html;
+    subdomainSuggestions.style.display = 'flex';
+
+    subdomainSuggestions.querySelectorAll('.suggestion-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const chosen = btn.getAttribute('data-subdomain');
+        if (!chosen) return;
+        if (subdomainInput) {
+          subdomainInput.value = chosen;
+          if (portalUrlPreview) portalUrlPreview.textContent = `https://${chosen}.ctrlshifts.in`;
+        }
+        subdomainSuggestions.querySelectorAll('.suggestion-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        checkSubdomainAvailability(chosen);
+      });
+    });
+  }
+
+  // Render Username Suggestions Chips
+  function renderUsernameSuggestions(candidates, selectedUsername) {
+    if (!usernameSuggestions) return;
+    if (!candidates || candidates.length === 0) {
+      usernameSuggestions.style.display = 'none';
+      usernameSuggestions.innerHTML = '';
+      return;
+    }
+
+    let html = '<span class="suggestion-label">Suggestions:</span>';
+    for (const uname of candidates) {
+      const isActive = uname === selectedUsername ? ' active' : '';
+      html += `<button type="button" class="suggestion-chip${isActive}" data-username="${uname}">${uname}</button>`;
+    }
+    usernameSuggestions.innerHTML = html;
+    usernameSuggestions.style.display = 'flex';
+
+    usernameSuggestions.querySelectorAll('.suggestion-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const chosen = btn.getAttribute('data-username');
+        if (!chosen) return;
+        if (adminUsernameInput) {
+          adminUsernameInput.value = chosen;
+        }
+        usernameSuggestions.querySelectorAll('.suggestion-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  }
+
+  // Fetch Subdomain Suggestions from API
+  async function fetchSubdomainSuggestions(name, city) {
+    if (!name || name.trim().length < 2) {
+      if (subdomainSuggestions) subdomainSuggestions.style.display = 'none';
+      return;
+    }
+    try {
+      const url = `/api/subdomain-check?suggest=${encodeURIComponent(name.trim())}&city=${encodeURIComponent((city || '').trim())}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+        if (!subdomainEditedManually) {
+          const top = data.suggestions[0];
+          if (subdomainInput) {
+            subdomainInput.value = top;
+            if (portalUrlPreview) portalUrlPreview.textContent = `https://${top}.ctrlshifts.in`;
+          }
+          isSubdomainAvailable = true;
+          subdomainFeedback.className = 'subdomain-feedback ok';
+          subdomainFeedback.innerHTML = `✓ <b>${top}.ctrlshifts.in</b> is available!`;
+          renderSubdomainSuggestions(data.suggestions, top);
+        } else {
+          renderSubdomainSuggestions(data.suggestions, subdomainInput ? subdomainInput.value : '');
+        }
+      }
+    } catch (e) {
+      console.warn('Subdomain suggestions fetch error:', e.message);
+    }
   }
 
   // Update Stepper Visuals
@@ -201,20 +324,36 @@
   // Attach Subdomain & School Name Listeners
   if (schoolNameInput) {
     schoolNameInput.addEventListener('input', () => {
-      const name = schoolNameInput.value;
-      if (!subdomainEditedManually) {
-        const slug = suggestSubdomain(name);
-        if (subdomainInput) {
-          subdomainInput.value = slug;
-          if (portalUrlPreview) portalUrlPreview.textContent = `https://${slug || 'school'}.ctrlshifts.in`;
-          clearTimeout(subdomainCheckTimer);
-          if (slug.length >= 3) {
-            subdomainCheckTimer = setTimeout(() => checkSubdomainAvailability(slug), 350);
-          }
-        }
-      }
+      const name = schoolNameInput.value.trim();
+      const city = cityInput ? cityInput.value.trim() : '';
+
+      // Username suggestions
       if (!usernameEditedManually && adminUsernameInput) {
-        adminUsernameInput.value = suggestUsername(name);
+        const candidates = suggestAdminUsernames(name);
+        const topUser = candidates[0] || 'admin';
+        adminUsernameInput.value = topUser;
+        renderUsernameSuggestions(candidates, topUser);
+      }
+
+      // Subdomain suggestions
+      if (!subdomainEditedManually) {
+        clearTimeout(fetchSuggestionsTimer);
+        fetchSuggestionsTimer = setTimeout(() => {
+          fetchSubdomainSuggestions(name, city);
+        }, 300);
+      }
+    });
+  }
+
+  if (cityInput) {
+    cityInput.addEventListener('input', () => {
+      const name = schoolNameInput ? schoolNameInput.value.trim() : '';
+      const city = cityInput.value.trim();
+      if (!subdomainEditedManually && name.length >= 2) {
+        clearTimeout(fetchSuggestionsTimer);
+        fetchSuggestionsTimer = setTimeout(() => {
+          fetchSubdomainSuggestions(name, city);
+        }, 400);
       }
     });
   }
@@ -222,6 +361,9 @@
   if (subdomainInput) {
     subdomainInput.addEventListener('input', () => {
       subdomainEditedManually = true;
+      if (subdomainSuggestions) {
+        subdomainSuggestions.querySelectorAll('.suggestion-chip').forEach(b => b.classList.remove('active'));
+      }
       let val = subdomainInput.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
       subdomainInput.value = val;
       if (portalUrlPreview) portalUrlPreview.textContent = `https://${val || 'school'}.ctrlshifts.in`;
@@ -240,6 +382,9 @@
   if (adminUsernameInput) {
     adminUsernameInput.addEventListener('input', () => {
       usernameEditedManually = true;
+      if (usernameSuggestions) {
+        usernameSuggestions.querySelectorAll('.suggestion-chip').forEach(b => b.classList.remove('active'));
+      }
       adminUsernameInput.value = adminUsernameInput.value.toLowerCase().replace(/[^a-z0-9._]/g, '');
     });
   }
@@ -281,7 +426,9 @@
 
       // Pre-fill username if still empty
       if (!adminUsernameInput.value) {
-        adminUsernameInput.value = suggestUsername(schoolName);
+        const candidates = suggestAdminUsernames(schoolName);
+        adminUsernameInput.value = candidates[0] || 'admin';
+        renderUsernameSuggestions(candidates, adminUsernameInput.value);
       }
 
       setStep(2);
@@ -294,6 +441,18 @@
     btnBackTo1.addEventListener('click', () => {
       setStep(1);
     });
+  }
+
+  // Turnstile reset helper
+  function resetTurnstile() {
+    turnstileToken = null;
+    if (window.turnstile && turnstileWidgetId !== null) {
+      try {
+        window.turnstile.reset(turnstileWidgetId);
+      } catch (e) {
+        console.warn('Turnstile reset note:', e.message);
+      }
+    }
   }
 
   // Render Turnstile
@@ -318,6 +477,18 @@
             sitekey: sitekey,
             callback: function (token) {
               turnstileToken = token;
+            },
+            'expired-callback': function () {
+              turnstileToken = null;
+              resetTurnstile();
+            },
+            'error-callback': function () {
+              turnstileToken = null;
+              resetTurnstile();
+            },
+            'timeout-callback': function () {
+              turnstileToken = null;
+              resetTurnstile();
             }
           });
         } catch (e) {
@@ -419,6 +590,7 @@
         const data = await resp.json();
 
         if (!resp.ok) {
+          resetTurnstile();
           showAlert(data.error || 'Registration failed. Please check your details.');
           btnSubmitStep2.disabled = false;
           btnSubmitStep2.innerHTML = 'Send Verification Code →';
@@ -439,6 +611,7 @@
         if (otpDigits[0]) otpDigits[0].focus();
 
       } catch (err) {
+        resetTurnstile();
         showAlert('Network error occurred. Please check your connection and try again.');
         btnSubmitStep2.disabled = false;
         btnSubmitStep2.innerHTML = 'Send Verification Code →';

@@ -57,6 +57,13 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // Extract client IP (trimmed first IP from x-forwarded-for or socket)
+  const rawXff = req.headers['x-forwarded-for'];
+  const clientIp = typeof rawXff === 'string' && rawXff.trim()
+    ? rawXff.split(',')[0].trim()
+    : (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress.trim() : '127.0.0.1');
+  const hashedClientIp = hashIp(clientIp);
+
   // F4: Cloudflare Turnstile Verification (Fail-Closed)
   if (!isMock) {
     if (!process.env.TURNSTILE_SECRET_KEY) {
@@ -79,7 +86,7 @@ module.exports = async function handler(req, res) {
         body: new URLSearchParams({
           secret: process.env.TURNSTILE_SECRET_KEY,
           response: turnstileToken,
-          remoteip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
+          remoteip: clientIp
         }),
         signal: AbortSignal.timeout(5000)
       });
@@ -92,14 +99,19 @@ module.exports = async function handler(req, res) {
     }
 
     if (!verifyJson || !verifyJson.success) {
-      return res.status(400).json({ error: 'Captcha verification failed. Please refresh and try again.' });
+      const errorCodes = (verifyJson && verifyJson['error-codes']) || [];
+      console.error('[registration-start] Turnstile verification failed. Error codes:', errorCodes);
+
+      if (errorCodes.includes('invalid-input-secret')) {
+        console.error('[registration-start] CRITICAL: TURNSTILE_SECRET_KEY is invalid according to Cloudflare siteverify!');
+        return res.status(503).json({ error: 'Service configuration error, please contact us.' });
+      }
+      if (errorCodes.includes('timeout-or-duplicate')) {
+        return res.status(400).json({ error: 'Verification expired, please complete it again.' });
+      }
+      return res.status(400).json({ error: 'Security verification failed. Please try again.' });
     }
   }
-
-  // Extract client IP
-  const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
-  const clientIp = typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '127.0.0.1';
-  const hashedClientIp = hashIp(clientIp);
 
   // Input Sanitization
   const schoolName = (body.schoolName || '').trim();

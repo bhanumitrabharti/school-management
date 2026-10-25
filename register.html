@@ -378,6 +378,49 @@ body {
 .subdomain-feedback.err { color: var(--red); font-weight: 500; }
 .subdomain-feedback.loading { color: var(--muted); }
 
+/* Smart suggestion chips */
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.suggestion-label {
+  font-size: 0.74rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+}
+.suggestion-chip {
+  background: var(--sky);
+  color: var(--blue);
+  border: 1px solid var(--sky2);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-family: var(--m);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.suggestion-chip:hover {
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue);
+}
+.suggestion-chip.active {
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue-d);
+}
+
 /* Checkboxes */
 .checkbox-wrap {
   display: flex;
@@ -680,33 +723,49 @@ body {
 
           <div class="form-group">
             <label for="city">City / Town <span class="hint">e.g. Bokaro</span></label>
-            <input type="text" id="city" name="city" placeholder="Bokaro" required maxlength="50">
+            <input type="text" id="city" name="city" placeholder="e.g. New Delhi" required maxlength="50">
           </div>
 
           <div class="form-group">
             <label for="state">State</label>
             <select id="state" name="state" required>
-              <option value="Jharkhand" selected>Jharkhand</option>
-              <option value="Bihar">Bihar</option>
-              <option value="West Bengal">West Bengal</option>
-              <option value="Uttar Pradesh">Uttar Pradesh</option>
-              <option value="Odisha">Odisha</option>
-              <option value="Delhi">Delhi</option>
-              <option value="Madhya Pradesh">Madhya Pradesh</option>
-              <option value="Chhattisgarh">Chhattisgarh</option>
-              <option value="Rajasthan">Rajasthan</option>
-              <option value="Maharashtra">Maharashtra</option>
-              <option value="Karnataka">Karnataka</option>
-              <option value="Tamil Nadu">Tamil Nadu</option>
+              <option value="" selected disabled>Select a State</option>
+              <option value="Andaman and Nicobar Islands">Andaman and Nicobar Islands</option>
               <option value="Andhra Pradesh">Andhra Pradesh</option>
-              <option value="Telangana">Telangana</option>
+              <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+              <option value="Assam">Assam</option>
+              <option value="Bihar">Bihar</option>
+              <option value="Chandigarh">Chandigarh</option>
+              <option value="Chhattisgarh">Chhattisgarh</option>
+              <option value="Dadra and Nagar Haveli and Daman and Diu">Dadra and Nagar Haveli and Daman and Diu</option>
+              <option value="Delhi">Delhi</option>
+              <option value="Goa">Goa</option>
               <option value="Gujarat">Gujarat</option>
               <option value="Haryana">Haryana</option>
-              <option value="Punjab">Punjab</option>
-              <option value="Assam">Assam</option>
+              <option value="Himachal Pradesh">Himachal Pradesh</option>
+              <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+              <option value="Jharkhand">Jharkhand</option>
+              <option value="Karnataka">Karnataka</option>
               <option value="Kerala">Kerala</option>
+              <option value="Ladakh">Ladakh</option>
+              <option value="Lakshadweep">Lakshadweep</option>
+              <option value="Madhya Pradesh">Madhya Pradesh</option>
+              <option value="Maharashtra">Maharashtra</option>
+              <option value="Manipur">Manipur</option>
+              <option value="Meghalaya">Meghalaya</option>
+              <option value="Mizoram">Mizoram</option>
+              <option value="Nagaland">Nagaland</option>
+              <option value="Odisha">Odisha</option>
+              <option value="Puducherry">Puducherry</option>
+              <option value="Punjab">Punjab</option>
+              <option value="Rajasthan">Rajasthan</option>
+              <option value="Sikkim">Sikkim</option>
+              <option value="Tamil Nadu">Tamil Nadu</option>
+              <option value="Telangana">Telangana</option>
+              <option value="Tripura">Tripura</option>
+              <option value="Uttar Pradesh">Uttar Pradesh</option>
               <option value="Uttarakhand">Uttarakhand</option>
-              <option value="Other">Other State / UT</option>
+              <option value="West Bengal">West Bengal</option>
             </select>
           </div>
 
@@ -716,6 +775,7 @@ body {
               <input type="text" id="subdomain" name="subdomain" placeholder="greenwood" autocomplete="off" spellcheck="false" required maxlength="30">
               <span class="subdomain-suffix">.ctrlshifts.in</span>
             </div>
+            <div id="subdomain-suggestions" class="suggestion-chips" style="display:none;"></div>
             <div id="subdomain-feedback" class="subdomain-feedback">
               Portal URL: <span id="portal-url-preview" style="font-family:var(--m);font-weight:600;">https://school.ctrlshifts.in</span>
             </div>
@@ -723,7 +783,7 @@ body {
 
           <div class="form-group full-width">
             <label for="referralCode">Employee / Referral Code <span class="hint">Optional</span></label>
-            <input type="text" id="referralCode" name="referralCode" placeholder="e.g. EMP-BHANU" style="text-transform:uppercase;" maxlength="20">
+            <input type="text" id="referralCode" name="referralCode" placeholder="e.g. EMP001" style="text-transform:uppercase;" maxlength="20">
           </div>
         </div>
 
@@ -737,6 +797,10 @@ body {
       <!-- Step 2: Admin Account -->
       <form id="step-2-form" class="form-section" onsubmit="return false;">
         <div class="form-grid">
+          <div style="opacity:0;position:absolute;top:0;left:0;height:0;width:0;z-index:-1;overflow:hidden;" aria-hidden="true">
+            <input type="text" name="username_fake" tabindex="-1" autocomplete="username">
+            <input type="password" name="password_fake" tabindex="-1" autocomplete="current-password">
+          </div>
           <div class="form-group full-width">
             <label for="adminName">Administrator Full Name <span class="hint">Principal or School Director</span></label>
             <input type="text" id="adminName" name="adminName" placeholder="Rajesh Kumar" required maxlength="80">
@@ -754,17 +818,18 @@ body {
 
           <div class="form-group full-width">
             <label for="adminUsername">Admin Login Username <span class="hint">4–30 chars (letters, digits, ., _)</span></label>
-            <input type="text" id="adminUsername" name="adminUsername" placeholder="gpsadmin" autocomplete="off" spellcheck="false" required maxlength="30">
+            <input type="text" id="adminUsername" name="schoolAdminUsername" placeholder="gpsadmin" autocomplete="off" spellcheck="false" required maxlength="30">
+            <div id="username-suggestions" class="suggestion-chips" style="display:none;"></div>
           </div>
 
           <div class="form-group">
             <label for="adminPassword">Create Password <span class="hint">Min 8 characters</span></label>
-            <input type="password" id="adminPassword" name="adminPassword" placeholder="••••••••" required minlength="8">
+            <input type="password" id="adminPassword" name="adminPassword" placeholder="••••••••" autocomplete="new-password" required minlength="8">
           </div>
 
           <div class="form-group">
             <label for="adminConfirmPassword">Confirm Password</label>
-            <input type="password" id="adminConfirmPassword" name="adminConfirmPassword" placeholder="••••••••" required minlength="8">
+            <input type="password" id="adminConfirmPassword" name="adminConfirmPassword" placeholder="••••••••" autocomplete="new-password" required minlength="8">
           </div>
 
           <div class="full-width" style="margin-top:10px;">

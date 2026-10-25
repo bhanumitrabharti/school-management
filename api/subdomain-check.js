@@ -2,9 +2,10 @@
 
 /**
  * GET / POST /api/subdomain-check (CommonJS)
- * Checks if a requested subdomain is available for registration.
+ * Checks if a requested subdomain is available for registration,
+ * OR generates up to 4 smart available subdomain suggestions when ?suggest=<schoolName> is provided.
  */
-const { validateSubdomain } = require('./_lib/validation');
+const { validateSubdomain, generateSubdomainCandidates } = require('./_lib/validation');
 const { getDb } = require('./_lib/firebase-admin');
 
 function applyCors(req, res) {
@@ -28,6 +29,57 @@ module.exports = async function handler(req, res) {
   applyCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // Mode E: Smart Subdomain Suggestions
+  const suggestSchoolName = req.method === 'GET'
+    ? req.query.suggest
+    : (req.body && req.body.suggest);
+  const cityParam = req.method === 'GET'
+    ? req.query.city
+    : (req.body && req.body.city);
+
+  if (suggestSchoolName) {
+    const rawCandidates = generateSubdomainCandidates(String(suggestSchoolName), String(cityParam || ''));
+    if (rawCandidates.length === 0) {
+      return res.status(200).json({ success: true, suggestions: [] });
+    }
+
+    const db = getDb();
+    const now = new Date().toISOString();
+    const availableSuggestions = [];
+
+    for (const cand of rawCandidates) {
+      if (availableSuggestions.length >= 4) break;
+      try {
+        // 1. Check existing schools in Firestore
+        const schoolSnap = await db.collection('schools')
+          .where('subdomain', '==', cand)
+          .limit(1)
+          .get();
+        if (!schoolSnap.empty) continue;
+
+        // 2. Check active reservations in subdomain_reservations
+        const resDoc = await db.collection('subdomain_reservations').doc(cand).get();
+        if (resDoc.exists) {
+          const rData = resDoc.data();
+          const isExpired = rData.expiresAt && rData.expiresAt < now;
+          if (!isExpired && rData.status !== 'released') {
+            continue;
+          }
+        }
+
+        availableSuggestions.push(cand);
+      } catch (err) {
+        console.warn(`[subdomain-check] Candidate "${cand}" availability check error:`, err.message);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      suggestions: availableSuggestions
+    });
+  }
+
+  // Standard Mode: Single Subdomain Availability Check
   const querySubdomain = req.method === 'GET' 
     ? req.query.subdomain 
     : (req.body && (req.body.subdomain || req.body));

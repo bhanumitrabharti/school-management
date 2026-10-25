@@ -19,6 +19,8 @@ const {
 import validationPkg from '../api/_lib/validation.js';
 const {
   suggestAdminUsername,
+  suggestAdminUsernameCandidates,
+  generateSubdomainCandidates,
   validateAdminUsername,
   validateSubdomain,
   hashPassword,
@@ -138,20 +140,24 @@ async function runTests() {
   // ──────────────────────────────────────────────────────────────────────────
   console.log('--- TEST GROUP 1: D2 Username Suggestion & Validation ---');
 
-  test('D2.1: Initials + admin for multi-word school names', () => {
-    assert.equal(suggestAdminUsername('Greenwood Public School'), 'gpsadmin');
-    assert.equal(suggestAdminUsername('Delhi Public School Bokaro'), 'dpsbadmin');
-    assert.equal(suggestAdminUsername("St. Xavier's High School"), 'sxhsadmin');
-    assert.equal(suggestAdminUsername('D.A.V. Public School'), 'dpsadmin');
+  test('F.1: Distinctive word + admin for school names', () => {
+    assert.equal(suggestAdminUsername('Greenwood Public School'), 'greenwoodadmin');
+    assert.equal(suggestAdminUsername('Delhi Public School Bokaro'), 'delhiadmin');
+    assert.equal(suggestAdminUsername("St. Xavier's High School"), 'stadmin');
+    assert.equal(suggestAdminUsername('Paathshala'), 'paathshalaadmin');
   });
 
-  test('D2.2: Single word or short initials fallback', () => {
-    assert.equal(suggestAdminUsername('Paathshala'), 'paathshalaadmin');
-    assert.equal(suggestAdminUsername('A School'), 'asadmin');
+  test('F.2: Admin username candidates generate base and alternatives', () => {
+    const candidates = suggestAdminUsernameCandidates('Greenwood Public School');
+    assert.ok(candidates.includes('greenwoodadmin'));
+    assert.ok(candidates.includes('greenwoodps'));
+    assert.ok(candidates.includes('greenwoodoffice'));
+    assert.ok(candidates.includes('gpsadmin'));
   });
 
   test('D2.3: Admin username format validation', () => {
     assert.equal(validateAdminUsername('gpsadmin').valid, true);
+    assert.equal(validateAdminUsername('greenwoodadmin').valid, true);
     assert.equal(validateAdminUsername('john.doe_01').valid, true);
     assert.equal(validateAdminUsername('adm').valid, false, 'Should reject < 4 chars');
     assert.equal(validateAdminUsername('user@domain').valid, false, 'Should reject invalid chars');
@@ -473,7 +479,7 @@ async function runTests() {
       body: {
         action: 'create',
         code: testCode,
-        employeeName: 'Bhanu Pratap',
+        employeeName: 'Rahul Sharma',
         employeeId: 'EMP001',
         department: 'Growth'
       },
@@ -504,8 +510,167 @@ async function runTests() {
     assert.ok(Array.isArray(eRes.bodyData.report));
   });
 
+
   // ──────────────────────────────────────────────────────────────────────────
-  // 7. CLEANUP
+  // 7. Onboarding Form Fixes: Smart Suggestions, Location Fields, Captcha Errors
+  // ──────────────────────────────────────────────────────────────────────────
+  console.log('\n--- TEST GROUP 7: Smart Suggestions, Location Fields & Captcha ---');
+
+  test('E.1: Smart subdomain candidate generation for 5 diverse schools', () => {
+    // 1. Greenwood Public School (Bokaro)
+    const c1 = generateSubdomainCandidates('Greenwood Public School', 'Bokaro');
+    assert.ok(c1.includes('greenwood'), 'Should contain greenwood');
+    assert.ok(c1.includes('greenwoodps'), 'Should contain greenwoodps');
+
+    // 2. Shishu Vikash Mandir Senior Secondary School (Ranchi)
+    const c2 = generateSubdomainCandidates('Shishu Vikash Mandir Senior Secondary School', 'Ranchi');
+    assert.ok(c2.includes('shishu') || c2.includes('shishu-vikash') || c2.includes('shishuvikash'));
+
+    // 3. St. Xavier’s English Medium High School (Patna)
+    const c3 = generateSubdomainCandidates("St. Xavier's English Medium High School", 'Patna');
+    assert.ok(c3.includes('st-xavier') || c3.includes('stxavier') || c3.includes('xavier'));
+
+    // 4. DAV Public School (Delhi)
+    const c4 = generateSubdomainCandidates('DAV Public School', 'Delhi');
+    assert.ok(c4.includes('dav') || c4.includes('davps'));
+
+    // 5. Modern Academy (Kolkata)
+    const c5 = generateSubdomainCandidates('Modern Academy', 'Kolkata');
+    assert.ok(c5.includes('modern') || c5.includes('modern-academy'));
+  });
+
+  test('E.2: Subdomain check endpoint with suggest mode', async () => {
+    const { req, res } = createMockReqRes({
+      method: 'GET',
+      query: { suggest: 'Greenwood Public School', city: 'Bokaro' }
+    });
+    await handlerSubdomainCheck(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.bodyData.success, true);
+    assert.ok(Array.isArray(res.bodyData.suggestions));
+    assert.ok(res.bodyData.suggestions.length > 0);
+    assert.ok(res.bodyData.suggestions.length <= 4);
+    for (const s of res.bodyData.suggestions) {
+      assert.equal(validateSubdomain(s).valid, true);
+    }
+  });
+
+  test('C.1: State selection is strictly required on server', async () => {
+    const { req, res } = createMockReqRes({
+      method: 'POST',
+      body: {
+        schoolName: 'Test School Without State',
+        city: 'New Delhi',
+        state: '', // Empty state
+        subdomain: 'test-nostate-' + Date.now().toString(36),
+        adminEmail: 'test-nostate@ctrlshifts.in',
+        adminPhone: '9876543210',
+        adminPassword: 'Password123!',
+        termsAccepted: true
+      }
+    });
+    await handlerRegistrationStart(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.bodyData.error, 'State is required.');
+  });
+
+  test('A.1: Turnstile error code mapping', async () => {
+    // Save original fetch
+    const originalFetch = globalThis.fetch;
+    const originalMock = process.env.MOCK_ONBOARDING_MODE;
+    const originalSecret = process.env.TURNSTILE_SECRET_KEY;
+    const originalSmtpHost = process.env.SMTP_HOST;
+    const originalSmtpUser = process.env.SMTP_USER;
+    const originalSmtpPass = process.env.SMTP_PASS;
+
+    try {
+      process.env.MOCK_ONBOARDING_MODE = 'false';
+      process.env.TURNSTILE_SECRET_KEY = 'mock_secret_key';
+      process.env.SMTP_HOST = 'smtp.example.com';
+      process.env.SMTP_USER = 'user';
+      process.env.SMTP_PASS = 'pass';
+
+      // Case 1: timeout-or-duplicate
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: false, 'error-codes': ['timeout-or-duplicate'] })
+      });
+      const { req: req1, res: res1 } = createMockReqRes({
+        method: 'POST',
+        body: {
+          schoolName: 'Turnstile Test School',
+          city: 'Bokaro',
+          state: 'Jharkhand',
+          subdomain: 'turnstile-test-1',
+          adminEmail: 'turnstile1@ctrlshifts.in',
+          adminPhone: '9876543210',
+          adminPassword: 'Password123!',
+          termsAccepted: true,
+          turnstileToken: 'dummy-token'
+        }
+      });
+      await handlerRegistrationStart(req1, res1);
+      assert.equal(res1.statusCode, 400);
+      assert.equal(res1.bodyData.error, 'Verification expired, please complete it again.');
+
+      // Case 2: invalid-input-secret
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: false, 'error-codes': ['invalid-input-secret'] })
+      });
+      const { req: req2, res: res2 } = createMockReqRes({
+        method: 'POST',
+        body: {
+          schoolName: 'Turnstile Test School',
+          city: 'Bokaro',
+          state: 'Jharkhand',
+          subdomain: 'turnstile-test-2',
+          adminEmail: 'turnstile2@ctrlshifts.in',
+          adminPhone: '9876543210',
+          adminPassword: 'Password123!',
+          termsAccepted: true,
+          turnstileToken: 'dummy-token'
+        }
+      });
+      await handlerRegistrationStart(req2, res2);
+      assert.equal(res2.statusCode, 503);
+      assert.equal(res2.bodyData.error, 'Service configuration error, please contact us.');
+
+      // Case 3: generic other error code
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({ success: false, 'error-codes': ['bad-request'] })
+      });
+      const { req: req3, res: res3 } = createMockReqRes({
+        method: 'POST',
+        body: {
+          schoolName: 'Turnstile Test School',
+          city: 'Bokaro',
+          state: 'Jharkhand',
+          subdomain: 'turnstile-test-3',
+          adminEmail: 'turnstile3@ctrlshifts.in',
+          adminPhone: '9876543210',
+          adminPassword: 'Password123!',
+          termsAccepted: true,
+          turnstileToken: 'dummy-token'
+        }
+      });
+      await handlerRegistrationStart(req3, res3);
+      assert.equal(res3.statusCode, 400);
+      assert.equal(res3.bodyData.error, 'Security verification failed. Please try again.');
+
+    } finally {
+      globalThis.fetch = originalFetch;
+      process.env.MOCK_ONBOARDING_MODE = originalMock;
+      process.env.TURNSTILE_SECRET_KEY = originalSecret;
+      process.env.SMTP_HOST = originalSmtpHost;
+      process.env.SMTP_USER = originalSmtpUser;
+      process.env.SMTP_PASS = originalSmtpPass;
+    }
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 8. CLEANUP
   // ──────────────────────────────────────────────────────────────────────────
   console.log('\n--- CLEANUP OF SYNTHETIC TEST DOCUMENTS ---');
   let deletedCount = 0;

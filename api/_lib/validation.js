@@ -65,33 +65,219 @@ const RESERVED_SUBDOMAINS = new Set([
   'webhooks'
 ]);
 
+// Generic school keywords dropped during candidate subdomain & username generation
+const GENERIC_SCHOOL_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'of', 'for', 'in', 'at',
+  'public', 'private', 'pvt',
+  'school', 'schools',
+  'academy', 'academies',
+  'vidyalaya', 'vidyalayas',
+  'vidya', 'mandir', 'mandirs',
+  'high', 'higher',
+  'senior', 'secondary', 'sr', 'sec',
+  'english', 'hindi', 'medium',
+  'convent',
+  'international', 'intl',
+  'global',
+  'model',
+  'residential',
+  'co-ed', 'coed', 'boys', 'girls',
+  'inter', 'college', 'colleges',
+  'institution', 'institute', 'institutes',
+  'grammar', 'prep', 'preparatory', 'matriculation',
+  'national', 'central'
+]);
+
 /**
- * D2: Suggests admin username from school name
- * E.g. "Greenwood Public School" -> "gpsadmin" (initials + "admin")
- * Fallback to first word + "admin" if initials < 2 letters.
+ * Generates smart subdomain candidates from school name and city
+ * Returns an ordered array of valid candidate slugs.
+ */
+function generateSubdomainCandidates(schoolName, city = '') {
+  if (!schoolName || typeof schoolName !== 'string') return [];
+
+  // 1. Normalise the name: lowercase, convert apostrophe-s and punctuation to spaces
+  const cleanName = schoolName
+    .toLowerCase()
+    .replace(/['’]s\b/g, '')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const allWords = cleanName.split(/[\s-]+/).filter(Boolean);
+  if (allWords.length === 0) return [];
+
+  // Clean city
+  const cleanCity = (city || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim()
+    .split(/\s+/)[0] || '';
+
+  // 2. Drop generic words to isolate distinctive words
+  const distinctiveWords = allWords.filter(w => !GENERIC_SCHOOL_WORDS.has(w));
+  const primaryWords = distinctiveWords.length > 0 ? distinctiveWords : allWords;
+
+  const mainDistinctiveWord = primaryWords[0];
+  const combinedDistinctiveWord = primaryWords.slice(0, 2).join('');
+  const hyphenatedDistinctiveWord = primaryWords.slice(0, 2).join('-');
+
+  // Initials of all words in the school name
+  let allInitials = '';
+  for (const w of allWords) {
+    if (w.length > 0) allInitials += w[0];
+  }
+
+  // Initials of words after the main distinctive word
+  let remainingInitials = '';
+  const remainingWords = allWords.filter(w => w !== mainDistinctiveWord);
+  for (const w of remainingWords) {
+    if (w.length > 0) remainingInitials += w[0];
+  }
+
+  const rawCandidates = [];
+
+  // Candidate A: Distinctive word (e.g. "greenwood")
+  if (mainDistinctiveWord.length >= 3) {
+    rawCandidates.push(mainDistinctiveWord);
+  }
+  // If multiple distinctive words (e.g. "shishu vikash", "st xavier"), offer joined & hyphenated
+  if (primaryWords.length >= 2) {
+    rawCandidates.push(hyphenatedDistinctiveWord);
+    rawCandidates.push(combinedDistinctiveWord);
+  }
+
+  // Candidate B: Distinctive word + initials of remaining words (e.g. "greenwoodps")
+  if (mainDistinctiveWord.length >= 2 && remainingInitials.length >= 1) {
+    rawCandidates.push(`${mainDistinctiveWord}${remainingInitials}`);
+  }
+
+  // Candidate C: First two words joined with a hyphen (e.g. "greenwood-public")
+  if (allWords.length >= 2) {
+    rawCandidates.push(`${allWords[0]}-${allWords[1]}`);
+  }
+
+  // Candidate D: Initials if 3+ letters (e.g. "gps")
+  if (allInitials.length >= 3) {
+    rawCandidates.push(allInitials);
+  }
+
+  // Candidate E: Distinctive word + city (e.g. "greenwood-bokaro")
+  if (cleanCity && mainDistinctiveWord.length >= 2) {
+    rawCandidates.push(`${mainDistinctiveWord}-${cleanCity}`);
+    if (primaryWords.length >= 2) {
+      rawCandidates.push(`${hyphenatedDistinctiveWord}-${cleanCity}`);
+    }
+  }
+
+  // Candidate F: Initials + city (e.g. "gps-bokaro")
+  if (cleanCity && allInitials.length >= 2) {
+    rawCandidates.push(`${allInitials}-${cleanCity}`);
+  }
+
+  // 3. Deduplicate and validate against syntax rules
+  const validated = [];
+  const seen = new Set();
+
+  for (const cand of rawCandidates) {
+    const slug = cand
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 30);
+
+    if (slug.length >= 3 && !seen.has(slug)) {
+      seen.add(slug);
+      const val = validateSubdomain(slug);
+      if (val.valid) {
+        validated.push(slug);
+      }
+    }
+  }
+
+  return validated;
+}
+
+/**
+ * F: Suggests admin username candidates from school name
+ * Base: distinctive word + "admin" (e.g. greenwoodadmin)
+ * Alternatives: greenwoodps, greenwoodoffice, etc.
+ */
+function suggestAdminUsernameCandidates(schoolName) {
+  if (!schoolName || typeof schoolName !== 'string') {
+    return ['admin', 'schooladmin', 'officeadmin'];
+  }
+
+  const clean = schoolName
+    .toLowerCase()
+    .replace(/['’]s\b/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return ['admin', 'schooladmin', 'officeadmin'];
+
+  const distinctive = words.filter(w => !GENERIC_SCHOOL_WORDS.has(w));
+  const primaryWords = distinctive.length > 0 ? distinctive : words;
+  const base = primaryWords[0].replace(/[^a-z0-9]/g, '');
+
+  let remainingInitials = '';
+  const remaining = words.filter(w => w !== primaryWords[0]);
+  for (const w of remaining) {
+    if (w.length > 0) remainingInitials += w[0];
+  }
+
+  let allInitials = '';
+  for (const w of words) {
+    if (w.length > 0) allInitials += w[0];
+  }
+
+  const candidates = [];
+
+  // 1. Base: distinctive + "admin" (e.g. greenwoodadmin)
+  if (base.length >= 2) {
+    candidates.push((base + 'admin').substring(0, 30));
+  }
+
+  // 2. Distinctive + initials of remaining words (e.g. greenwoodps)
+  if (base.length >= 2 && remainingInitials.length >= 1) {
+    candidates.push((base + remainingInitials).substring(0, 30));
+  }
+
+  // 3. Distinctive + "office" (e.g. greenwoodoffice)
+  if (base.length >= 2) {
+    candidates.push((base + 'office').substring(0, 30));
+  }
+
+  // 4. Initials + "admin" (e.g. gpsadmin, svmadmin)
+  if (allInitials.length >= 2) {
+    candidates.push((allInitials + 'admin').substring(0, 30));
+  }
+
+  const valid = [];
+  const seen = new Set();
+  for (const c of candidates) {
+    const val = validateAdminUsername(c);
+    if (val.valid && !seen.has(val.username)) {
+      seen.add(val.username);
+      valid.push(val.username);
+    }
+  }
+
+  if (valid.length === 0) {
+    valid.push('admin');
+  }
+
+  return valid;
+}
+
+/**
+ * D2: Suggests primary admin username from school name
  */
 function suggestAdminUsername(schoolName) {
-  if (!schoolName || typeof schoolName !== 'string') return 'admin';
-  const clean = schoolName.trim().replace(/[^a-zA-Z0-9\s]/g, '');
-  const words = clean.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return 'admin';
-
-  let initials = '';
-  for (const w of words) {
-    initials += w[0].toLowerCase();
-  }
-
-  let base = '';
-  if (initials.length >= 2) {
-    base = initials;
-  } else {
-    base = words[0].toLowerCase();
-  }
-
-  let username = (base + 'admin').toLowerCase().replace(/[^a-z0-9._]/g, '');
-  if (username.length < 4) username = 'admin';
-  if (username.length > 30) username = username.substring(0, 30);
-  return username;
+  const candidates = suggestAdminUsernameCandidates(schoolName);
+  return candidates[0] || 'admin';
 }
 
 /**
@@ -209,6 +395,9 @@ function normalizeSchoolName(name) {
 
 module.exports = {
   RESERVED_SUBDOMAINS,
+  GENERIC_SCHOOL_WORDS,
+  generateSubdomainCandidates,
+  suggestAdminUsernameCandidates,
   suggestAdminUsername,
   validateAdminUsername,
   validateSubdomain,
