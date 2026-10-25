@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v58';
+window.APP_VERSION = window.APP_VERSION || 'v59';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
