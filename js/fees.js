@@ -533,7 +533,26 @@
     var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'School';
     var upiId = (schoolSettings && (schoolSettings.upiId || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.upiId))) ? String(schoolSettings.upiId || schoolSettings.schoolInfo.upiId).trim() : '';
 
-    var studentName = s.student.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s.student) : ((s.student.firstName + ' ' + (s.student.lastName || '')).trim()));
+    var studentName = (s.student && s.student.name) || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s.student) : (((s.student && s.student.firstName) || '') + ' ' + ((s.student && s.student.lastName) || '')).trim());
+
+    if (s.student && s.student.status === 'Left') {
+      var msg = '*Fee Balance Notice — ' + studentName + '*\n';
+      msg += 'Class: ' + s.student.class + 
+        (s.student.section ? ' / Sec: ' + s.student.section : '') + 
+        (s.rollNumber ? ' | Roll No: ' + s.rollNumber : '') + 
+        ' (Left / TC Issued)\n\n';
+      msg += 'Outstanding Pending Due: ₹' + s.netDue + '\n';
+      msg += 'Total Paid Till Date: ₹' + s.totalPaid + '\n';
+      if (s.lastPaymentDate) {
+        msg += 'Last Payment: ' + formatDateDDMMYYYY(s.lastPaymentDate) + '\n';
+      }
+      if (upiId) {
+        msg += '\nPayment ke liye UPI: ' + upiId + '\n';
+      }
+      msg += '\nPlease contact the school office to clear the pending balance.\n';
+      msg += '\n- ' + schoolName;
+      return msg;
+    }
 
     var msg = '*Fee Reminder — ' + studentName + '*\n';
     msg += 'Class: ' + s.student.class + 
@@ -581,9 +600,18 @@
 
   function buildFeeReminderSMS(statement, schoolSettings) {
     var s = statement;
-    var studentName = s.student.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s.student) : ((s.student.firstName + ' ' + (s.student.lastName || '')).trim()));
+    var studentName = (s.student && s.student.name) || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s.student) : (((s.student && s.student.firstName) || '') + ' ' + ((s.student && s.student.lastName) || '')).trim());
     var schoolName = (schoolSettings && (schoolSettings.schoolName || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.name))) || 'School';
     var upiId = (schoolSettings && (schoolSettings.upiId || (schoolSettings.schoolInfo && schoolSettings.schoolInfo.upiId))) ? String(schoolSettings.upiId || schoolSettings.schoolInfo.upiId).trim() : '';
+
+    if (s.student && s.student.status === 'Left') {
+      return studentName + 
+        ' (Class ' + s.student.class + 
+        ', Left/TC) — Outstanding Fee Due: ₹' + s.netDue + 
+        '. ' + 
+        (upiId ? 'UPI: ' + upiId + '. ' : '') +
+        '- ' + schoolName;
+    }
 
     return studentName + 
       ' (Class ' + s.student.class + 
@@ -676,6 +704,13 @@
 
     var bodyHTML = '<div class="fee-reminder-preview-view">';
     
+    if (s.status === 'Left') {
+      bodyHTML += '<div class="alert alert-warning" style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; align-items:center; gap:8px; color:var(--text-primary); font-size:12.5px; font-weight:600;">' +
+        '<span class="material-icons-round" style="color:#d97706; font-size:18px;">warning</span>' +
+        '⚠️ Notice: This student has Left the school (TC Issued). Outstanding balance is ₹' + stmt.netDue.toLocaleString('en-IN') + '. Normal monthly fee charges do not apply.' +
+        '</div>';
+    }
+
     // Student summary header card
     bodyHTML += '<div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">';
     bodyHTML += '<div>';
@@ -788,82 +823,81 @@
 
   function showBulkFeeRemindersModal() {
     var students = SchoolApp.store.students || [];
-    var defaulters = [];
+    var activeDefaulters = [];
+    var leftInactiveDefaulters = [];
 
     students.forEach(function(s) {
-      if (s.status === 'Inactive' || s.inTrash || s.status === 'Deleted') return;
+      if (s.inTrash || s.status === 'Deleted') return;
       var stmt = generateFeeStatement(s.id);
       if (stmt && stmt.netDue > 0) {
         // Defaulter condition: Must have netDue > 0 AND at least one unpaid due that is overdue past dueDate + grace
         var unpaidDues = getStudentUnpaidDues(s.id);
         var hasOverdueDue = unpaidDues.some(function(d) { return d.isOverdue; });
         if (hasOverdueDue) {
-          defaulters.push({
+          var item = {
             student: s,
             statement: stmt,
             earliestOverdue: unpaidDues.find(function(d) { return d.isOverdue; })
-          });
+          };
+          if (s.status === 'Left' || s.status === 'Inactive') {
+            leftInactiveDefaulters.push(item);
+          } else {
+            activeDefaulters.push(item);
+          }
         }
       }
     });
 
-    if (defaulters.length === 0) {
+    if (activeDefaulters.length === 0 && leftInactiveDefaulters.length === 0) {
       SchoolApp.showToast('No students with outstanding dues found.', 'info');
       return;
     }
 
-    // Sort defaulters by class, then roll
-    defaulters.sort(function(a, b) {
-      if (a.student.class !== b.student.class) {
-        return String(a.student.class).localeCompare(String(b.student.class), undefined, { numeric: true });
-      }
-      return (parseInt(a.statement.rollNumber, 10) || 0) - (parseInt(b.statement.rollNumber, 10) || 0);
-    });
+    function sortDefaulters(list) {
+      return list.slice().sort(function(a, b) {
+        if (a.student.class !== b.student.class) {
+          return String(a.student.class).localeCompare(String(b.student.class), undefined, { numeric: true });
+        }
+        return (parseInt(a.statement.rollNumber, 10) || 0) - (parseInt(b.statement.rollNumber, 10) || 0);
+      });
+    }
 
     var schoolSettings = SchoolApp.store.settings || {};
     var hasSMS = Boolean(schoolSettings.fast2smsApiKey && schoolSettings.fast2smsApiKey.trim() !== '');
+    var includeLeftInactive = false;
+    var sentStatus = {};
+
+    function getCombinedList() {
+      var list = activeDefaulters.slice();
+      if (includeLeftInactive) {
+        list = list.concat(leftInactiveDefaulters);
+      }
+      return sortDefaulters(list);
+    }
+
+    var currentDefaulters = getCombinedList();
 
     var bodyHTML = '<div class="bulk-reminders-modal-view">';
 
-    bodyHTML += '<div style="background:rgba(37,211,102,0.08); border:1px solid rgba(37,211,102,0.25); padding:12px 16px; border-radius:8px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">';
+    bodyHTML += '<div style="background:rgba(37,211,102,0.08); border:1px solid rgba(37,211,102,0.25); padding:12px 16px; border-radius:8px; margin-bottom:12px; display:flex; align-items:center; gap:12px;">';
     bodyHTML += '<span class="material-icons-round" style="color:#25D366; font-size:28px;">campaign</span>';
-    bodyHTML += '<div>';
-    bodyHTML += '<h4 style="margin:0; color:var(--text-primary); font-size:15px;">📢 Bulk Fee Reminders Queue (' + defaulters.length + ' Students)</h4>';
-    bodyHTML += '<p style="margin:2px 0 0 0; color:var(--text-secondary); font-size:12px;">Click to send WhatsApp or SMS one student at a time. WhatsApp Web will open with a pre-filled itemized statement.</p>';
+    bodyHTML += '<div style="flex:1;">';
+    bodyHTML += '<h4 style="margin:0; color:var(--text-primary); font-size:15px;">📢 Bulk Fee Reminders Queue (<span id="bulk-reminders-count">' + currentDefaulters.length + '</span> Students)</h4>';
+    bodyHTML += '<p style="margin:2px 0 0 0; color:var(--text-secondary); font-size:12px;">Click to send WhatsApp or SMS one student at a time. WhatsApp Web will open with a pre-filled statement.</p>';
     bodyHTML += '</div></div>';
+
+    // Filter controls row with checkbox
+    bodyHTML += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:4px 2px; flex-wrap:wrap; gap:8px;">';
+    bodyHTML += '<label class="checkbox-label" style="font-size:12.5px; font-weight:500; cursor:pointer; display:inline-flex; align-items:center; gap:6px; user-select:none;">';
+    bodyHTML += '<input type="checkbox" id="bulk-include-left-inactive"' + (leftInactiveDefaulters.length === 0 ? ' disabled' : '') + '>';
+    bodyHTML += '<span>Include Left / TC Issued & Inactive students (' + leftInactiveDefaulters.length + ')</span>';
+    bodyHTML += '</label>';
+    bodyHTML += '</div>';
 
     bodyHTML += '<div class="table-container" style="max-height:380px; overflow-y:auto;">';
     bodyHTML += '<table class="data-table"><thead><tr>';
     bodyHTML += '<th>Student</th><th>Class</th><th>Total Due</th><th>Parent Contact</th><th>Actions</th><th>Status</th>';
-    bodyHTML += '</tr></thead><tbody>';
-
-    defaulters.forEach(function(d) {
-      var s = d.student;
-      var stmt = d.statement;
-      var sName = s.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s) : (s.firstName + ' ' + (s.lastName || '')).trim());
-      var phone = getStudentParentPhone(s);
-      var displayPhone = (phone && phone.length >= 10) ? phone : '<span style="color:var(--danger)">No Phone</span>';
-
-      bodyHTML += '<tr class="bulk-reminder-row-' + s.id + '">';
-      var leftTag = s.status === 'Left' ? ' <span class="badge badge-secondary" style="font-size:10px; margin-left:4px;">Left</span>' : '';
-      bodyHTML += '<td><strong>' + escapeHTML(sName) + '</strong>' + leftTag + (stmt.rollNumber ? '<br><span style="font-size:11px; color:var(--text-muted);">Roll: ' + escapeHTML(stmt.rollNumber) + '</span>' : '') + '</td>';
-      bodyHTML += '<td><span class="badge badge-info">' + escapeHTML(s.class) + (s.section ? '-' + escapeHTML(s.section) : '') + '</span></td>';
-      bodyHTML += '<td><strong style="color:var(--danger);">₹' + stmt.netDue.toLocaleString('en-IN') + '</strong></td>';
-      bodyHTML += '<td style="font-size:12px;">' + displayPhone + '</td>';
-      bodyHTML += '<td><div style="display:flex; gap:6px; align-items:center;">';
-      bodyHTML += '<button class="btn btn-sm bulk-wa-btn" data-student-id="' + s.id + '" style="background:#25D366; color:#fff; border:none; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">send</span> 📱 WhatsApp</button>';
-
-      if (hasSMS) {
-        bodyHTML += '<button class="btn btn-sm btn-primary bulk-sms-btn" data-student-id="' + s.id + '" style="padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
-      } else {
-        bodyHTML += '<button class="btn btn-sm btn-secondary bulk-sms-btn" disabled title="SMS not configured in settings" style="padding:4px 10px; font-size:12px; opacity:0.5; cursor:not-allowed; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
-      }
-
-      bodyHTML += '</div></td>';
-      bodyHTML += '<td><span class="status-badge status-badge-' + s.id + ' badge badge-secondary" style="font-size:11px;">⬜ Pending</span></td>';
-      bodyHTML += '</tr>';
-    });
-
+    bodyHTML += '</tr></thead><tbody id="bulk-reminders-tbody">';
     bodyHTML += '</tbody></table></div>';
     bodyHTML += '</div>';
 
@@ -871,66 +905,145 @@
 
     SchoolApp.showModal('📢 Send Bulk Fee Reminders', bodyHTML, footerHTML);
 
-    // Wire row click events
-    document.querySelectorAll('.bulk-wa-btn').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var sId = this.getAttribute('data-student-id');
-        var item = defaulters.find(function(x) { return x.student.id === sId; });
-        if (!item) return;
+    function renderTbody() {
+      var tbody = document.getElementById('bulk-reminders-tbody');
+      var countEl = document.getElementById('bulk-reminders-count');
+      if (!tbody) return;
 
-        var phone = getStudentParentPhone(item.student);
-        var sName = item.student.name || (item.student.firstName + ' ' + (item.student.lastName || '')).trim();
-        if (!phone || phone.length < 10) {
-          SchoolApp.showToast('No valid 10-digit mobile number for ' + sName, 'error');
-          return;
+      currentDefaulters = getCombinedList();
+      if (countEl) countEl.textContent = currentDefaulters.length;
+
+      if (currentDefaulters.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-secondary); font-size:13px;">No active defaulters with overdue fees.' +
+          (leftInactiveDefaulters.length > 0 ? ' Check the box above to include Left or Inactive students (' + leftInactiveDefaulters.length + ').' : '') + '</td></tr>';
+        return;
+      }
+
+      var rowsHTML = '';
+      currentDefaulters.forEach(function(d) {
+        var s = d.student;
+        var stmt = d.statement;
+        var sName = s.name || (SchoolApp.getStudentFullName ? SchoolApp.getStudentFullName(s) : (s.firstName + ' ' + (s.lastName || '')).trim());
+        var phone = getStudentParentPhone(s);
+        var displayPhone = (phone && phone.length >= 10) ? phone : '<span style="color:var(--danger)">No Phone</span>';
+
+        var badgeTag = '';
+        if (s.status === 'Left') {
+          badgeTag = ' <span class="badge badge-warning" style="font-size:10px; margin-left:4px; background:#fef3c7; color:#b45309; border:1px solid #fde68a;">Left (TC Issued)</span>';
+        } else if (s.status === 'Inactive') {
+          badgeTag = ' <span class="badge badge-secondary" style="font-size:10px; margin-left:4px;">Inactive</span>';
         }
 
-        var msg = buildFeeReminderMessage(item.statement, SchoolApp.store.settings || {});
-        var sent = SchoolApp.shareOnWhatsApp(phone, msg);
-        if (sent) {
-          var badge = document.querySelector('.status-badge-' + sId);
-          if (badge) {
-            badge.className = 'status-badge status-badge-' + sId + ' badge badge-success';
-            badge.innerHTML = '✅ WhatsApp Sent';
-          }
-          logFeeReminder(sId, 'whatsapp', 'sent');
-        }
-      });
-    });
+        rowsHTML += '<tr class="bulk-reminder-row-' + s.id + '">';
+        rowsHTML += '<td><strong>' + escapeHTML(sName) + '</strong>' + badgeTag + (stmt.rollNumber ? '<br><span style="font-size:11px; color:var(--text-muted);">Roll: ' + escapeHTML(stmt.rollNumber) + '</span>' : '') + '</td>';
+        rowsHTML += '<td><span class="badge badge-info">' + escapeHTML(s.class) + (s.section ? '-' + escapeHTML(s.section) : '') + '</span></td>';
+        rowsHTML += '<td><strong style="color:var(--danger);">₹' + stmt.netDue.toLocaleString('en-IN') + '</strong></td>';
+        rowsHTML += '<td style="font-size:12px;">' + displayPhone + '</td>';
+        rowsHTML += '<td><div style="display:flex; gap:6px; align-items:center;">';
+        rowsHTML += '<button class="btn btn-sm bulk-wa-btn" data-student-id="' + s.id + '" style="background:#25D366; color:#fff; border:none; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">send</span> 📱 WhatsApp</button>';
 
-    document.querySelectorAll('.bulk-sms-btn').forEach(function(btn) {
-      if (!hasSMS) return;
-      btn.addEventListener('click', async function() {
-        var sId = this.getAttribute('data-student-id');
-        var item = defaulters.find(function(x) { return x.student.id === sId; });
-        if (!item) return;
-
-        var phone = getStudentParentPhone(item.student);
-        var sName = item.student.name || (item.student.firstName + ' ' + (item.student.lastName || '')).trim();
-        if (!phone || phone.length < 10) {
-          SchoolApp.showToast('No valid 10-digit mobile number for ' + sName, 'error');
-          return;
+        if (hasSMS) {
+          rowsHTML += '<button class="btn btn-sm btn-primary bulk-sms-btn" data-student-id="' + s.id + '" style="padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
+        } else {
+          rowsHTML += '<button class="btn btn-sm btn-secondary bulk-sms-btn" disabled title="SMS not configured in settings" style="padding:4px 10px; font-size:12px; opacity:0.5; cursor:not-allowed; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS</button>';
         }
 
-        var smsMsg = buildFeeReminderSMS(item.statement, SchoolApp.store.settings || {});
-        btn.disabled = true;
-        btn.textContent = 'Sending...';
-        var ok = await sendFeeSMS(phone, smsMsg, sId, sName);
-        btn.disabled = false;
-        btn.innerHTML = '<span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS';
-
-        var badge = document.querySelector('.status-badge-' + sId);
-        if (badge) {
-          if (ok) {
-            badge.className = 'status-badge status-badge-' + sId + ' badge badge-success';
-            badge.innerHTML = '✅ SMS Sent';
+        rowsHTML += '</div></td>';
+        if (sentStatus[s.id]) {
+          var st = sentStatus[s.id];
+          if (st.status === 'sent') {
+            rowsHTML += '<td><span class="status-badge status-badge-' + s.id + ' badge badge-success" style="font-size:11px;">✅ ' + (st.channel === 'whatsapp' ? 'WhatsApp' : 'SMS') + ' Sent</span></td>';
           } else {
-            badge.className = 'status-badge status-badge-' + sId + ' badge badge-danger';
-            badge.innerHTML = '❌ SMS Failed';
+            rowsHTML += '<td><span class="status-badge status-badge-' + s.id + ' badge badge-danger" style="font-size:11px;">❌ ' + (st.channel === 'whatsapp' ? 'WhatsApp' : 'SMS') + ' Failed</span></td>';
           }
+        } else {
+          rowsHTML += '<td><span class="status-badge status-badge-' + s.id + ' badge badge-secondary" style="font-size:11px;">⬜ Pending</span></td>';
         }
+        rowsHTML += '</tr>';
       });
-    });
+
+      tbody.innerHTML = rowsHTML;
+      wireRowButtons();
+    }
+
+    function wireRowButtons() {
+      document.querySelectorAll('.bulk-wa-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var sId = this.getAttribute('data-student-id');
+          var item = currentDefaulters.find(function(x) { return x.student.id === sId; });
+          if (!item) return;
+
+          var phone = getStudentParentPhone(item.student);
+          var sName = item.student.name || (item.student.firstName + ' ' + (item.student.lastName || '')).trim();
+          if (!phone || phone.length < 10) {
+            SchoolApp.showToast('No valid 10-digit mobile number for ' + sName, 'error');
+            return;
+          }
+
+          var msg = buildFeeReminderMessage(item.statement, SchoolApp.store.settings || {});
+          var sent = SchoolApp.shareOnWhatsApp(phone, msg);
+          if (sent) {
+            sentStatus[sId] = { status: 'sent', channel: 'whatsapp' };
+            var badge = document.querySelector('.status-badge-' + sId);
+            if (badge) {
+              badge.className = 'status-badge status-badge-' + sId + ' badge badge-success';
+              badge.innerHTML = '✅ WhatsApp Sent';
+            }
+            logFeeReminder(sId, 'whatsapp', 'sent');
+          }
+        });
+      });
+
+      document.querySelectorAll('.bulk-sms-btn').forEach(function(btn) {
+        if (!hasSMS) return;
+        btn.addEventListener('click', async function() {
+          var sId = this.getAttribute('data-student-id');
+          var item = currentDefaulters.find(function(x) { return x.student.id === sId; });
+          if (!item) return;
+
+          var phone = getStudentParentPhone(item.student);
+          var sName = item.student.name || (item.student.firstName + ' ' + (item.student.lastName || '')).trim();
+          if (!phone || phone.length < 10) {
+            SchoolApp.showToast('No valid 10-digit mobile number for ' + sName, 'error');
+            return;
+          }
+
+          var smsMsg = buildFeeReminderSMS(item.statement, SchoolApp.store.settings || {});
+          btn.disabled = true;
+          btn.textContent = 'Sending...';
+          var ok = await sendFeeSMS(phone, smsMsg, sId, sName);
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round" style="font-size:14px">sms</span> 💬 SMS';
+
+          var badge = document.querySelector('.status-badge-' + sId);
+          if (ok) {
+            sentStatus[sId] = { status: 'sent', channel: 'sms' };
+            if (badge) {
+              badge.className = 'status-badge status-badge-' + sId + ' badge badge-success';
+              badge.innerHTML = '✅ SMS Sent';
+            }
+          } else {
+            sentStatus[sId] = { status: 'failed', channel: 'sms' };
+            if (badge) {
+              badge.className = 'status-badge status-badge-' + sId + ' badge badge-danger';
+              badge.innerHTML = '❌ SMS Failed';
+            }
+          }
+        });
+      });
+    }
+
+    // Initial render
+    renderTbody();
+
+    // Checkbox toggle listener
+    var toggleEl = document.getElementById('bulk-include-left-inactive');
+    if (toggleEl) {
+      toggleEl.addEventListener('change', function() {
+        includeLeftInactive = Boolean(this.checked);
+        renderTbody();
+      });
+    }
   }
 
   function getFilteredStudents() {
