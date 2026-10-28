@@ -115,6 +115,7 @@ module.exports = async function handler(req, res) {
           adminUsername: d.adminUsername || '—',
           adminName: d.adminName || '—',
           status: d.status || 'unknown',
+          requestedPlan: d.requestedPlan || null,
           referralCode: d.referralCode || null,
           referralAttribution: d.referralAttribution || null,
           possibleDuplicate: !!d.possibleDuplicate,

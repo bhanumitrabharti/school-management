@@ -859,4 +859,11 @@
   // Initialize
   setStep(1);
 
+  // Desktop autofocus (>=1025px only) to prevent mobile virtual keyboard popup and scroll jump
+  try {
+    if (window.matchMedia && window.matchMedia('(min-width: 1025px)').matches) {
+      if (schoolNameInput) schoolNameInput.focus();
+    }
+  } catch (e) {}
+
 })();

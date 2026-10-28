@@ -107,7 +107,8 @@ module.exports = async function handler(req, res) {
     adminUsername: adminUsername,
     adminEmail: adminEmail,
     adminPasswordHash: adminPasswordHash,
-    plan: regData.requestedPlan ? (regData.requestedPlan.charAt(0).toUpperCase() + regData.requestedPlan.slice(1)) : 'Free Trial',
+    plan: 'Free Trial',
+    requestedPlan: regData.requestedPlan || null,
     phone: regData.adminPhone,
     city: regData.city,
     state: regData.state,
@@ -151,6 +152,7 @@ module.exports = async function handler(req, res) {
     const updatedFunnel = (regData.funnel || []).concat([{ step: 'provisioned', at: nowIso }]);
     batch.update(regRef, {
       status: 'provisioned',
+      requestedPlan: regData.requestedPlan || null,
       schoolId: schoolId,
       provisionedAt: nowIso,
       updatedAt: nowIso,

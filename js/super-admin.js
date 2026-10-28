@@ -4250,9 +4250,10 @@ window.saAuth = auth;
                 '<span class="sa-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.3);">' + r.referralCode + '</span>' :
                 '<span style="color:rgba(255,255,255,0.4); font-size:12px;">Direct</span>';
 
+            var reqPlanBadge = r.requestedPlan ? '<div style="font-size:11px; color:#818cf8; margin-top:2px;">Requested plan: <b style="text-transform:capitalize;">' + r.requestedPlan + '</b></div>' : '';
             html += '<tr>' +
                 '<td><div style="font-weight:600; font-size:12px;">' + (r.regId ? r.regId.substring(0, 14) + '...' : '—') + '</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + dateStr + '</div></td>' +
-                '<td><div style="font-weight:600; color:#f8fafc;">' + r.schoolName + duplicateWarning + '</div><div style="font-size:12px; color:rgba(255,255,255,0.5);">' + r.city + ', ' + r.state + '</div></td>' +
+                '<td><div style="font-weight:600; color:#f8fafc;">' + r.schoolName + duplicateWarning + '</div><div style="font-size:12px; color:rgba(255,255,255,0.5);">' + r.city + ', ' + r.state + '</div>' + reqPlanBadge + '</td>' +
                 '<td><a href="https://' + r.subdomain + '.ctrlshifts.in" target="_blank" style="color:#60a5fa; font-family:monospace; text-decoration:none;">' + r.subdomain + '</a></td>' +
                 '<td><div>' + r.adminName + ' (' + r.adminUsername + ')</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + r.adminEmail + ' · ' + r.adminMobile + '</div></td>' +
                 '<td>' + sourceBadge + '</td>' +
@@ -4297,6 +4298,7 @@ window.saAuth = auth;
                     '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Status</label><div style="font-weight:700; text-transform:uppercase;">' + r.status + '</div></div>' +
                     '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Admin Name & Username</label><div>' + r.adminName + ' (<b>' + r.adminUsername + '</b>)</div></div>' +
                     '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Contact</label><div>' + r.adminEmail + ' · ' + (r.adminMobile || r.adminPhone) + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Requested plan</label><div style="font-weight:600; text-transform:capitalize; color:#818cf8;">' + (r.requestedPlan || 'None') + '</div></div>' +
                     '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Referral Code</label><div>' + (r.referralCode || 'None (Direct)') + '</div></div>' +
                     '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Provisioned School ID</label><div>' + (r.schoolId || 'None') + '</div></div>' +
                 '</div>' +
