@@ -5,6 +5,11 @@
  * Sends notification directly to configured Telegram bot chat without self-HTTP calls.
  */
 
+function escapeTelegramMarkdown(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[_*`\[\]()~>#+\-=|{}.!\\]/g, '\\$&');
+}
+
 async function sendTelegramAlert(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -16,7 +21,7 @@ async function sendTelegramAlert(text) {
 
   try {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    const resp = await fetch(url, {
+    let resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -25,7 +30,20 @@ async function sendTelegramAlert(text) {
         parse_mode: 'Markdown'
       })
     });
-    const result = await resp.json();
+    let result = await resp.json();
+    if (!resp.ok) {
+      console.warn('[Telegram Alert] Markdown sendMessage failed, retrying plain text:', result);
+      // Fail-safe fallback: send as plain text without parse_mode so notification is never dropped
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text.replace(/[*_`]/g, '')
+        })
+      });
+      result = await resp.json();
+    }
     return { success: resp.ok, result };
   } catch (err) {
     console.warn('[Telegram Alert] Error sending alert:', err.message);
@@ -34,5 +52,6 @@ async function sendTelegramAlert(text) {
 }
 
 module.exports = {
-  sendTelegramAlert
+  sendTelegramAlert,
+  escapeTelegramMarkdown
 };

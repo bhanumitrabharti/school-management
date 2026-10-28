@@ -768,18 +768,20 @@ window.saAuth = auth;
             const status = (lead.status || 'new').toLowerCase();
 
             // WhatsApp link text
+            var safeLeadId = escapeAttr(lead.id || '');
+            var safePhone = String(lead.phone || '').replace(/\D/g, '');
             const waMessage = `Namaste ${lead.ownerName || 'ji'}! Main CTRL Shift Solutions se bol raha hoon. Aapne Paathshala ERP ka demo request kiya tha ${lead.schoolName || ''} ke liye. Kya aap abhi baat kar sakte hain?`;
-            const waUrl = `https://wa.me/91${lead.phone}?text=${encodeURIComponent(waMessage)}`;
+            const waUrl = `https://wa.me/91${safePhone}?text=${encodeURIComponent(waMessage)}`;
 
             tr.innerHTML = `
-                <td>${dateStr}</td>
-                <td><strong>${lead.schoolName || 'N/A'}</strong></td>
-                <td>${lead.ownerName || 'N/A'}</td>
-                <td><a href="tel:+91${lead.phone}" style="color:#60a5fa; text-decoration:none;">+91 ${lead.phone}</a></td>
-                <td>${lead.city || 'N/A'}</td>
-                <td>${lead.studentCount || 'N/A'}</td>
+                <td>${escapeHTML(dateStr)}</td>
+                <td><strong>${escapeHTML(lead.schoolName || 'N/A')}</strong></td>
+                <td>${escapeHTML(lead.ownerName || 'N/A')}</td>
+                <td><a href="tel:+91${safePhone}" style="color:#60a5fa; text-decoration:none;">+91 ${escapeHTML(lead.phone || '')}</a></td>
+                <td>${escapeHTML(lead.city || 'N/A')}</td>
+                <td>${escapeHTML(lead.studentCount || 'N/A')}</td>
                 <td>
-                    <select class="sa-lead-status-select" data-lead-id="${lead.id}" style="padding: 4px 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color:#fff; font-size:12px; font-family:'Inter', sans-serif;">
+                    <select class="sa-lead-status-select" data-lead-id="${safeLeadId}" style="padding: 4px 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color:#fff; font-size:12px; font-family:'Inter', sans-serif;">
                         <option value="new" ${status === 'new' ? 'selected' : ''}>New</option>
                         <option value="contacted" ${status === 'contacted' ? 'selected' : ''}>Contacted</option>
                         <option value="converted" ${status === 'converted' ? 'selected' : ''}>Converted</option>
@@ -788,16 +790,16 @@ window.saAuth = auth;
                 </td>
                 <td>
                     <div class="sa-actions">
-                        <a href="tel:+91${lead.phone}" class="sa-action-btn btn-resume" title="Call Lead">
+                        <a href="tel:+91${safePhone}" class="sa-action-btn btn-resume" title="Call Lead">
                             <span class="material-icons-round">phone</span>
                         </a>
-                        <a href="${waUrl}" target="_blank" class="sa-action-btn btn-impersonate" title="WhatsApp Lead" style="background: rgba(37, 211, 102, 0.1); color: #25D366; border-color: rgba(37, 211, 102, 0.2); text-decoration: none;">
+                        <a href="${escapeAttr(waUrl)}" target="_blank" rel="noopener noreferrer" class="sa-action-btn btn-impersonate" title="WhatsApp Lead" style="background: rgba(37, 211, 102, 0.1); color: #25D366; border-color: rgba(37, 211, 102, 0.2); text-decoration: none;">
                             <span class="fab fa-whatsapp"></span>
                         </a>
-                        <button class="sa-action-btn btn-edit btn-view-lead" data-lead-id="${lead.id}" title="View Details">
+                        <button class="sa-action-btn btn-edit btn-view-lead" data-lead-id="${safeLeadId}" title="View Details">
                             <span class="material-icons-round">visibility</span>
                         </button>
-                        <button class="sa-action-btn btn-pause btn-delete-lead" data-lead-id="${lead.id}" title="Delete Lead">
+                        <button class="sa-action-btn btn-pause btn-delete-lead" data-lead-id="${safeLeadId}" title="Delete Lead">
                             <span class="material-icons-round">delete</span>
                         </button>
                     </div>
@@ -861,61 +863,62 @@ window.saAuth = auth;
             }
         }
 
+        var safePhone = String(lead.phone || '').replace(/\D/g, '');
         body.innerHTML = `
             <div class="lead-detail-grid">
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Submitted At</div>
-                    <div class="lead-detail-val">${dateStr}</div>
+                    <div class="lead-detail-val">${escapeHTML(dateStr)}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">School Name</div>
-                    <div class="lead-detail-val" style="font-weight:700;">${lead.schoolName || 'N/A'}</div>
+                    <div class="lead-detail-val" style="font-weight:700;">${escapeHTML(lead.schoolName || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Contact Person</div>
-                    <div class="lead-detail-val">${lead.ownerName || 'N/A'}</div>
+                    <div class="lead-detail-val">${escapeHTML(lead.ownerName || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Phone Number</div>
-                    <div class="lead-detail-val"><a href="tel:+91${lead.phone}" style="color:#60a5fa; text-decoration:none;">+91 ${lead.phone}</a></div>
+                    <div class="lead-detail-val"><a href="tel:+91${safePhone}" style="color:#60a5fa; text-decoration:none;">+91 ${escapeHTML(lead.phone || '')}</a></div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">City / District</div>
-                    <div class="lead-detail-val">${lead.city || 'N/A'}</div>
+                    <div class="lead-detail-val">${escapeHTML(lead.city || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Board / Affiliation</div>
-                    <div class="lead-detail-val">${lead.board || 'N/A'}</div>
+                    <div class="lead-detail-val">${escapeHTML(lead.board || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Student Count</div>
-                    <div class="lead-detail-val">${lead.studentCount || 'N/A'}</div>
+                    <div class="lead-detail-val">${escapeHTML(lead.studentCount || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Current Setup</div>
-                    <div class="lead-detail-val">${lead.currentMethod || 'N/A'}</div>
+                    <div class="lead-detail-val">${escapeHTML(lead.currentMethod || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Best Time To Call</div>
-                    <div class="lead-detail-val">${lead.bestTimeToCall || 'N/A'}</div>
+                    <div class="lead-detail-val">${escapeHTML(lead.bestTimeToCall || 'N/A')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Message</div>
-                    <div class="lead-detail-val" style="white-space: pre-wrap;">${lead.message || 'No specific questions submitted.'}</div>
+                    <div class="lead-detail-val" style="white-space: pre-wrap;">${escapeHTML(lead.message || 'No specific questions submitted.')}</div>
                 </div>
                 <div class="lead-detail-divider"></div>
                 <div class="lead-detail-row">
                     <div class="lead-detail-label">Lead Status</div>
-                    <div class="lead-detail-val" style="text-transform: capitalize;">${lead.status || 'New'}</div>
+                    <div class="lead-detail-val" style="text-transform: capitalize;">${escapeHTML(lead.status || 'New')}</div>
                 </div>
             </div>
         `;
@@ -3383,14 +3386,15 @@ window.saAuth = auth;
     // ─── Utility Functions ──────────────────────────────
 
     function escapeHTML(str) {
-        if (!str) return '';
+        if (str === null || str === undefined) return '';
         var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
+        div.appendChild(document.createTextNode(String(str)));
         return div.innerHTML;
     }
 
     function escapeAttr(str) {
-        return String(str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     function findSchoolById(schools, id) {
@@ -4247,23 +4251,28 @@ window.saAuth = auth;
 
             // Source badge
             var sourceBadge = r.referralCode ? 
-                '<span class="sa-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.3);">' + r.referralCode + '</span>' :
+                '<span class="sa-badge" style="background:rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.3);">' + escapeHTML(r.referralCode) + '</span>' :
                 '<span style="color:rgba(255,255,255,0.4); font-size:12px;">Direct</span>';
 
-            var reqPlanBadge = r.requestedPlan ? '<div style="font-size:11px; color:#818cf8; margin-top:2px;">Requested plan: <b style="text-transform:capitalize;">' + r.requestedPlan + '</b></div>' : '';
+            var reqPlanBadge = r.requestedPlan ? '<div style="font-size:11px; color:#818cf8; margin-top:2px;">Requested plan: <b style="text-transform:capitalize;">' + escapeHTML(r.requestedPlan) + '</b></div>' : '';
+
+            var cleanSubdomain = String(r.subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+            var safeRegId = String(r.regId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+            var safeSchoolId = String(r.schoolId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+
             html += '<tr>' +
-                '<td><div style="font-weight:600; font-size:12px;">' + (r.regId ? r.regId.substring(0, 14) + '...' : '—') + '</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + dateStr + '</div></td>' +
-                '<td><div style="font-weight:600; color:#f8fafc;">' + r.schoolName + duplicateWarning + '</div><div style="font-size:12px; color:rgba(255,255,255,0.5);">' + r.city + ', ' + r.state + '</div>' + reqPlanBadge + '</td>' +
-                '<td><a href="https://' + r.subdomain + '.ctrlshifts.in" target="_blank" style="color:#60a5fa; font-family:monospace; text-decoration:none;">' + r.subdomain + '</a></td>' +
-                '<td><div>' + r.adminName + ' (' + r.adminUsername + ')</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + r.adminEmail + ' · ' + r.adminMobile + '</div></td>' +
+                '<td><div style="font-weight:600; font-size:12px;">' + (r.regId ? escapeHTML(r.regId.substring(0, 14)) + '...' : '—') + '</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + escapeHTML(dateStr) + '</div></td>' +
+                '<td><div style="font-weight:600; color:#f8fafc;">' + escapeHTML(r.schoolName || '—') + duplicateWarning + '</div><div style="font-size:12px; color:rgba(255,255,255,0.5);">' + escapeHTML(r.city || '') + (r.state ? ', ' + escapeHTML(r.state) : '') + '</div>' + reqPlanBadge + '</td>' +
+                '<td><a href="https://' + encodeURIComponent(cleanSubdomain) + '.ctrlshifts.in" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-family:monospace; text-decoration:none;">' + escapeHTML(cleanSubdomain) + '</a></td>' +
+                '<td><div>' + escapeHTML(r.adminName || '—') + ' (' + escapeHTML(r.adminUsername || '—') + ')</div><div style="font-size:11px; color:rgba(255,255,255,0.4);">' + escapeHTML(r.adminEmail || '—') + ' · ' + escapeHTML(r.adminMobile || r.adminPhone || '—') + '</div></td>' +
                 '<td>' + sourceBadge + '</td>' +
                 '<td>' + statusBadge + '</td>' +
                 '<td>' +
                     '<div style="display:flex; gap:6px; align-items:center;">' +
-                        '<button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.viewRegDetail(\'' + r.regId + '\')" title="View Details"><span class="material-icons-round" style="font-size:15px;">visibility</span></button>' +
-                        (r.status === 'failed' || r.status === 'verified' ? '<button class="sa-btn sa-btn-primary sa-btn-sm" onclick="window.retryRegProvision(\'' + r.regId + '\')" title="Retry Provisioning"><span class="material-icons-round" style="font-size:15px;">replay</span></button>' : '') +
-                        (r.status === 'provisioned' ? '<button class="sa-btn sa-btn-sm" style="background:rgba(239,68,68,0.2); color:#ef4444;" onclick="window.toggleRegSuspend(\'' + r.regId + '\', \'' + (r.schoolId || '') + '\', true)" title="Suspend School"><span class="material-icons-round" style="font-size:15px;">pause_circle</span></button>' : '') +
-                        (r.status === 'suspended' ? '<button class="sa-btn sa-btn-sm" style="background:rgba(16,185,129,0.2); color:#10b981;" onclick="window.toggleRegSuspend(\'' + r.regId + '\', \'' + (r.schoolId || '') + '\', false)" title="Reactivate School"><span class="material-icons-round" style="font-size:15px;">play_circle</span></button>' : '') +
+                        '<button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.viewRegDetail(\'' + safeRegId + '\')" title="View Details"><span class="material-icons-round" style="font-size:15px;">visibility</span></button>' +
+                        (r.status === 'failed' || r.status === 'verified' ? '<button class="sa-btn sa-btn-primary sa-btn-sm" onclick="window.retryRegProvision(\'' + safeRegId + '\')" title="Retry Provisioning"><span class="material-icons-round" style="font-size:15px;">replay</span></button>' : '') +
+                        (r.status === 'provisioned' ? '<button class="sa-btn sa-btn-sm" style="background:rgba(239,68,68,0.2); color:#ef4444;" onclick="window.toggleRegSuspend(\'' + safeRegId + '\', \'' + safeSchoolId + '\', true)" title="Suspend School"><span class="material-icons-round" style="font-size:15px;">pause_circle</span></button>' : '') +
+                        (r.status === 'suspended' ? '<button class="sa-btn sa-btn-sm" style="background:rgba(16,185,129,0.2); color:#10b981;" onclick="window.toggleRegSuspend(\'' + safeRegId + '\', \'' + safeSchoolId + '\', false)" title="Reactivate School"><span class="material-icons-round" style="font-size:15px;">play_circle</span></button>' : '') +
                     '</div>' +
                 '</td>' +
             '</tr>';
@@ -4289,29 +4298,30 @@ window.saAuth = auth;
             var data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load details');
 
-            var r = data.registration;
+            var r = data.registration || {};
+            var cleanSubdomain = String(r.subdomain || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
             body.innerHTML = 
                 '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">School Name</label><div style="font-weight:600; font-size:14px; color:#fff;">' + r.schoolName + '</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Subdomain</label><div><a href="https://' + r.subdomain + '.ctrlshifts.in" target="_blank" style="color:#60a5fa; font-family:monospace;">https://' + r.subdomain + '.ctrlshifts.in</a></div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Location</label><div>' + r.city + ', ' + r.state + '</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Status</label><div style="font-weight:700; text-transform:uppercase;">' + r.status + '</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Admin Name & Username</label><div>' + r.adminName + ' (<b>' + r.adminUsername + '</b>)</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Contact</label><div>' + r.adminEmail + ' · ' + (r.adminMobile || r.adminPhone) + '</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Requested plan</label><div style="font-weight:600; text-transform:capitalize; color:#818cf8;">' + (r.requestedPlan || 'None') + '</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Referral Code</label><div>' + (r.referralCode || 'None (Direct)') + '</div></div>' +
-                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Provisioned School ID</label><div>' + (r.schoolId || 'None') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">School Name</label><div style="font-weight:600; font-size:14px; color:#fff;">' + escapeHTML(r.schoolName || '—') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Subdomain</label><div><a href="https://' + encodeURIComponent(cleanSubdomain) + '.ctrlshifts.in" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-family:monospace;">https://' + escapeHTML(cleanSubdomain) + '.ctrlshifts.in</a></div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Location</label><div>' + escapeHTML(r.city || '') + (r.state ? ', ' + escapeHTML(r.state) : '') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Status</label><div style="font-weight:700; text-transform:uppercase;">' + escapeHTML(r.status || '—') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Admin Name & Username</label><div>' + escapeHTML(r.adminName || '—') + ' (<b>' + escapeHTML(r.adminUsername || '—') + '</b>)</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Contact</label><div>' + escapeHTML(r.adminEmail || '—') + ' · ' + escapeHTML(r.adminMobile || r.adminPhone || '—') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Requested plan</label><div style="font-weight:600; text-transform:capitalize; color:#818cf8;">' + (r.requestedPlan ? escapeHTML(r.requestedPlan) : 'None') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Referral Code</label><div>' + (r.referralCode ? escapeHTML(r.referralCode) : 'None (Direct)') + '</div></div>' +
+                    '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Provisioned School ID</label><div>' + escapeHTML(r.schoolId || 'None') + '</div></div>' +
                 '</div>' +
-                (r.possibleDuplicate ? '<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px; margin-bottom:14px; font-size:13px; color:#f59e0b;">⚠️ Possible duplicate detected during registration. Matching school ID: ' + (r.matchingSchoolId || 'Unknown') + '</div>' : '') +
-                (r.lastError ? '<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:10px; margin-bottom:14px; font-size:13px; color:#ef4444;">Error: ' + r.lastError + '</div>' : '') +
+                (r.possibleDuplicate ? '<div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:10px; margin-bottom:14px; font-size:13px; color:#f59e0b;">⚠️ Possible duplicate detected during registration. Matching school ID: ' + escapeHTML(r.matchingSchoolId || 'Unknown') + '</div>' : '') +
+                (r.lastError ? '<div style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:10px; margin-bottom:14px; font-size:13px; color:#ef4444;">Error: ' + escapeHTML(r.lastError) + '</div>' : '') +
                 '<div><label style="font-size:11px; color:rgba(255,255,255,0.5);">Timestamps</label><div style="font-size:12px; color:rgba(255,255,255,0.6);">' +
-                    'Created: ' + (r.createdAt || '—') + '<br>' +
-                    'Verified: ' + (r.verifiedAt || '—') + '<br>' +
-                    'Provisioned: ' + (r.provisionedAt || '—') +
+                    'Created: ' + escapeHTML(r.createdAt || '—') + '<br>' +
+                    'Verified: ' + escapeHTML(r.verifiedAt || '—') + '<br>' +
+                    'Provisioned: ' + escapeHTML(r.provisionedAt || '—') +
                 '</div></div>';
 
         } catch (e) {
-            body.innerHTML = '<div style="color:#ef4444; padding:20px;">' + e.message + '</div>';
+            body.innerHTML = '<div style="color:#ef4444; padding:20px;">' + escapeHTML(e.message) + '</div>';
         }
     };
 
@@ -4374,19 +4384,20 @@ window.saAuth = auth;
             var html = '';
             referralCodesData.forEach(function (c) {
                 var isAct = c.active !== false;
+                var safeCode = String(c.code || '').replace(/[^a-zA-Z0-9_-]/g, '');
                 html += '<tr>' +
-                    '<td style="font-weight:700; font-family:monospace; color:#a78bfa;">' + c.code + '</td>' +
-                    '<td>' + (c.employeeName || '—') + '</td>' +
-                    '<td>' + (c.department || c.employeeId || '—') + '</td>' +
-                    '<td><span class="sa-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa;">' + (c.usesCount || 0) + '</span></td>' +
+                    '<td style="font-weight:700; font-family:monospace; color:#a78bfa;">' + escapeHTML(c.code) + '</td>' +
+                    '<td>' + escapeHTML(c.employeeName || '—') + '</td>' +
+                    '<td>' + escapeHTML(c.department || c.employeeId || '—') + '</td>' +
+                    '<td><span class="sa-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa;">' + (Number(c.usesCount) || 0) + '</span></td>' +
                     '<td>' + (isAct ? '<span style="color:#10b981;">Active</span>' : '<span style="color:#ef4444;">Inactive</span>') + '</td>' +
-                    '<td><button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.toggleRefCode(\'' + c.code + '\', ' + (!isAct) + ')">' + (isAct ? 'Deactivate' : 'Activate') + '</button></td>' +
+                    '<td><button class="sa-btn sa-btn-secondary sa-btn-sm" onclick="window.toggleRefCode(\'' + safeCode + '\', ' + (!isAct) + ')">' + (isAct ? 'Deactivate' : 'Activate') + '</button></td>' +
                 '</tr>';
             });
             tbody.innerHTML = html;
 
         } catch (e) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:16px;">Error: ' + e.message + '</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:16px;">Error: ' + escapeHTML(e.message) + '</td></tr>';
         }
     }
 
@@ -4430,18 +4441,18 @@ window.saAuth = auth;
             report.forEach(function (item) {
                 var convRate = item.totalStarted > 0 ? Math.round((item.provisioned / item.totalStarted) * 100) + '%' : '0%';
                 html += '<tr>' +
-                    '<td style="font-weight:700; font-family:monospace; color:#a78bfa;">' + item.code + '</td>' +
-                    '<td>' + item.employeeName + '</td>' +
-                    '<td><b>' + item.totalStarted + '</b></td>' +
-                    '<td><span style="color:#60a5fa;">' + item.verified + '</span></td>' +
-                    '<td><span style="color:#10b981; font-weight:700;">' + item.provisioned + '</span></td>' +
-                    '<td><span class="sa-badge" style="background:rgba(16,185,129,0.15); color:#10b981;">' + convRate + '</span></td>' +
+                    '<td style="font-weight:700; font-family:monospace; color:#a78bfa;">' + escapeHTML(item.code) + '</td>' +
+                    '<td>' + escapeHTML(item.employeeName || '—') + '</td>' +
+                    '<td><b>' + (Number(item.totalStarted) || 0) + '</b></td>' +
+                    '<td><span style="color:#60a5fa;">' + (Number(item.verified) || 0) + '</span></td>' +
+                    '<td><span style="color:#10b981; font-weight:700;">' + (Number(item.provisioned) || 0) + '</span></td>' +
+                    '<td><span class="sa-badge" style="background:rgba(16,185,129,0.15); color:#10b981;">' + escapeHTML(convRate) + '</span></td>' +
                 '</tr>';
             });
             tbody.innerHTML = html;
 
         } catch (e) {
-            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:20px;">Error: ' + e.message + '</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#ef4444; padding:20px;">Error: ' + escapeHTML(e.message) + '</td></tr>';
         }
     }
 

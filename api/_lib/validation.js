@@ -88,6 +88,150 @@ const GENERIC_SCHOOL_WORDS = new Set([
   'national', 'central'
 ]);
 
+// 36 Valid Indian States and Union Territories
+const VALID_INDIAN_STATES = new Set([
+  'Andaman and Nicobar Islands',
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chandigarh',
+  'Chhattisgarh',
+  'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jammu and Kashmir',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Ladakh',
+  'Lakshadweep',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Puducherry',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal'
+]);
+
+// Safe text pattern: letters (including Hindi & Unicode), numbers, spaces, and . , & ' ( ) - /
+const SAFE_TEXT_PATTERN = /^[\p{L}\p{M}\p{N}\s.,&'()/-]+$/u;
+// Explicitly prohibited dangerous injection characters: <, >, ", `, backslash, and control characters
+const PROHIBITED_CHARS_PATTERN = /[<>"\\`\x00-\x1F\x7F]/;
+
+/**
+ * Validates school name (2-100 characters, letters, digits, spaces, . , & ' ( ) - /)
+ */
+function validateSchoolName(name) {
+  if (!name || typeof name !== 'string') {
+    return { valid: false, error: 'School name is required.' };
+  }
+  const trimmed = name.trim();
+  if (trimmed.length < 2 || trimmed.length > 100) {
+    return { valid: false, error: 'School name must be between 2 and 100 characters.' };
+  }
+  if (PROHIBITED_CHARS_PATTERN.test(trimmed) || !SAFE_TEXT_PATTERN.test(trimmed)) {
+    return { valid: false, error: 'School name contains invalid characters. Only letters, numbers, spaces, and . , & \' ( ) - / are allowed.' };
+  }
+  return { valid: true, name: trimmed };
+}
+
+/**
+ * Validates administrator full name (2-80 characters, safe text)
+ */
+function validatePersonName(name) {
+  if (!name || typeof name !== 'string') {
+    return { valid: false, error: 'Administrator full name is required.' };
+  }
+  const trimmed = name.trim();
+  if (trimmed.length < 2 || trimmed.length > 80) {
+    return { valid: false, error: 'Administrator name must be between 2 and 80 characters.' };
+  }
+  if (PROHIBITED_CHARS_PATTERN.test(trimmed) || !SAFE_TEXT_PATTERN.test(trimmed)) {
+    return { valid: false, error: 'Administrator name contains invalid characters. Only letters, spaces, and standard punctuation are allowed.' };
+  }
+  return { valid: true, name: trimmed };
+}
+
+/**
+ * Validates city / town (2-50 characters, safe text)
+ */
+function validateCity(city) {
+  if (!city || typeof city !== 'string') {
+    return { valid: false, error: 'City is required.' };
+  }
+  const trimmed = city.trim();
+  if (trimmed.length < 2 || trimmed.length > 50) {
+    return { valid: false, error: 'City must be between 2 and 50 characters.' };
+  }
+  if (PROHIBITED_CHARS_PATTERN.test(trimmed) || !SAFE_TEXT_PATTERN.test(trimmed)) {
+    return { valid: false, error: 'City contains invalid characters.' };
+  }
+  return { valid: true, city: trimmed };
+}
+
+/**
+ * Validates state against the 36 valid Indian States / UTs
+ */
+function validateState(state) {
+  if (!state || typeof state !== 'string') {
+    return { valid: false, error: 'State is required.' };
+  }
+  const trimmed = state.trim();
+  if (!trimmed) {
+    return { valid: false, error: 'State is required.' };
+  }
+  if (!VALID_INDIAN_STATES.has(trimmed)) {
+    return { valid: false, error: 'Please select a valid Indian State or Union Territory.' };
+  }
+  return { valid: true, state: trimmed };
+}
+
+/**
+ * Validates admin email (strict format, no injection chars, 5-100 chars)
+ */
+function validateEmail(email) {
+  if (!email || typeof email !== 'string') {
+    return { valid: false, error: 'A valid admin email is required.' };
+  }
+  const trimmed = email.trim().toLowerCase();
+  if (trimmed.length < 5 || trimmed.length > 100) {
+    return { valid: false, error: 'A valid admin email is required.' };
+  }
+  if (PROHIBITED_CHARS_PATTERN.test(trimmed) || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(trimmed)) {
+    return { valid: false, error: 'A valid admin email is required.' };
+  }
+  return { valid: true, email: trimmed };
+}
+
+/**
+ * Validates admin mobile phone (strict 10-digit format)
+ */
+function validatePhone(phone) {
+  if (!phone || typeof phone !== 'string') {
+    return { valid: false, error: 'A valid 10-digit mobile number is required.' };
+  }
+  const digits = phone.replace(/\D/g, '').trim();
+  if (!/^[0-9]{10}$/.test(digits)) {
+    return { valid: false, error: 'A valid 10-digit mobile number is required.' };
+  }
+  return { valid: true, phone: digits };
+}
+
 /**
  * Generates smart subdomain candidates from school name and city
  * Returns an ordered array of valid candidate slugs.
@@ -396,11 +540,18 @@ function normalizeSchoolName(name) {
 module.exports = {
   RESERVED_SUBDOMAINS,
   GENERIC_SCHOOL_WORDS,
+  VALID_INDIAN_STATES,
   generateSubdomainCandidates,
   suggestAdminUsernameCandidates,
   suggestAdminUsername,
   validateAdminUsername,
   validateSubdomain,
+  validateSchoolName,
+  validatePersonName,
+  validateCity,
+  validateState,
+  validateEmail,
+  validatePhone,
   generateOtp,
   hashOtp,
   hashPassword,

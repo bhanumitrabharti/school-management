@@ -1,5 +1,16 @@
 'use strict';
 
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
 /**
  * Email & Messaging Module for Onboarding (CommonJS)
  * Sends OTP emails and Welcome emails via Hostinger SMTP / nodemailer.
@@ -95,7 +106,7 @@ async function sendOtpEmail({ email, otp, schoolName }) {
         <p style="color: #64748b; font-size: 14px; margin: 0;">School Management Cloud Platform</p>
       </div>
       <p style="font-size: 15px; color: #1e293b; line-height: 1.5;">Dear School Leader,</p>
-      <p style="font-size: 15px; color: #1e293b; line-height: 1.5;">Thank you for registering <strong>${schoolName || 'your school'}</strong> on Paathshala ERP. Please use the following 6-digit verification code to complete your registration:</p>
+      <p style="font-size: 15px; color: #1e293b; line-height: 1.5;">Thank you for registering <strong>${escapeHTML(schoolName || 'your school')}</strong> on Paathshala ERP. Please use the following 6-digit verification code to complete your registration:</p>
       
       <div style="text-align: center; margin: 32px 0;">
         <div style="display: inline-block; font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1e40af; background: #eff6ff; padding: 14px 28px; border-radius: 10px; border: 2px dashed #93c5fd;">
@@ -157,15 +168,15 @@ async function sendWelcomeEmail({ email, schoolName, subdomain, adminUsername })
       </div>
 
       <p style="font-size: 15px; color: #1e293b; line-height: 1.6;">Dear Admin,</p>
-      <p style="font-size: 15px; color: #1e293b; line-height: 1.6;">Congratulations! <strong>${schoolName}</strong> has been successfully onboarded with enterprise-grade features on Paathshala ERP.</p>
+      <p style="font-size: 15px; color: #1e293b; line-height: 1.6;">Congratulations! <strong>${escapeHTML(schoolName)}</strong> has been successfully onboarded with enterprise-grade features on Paathshala ERP.</p>
       
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 24px 0;">
         <h4 style="margin: 0 0 12px 0; color: #0f172a; font-size: 15px;">Your ERP Access Details:</h4>
         <p style="margin: 6px 0; font-size: 14px; color: #334155;">
-          <strong>Your School ERP URL:</strong> <a href="${erpUrl}" style="color: #2563eb; font-weight: 600; text-decoration: none;">${erpUrl}</a>
+          <strong>Your School ERP URL:</strong> <a href="${escapeHTML(erpUrl)}" style="color: #2563eb; font-weight: 600; text-decoration: none;">${escapeHTML(erpUrl)}</a>
         </p>
         <p style="margin: 6px 0; font-size: 14px; color: #334155;">
-          <strong>Admin Username:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 13px;">${adminUsername}</code>
+          <strong>Admin Username:</strong> <code style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 13px;">${escapeHTML(adminUsername)}</code>
         </p>
         <p style="margin: 6px 0; font-size: 13px; color: #64748b;">
           <em>(Your password is encrypted and securely stored. Use the password you created during registration.)</em>
@@ -175,7 +186,7 @@ async function sendWelcomeEmail({ email, schoolName, subdomain, adminUsername })
       <div style="margin: 24px 0;">
         <h4 style="margin: 0 0 8px 0; color: #0f172a; font-size: 14px;">Next Steps:</h4>
         <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: #475569; line-height: 1.7;">
-          <li>Log in to your dashboard at <a href="${erpUrl}" style="color: #2563eb;">${erpUrl}</a> using your admin username and password.</li>
+          <li>Log in to your dashboard at <a href="${escapeHTML(erpUrl)}" style="color: #2563eb;">${escapeHTML(erpUrl)}</a> using your admin username and password.</li>
           <li>Set up your class fees and fee structures in the <strong>Fee Ledger</strong>.</li>
           <li>Add your teachers and students (bulk Excel upload available).</li>
           <li>Send automatic WhatsApp fee receipts and marksheet cards.</li>
@@ -183,7 +194,7 @@ async function sendWelcomeEmail({ email, schoolName, subdomain, adminUsername })
       </div>
 
       <div style="text-align: center; margin: 32px 0 16px;">
-        <a href="${erpUrl}" style="background: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">
+        <a href="${escapeHTML(erpUrl)}" style="background: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block;">
           Open School ERP Dashboard &rarr;
         </a>
       </div>

@@ -9,6 +9,12 @@ const {
   suggestAdminUsername,
   validateAdminUsername,
   validateSubdomain,
+  validateSchoolName,
+  validatePersonName,
+  validateCity,
+  validateState,
+  validateEmail,
+  validatePhone,
   generateOtp,
   hashOtp,
   hashPassword,
@@ -47,6 +53,104 @@ module.exports = async function handler(req, res) {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
   const isMock = !isProduction && process.env.MOCK_ONBOARDING_MODE === 'true';
 
+  // 1. Strict Input Sanitization & Validation (Defense in Depth against XSS / injection)
+  const rawSchoolName = typeof body.schoolName === 'string' ? body.schoolName : '';
+  const rawCity = typeof body.city === 'string' ? body.city : '';
+  const rawState = typeof body.state === 'string' ? body.state : '';
+  const rawAdminName = typeof body.adminName === 'string' ? body.adminName : '';
+  const rawAdminEmail = typeof body.adminEmail === 'string' ? body.adminEmail : '';
+  const rawAdminPhone = typeof body.adminPhone === 'string' ? body.adminPhone : '';
+  const rawUsername = typeof body.adminUsername === 'string' ? body.adminUsername : '';
+  const adminPassword = typeof body.adminPassword === 'string' ? body.adminPassword : '';
+  const subdomain = (body.subdomain || '').trim().toLowerCase();
+  const referralCode = (body.referralCode || '').trim().toUpperCase();
+  const termsAccepted = body.termsAccepted === true || body.termsAccepted === 'true';
+  const marketingConsent = body.marketingConsent === true || body.marketingConsent === 'true';
+
+  // O1: Optional plan selection (informational only; all plans receive full features)
+  const ALLOWED_PLANS = new Set(['starter', 'growth', 'enterprise']);
+  const rawPlan = typeof body.requestedPlan === 'string' ? body.requestedPlan.trim().toLowerCase() : '';
+  const requestedPlan = ALLOWED_PLANS.has(rawPlan) ? rawPlan : null;
+
+  // Validate schoolName
+  const schoolVal = validateSchoolName(rawSchoolName);
+  if (!schoolVal.valid) {
+    return res.status(400).json({ error: schoolVal.error });
+  }
+  const schoolName = schoolVal.name;
+
+  // Validate city
+  const cityVal = validateCity(rawCity);
+  if (!cityVal.valid) {
+    return res.status(400).json({ error: cityVal.error });
+  }
+  const city = cityVal.city;
+
+  // Validate state
+  const stateVal = validateState(rawState);
+  if (!stateVal.valid) {
+    return res.status(400).json({ error: stateVal.error });
+  }
+  const state = stateVal.state;
+
+  // Validate adminName (require valid characters if provided, fallback to default if omitted)
+  let candidateAdminName = rawAdminName.trim();
+  if (body.adminName !== undefined && candidateAdminName.length === 0) {
+    return res.status(400).json({ error: 'Administrator full name is required.' });
+  }
+  if (!candidateAdminName) {
+    candidateAdminName = 'School Administrator';
+  }
+  const adminNameVal = validatePersonName(candidateAdminName);
+  if (!adminNameVal.valid) {
+    return res.status(400).json({ error: adminNameVal.error });
+  }
+  const adminName = adminNameVal.name;
+
+  // Validate adminEmail
+  const emailVal = validateEmail(rawAdminEmail);
+  if (!emailVal.valid) {
+    return res.status(400).json({ error: emailVal.error });
+  }
+  const adminEmail = emailVal.email;
+
+  // Validate adminPhone
+  const phoneVal = validatePhone(rawAdminPhone);
+  if (!phoneVal.valid) {
+    return res.status(400).json({ error: phoneVal.error });
+  }
+  const adminPhone = phoneVal.phone;
+
+  // Validate password
+  if (!adminPassword || adminPassword.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  }
+
+  // Validate terms acceptance
+  if (!termsAccepted) {
+    return res.status(400).json({ error: 'You must agree to the Terms of Service and Privacy Policy.' });
+  }
+
+  // 2. D2 Username Validation
+  const usernameVal = validateAdminUsername(rawUsername || suggestAdminUsername(schoolName));
+  if (!usernameVal.valid) {
+    return res.status(400).json({ error: usernameVal.error });
+  }
+  const adminUsername = usernameVal.username;
+
+  // 3. C3 Subdomain Validation
+  const subVal = validateSubdomain(subdomain);
+  if (!subVal.valid) {
+    return res.status(400).json({ error: subVal.error });
+  }
+
+  // Extract client IP (trimmed first IP from x-forwarded-for or socket)
+  const rawXff = req.headers['x-forwarded-for'];
+  const clientIp = typeof rawXff === 'string' && rawXff.trim()
+    ? rawXff.split(',')[0].trim()
+    : (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress.trim() : '127.0.0.1');
+  const hashedClientIp = hashIp(clientIp);
+
   // C10: Validate required environment variables in production
   if (!isMock) {
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
@@ -56,13 +160,6 @@ module.exports = async function handler(req, res) {
       });
     }
   }
-
-  // Extract client IP (trimmed first IP from x-forwarded-for or socket)
-  const rawXff = req.headers['x-forwarded-for'];
-  const clientIp = typeof rawXff === 'string' && rawXff.trim()
-    ? rawXff.split(',')[0].trim()
-    : (req.socket && req.socket.remoteAddress ? req.socket.remoteAddress.trim() : '127.0.0.1');
-  const hashedClientIp = hashIp(clientIp);
 
   // F4: Cloudflare Turnstile Verification (Fail-Closed)
   if (!isMock) {
@@ -111,60 +208,6 @@ module.exports = async function handler(req, res) {
       }
       return res.status(400).json({ error: 'Security verification failed. Please try again.' });
     }
-  }
-
-  // Input Sanitization
-  const schoolName = (body.schoolName || '').trim();
-  const city = (body.city || '').trim();
-  const state = (body.state || '').trim();
-  const adminEmail = (body.adminEmail || '').trim().toLowerCase();
-  const adminPhone = (body.adminPhone || '').replace(/\D/g, '').trim();
-  const rawUsername = (body.adminUsername || '').trim();
-  const adminPassword = body.adminPassword || '';
-  const subdomain = (body.subdomain || '').trim().toLowerCase();
-  const referralCode = (body.referralCode || '').trim().toUpperCase();
-  const termsAccepted = body.termsAccepted === true || body.termsAccepted === 'true';
-  const marketingConsent = body.marketingConsent === true || body.marketingConsent === 'true';
-
-  // O1: Optional plan selection (informational only; all plans receive full features)
-  const ALLOWED_PLANS = new Set(['starter', 'growth', 'enterprise']);
-  const rawPlan = typeof body.requestedPlan === 'string' ? body.requestedPlan.trim().toLowerCase() : '';
-  const requestedPlan = ALLOWED_PLANS.has(rawPlan) ? rawPlan : null;
-
-  // 1. Basic Validation
-  if (!schoolName || schoolName.length < 2 || schoolName.length > 100) {
-    return res.status(400).json({ error: 'School name must be between 2 and 100 characters.' });
-  }
-  if (!city || city.length < 2) {
-    return res.status(400).json({ error: 'City is required.' });
-  }
-  if (!state || state.length < 2) {
-    return res.status(400).json({ error: 'State is required.' });
-  }
-  if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
-    return res.status(400).json({ error: 'A valid admin email is required.' });
-  }
-  if (!adminPhone || adminPhone.length < 10) {
-    return res.status(400).json({ error: 'A valid 10-digit mobile number is required.' });
-  }
-  if (!adminPassword || adminPassword.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-  }
-  if (!termsAccepted) {
-    return res.status(400).json({ error: 'You must agree to the Terms of Service and Privacy Policy.' });
-  }
-
-  // 2. D2 Username Validation
-  const usernameVal = validateAdminUsername(rawUsername || suggestAdminUsername(schoolName));
-  if (!usernameVal.valid) {
-    return res.status(400).json({ error: usernameVal.error });
-  }
-  const adminUsername = usernameVal.username;
-
-  // 3. C3 Subdomain Validation
-  const subVal = validateSubdomain(subdomain);
-  if (!subVal.valid) {
-    return res.status(400).json({ error: subVal.error });
   }
 
   const db = getDb();
@@ -338,8 +381,10 @@ module.exports = async function handler(req, res) {
     normalizedCity: city.toLowerCase(),
     state: state,
     subdomain: subdomain,
+    adminName: adminName,
     adminEmail: adminEmail,
     adminPhone: adminPhone,
+    adminMobile: adminPhone,
     adminUsername: adminUsername,
     adminPasswordHash: hashPassword(adminPassword),
     referralCode: referralCode || null,

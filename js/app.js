@@ -6665,7 +6665,7 @@ window.SchoolApp = {
     banner.className = 'impersonation-banner';
     banner.innerHTML = '<div class="imp-banner-content">' +
       '<span class="imp-banner-icon">⚡</span>' +
-      '<span class="imp-banner-text">Impersonating <strong>' + schoolName + '</strong> as <strong>' + (role === 'teacher' ? 'Teacher' : 'Administrator') + '</strong> (View-Only Mode)</span>' +
+      '<span class="imp-banner-text">Impersonating <strong>' + SchoolApp.escapeHTML(schoolName) + '</strong> as <strong>' + (role === 'teacher' ? 'Teacher' : 'Administrator') + '</strong> (View-Only Mode)</span>' +
       '<button class="imp-banner-exit" id="exit-impersonation-btn">Exit Impersonation</button>' +
       '</div>';
     
