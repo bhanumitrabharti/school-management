@@ -107,6 +107,7 @@ module.exports = async function handler(req, res) {
     adminUsername: adminUsername,
     adminEmail: adminEmail,
     adminPasswordHash: adminPasswordHash,
+    plan: regData.requestedPlan ? (regData.requestedPlan.charAt(0).toUpperCase() + regData.requestedPlan.slice(1)) : 'Free Trial',
     phone: regData.adminPhone,
     city: regData.city,
     state: regData.state,

@@ -25,6 +25,7 @@
   let isSubdomainAvailable = false;
   let turnstileWidgetId = null;
   let turnstileToken = null;
+  let selectedPlan = null;
 
   // Timers
   let otpExpiryInterval = null;
@@ -566,6 +567,7 @@
         state: stateSelect.value.trim(),
         subdomain: subdomainInput.value.trim().toLowerCase(),
         referralCode: (referralCodeInput.value || '').trim().toUpperCase(),
+        requestedPlan: selectedPlan,
         adminName,
         adminEmail,
         adminPhone,
@@ -834,6 +836,24 @@
         });
       }
     });
+  }
+
+  // Check URL plan parameter
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const planParam = (urlParams.get('plan') || '').trim().toLowerCase();
+    const ALLOWED_PLANS = ['starter', 'growth', 'enterprise'];
+    if (ALLOWED_PLANS.includes(planParam)) {
+      selectedPlan = planParam;
+      const planBadgeContainer = document.getElementById('plan-badge-container');
+      const selectedPlanName = document.getElementById('selected-plan-name');
+      if (planBadgeContainer && selectedPlanName) {
+        selectedPlanName.textContent = planParam.charAt(0).toUpperCase() + planParam.slice(1);
+        planBadgeContainer.style.display = 'block';
+      }
+    }
+  } catch (e) {
+    console.warn('Plan param note:', e);
   }
 
   // Initialize

@@ -126,6 +126,11 @@ module.exports = async function handler(req, res) {
   const termsAccepted = body.termsAccepted === true || body.termsAccepted === 'true';
   const marketingConsent = body.marketingConsent === true || body.marketingConsent === 'true';
 
+  // O1: Optional plan selection (informational only; all plans receive full features)
+  const ALLOWED_PLANS = new Set(['starter', 'growth', 'enterprise']);
+  const rawPlan = typeof body.requestedPlan === 'string' ? body.requestedPlan.trim().toLowerCase() : '';
+  const requestedPlan = ALLOWED_PLANS.has(rawPlan) ? rawPlan : null;
+
   // 1. Basic Validation
   if (!schoolName || schoolName.length < 2 || schoolName.length > 100) {
     return res.status(400).json({ error: 'School name must be between 2 and 100 characters.' });
@@ -339,6 +344,7 @@ module.exports = async function handler(req, res) {
     adminPasswordHash: hashPassword(adminPassword),
     referralCode: referralCode || null,
     referralAttribution: referralAttribution,
+    requestedPlan: requestedPlan,
     otpHash: otpHash,
     otpSalt: otpSalt,
     otpExpiresAt: otpExpiresAt,

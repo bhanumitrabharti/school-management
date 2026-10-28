@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts</title>
-<meta name="description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
+<title>Paathshala ERP — School Management Software for Indian Schools | CtrlShifts</title>
+<meta name="description" content="Comprehensive school management software for Indian private schools. Manage fees, attendance, report cards, and automatic WhatsApp receipts in one dashboard.">
 <meta name="keywords" content="School ERP, School Management Software, Paathshala ERP, CtrlShifts, Bokaro School Software, Jharkhand School ERP, WhatsApp fee receipt">
 <meta name="author" content="Ctrl Shift Solutions">
 <meta name="robots" content="index, follow">
@@ -13,16 +13,16 @@
 <!-- Open Graph / Facebook / WhatsApp -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://ctrlshifts.in/">
-<meta property="og:title" content="Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts">
-<meta property="og:description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
+<meta property="og:title" content="Paathshala ERP — School Management Software for Indian Schools | CtrlShifts">
+<meta property="og:description" content="Comprehensive school management software for Indian private schools. Manage fees, attendance, report cards, and automatic WhatsApp receipts in one dashboard.">
 <meta property="og:image" content="https://ctrlshifts.in/assets/landing-v2/dash.jpg">
 <meta property="og:locale" content="en_IN">
 <meta property="og:site_name" content="Paathshala by Ctrl Shift Solutions">
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Paathshala ERP — Best School Management Software in Jharkhand | CtrlShifts">
-<meta name="twitter:description" content="India ke chhote aur medium private schools ke liye premium School ERP. Fees, attendance, marksheet aur WhatsApp receipts ek jagah. Book a free demo today!">
+<meta name="twitter:title" content="Paathshala ERP — School Management Software for Indian Schools | CtrlShifts">
+<meta name="twitter:description" content="Comprehensive school management software for Indian private schools. Manage fees, attendance, report cards, and automatic WhatsApp receipts in one dashboard.">
 <meta name="twitter:image" content="https://ctrlshifts.in/assets/landing-v2/dash.jpg">
 
 <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -58,8 +58,9 @@
   color-scheme:light;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{overflow-x:clip;max-width:100%}
 html{scroll-behavior:smooth;scroll-padding-top:84px}
-body{font-family:var(--f);font-size:16px;line-height:1.6;background:var(--bg);color:var(--ink);overflow-x:clip;-webkit-font-smoothing:antialiased}
+body{font-family:var(--f);font-size:16px;line-height:1.6;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
 img{display:block;max-width:100%;height:auto}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 a{color:inherit}
@@ -505,7 +506,7 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
 .fl a{text-decoration:none;color:var(--ink2);transition:color .2s}.fl a:hover{color:var(--blue)}
 .cr{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 24px;margin-top:30px;padding-top:20px;border-top:1px solid var(--line);font-size:.84rem;color:var(--muted)}
 .cr b{font-family:var(--m);font-weight:600;color:var(--blue-d);letter-spacing:.02em}
-.fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;align-items:center;gap:9px;padding:13px 16px;border-radius:99px;background:#0E9F6E;color:#fff;font-weight:700;font-size:.9rem;text-decoration:none;box-shadow:0 14px 30px -8px rgba(14,159,110,.7);transition:transform .3s var(--ease)}
+.fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;align-items:center;gap:9px;padding:13px 16px;border-radius:99px;background:#0E9F6E;color:#fff;font-weight:700;font-size:.9rem;text-decoration:none;box-shadow:0 14px 30px -8px rgba(14,159,110,.7);transition:bottom .3s var(--ease),transform .3s var(--ease)}
 .fab::before{content:"";position:absolute;inset:0;border-radius:99px;border:2px solid #0E9F6E;animation:radar 2.4s ease-out infinite}
 .fab:hover{transform:translateY(-3px) scale(1.04)}
 .fab .ico{width:20px;height:20px}
@@ -514,9 +515,39 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
 .js .rv{opacity:0;transform:translateY(28px);transition:opacity .8s var(--ease),transform .8s var(--ease);transition-delay:calc(var(--d,0)*90ms)}
 .js .rv.in{opacity:1;transform:none}
 
+/* mobile drawer & nav toggle */
+.nav-toggle{display:none;width:40px;height:40px;border-radius:10px;border:1.5px solid var(--line);background:#fff;align-items:center;justify-content:center;flex-direction:column;gap:5px;padding:0;cursor:pointer;flex:none;transition:background .2s,border-color .2s}
+.nav-toggle span{display:block;width:18px;height:2px;background:var(--ink);border-radius:2px;transition:transform .3s var(--ease),opacity .2s}
+.nav-toggle[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.nav-toggle[aria-expanded="true"] span:nth-child(2){opacity:0}
+.nav-toggle[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.nav-reg-short{display:none}
+
+.drawer-backdrop{position:fixed;inset:0;background:rgba(10,22,56,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:95;opacity:0;pointer-events:none;transition:opacity .3s var(--ease)}
+.drawer-backdrop.open{opacity:1;pointer-events:auto}
+.mobile-drawer{position:fixed;top:68px;left:0;right:0;max-height:calc(100dvh - 68px);overflow-y:auto;background:#fff;border-bottom:1px solid var(--line);box-shadow:var(--sh3);z-index:99;transform:translateY(-100%);opacity:0;visibility:hidden;transition:transform .35s var(--ease),opacity .3s,visibility .35s}
+.mobile-drawer.open{transform:translateY(0);opacity:1;visibility:visible}
+body.menu-open{overflow:hidden}
+.drawer-in{padding:24px 20px 32px;display:flex;flex-direction:column;gap:22px}
+.drawer-links{list-style:none;display:flex;flex-direction:column;gap:4px}
+.drawer-link{display:block;padding:12px 14px;border-radius:12px;font-size:1.05rem;font-weight:700;color:var(--ink);text-decoration:none;transition:background .2s,color .2s}
+.drawer-link:hover,.drawer-link:focus{background:var(--sky);color:var(--blue-d)}
+.drawer-actions{display:flex;flex-direction:column;gap:12px;padding-top:16px;border-top:1px solid var(--line)}
+.drawer-action-btn{width:100%;text-align:center}
+.drawer-tel{display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--m);font-weight:600;font-size:.92rem;color:var(--ink2);text-decoration:none;padding:8px;margin-top:2px}
+.drawer-tel .ico{color:var(--blue)}
+
+/* attendance toggle button */
+.stu-toggle{display:none;width:100%;padding:10px 14px;border-radius:12px;border:1.5px dashed var(--line);background:var(--soft);color:var(--blue-d);font-weight:700;font-size:.86rem;text-align:center;cursor:pointer;transition:all .2s;margin-top:4px}
+.stu-toggle:hover{background:var(--sky);border-color:var(--blue)}
+
+/* sticky bar */
+.sticky-bar{display:none}
+
 /* responsive */
 @media(max-width:1000px){
   .links,.tel{display:none}
+  .nav-toggle{display:inline-flex}
   .time,.faq,.fin,.calc,.demos{grid-template-columns:1fr}
   .time-l,.faq-l{position:static}
   .tour{grid-template-columns:1fr}
@@ -543,7 +574,20 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
 }
 @media(max-width:560px){
   .brand small{display:none}
-  .nav .btn{padding:10px 14px;font-size:.86rem}
+  .nav-in{gap:10px}
+  .nav-r{gap:8px}
+  .nav-demo-btn{display:none!important}
+  .nav-reg-full{display:none}
+  .nav-reg-short{display:inline}
+  .nav-reg-btn{background:linear-gradient(180deg,#2079FF,#0A58DA)!important;color:#fff!important;border-color:transparent!important;padding:8px 14px;font-size:.86rem}
+  .card{padding:18px}
+  .card .viz{min-height:auto;padding-top:8px}
+  .stu-toggle{display:block}
+  .studs:not(.expanded) .stu:nth-child(n+5){display:none}
+  .sticky-bar{position:fixed;left:0;right:0;bottom:0;z-index:89;display:flex;align-items:center;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);box-shadow:0 -4px 18px rgba(10,22,56,.08);transform:translateY(100%);opacity:0;pointer-events:none;transition:transform .3s var(--ease),opacity .3s}
+  .sticky-bar.visible{transform:translateY(0);opacity:1;pointer-events:auto}
+  .sticky-bar .btn{flex:1;padding:11px 14px;font-size:.88rem;white-space:nowrap}
+  body.has-sticky-bar .fab{bottom:calc(74px + env(safe-area-inset-bottom,0px))}
   .cta .btn{width:100%}
   .floats{grid-template-columns:1fr}.wa{grid-row:auto}
   .bento{grid-template-columns:1fr}
@@ -607,11 +651,33 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
     </ul>
     <div class="nav-r">
       <span class="tel"><svg class="ico"><use href="#i-phone"/></svg>+91 91555 15505</span>
-      <a class="btn btn-s" href="register.html" style="font-weight:700;">Register School</a>
-      <a class="btn btn-p" href="#demo">Book Free Demo</a>
+      <a class="btn btn-s nav-reg-btn" href="register.html" style="font-weight:700;"><span class="nav-reg-full">Register School</span><span class="nav-reg-short">Register</span></a>
+      <a class="btn btn-p nav-demo-btn" href="#demo">Book Free Demo</a>
+      <button class="nav-toggle" id="navToggle" type="button" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobileMenu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
   </div>
 </nav>
+
+<div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true"></div>
+<div class="mobile-drawer" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Mobile Navigation" hidden>
+  <div class="drawer-in">
+    <ul class="drawer-links">
+      <li><a href="#features" class="drawer-link">Features</a></li>
+      <li><a href="#try" class="drawer-link">Live Demo</a></li>
+      <li><a href="#modules" class="drawer-link">Modules</a></li>
+      <li><a href="#savings" class="drawer-link">Calculator</a></li>
+      <li><a href="#pricing" class="drawer-link">Pricing</a></li>
+      <li><a href="#faq" class="drawer-link">FAQ</a></li>
+    </ul>
+    <div class="drawer-actions">
+      <a class="btn btn-p btn-lg btn-block drawer-action-btn" href="register.html">Register Your School <svg class="ico go"><use href="#i-go"/></svg></a>
+      <a class="btn btn-s btn-lg btn-block drawer-action-btn" href="#demo">Book Free Demo</a>
+      <a class="drawer-tel" href="tel:+919155515505"><svg class="ico"><use href="#i-phone"/></svg>+91 91555 15505</a>
+    </div>
+  </div>
+</div>
 
 <header class="hero" id="top">
   <div class="aur a"></div><div class="aur b"></div><div class="aur c"></div><div class="spot"></div>
@@ -739,6 +805,7 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
         <div class="demo-h"><h3><svg class="ico"><use href="#i-cal"/></svg>Mark Attendance</h3><span class="tag">Tap P · A · L</span></div>
         <div class="bulk"><span class="cls">Class 2-A <small>· 8 students</small></span><button class="mini g" id="allP">All Present</button><button class="mini r" id="allA">All Absent</button><button class="mini" id="rst">Reset</button></div>
         <div class="studs" id="studs"></div>
+        <button type="button" class="stu-toggle" id="toggleStuds" aria-expanded="false">Show all 8 students ↓</button>
         <div class="sum"><span><i class="dot" style="background:var(--green)"></i><b id="cP">0</b> Present</span><span><i class="dot" style="background:var(--red)"></i><b id="cA">0</b> Absent</span><span><i class="dot" style="background:#F0A000"></i><b id="cL">0</b> Late</span><div class="pb"><i id="pb"></i></div><span class="pc" id="pc">0%</span></div>
         <button class="btn btn-p" id="subAtt">Submit Attendance</button>
         <div id="attRes"></div>
@@ -834,17 +901,17 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
         <div class="price"><span class="cur">₹</span><span class="pv" data-m="399" data-y="333">333</span><small>/month</small></div>
         <p class="bill" data-y="&lt;b&gt;₹3,999 / year&lt;/b&gt; billed annually · ₹2.22 per student / month" data-m="Billed monthly. Switch to yearly for 2 months free."></p>
         <ul><li><svg class="ico"><use href="#i-check"/></svg>Up to 150 students</li><li><svg class="ico"><use href="#i-check"/></svg>Fee ledgers + tracking</li><li><svg class="ico"><use href="#i-check"/></svg>Bilingual WhatsApp receipts</li><li><svg class="ico"><use href="#i-check"/></svg>Report cards + notice board</li><li><svg class="ico"><use href="#i-check"/></svg>Free school subdomain</li><li><svg class="ico"><use href="#i-check"/></svg>Standard ticket support</li></ul>
-        <a class="btn btn-s" href="#demo">Start Free Trial</a></div>
+        <a class="btn btn-s" href="register.html?plan=starter">Start Free Trial</a></div>
       <div class="plan pop rv" data-tier="Growth" style="--d:1"><span class="ribbon">Most popular</span><h3>Growth</h3><p class="for">For schools up to 400 students.</p>
         <div class="price"><span class="cur">₹</span><span class="pv" data-m="799" data-y="667">667</span><small>/month</small></div>
         <p class="bill" data-y="&lt;b&gt;₹7,999 / year&lt;/b&gt; billed annually · ₹1.67 per student / month" data-m="Billed monthly. Switch to yearly for 2 months free."></p>
         <ul><li><svg class="ico"><use href="#i-check"/></svg>Up to 400 students</li><li><svg class="ico"><use href="#i-check"/></svg>Everything in Starter</li><li><svg class="ico"><use href="#i-check"/></svg>Automatic monthly fee charging</li><li><svg class="ico"><use href="#i-check"/></svg>Advanced analytics + defaulter reports</li><li><svg class="ico"><use href="#i-check"/></svg>Class promotion / session rollover</li><li><svg class="ico"><use href="#i-check"/></svg>Priority support</li></ul>
-        <a class="btn btn-p" href="#demo">Start Free Trial <svg class="ico go"><use href="#i-go"/></svg></a></div>
+        <a class="btn btn-p" href="register.html?plan=growth">Start Free Trial <svg class="ico go"><use href="#i-go"/></svg></a></div>
       <div class="plan rv" data-tier="Enterprise" style="--d:2"><h3>Enterprise</h3><p class="for">For schools up to 800 students.</p>
         <div class="price"><span class="cur">₹</span><span class="pv" data-m="1,499" data-y="1,250">1,250</span><small>/month</small></div>
         <p class="bill" data-y="&lt;b&gt;₹14,999 / year&lt;/b&gt; billed annually · ₹1.56 per student / month" data-m="Billed monthly. Switch to yearly for 2 months free."></p>
         <ul><li><svg class="ico"><use href="#i-check"/></svg>Up to 800 students</li><li><svg class="ico"><use href="#i-check"/></svg>Everything in Growth</li><li><svg class="ico"><use href="#i-check"/></svg>Your own custom domain</li><li><svg class="ico"><use href="#i-check"/></svg>Multi-role admin controls</li><li><svg class="ico"><use href="#i-check"/></svg>Dedicated training sessions</li><li><svg class="ico"><use href="#i-check"/></svg>On-site support</li></ul>
-        <a class="btn btn-s" href="#demo">Start Free Trial</a></div>
+        <a class="btn btn-s" href="register.html?plan=enterprise">Start Free Trial</a></div>
     </div>
     <div class="guar rv">
       <span><svg class="ico"><use href="#i-check"/></svg>30-day free trial</span>
@@ -882,6 +949,11 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
         <span class="eyebrow" style="color:#8FBEFF"><i style="background:#5AA2FF"></i>30 days free · no card</span>
         <h2>Try it first. <em>Subscribe only if you like it.</em></h2>
         <p>Book a 30-minute virtual demo. We load your old records for you — within 24 to 48 hours, completely free.</p>
+        <div style="margin-top:16px;">
+          <a href="register.html" style="color:#8FBEFF;font-weight:700;font-size:0.95rem;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:color .2s;">
+            Prefer to start right away? Register your school in 2 minutes →
+          </a>
+        </div>
         <div class="ct">
           <div><svg class="ico"><use href="#i-phone"/></svg><a href="tel:+919155515505" style="text-decoration:none;">+91 91555 15505</a><button class="cp" data-copy="+919155515505">Copy</button></div>
           <div><svg class="ico"><use href="#i-mail"/></svg><a href="mailto:connect@ctrlshifts.in" style="text-decoration:none;">connect@ctrlshifts.in</a><button class="cp" data-copy="connect@ctrlshifts.in">Copy</button></div>
@@ -916,6 +988,11 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
 <a class="fab" href="https://wa.me/919155515505?text=Namaste!%20Paathshala%20ke%20baare%20mein%20jaanna%20hai." target="_blank" rel="noopener" aria-label="Chat on WhatsApp"><svg class="ico"><use href="#i-chat"/></svg><span>WhatsApp</span></a>
 
 
+
+<div class="sticky-bar" id="stickyBar" aria-label="Quick Actions">
+  <a class="btn btn-p" href="register.html">Register free</a>
+  <a class="btn btn-s" href="#demo">Demo</a>
+</div>
 
 <!-- Firebase SDKs for Lead Capture -->
 <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
@@ -1203,6 +1280,109 @@ h3{font-size:1.15rem;letter-spacing:-.015em;font-weight:700}
       }
     });
   }
+
+  /* mobile drawer controller */
+  const navToggle = $('#navToggle');
+  const mobileMenu = $('#mobileMenu');
+  const drawerBackdrop = $('#drawerBackdrop');
+  const drawerLinks = $$('.drawer-link, .drawer-actions a');
+
+  function toggleMobileMenu(open) {
+    if (!mobileMenu || !navToggle) return;
+    const isOpen = open !== undefined ? open : !mobileMenu.classList.contains('open');
+    navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    mobileMenu.classList.toggle('open', isOpen);
+    if (drawerBackdrop) drawerBackdrop.classList.toggle('open', isOpen);
+    document.body.classList.toggle('menu-open', isOpen);
+    if (isOpen) {
+      mobileMenu.removeAttribute('hidden');
+    } else {
+      setTimeout(() => {
+        if (!mobileMenu.classList.contains('open')) mobileMenu.setAttribute('hidden', '');
+      }, 350);
+    }
+    updateStickyBar();
+  }
+
+  if (navToggle) {
+    navToggle.addEventListener('click', () => toggleMobileMenu());
+  }
+  if (drawerBackdrop) {
+    drawerBackdrop.addEventListener('click', () => toggleMobileMenu(false));
+  }
+  document.addEventListener('click', (e) => {
+    if (!mobileMenu || !mobileMenu.classList.contains('open')) return;
+    if (!mobileMenu.contains(e.target) && !navToggle.contains(e.target)) {
+      toggleMobileMenu(false);
+    }
+  });
+  drawerLinks.forEach(link => {
+    link.addEventListener('click', () => toggleMobileMenu(false));
+  });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && mobileMenu && mobileMenu.classList.contains('open')) {
+      toggleMobileMenu(false);
+      navToggle.focus();
+    }
+  });
+
+  /* attendance student toggle (M3) */
+  const toggleStuds = $('#toggleStuds');
+  if (toggleStuds) {
+    toggleStuds.addEventListener('click', () => {
+      const isExpanded = grid.classList.toggle('expanded');
+      toggleStuds.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      toggleStuds.textContent = isExpanded ? 'Show fewer (4 students) ↑' : 'Show all 8 students ↓';
+    });
+  }
+
+  /* sticky mobile cta bar controller (M4) */
+  const stickyBar = $('#stickyBar');
+  const heroTop = $('#top');
+  const demoSec = $('#demo');
+  let heroVisible = true;
+  let demoVisible = false;
+
+  function updateStickyBar() {
+    const isMobile = window.innerWidth <= 560;
+    const isMenuOpen = document.body.classList.contains('menu-open');
+    const shouldShow = isMobile && !heroVisible && !demoVisible && !isMenuOpen;
+    if (stickyBar) {
+      stickyBar.classList.toggle('visible', shouldShow);
+      document.body.classList.toggle('has-sticky-bar', shouldShow);
+    }
+  }
+
+  if ('IntersectionObserver' in window) {
+    if (heroTop) {
+      const heroObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          heroVisible = entry.isIntersecting;
+          updateStickyBar();
+        });
+      }, { threshold: 0.05 });
+      heroObserver.observe(heroTop);
+    }
+    if (demoSec) {
+      const demoObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          demoVisible = entry.isIntersecting;
+          updateStickyBar();
+        });
+      }, { threshold: 0.05 });
+      demoObserver.observe(demoSec);
+    }
+  } else {
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY;
+      heroVisible = heroTop ? (y < heroTop.offsetHeight) : false;
+      const demoTop = demoSec ? demoSec.offsetTop - window.innerHeight : Infinity;
+      demoVisible = y >= demoTop;
+      updateStickyBar();
+    }, { passive: true });
+  }
+  window.addEventListener('resize', updateStickyBar, { passive: true });
+  updateStickyBar();
 })();
 
 </script>
