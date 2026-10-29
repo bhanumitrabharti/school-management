@@ -263,6 +263,26 @@ async function runTests() {
     }));
   });
 
+  await test('B4a: Admin write to fees_years with invalid shape (extra keys) is DENIED', async () => {
+    await assertFails(adminDb.doc('tenant_data/school_1/fees_years/2026/months/2026-10').set({
+      transactions: [{ id: 'TX2', amount: 200 }],
+      unauthorizedKey: 'malicious'
+    }));
+  });
+
+  await test('B4b: Admin write to fees_years with non-list transactions is DENIED', async () => {
+    await assertFails(adminDb.doc('tenant_data/school_1/fees_years/2026/months/2026-10').set({
+      transactions: 'invalid_type_not_a_list'
+    }));
+  });
+
+  await test('B4c: Admin write to fees_years with more than 1000 transactions is DENIED', async () => {
+    const tooManyTx = Array.from({ length: 1001 }, (_, i) => ({ id: `TX_${i}`, amount: 10 }));
+    await assertFails(adminDb.doc('tenant_data/school_1/fees_years/2026/months/2026-10').set({
+      transactions: tooManyTx
+    }));
+  });
+
   await test('B5: Admin can READ & WRITE attendance_months', async () => {
     await assertSucceeds(adminDb.doc('tenant_data/school_1/attendance_months/2026-10/classes/1').get());
     await assertSucceeds(adminDb.doc('tenant_data/school_1/attendance_months/2026-10/classes/1').set({

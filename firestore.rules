@@ -107,7 +107,8 @@ service cloud.firestore {
 
     // ── Fees Years Subcollection — School Admin & Super Admin ONLY ───────────
     match /tenant_data/{schoolId}/fees_years/{allChildren=**} {
-      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin();
+      allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin()) && validFeeMonthDoc();
     }
 
     // ── Attendance Months Subcollection — School Users (Admin / Teacher) ─────
