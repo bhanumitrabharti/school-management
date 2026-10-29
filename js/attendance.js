@@ -1769,14 +1769,28 @@
     if (!SchoolApp.store.absenceIntimationLog) {
       SchoolApp.store.absenceIntimationLog = [];
     }
-    SchoolApp.store.absenceIntimationLog.push({
+    var entry = {
       studentId: studentId,
       date: date,
       channel: channel,
       status: status,
       sentBy: (SchoolApp.currentUser && SchoolApp.currentUser.username) || 'unknown',
       sentAt: new Date().toISOString()
-    });
+    };
+    SchoolApp.store.absenceIntimationLog.push(entry);
+
+    if (SchoolApp.isTeacher()) {
+      var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+      if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+        var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+        window.firestore.updateDoc(rootDocRef, {
+          absenceIntimationLog: window.firestore.arrayUnion(entry)
+        }).catch(function(err) {
+          console.warn('[Attendance] Error logging absence intimation via arrayUnion:', err);
+        });
+        return;
+      }
+    }
     SchoolApp.save(true);
   }
 

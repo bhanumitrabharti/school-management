@@ -99,7 +99,7 @@
 
     SchoolApp.showToast('Capturing GPS coordinates...', 'info');
 
-    navigator.geolocation.getCurrentPosition(function(position) {
+    navigator.geolocation.getCurrentPosition(async function(position) {
       var lat = position.coords.latitude;
       var lon = position.coords.longitude;
       // SEC-12: capture GPS fix accuracy (metres); high value = likely IP-based fallback
@@ -160,7 +160,22 @@
             SchoolApp.store.teacherAttendance = [];
           }
           SchoolApp.store.teacherAttendance.push(punchOutRecord);
-          SchoolApp.save();
+
+          var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+          if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+            try {
+              var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+              await window.firestore.updateDoc(rootDocRef, {
+                teacherAttendance: window.firestore.arrayUnion(punchOutRecord)
+              });
+            } catch (punchErr) {
+              console.error('[Teacher Attendance] Error saving punch out record:', punchErr);
+              SchoolApp.showToast('Failed to record punch out: ' + (punchErr.message || 'Check connection'), 'error');
+              return;
+            }
+          } else {
+            SchoolApp.save();
+          }
 
           SchoolApp.showToast('Checked Out outside school radius (' + Math.round(distance) + 'm). Attendance locked.', 'warning');
           render();
@@ -207,7 +222,22 @@
       }
 
       SchoolApp.store.teacherAttendance.push(punchRecord);
-      SchoolApp.save();
+
+      var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+      if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+        try {
+          var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+          await window.firestore.updateDoc(rootDocRef, {
+            teacherAttendance: window.firestore.arrayUnion(punchRecord)
+          });
+        } catch (punchErr) {
+          console.error('[Teacher Attendance] Error saving punch record:', punchErr);
+          SchoolApp.showToast('Failed to record punch: ' + (punchErr.message || 'Check connection'), 'error');
+          return;
+        }
+      } else {
+        SchoolApp.save();
+      }
 
       var successMsg = 'Attendance marked: Checked ' + (type === 'in' ? 'In' : 'Out') + '. Status: ' + geofenceStatus;
       SchoolApp.showToast(successMsg, 'success');
@@ -404,7 +434,7 @@
 
     SchoolApp.showModal('Attendance Regularization Request', bodyHTML, footerHTML);
 
-    document.getElementById('btn-submit-regularization').addEventListener('click', function() {
+    document.getElementById('btn-submit-regularization').addEventListener('click', async function() {
       var dateVal = document.getElementById('req-date').value;
       var timeInVal = document.getElementById('req-time-in').value;
       var timeOutVal = document.getElementById('req-time-out').value;
@@ -462,7 +492,22 @@
       SchoolApp.store.attendanceRequests.push(request);
       SchoolApp.store.teacherCorrectionRequests.push(request);
 
-      SchoolApp.save();
+      var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+      if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+        try {
+          var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+          await window.firestore.updateDoc(rootDocRef, {
+            attendanceRequests: window.firestore.arrayUnion(request),
+            teacherCorrectionRequests: window.firestore.arrayUnion(request)
+          });
+        } catch (updateErr) {
+          console.error('[Teacher Attendance] Error submitting regularization request:', updateErr);
+          SchoolApp.showToast('Failed to submit request: ' + (updateErr.message || 'Check connection'), 'error');
+          return;
+        }
+      } else {
+        SchoolApp.save();
+      }
       SchoolApp.closeModal();
       SchoolApp.showToast('Request submitted. Pending Admin approval.', 'success');
       render();

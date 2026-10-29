@@ -72,7 +72,7 @@
 
     _migratedSchoolId = currentSchoolId;
 
-    if (changed) {
+    if (changed && SchoolApp.isAdmin()) {
       SchoolApp.save(true); // Bypass loader for silent background migration
     }
   }

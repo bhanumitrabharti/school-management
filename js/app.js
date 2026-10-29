@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, orderBy, startAfter, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -60,7 +60,7 @@ window.APP_VERSION = window.APP_VERSION || 'v64';
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
 window.auth = authInst;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, orderBy, startAfter, writeBatch, deleteField };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
@@ -1445,6 +1445,7 @@ window.SchoolApp = {
 
   /* ===== FEES DUAL-READ / SINGLE-WRITE ===== */
   loadFeesYear: async function(year) {
+    if (this.isTeacher()) return [];
     if (!year) {
       year = String(new Date().getFullYear());
     }
@@ -1540,6 +1541,7 @@ window.SchoolApp = {
   },
 
   listenToFeesYear: function(year) {
+    if (this.isTeacher()) return;
     if (!year) year = String(new Date().getFullYear());
     year = String(year);
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
@@ -2632,12 +2634,14 @@ window.SchoolApp = {
           self.loadAttendanceMonth(currentYM).then(function() {
             self.listenToAttendanceMonth(currentYM);
           });
-          self.loadFeesYear(currentYr).then(function() {
-            self.listenToFeesYear(currentYr);
-            if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
-              window.FeesModule.render();
-            }
-          });
+          if (!self.isTeacher()) {
+            self.loadFeesYear(currentYr).then(function() {
+              self.listenToFeesYear(currentYr);
+              if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
+                window.FeesModule.render();
+              }
+            });
+          }
         }
         if (self.currentPage && firstResolveCalled) {
           console.log("Auto-refreshing active page: " + self.currentPage);
@@ -3744,7 +3748,7 @@ window.SchoolApp = {
           }).catch(function(e) { console.warn('[F1] post-login attendance reload failed:', e); });
         }
         // Reload fees year
-        if (typeof self.loadFeesYear === 'function') {
+        if (!self.isTeacher() && typeof self.loadFeesYear === 'function') {
           self.loadFeesYear(currentYr).then(function() {
             if (typeof self.listenToFeesYear === 'function') {
               self.listenToFeesYear(currentYr);
@@ -3910,17 +3914,20 @@ window.SchoolApp = {
       bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (settings.phone || '') + '" required></div>';
       bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><div class="password-wrapper"><input type="password" class="form-input" name="adminPassword" value="' + (settings.adminPassword || '') + '" required><i class="fa fa-eye toggle-password"></i></div></div>';
     } else {
-      // Teacher
+      // Teacher (Read-Only: contact admin to update details)
       var teacher = this.store.teachers.find(function(t) { return t.id === user.id; });
       if (!teacher) {
         self.showToast('Profile error: teacher record not found.', 'error');
         return;
       }
-      bodyHTML += '<div class="form-group"><label class="form-label">First Name *</label><input type="text" class="form-input" name="firstName" value="' + (teacher.firstName || '') + '" required></div>';
-      bodyHTML += '<div class="form-group"><label class="form-label">Last Name *</label><input type="text" class="form-input" name="lastName" value="' + (teacher.lastName || '') + '" required></div>';
-      bodyHTML += '<div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-input" name="email" value="' + (teacher.email || '') + '" required></div>';
-      bodyHTML += '<div class="form-group"><label class="form-label">Phone *</label><input type="text" class="form-input" name="phone" value="' + (teacher.phone || '') + '" required></div>';
-      bodyHTML += '<div class="form-group"><label class="form-label">Password *</label><div class="password-wrapper"><input type="password" class="form-input" name="password" value="' + (teacher.password || '') + '" required><i class="fa fa-eye toggle-password"></i></div></div>';
+      bodyHTML += '<div class="alert alert-info" style="background:rgba(6, 182, 212, 0.12);border:1px solid rgba(6, 182, 212, 0.35);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;grid-column:1/-1;">';
+      bodyHTML += '  <span class="material-icons-round" style="color:#06b6d4;font-size:20px;">info</span>';
+      bodyHTML += '  <span style="font-size:12.5px;color:var(--text-primary);font-weight:500;">To update your details, contact your school admin.</span>';
+      bodyHTML += '</div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">First Name</label><input type="text" class="form-input" name="firstName" value="' + self.escapeHTML(teacher.firstName || '') + '" disabled style="opacity:0.8;cursor:not-allowed;"></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Last Name</label><input type="text" class="form-input" name="lastName" value="' + self.escapeHTML(teacher.lastName || '') + '" disabled style="opacity:0.8;cursor:not-allowed;"></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" name="email" value="' + self.escapeHTML(teacher.email || '') + '" disabled style="opacity:0.8;cursor:not-allowed;"></div>';
+      bodyHTML += '<div class="form-group"><label class="form-label">Phone</label><input type="text" class="form-input" name="phone" value="' + self.escapeHTML(teacher.phone || '') + '" disabled style="opacity:0.8;cursor:not-allowed;"></div>';
 
       // Read-only custom fields for this teacher
       var schoolId = (self.store && self.store.currentSchoolId) || 'default';
@@ -3957,12 +3964,19 @@ window.SchoolApp = {
     
     bodyHTML += '</form>';
 
-    var footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
-    footerHTML += '<button class="btn btn-primary" id="my-profile-save-btn"><span class="material-icons-round">save</span> Save Changes</button>';
+    var footerHTML = '';
+    if (this.isTeacher()) {
+      footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+    } else {
+      footerHTML = '<button class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footerHTML += '<button class="btn btn-primary" id="my-profile-save-btn"><span class="material-icons-round">save</span> Save Changes</button>';
+    }
 
     this.showModal('My Profile', bodyHTML, footerHTML);
 
-    document.getElementById('my-profile-save-btn').addEventListener('click', async function() {
+    var saveBtnEl = document.getElementById('my-profile-save-btn');
+    if (saveBtnEl) {
+      saveBtnEl.addEventListener('click', async function() {
       var form = document.getElementById('my-profile-form');
       if (!form) return;
 
@@ -4063,7 +4077,8 @@ window.SchoolApp = {
       if (self.currentPage === 'dashboard') {
         self.renderDashboard();
       }
-    });
+      });
+    }
   },
 
   isAdmin: function() {
@@ -4563,6 +4578,29 @@ window.SchoolApp = {
     modal.classList.add('active');
   },
 
+  _getTeacherNotifKey: function(type) {
+    var schoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || 'default';
+    var userId = (this.currentUser && (this.currentUser.id || this.currentUser.username)) || 'teacher';
+    return 'teacher_notifs_' + type + '_' + schoolId + '_' + userId;
+  },
+
+  _getTeacherReadNotifIds: function() {
+    try {
+      var raw = localStorage.getItem(this._getTeacherNotifKey('read'));
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  _getTeacherClearedTimestamp: function() {
+    try {
+      return localStorage.getItem(this._getTeacherNotifKey('cleared_at')) || '';
+    } catch (e) {
+      return '';
+    }
+  },
+
   toggleNotificationDropdown: function() {
     var dropdown = document.getElementById('notification-dropdown');
     if (!dropdown) return;
@@ -4570,11 +4608,32 @@ window.SchoolApp = {
     var isHidden = dropdown.classList.contains('hidden');
     
     if (isHidden) {
-      // Mark all logs as read
-      if (this.store && this.store.notifications) {
-        this.store.notifications.forEach(function(n) { n.read = true; });
-        this.save(true);
-        this.updateNotificationBadge();
+      if (this.isTeacher()) {
+        // Teacher: Mark all logs as read in localStorage only (NO Firestore root doc write)
+        if (this.store && this.store.notifications) {
+          try {
+            var readIds = this._getTeacherReadNotifIds();
+            var readSet = new Set(readIds);
+            var clearedAt = this._getTeacherClearedTimestamp();
+            this.store.notifications.forEach(function(n) {
+              if (!clearedAt || !n.timestamp || n.timestamp > clearedAt) {
+                var nid = n.id || (n.timestamp + '_' + (n.message || ''));
+                readSet.add(nid);
+              }
+            });
+            localStorage.setItem(this._getTeacherNotifKey('read'), JSON.stringify(Array.from(readSet)));
+          } catch (e) {
+            console.warn('[Notifications] Error persisting teacher read status to localStorage:', e);
+          }
+          this.updateNotificationBadge();
+        }
+      } else {
+        // Admin: Mark all logs as read and persist to Firestore (byte-for-byte unchanged)
+        if (this.store && this.store.notifications) {
+          this.store.notifications.forEach(function(n) { n.read = true; });
+          this.save(true);
+          this.updateNotificationBadge();
+        }
       }
       
       this.renderNotificationDropdown();
@@ -4649,7 +4708,16 @@ window.SchoolApp = {
     // Section B: Recent System Action Logs (5 most recent)
     html += '<div style="padding: 12px 16px 4px 16px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.03); margin-top: 4px;">System Action Logs</div>';
     
-    var logs = (this.store.notifications || []).slice(0, 5);
+    var rawLogs = (this.store.notifications || []);
+    var logs = [];
+    if (this.isTeacher()) {
+      var clearedAt = this._getTeacherClearedTimestamp();
+      logs = rawLogs.filter(function(l) {
+        return !clearedAt || !l.timestamp || l.timestamp > clearedAt;
+      }).slice(0, 5);
+    } else {
+      logs = rawLogs.slice(0, 5);
+    }
     if (logs.length > 0) {
       logs.forEach(function(l) {
         var timeAgo = SchoolApp.formatTimeAgo(l.timestamp);
@@ -4684,6 +4752,18 @@ window.SchoolApp = {
   },
   
   clearNotifications: function() {
+    if (this.isTeacher()) {
+      // Teacher: Record clear cutoff timestamp in localStorage (NO Firestore root doc write)
+      try {
+        localStorage.setItem(this._getTeacherNotifKey('cleared_at'), new Date().toISOString());
+      } catch (e) {
+        console.warn('[Notifications] Error clearing teacher notifications in localStorage:', e);
+      }
+      this.updateNotificationBadge();
+      this.renderNotificationDropdown();
+      return;
+    }
+    // Admin: Clear shared store and persist to Firestore (byte-for-byte unchanged)
     if (this.store) {
       this.store.notifications = [];
       this.save(true);
@@ -4698,7 +4778,17 @@ window.SchoolApp = {
     
     var unreadCount = 0;
     if (this.store && this.store.notifications) {
-      unreadCount = this.store.notifications.filter(function(n) { return !n.read; }).length;
+      if (this.isTeacher()) {
+        var clearedAt = this._getTeacherClearedTimestamp();
+        var readIds = new Set(this._getTeacherReadNotifIds());
+        unreadCount = this.store.notifications.filter(function(n) {
+          if (clearedAt && n.timestamp && n.timestamp <= clearedAt) return false;
+          var nid = n.id || (n.timestamp + '_' + (n.message || ''));
+          return !readIds.has(nid);
+        }).length;
+      } else {
+        unreadCount = this.store.notifications.filter(function(n) { return !n.read; }).length;
+      }
     }
     
     badge.textContent = unreadCount;
