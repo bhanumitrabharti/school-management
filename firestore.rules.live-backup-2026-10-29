@@ -1,0 +1,265 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Auth helpers ─────────────────────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // F8: Super-admin Firebase Auth UID
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+             request.auth.uid == 'cq647u1GfCXISzf7XMw8pxH76I72';
+    }
+
+    // F1: Tenant isolation — verified mapping created by server API
+    function isSchoolAdmin(schoolId) {
+      return canAccessSchool(schoolId) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('role', '') == 'admin';
+    }
+
+    // Helper to check if caller is an authorized teacher of this school
+    function isSchoolTeacher(schoolId) {
+      return canAccessSchool(schoolId) &&
+             exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('role', '') == 'teacher';
+    }
+
+    // Helper to get caller's teacherId from school_access
+    function getTeacherId(schoolId) {
+      return get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('teacherId', '');
+    }
+
+    // Helper to check if caller is this specific teacher
+    function isOwnTeacherProfile(schoolId, teacherId) {
+      return canAccessSchool(schoolId) &&
+             exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.get('teacherId', '') == teacherId;
+    }
+
+    function canAccessSchool(schoolId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/school_access/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/school_access/$(request.auth.uid)).data.schoolId == schoolId;
+    }
+
+    // HARD GUARD for students and teachers
+    function notWipingRoster(fieldName) {
+      return (resource == null || resource.data == null) ||
+             !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
+    }
+
+    // Guard for fees and attendance
+    function notWipingLedger(fieldName) {
+      return (request.resource.data.settings != null && request.resource.data.settings.restructured == true) ||
+             (resource == null || resource.data == null) ||
+             !(resource.data.get(fieldName, []).size() > 0 && request.resource.data.get(fieldName, []).size() == 0);
+    }
+
+    // SEC-11: Prevent oversized signature / logo blobs
+    function notOversizedBlobs() {
+      let s = request.resource.data.get('settings', null);
+      return s == null
+        || (s.get('principalSignatureUrl', '').size() < 800000
+            && s.get('logoUrl', '').size() < 800000);
+    }
+
+    // SEC-10: Validate fee month document structure on write
+    function validFeeMonthDoc() {
+      return request.resource.data.keys().hasOnly(['transactions'])
+          && request.resource.data.transactions is list
+          && request.resource.data.transactions.size() <= 1000;
+    }
+
+    // Rule for teacher-allowed targeted root document updates
+    function isTeacherAllowedRootUpdate(schoolId) {
+      return isSchoolTeacher(schoolId) &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'teacherAttendance',
+               'attendanceRequests',
+               'teacherCorrectionRequests',
+               'absenceIntimationLog'
+             ]);
+    }
+
+    // ── F1: school_access — client writes permanently blocked (server API only) ──
+    match /school_access/{uid} {
+      allow read:  if isAuthenticated() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ── Tenant school data — restricted to mapped school or super-admin ─────────
+    match /tenant_data/{schoolId} {
+      allow read:   if canAccessSchool(schoolId) || isSuperAdmin();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin() ||
+                       (isSchoolAdmin(schoolId) &&
+                        notWipingRoster('students') &&
+                        notWipingRoster('teachers') &&
+                        notWipingLedger('fees') &&
+                        notWipingLedger('attendance') &&
+                        notWipingLedger('examMarks') &&
+                        notOversizedBlobs()) ||
+                       isTeacherAllowedRootUpdate(schoolId);
+      allow delete: if false;
+    }
+
+    // ── Fees Years Subcollection — School Admin & Super Admin ONLY ───────────
+    match /tenant_data/{schoolId}/fees_years/{allChildren=**} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin();
+      allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin()) && validFeeMonthDoc();
+    }
+
+    // ── Attendance Months Subcollection — School Users (Admin / Teacher) ─────
+    match /tenant_data/{schoolId}/attendance_months/{allChildren=**} {
+      allow read, write: if canAccessSchool(schoolId) || isSuperAdmin();
+    }
+
+    // ── Exam Marks Subcollection — School Users (Admin / Teacher) ─────────────
+    match /tenant_data/{schoolId}/exam_marks/{allChildren=**} {
+      allow read, write: if canAccessSchool(schoolId) || isSuperAdmin();
+    }
+
+    // ── Core Students Subcollection — Admin write, Teacher read ───────────────
+    match /tenant_data/{schoolId}/students/{studentId} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin() || isSchoolTeacher(schoolId);
+      allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin())
+                      && request.resource.data.schoolId == schoolId;
+    }
+
+    // ── Student & Teacher Profiles Subcollections ─────────────────────────────
+    // Private student profiles — school admin + super admin only
+    match /tenant_data/{schoolId}/student_profiles/{studentId} {
+      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Shared student profiles (visible to teachers) — readable by school users, writable only by admin
+    match /tenant_data/{schoolId}/student_profiles_shared/{studentId} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Teacher profiles — admin: read/write; own teacher: read-only; other teachers: denied
+    match /tenant_data/{schoolId}/teacher_profiles/{teacherId} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin() || isOwnTeacherProfile(schoolId, teacherId);
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Fee Activity Logs Subcollection — school admin & super admin only (teachers blocked)
+    match /tenant_data/{schoolId}/fee_activity_logs/{logId} {
+      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Settings Subcollection — readable by school users, writable only by school admin
+    match /tenant_data/{schoolId}/settings/{docId=**} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // ── Accounts and Payroll Subcollections — School Admin & Super Admin ONLY ──
+    // Payslips: School Admin & Super Admin read/write; Teachers can ONLY read their own payslip
+    match /tenant_data/{schoolId}/payroll_payslips/{payslipId} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin() ||
+                      (isSchoolTeacher(schoolId) &&
+                       resource.data.get('teacherId', '') == getTeacherId(schoolId));
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Accounts collections and other payroll collections (structures, runs, etc.)
+    match /tenant_data/{schoolId}/{restrictedSubcol}/{allChildren=**} {
+      allow read, write: if (restrictedSubcol.matches('accounts_.*') ||
+                            (restrictedSubcol.matches('payroll_.*') && restrictedSubcol != 'payroll_payslips') ||
+                            restrictedSubcol == 'staff')
+                         && (isSchoolAdmin(schoolId) || isSuperAdmin());
+    }
+
+    // Private subcollection — Admin SDK only (completely blocked for all client roles)
+    match /tenant_data/{schoolId}/private/{allChildren=**} {
+      allow read, write: if false;
+    }
+
+    // Subcollections — default fallback: readable by school users, writable only by school admin
+    match /tenant_data/{schoolId}/{subcollection}/{allChildren=**} {
+      allow read:  if subcollection != 'student_profiles'
+                      && subcollection != 'student_profiles_shared'
+                      && subcollection != 'teacher_profiles'
+                      && subcollection != 'students'
+                      && subcollection != 'private'
+                      && subcollection != 'fee_activity_logs'
+                      && subcollection != 'fees_years'
+                      && subcollection != 'settings'
+                      && subcollection != 'attendance_months'
+                      && subcollection != 'exam_marks'
+                      && subcollection != 'payroll_payslips'
+                      && !subcollection.matches('accounts_.*')
+                      && !subcollection.matches('payroll_.*')
+                      && (canAccessSchool(schoolId) || isSuperAdmin());
+      allow write: if subcollection != 'student_profiles'
+                      && subcollection != 'student_profiles_shared'
+                      && subcollection != 'teacher_profiles'
+                      && subcollection != 'students'
+                      && subcollection != 'private'
+                      && subcollection != 'fee_activity_logs'
+                      && subcollection != 'fees_years'
+                      && subcollection != 'settings'
+                      && subcollection != 'attendance_months'
+                      && subcollection != 'exam_marks'
+                      && subcollection != 'payroll_payslips'
+                      && !subcollection.matches('accounts_.*')
+                      && !subcollection.matches('payroll_.*')
+                      && (isSchoolAdmin(schoolId) || isSuperAdmin());
+    }
+
+    // ── School registry — public read; write = super-admin or school admin branding sync ──
+    match /schools/{schoolId} {
+      allow read:   if true;
+      allow create: if isSuperAdmin();
+      allow delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() ||
+                       (isSchoolAdmin(schoolId) &&
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logo_url', 'school_name', 'tagline']) &&
+                        request.resource.data.get('logo_url', '').size() < 800000);
+    }
+
+    // ── F8: Super-admin data — restricted to super-admin Firebase UID only ───
+    match /sa_data/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── Demo requests — public create with basic validation; super-admin management ──
+    match /demo_requests/{docId} {
+      allow create:              if request.resource.data.get('phone', '') is string
+                                    && request.resource.data.get('phone', '').size() >= 10;
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // ── Login rate limits — Admin SDK only ──────────────────────────────────
+    match /login_rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    // ── Class rename backups — super-admin only ─────────────────────────────
+    match /rename_backups/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // ── Self-Service Onboarding & Referral Collections ──────────────────────
+    match /registrations/{regId} {
+      allow read, write: if false;
+    }
+
+    match /subdomain_reservations/{subdomain} {
+      allow read, write: if false;
+    }
+
+    match /registration_rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    match /referral_codes/{codeId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+  }
+}
