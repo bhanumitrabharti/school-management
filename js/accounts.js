@@ -43,19 +43,19 @@
     { code: '32100', name: "Prior Years' Accumulated Surplus / (Deficit)", type: 'equity', group: 'Corpus / Capital Fund', isSystem: true, isActive: true },
 
     // 4. Income (40000)
-    { code: '41100', name: 'Tuition Fees', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true },
-    { code: '41200', name: 'Admission & Registration Fees', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true },
-    { code: '41300', name: 'Examination Fees', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true },
-    { code: '41400', name: 'Annual / Development Charges', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true },
-    { code: '42100', name: 'Transport / Bus Charges', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true },
-    { code: '43100', name: 'Bank Interest Received', type: 'income', group: 'Other / Indirect Income', isSystem: true, isActive: true },
-    { code: '43200', name: 'Miscellaneous Receipts', type: 'income', group: 'Other / Indirect Income', isSystem: true, isActive: true },
+    { code: '41100', name: 'Tuition Fees', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true, reservedFor: 'fees' },
+    { code: '41200', name: 'Admission & Registration Fees', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true, reservedFor: 'fees' },
+    { code: '41300', name: 'Examination Fees', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true, reservedFor: 'fees' },
+    { code: '41400', name: 'Annual / Development Charges', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true, reservedFor: 'fees' },
+    { code: '42100', name: 'Transport / Bus Charges', type: 'income', group: 'Direct Educational Income', isSystem: true, isActive: true, reservedFor: 'fees' },
+    { code: '43100', name: 'Bank Interest Received', type: 'income', group: 'Other / Indirect Income', isSystem: true, isActive: true, reservedFor: 'fees' },
+    { code: '43200', name: 'Miscellaneous Receipts', type: 'income', group: 'Other / Indirect Income', isSystem: true, isActive: true, reservedFor: 'fees' },
 
     // 5. Expenses (50000)
-    { code: '51100', name: 'Teaching Staff Salaries', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true },
-    { code: '51200', name: 'Non-Teaching & Admin Salaries', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true },
-    { code: '51300', name: 'Employer EPF Contribution Expense', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true },
-    { code: '51400', name: 'Employer ESIC Contribution Expense', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true },
+    { code: '51100', name: 'Teaching Staff Salaries', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true, reservedFor: 'payroll' },
+    { code: '51200', name: 'Non-Teaching & Admin Salaries', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true, reservedFor: 'payroll' },
+    { code: '51300', name: 'Employer EPF Contribution Expense', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true, reservedFor: 'payroll' },
+    { code: '51400', name: 'Employer ESIC Contribution Expense', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true, reservedFor: 'payroll' },
     { code: '51500', name: 'Staff Welfare & Honorarium', type: 'expense', group: 'Personnel Costs', isSystem: true, isActive: true },
     { code: '52100', name: 'Printing, Stationery & Report Cards', type: 'expense', group: 'Operating & Academic Expenses', isSystem: true, isActive: true },
     { code: '52200', name: 'Examination & Evaluation Expenses', type: 'expense', group: 'Operating & Academic Expenses', isSystem: true, isActive: true },
@@ -64,7 +64,7 @@
     { code: '53300', name: 'Software, ERP & Website Hosting', type: 'expense', group: 'Operating & Academic Expenses', isSystem: true, isActive: true },
     { code: '54100', name: 'School Building & Campus Maintenance', type: 'expense', group: 'Repairs & Maintenance', isSystem: true, isActive: true },
     { code: '54200', name: 'Generator Fuel & Bus Fuel', type: 'expense', group: 'Repairs & Maintenance', isSystem: true, isActive: true },
-    { code: '55100', name: 'Student Fee Concessions & Discounts', type: 'expense', group: 'Concessions & Scholarships', isSystem: true, isActive: true }
+    { code: '55100', name: 'Student Fee Concessions & Discounts', type: 'expense', group: 'Concessions & Scholarships', isSystem: true, isActive: true, reservedFor: 'fees' }
   ];
 
   const AccountsModule = {
@@ -292,55 +292,93 @@
         var bankAccounts = [];
         if (bankName && bankLast4) {
           bankAccounts.push({
-            id: 'bank_1',
+            id: 'bank_11200',
             label: bankLabel || 'Primary Bank Account',
             bankName: bankName,
             last4: bankLast4.slice(-4),
-            ledgerAccountId: '11200'
+            ledgerAccountId: '11200',
+            isActive: true
           });
         }
 
         var nowIso = new Date().toISOString();
         var userDesc = (SchoolApp.currentUser && (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim()) || 'Admin';
 
-        // Use atomic WriteBatch for idempotent, single-transaction initialization
-        var batch = fs.writeBatch(db);
-
-        // 1. accounts_settings/main
         var settingsRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'main');
-        batch.set(settingsRef, {
-          financialYearStartMonth: fyMonth,
-          entityType: entityType,
-          accountingBasis: 'cash',
-          bankAccounts: bankAccounts,
-          setupCompletedAt: nowIso,
-          setupBy: userDesc,
-          updatedAt: nowIso
-        });
-
-        // 2. accounts_settings/counters
         var countersRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'counters');
-        batch.set(countersRef, {
-          expenseSeq: {}
-        });
 
-        // 3. Seed accounts_chart with default accounts
-        DEFAULT_CHART_OF_ACCOUNTS.forEach(function (acc) {
-          var accRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_chart', acc.code);
-          batch.set(accRef, {
-            code: acc.code,
-            name: acc.name,
-            type: acc.type,
-            group: acc.group,
-            isSystem: acc.isSystem,
-            isActive: acc.isActive,
-            createdAt: nowIso
+        // Check if accounts_settings/main already exists before writing
+        var existingSettingsSnap = await fs.getDoc(settingsRef);
+        if (existingSettingsSnap.exists()) {
+          SchoolApp.showToast('Accounts is already set up for this school.', 'info');
+          await this.render();
+          return;
+        }
+
+        // Run transaction for truly idempotent initialization
+        var wasAlreadySet = false;
+        await fs.runTransaction(db, async function (tx) {
+          var mainSnap = await tx.get(settingsRef);
+          if (mainSnap.exists()) {
+            wasAlreadySet = true;
+            return;
+          }
+
+          var countersSnap = await tx.get(countersRef);
+          var countersExist = countersSnap.exists();
+
+          // Read all default chart accounts
+          var chartSnaps = [];
+          for (var i = 0; i < DEFAULT_CHART_OF_ACCOUNTS.length; i++) {
+            var acc = DEFAULT_CHART_OF_ACCOUNTS[i];
+            var accRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_chart', acc.code);
+            var snap = await tx.get(accRef);
+            chartSnaps.push({ acc: acc, ref: accRef, exists: snap.exists() });
+          }
+
+          // 1. Write accounts_settings/main
+          tx.set(settingsRef, {
+            financialYearStartMonth: fyMonth,
+            entityType: entityType,
+            accountingBasis: 'cash',
+            bankAccounts: bankAccounts,
+            setupCompletedAt: nowIso,
+            setupBy: userDesc,
+            updatedAt: nowIso
+          });
+
+          // 2. Create counters ONLY if missing (never reset existing counters)
+          if (!countersExist) {
+            tx.set(countersRef, {
+              expenseSeq: {}
+            });
+          }
+
+          // 3. Seed chart docs ONLY if missing (never overwrite existing accounts, never reactivate deactivated accounts)
+          chartSnaps.forEach(function (item) {
+            if (!item.exists) {
+              var docData = {
+                code: item.acc.code,
+                name: item.acc.name,
+                type: item.acc.type,
+                group: item.acc.group,
+                isSystem: item.acc.isSystem,
+                isActive: item.acc.isActive,
+                createdAt: nowIso
+              };
+              if (item.acc.reservedFor) {
+                docData.reservedFor = item.acc.reservedFor;
+              }
+              tx.set(item.ref, docData);
+            }
           });
         });
 
-        await batch.commit();
-
-        SchoolApp.showToast('Accounts initialized successfully with Indian School Chart of Accounts!', 'success');
+        if (wasAlreadySet) {
+          SchoolApp.showToast('Accounts is already set up for this school.', 'info');
+        } else {
+          SchoolApp.showToast('Accounts initialized successfully with Indian School Chart of Accounts!', 'success');
+        }
         await this.render();
       } catch (err) {
         console.error('[Accounts] Setup error:', err);
@@ -763,7 +801,7 @@
 
     // ── Add Expense Modal ────────────────────────────────────────────────────
     openAddExpenseModal: function () {
-      var expenseAccounts = this.chart.filter(function (a) { return a.type === 'expense' && a.isActive; });
+      var expenseAccounts = this.chart.filter(function (a) { return a.type === 'expense' && a.isActive && !a.reservedFor; });
       var today = new Date().toISOString().split('T')[0];
       this.selectedAttachments = [];
 
@@ -819,7 +857,12 @@
       html += '      <option value="11110">11110 - Petty Cash</option>';
       if (this.settings && Array.isArray(this.settings.bankAccounts)) {
         this.settings.bankAccounts.forEach(function (b) {
-          html += '      <option value="' + (b.ledgerAccountId || '11200') + '">' + (b.ledgerAccountId || '11200') + ' - ' + SchoolApp.escapeHTML(b.label) + ' (' + SchoolApp.escapeHTML(b.bankName) + ' ••' + b.last4 + ')</option>';
+          if (b.isActive === false) return; // Hide deactivated banks from dropdown
+          var safeLedgerCode = SchoolApp.escapeHTML(String(b.ledgerAccountId || '11200'));
+          var safeLabel = SchoolApp.escapeHTML(String(b.label || 'Bank Account'));
+          var safeBankName = SchoolApp.escapeHTML(String(b.bankName || ''));
+          var safeLast4 = SchoolApp.escapeHTML(String(b.last4 || '').slice(-4));
+          html += '      <option value="' + safeLedgerCode + '">' + safeLedgerCode + ' - ' + safeLabel + ' (' + safeBankName + ' ••' + safeLast4 + ')</option>';
         });
       }
       html += '    </select>';
@@ -1073,45 +1116,46 @@
           }
         }
 
-        // 2. Atomic Firestore Write with Sequential Counter
+        // 2. Atomic Firestore Write with Sequential Counter via runTransaction
         var countersRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'counters');
         var expenseRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_expenses', expenseId);
 
         var userDesc = (SchoolApp.currentUser && (SchoolApp.currentUser.firstName + ' ' + (SchoolApp.currentUser.lastName || '')).trim()) || 'Admin';
         var nowIso = new Date().toISOString();
 
-        var countersSnap = await fs.getDoc(countersRef);
-        var currentCounters = countersSnap.exists() ? countersSnap.data() : { expenseSeq: {} };
-        var seqObj = currentCounters.expenseSeq || {};
-        var nextSeq = (seqObj[fy] || 0) + 1;
-        var expenseNo = 'EXP-' + fy + '-' + String(nextSeq).padStart(4, '0');
+        var assignedExpenseNo = await fs.runTransaction(db, async function (tx) {
+          var countersSnap = await tx.get(countersRef);
+          var countersData = countersSnap.exists() ? countersSnap.data() : { expenseSeq: {} };
+          var seqObj = Object.assign({}, countersData.expenseSeq || {});
+          var nextSeq = (seqObj[fy] || 0) + 1;
+          var expenseNo = 'EXP-' + fy + '-' + String(nextSeq).padStart(4, '0');
 
-        seqObj[fy] = nextSeq;
+          seqObj[fy] = nextSeq;
 
-        var batch = fs.writeBatch(db);
-        batch.set(countersRef, { expenseSeq: seqObj }, { merge: true });
-        batch.set(expenseRef, {
-          expenseNo: expenseNo,
-          date: date,
-          financialYear: fy,
-          vendorName: vendor,
-          vendorPhone: vendorPhone || null,
-          categoryAccountId: category,
-          amountPaise: amountPaise,
-          paymentMode: paymentMode,
-          paidFromAccountId: paidFrom,
-          referenceNo: refNo || null,
-          description: desc || null,
-          attachments: uploadedAttachments,
-          status: 'active',
-          createdBy: userDesc,
-          createdAt: nowIso
+          tx.set(countersRef, { expenseSeq: seqObj }, { merge: true });
+          tx.set(expenseRef, {
+            expenseNo: expenseNo,
+            date: date,
+            financialYear: fy,
+            vendorName: vendor,
+            vendorPhone: vendorPhone || null,
+            categoryAccountId: category,
+            amountPaise: amountPaise,
+            paymentMode: paymentMode,
+            paidFromAccountId: paidFrom,
+            referenceNo: refNo || null,
+            description: desc || null,
+            attachments: uploadedAttachments,
+            status: 'active',
+            createdBy: userDesc,
+            createdAt: nowIso
+          });
+
+          return expenseNo;
         });
 
-        await batch.commit();
-
         SchoolApp.closeModal();
-        SchoolApp.showToast('Expense ' + expenseNo + ' recorded successfully!', 'success');
+        SchoolApp.showToast('Expense ' + assignedExpenseNo + ' recorded successfully!', 'success');
         await this.render();
       } catch (err) {
         console.error('[Accounts] Expense save error:', err);
@@ -1628,16 +1672,25 @@
         html += '          <p style="font-size:12.5px; color:var(--text-muted); margin:0 0 10px 0;">No bank accounts configured yet.</p>';
       } else {
         bankList.forEach(function (b, idx) {
-          html += '          <div class="bank-row" data-index="' + idx + '" style="display:grid; grid-template-columns: 1fr 1fr 90px 40px; gap:8px; margin-bottom:8px; align-items:center;">';
+          var isAct = b.isActive !== false;
+          var statusBadge = isAct
+            ? '<span class="badge badge-success" style="font-size:11px;">Active</span>'
+            : '<span class="badge badge-gray" style="font-size:11px; background:#4b5563; color:#fff;">Deactivated</span>';
+          var toggleBtn = isAct
+            ? '<button type="button" class="btn btn-sm btn-secondary b-toggle-btn" data-action="deactivate" style="font-size:11px; padding:4px 8px;" onclick="SchoolApp.modules.accounts.toggleBankStatus(this)">Deactivate</button>'
+            : '<button type="button" class="btn btn-sm btn-secondary b-toggle-btn" data-action="activate" style="font-size:11px; padding:4px 8px;" onclick="SchoolApp.modules.accounts.toggleBankStatus(this)">Activate</button>';
+
+          html += '          <div class="bank-row bank-row-existing" data-id="' + SchoolApp.escapeHTML(b.id || ('bank_' + (b.ledgerAccountId || idx))) + '" data-ledger-code="' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '" data-is-active="' + (isAct ? 'true' : 'false') + '" style="display:grid; grid-template-columns: 1fr 1fr 85px 85px 85px; gap:8px; margin-bottom:8px; align-items:center;">';
           html += '            <input type="text" class="form-control b-label" placeholder="Label" value="' + SchoolApp.escapeHTML(b.label || '') + '" required />';
           html += '            <input type="text" class="form-control b-name" placeholder="Bank Name" value="' + SchoolApp.escapeHTML(b.bankName || '') + '" required />';
           html += '            <input type="text" class="form-control b-last4" placeholder="Last 4" maxlength="4" pattern="\\d{4}" value="' + SchoolApp.escapeHTML(b.last4 || '') + '" required />';
-          html += '            <button type="button" class="btn-icon" style="color:var(--danger);" onclick="this.closest(\'.bank-row\').remove()"><span class="material-icons-round">delete</span></button>';
+          html += '            <div style="font-size:11.5px; color:var(--text-secondary); text-align:center;">Code: <strong>' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '</strong></div>';
+          html += '            <div style="display:flex; align-items:center; gap:4px;">' + statusBadge + ' ' + toggleBtn + '</div>';
           html += '          </div>';
         });
       }
 
-      html += '        </div>';
+        html += '        </div>';
       html += '      </div>';
 
       html += '      <div style="display:flex; justify-content:flex-end;">';
@@ -1657,14 +1710,42 @@
       var container = document.getElementById('settings-bank-accounts-list');
       if (!container) return;
       var row = document.createElement('div');
-      row.className = 'bank-row';
-      row.style.cssText = 'display:grid; grid-template-columns: 1fr 1fr 90px 40px; gap:8px; margin-bottom:8px; align-items:center;';
+      row.className = 'bank-row bank-row-new';
+      row.style.cssText = 'display:grid; grid-template-columns: 1fr 1fr 85px 85px 85px; gap:8px; margin-bottom:8px; align-items:center;';
       row.innerHTML =
         '<input type="text" class="form-control b-label" placeholder="Label (e.g. HDFC General)" required />' +
         '<input type="text" class="form-control b-name" placeholder="Bank Name" required />' +
         '<input type="text" class="form-control b-last4" placeholder="Last 4" maxlength="4" pattern="\\d{4}" required />' +
-        '<button type="button" class="btn-icon" style="color:var(--danger);" onclick="this.closest(\'.bank-row\').remove()"><span class="material-icons-round">delete</span></button>';
+        '<div style="font-size:11.5px; color:var(--text-muted); text-align:center;"><em>(Auto-assigned)</em></div>' +
+        '<button type="button" class="btn-icon" style="color:var(--danger);" title="Discard un-saved row" onclick="this.closest(\'.bank-row-new\').remove()"><span class="material-icons-round">close</span></button>';
       container.appendChild(row);
+    },
+
+    toggleBankStatus: function (btn) {
+      var row = btn.closest('.bank-row-existing');
+      if (!row) return;
+      var currentActive = row.getAttribute('data-is-active') !== 'false';
+      var newActive = !currentActive;
+      row.setAttribute('data-is-active', newActive ? 'true' : 'false');
+
+      var statusBadge = row.querySelector('.badge');
+      if (statusBadge) {
+        if (newActive) {
+          statusBadge.className = 'badge badge-success';
+          statusBadge.textContent = 'Active';
+          statusBadge.style.background = '';
+          statusBadge.style.color = '';
+          btn.setAttribute('data-action', 'deactivate');
+          btn.textContent = 'Deactivate';
+        } else {
+          statusBadge.className = 'badge badge-gray';
+          statusBadge.textContent = 'Deactivated';
+          statusBadge.style.background = '#4b5563';
+          statusBadge.style.color = '#fff';
+          btn.setAttribute('data-action', 'activate');
+          btn.textContent = 'Activate';
+        }
+      }
     },
 
     saveSettings: async function (e) {
@@ -1684,30 +1765,105 @@
         var fyMonthInput = document.getElementById('settings-fy-month');
         var fyMonth = fyMonthInput && !fyMonthInput.disabled ? parseInt(fyMonthInput.value, 10) : (this.settings ? this.settings.financialYearStartMonth : 4);
 
-        var bankRows = document.querySelectorAll('#settings-bank-accounts-list .bank-row');
+        var existingRows = document.querySelectorAll('#settings-bank-accounts-list .bank-row-existing');
+        var newRows = document.querySelectorAll('#settings-bank-accounts-list .bank-row-new');
+
         var bankAccounts = [];
-        bankRows.forEach(function (row, idx) {
+        var assignedCodes = new Set();
+
+        // 1. Process existing bank rows (preserve permanent id and ledgerAccountId)
+        existingRows.forEach(function (row) {
+          var id = row.getAttribute('data-id');
+          var ledgerCode = row.getAttribute('data-ledger-code');
+          var isAct = row.getAttribute('data-is-active') !== 'false';
           var lbl = row.querySelector('.b-label').value.trim();
           var nm = row.querySelector('.b-name').value.trim();
           var l4 = row.querySelector('.b-last4').value.trim();
+
           if (nm && l4) {
+            assignedCodes.add(ledgerCode);
             bankAccounts.push({
-              id: 'bank_' + (idx + 1),
+              id: id,
               label: lbl || nm,
               bankName: nm,
               last4: l4.slice(-4),
-              ledgerAccountId: (idx === 0 ? '11200' : ('112' + (idx * 10)))
+              ledgerAccountId: ledgerCode,
+              isActive: isAct
             });
           }
         });
 
+        // Collect all codes currently in chart to avoid any collision
+        (this.chart || []).forEach(function (a) { assignedCodes.add(a.code); });
+
+        // 2. Process new bank rows
+        var newChartAccountsToCreate = [];
+        newRows.forEach(function (row) {
+          var lbl = row.querySelector('.b-label').value.trim();
+          var nm = row.querySelector('.b-name').value.trim();
+          var l4 = row.querySelector('.b-last4').value.trim();
+
+          if (nm && l4) {
+            var targetCode = null;
+            if (!assignedCodes.has('11200')) {
+              targetCode = '11200';
+            } else if (!assignedCodes.has('11210')) {
+              targetCode = '11210';
+            } else {
+              for (var c = 11220; c <= 11299; c += 10) {
+                var codeStr = String(c);
+                if (!assignedCodes.has(codeStr)) {
+                  targetCode = codeStr;
+                  break;
+                }
+              }
+            }
+
+            if (!targetCode) {
+              throw new Error('Maximum number of configured bank accounts reached (range 11200-11299 full).');
+            }
+
+            assignedCodes.add(targetCode);
+            var permanentId = 'bank_' + targetCode;
+            bankAccounts.push({
+              id: permanentId,
+              label: lbl || nm,
+              bankName: nm,
+              last4: l4.slice(-4),
+              ledgerAccountId: targetCode,
+              isActive: true
+            });
+
+            // If the code is in 11220-11299, create a new chart of accounts entry in the same write
+            if (parseInt(targetCode, 10) >= 11220) {
+              newChartAccountsToCreate.push({
+                code: targetCode,
+                name: lbl || (nm + ' ••' + l4.slice(-4)),
+                type: 'asset',
+                group: 'Current Assets',
+                isSystem: false,
+                isActive: true,
+                createdAt: new Date().toISOString()
+              });
+            }
+          }
+        });
+
+        var batch = fs.writeBatch(db);
         var settingsRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'main');
-        await fs.updateDoc(settingsRef, {
+        batch.update(settingsRef, {
           entityType: entityType,
           financialYearStartMonth: fyMonth,
           bankAccounts: bankAccounts,
           updatedAt: new Date().toISOString()
         });
+
+        newChartAccountsToCreate.forEach(function (acc) {
+          var accRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_chart', acc.code);
+          batch.set(accRef, acc);
+        });
+
+        await batch.commit();
 
         SchoolApp.showToast('Accounts settings updated successfully!', 'success');
         await this.render();

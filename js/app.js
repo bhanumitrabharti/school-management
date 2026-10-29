@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
@@ -60,7 +60,7 @@ window.APP_VERSION = window.APP_VERSION || 'v66';
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
 window.auth = authInst;
-window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion };
+window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion, runTransaction };
 const storage = getStorage(app);
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
