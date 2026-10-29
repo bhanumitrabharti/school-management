@@ -1,0 +1,94 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Auth helpers ─────────────────────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // F8: Super-admin Firebase Auth UID
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+             request.auth.uid == 'cq647u1GfCXISzf7XMw8pxH76I72';
+    }
+
+    // Tenant isolation: fetch school_access mapping from Cloud Firestore
+    function getSchoolAccess() {
+      return firestore.get(/databases/(default)/documents/school_access/$(request.auth.uid)).data;
+    }
+
+    function hasSchoolAccess(schoolId) {
+      return isAuthenticated() &&
+             firestore.exists(/databases/(default)/documents/school_access/$(request.auth.uid)) &&
+             getSchoolAccess().schoolId == schoolId;
+    }
+
+    function isSchoolAdmin(schoolId) {
+      return hasSchoolAccess(schoolId) &&
+             getSchoolAccess().role == 'admin';
+    }
+
+    function isSchoolTeacher(schoolId) {
+      return hasSchoolAccess(schoolId) &&
+             getSchoolAccess().role == 'teacher';
+    }
+
+    function isSchoolMember(schoolId) {
+      return hasSchoolAccess(schoolId);
+    }
+
+    // ── Validation helpers ───────────────────────────────────────────────────
+    function isValidLogo(fileName) {
+      return fileName.matches('^logo\\.(png|jpg|jpeg|svg|webp)$')
+        && (request.resource == null || (
+             request.resource.size <= 500 * 1024
+             && request.resource.contentType.matches('image/.*')
+           ));
+    }
+
+    function isValidStudentPhoto(photoFile) {
+      return photoFile.matches('^[a-zA-Z0-9_-]+\\.(jpg|jpeg|png)$')
+        && (request.resource == null || (
+             request.resource.size <= 500 * 1024
+             && request.resource.contentType.matches('image/.*')
+           ));
+    }
+
+    function isValidAccountDoc() {
+      return request.resource == null || (
+        (request.resource.contentType.matches('image/.*') && request.resource.size <= 300 * 1024)
+        ||
+        (request.resource.contentType == 'application/pdf' && request.resource.size <= 600 * 1024)
+      );
+    }
+
+    // ── Path rules ───────────────────────────────────────────────────────────
+
+    // 1. School Logo (e.g. schools/{schoolId}/logo.png)
+    match /schools/{schoolId}/{fileName} {
+      allow read: if isSchoolMember(schoolId) || isSuperAdmin();
+      allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin())
+                   && isValidLogo(fileName);
+    }
+
+    // 2. Student Photos (e.g. schools/{schoolId}/students/{studentId}/student.jpg)
+    match /schools/{schoolId}/students/{studentId}/{photoFile} {
+      allow read: if isSchoolMember(schoolId) || isSuperAdmin();
+      allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin())
+                   && isValidStudentPhoto(photoFile);
+    }
+
+    // 3. Accounts & Receipts (Admin-only; strict zero super-admin and zero teacher access)
+    match /schools/{schoolId}/accounts/{allPaths=**} {
+      allow read: if isSchoolAdmin(schoolId);
+      allow write: if isSchoolAdmin(schoolId) && isValidAccountDoc();
+    }
+
+    // 4. Payroll & Payslips (Admin-only; strict zero super-admin and zero teacher access)
+    match /schools/{schoolId}/payroll/{allPaths=**} {
+      allow read: if isSchoolAdmin(schoolId);
+      allow write: if isSchoolAdmin(schoolId) && isValidAccountDoc();
+    }
+  }
+}
