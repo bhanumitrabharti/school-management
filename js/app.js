@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v65';
+window.APP_VERSION = window.APP_VERSION || 'v66';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
@@ -4109,9 +4109,12 @@ window.SchoolApp = {
       var shouldRemove = false;
 
       if (self.isTeacher()) {
-        if (page === 'fees' || page === 'admin' || page === 'teachers' || page === 'documents') {
+        if (page === 'fees' || page === 'admin' || page === 'teachers' || page === 'documents' || page === 'accounts') {
           shouldRemove = true;
         }
+      }
+      if (page === 'accounts' && (!self.isAdmin() || !self.checkFeatureAccess('accounts'))) {
+        shouldRemove = true;
       }
 
       if (shouldRemove) {
@@ -4160,7 +4163,7 @@ window.SchoolApp = {
     // Strict role check — only run if auth has resolved (currentUser is set)
     // During page load before login, currentUser is null and navigate() may be
     // called by hash routing — we must not show "Access Denied" before auth.
-    var adminOnlyPages = ['admin', 'fees', 'documents'];
+    var adminOnlyPages = ['admin', 'fees', 'documents', 'accounts'];
     if (this.currentUser && this.isTeacher() && pageName === 'teachers') {
       this.showToast('Access Denied: You do not have permission to view this page.', 'error');
       this.navigate('dashboard');
@@ -4236,6 +4239,7 @@ window.SchoolApp = {
       teachers: 'Teachers',
       attendance: 'Attendance',
       fees: 'Fee Management',
+      accounts: 'Accounts & Expenses',
       timetable: 'Timetable Management',
       exams: 'Exams',
       documents: 'Document & ID Generator',
@@ -4508,6 +4512,14 @@ window.SchoolApp = {
   },
 
   checkFeatureAccess: function(page) {
+    if (page === 'accounts') {
+      if (!this.isAdmin()) return false;
+      var currentSchoolId = (this.store && this.store.currentSchoolId) || "";
+      var school = (this.store && this.store.schools && this.store.schools.find(function(s) { return s.school_id === currentSchoolId; })) || this.matchedSchool;
+      if (!school || !Array.isArray(school.allowed_features)) return false;
+      return school.allowed_features.indexOf('accounts') !== -1;
+    }
+
     // PAUSED (2026-09-12): Per-school Pro/locked-feature paywall is switched
     // off for now — every school gets every feature by default until this is
     // explicitly turned back on. The original allowed_features check is kept
@@ -6152,6 +6164,18 @@ window.SchoolApp = {
         el.classList.add('hidden');
       }
     });
+
+    // Accounts nav item is additionally gated behind checkFeatureAccess('accounts')
+    var accountsNav = document.getElementById('nav-accounts');
+    if (accountsNav) {
+      if (self.isAdmin() && self.checkFeatureAccess('accounts')) {
+        accountsNav.style.display = '';
+        accountsNav.classList.remove('hidden');
+      } else {
+        accountsNav.style.display = 'none';
+        accountsNav.classList.add('hidden');
+      }
+    }
 
     // Show/hide My Attendance based on Teachers & Staff module
     var myAttendanceNav = document.querySelector('[data-page="teacher-attendance"]');

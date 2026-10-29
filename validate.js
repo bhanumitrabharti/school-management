@@ -8,6 +8,7 @@ const files = [
   'js/admin.js',
   'js/teachers.js',
   'js/fees.js',
+  'js/accounts.js',
   'js/attendance.js',
   'js/students.js',
   'js/documents.js',

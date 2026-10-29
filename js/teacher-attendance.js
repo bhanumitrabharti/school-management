@@ -252,18 +252,18 @@
     });
   }
 
-  // STEP 2B: Outside Location Bilingual Prompt
+  // STEP 2B: Outside Location Prompt
   function showOutsideLocationPrompt(distance, allowedRadius, coords, date, timeIn) {
     var bodyHTML = '<div style="text-align:center; padding: 12px 6px;">';
     bodyHTML += '  <div style="width:64px; height:64px; border-radius:50%; background:rgba(239, 68, 68, 0.12); color:var(--danger); display:grid; place-items:center; margin:0 auto 16px auto;">';
     bodyHTML += '    <span class="material-icons-round" style="font-size:36px;">wrong_location</span>';
     bodyHTML += '  </div>';
-    bodyHTML += '  <h3 style="margin-bottom:8px; font-size:17px; color:var(--text-primary);">School Location se Bahar Hain</h3>';
+    bodyHTML += '  <h3 style="margin-bottom:8px; font-size:17px; color:var(--text-primary);">You are outside the school location</h3>';
     bodyHTML += '  <p style="font-size:14px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;">';
-    bodyHTML += '    Aap school location se <strong>' + distance + 'm</strong> door hain (Allowed radius: <strong>' + allowedRadius + 'm</strong>).<br>Attendance automatically mark nahi ho sakti.';
+    bodyHTML += '    You are <strong>' + distance + ' m</strong> away from school (allowed radius: <strong>' + allowedRadius + ' m</strong>).<br>Attendance cannot be marked automatically.';
     bodyHTML += '  </p>';
     bodyHTML += '  <p style="font-size:13.5px; font-weight:600; color:var(--text-primary); margin-bottom:0;">';
-    bodyHTML += '    Kya aap <strong>Attendance Regularization Request</strong> submit karna chahte hain?';
+    bodyHTML += '    Would you like to submit an <strong>Attendance Regularization Request</strong>?';
     bodyHTML += '  </p>';
     bodyHTML += '</div>';
 

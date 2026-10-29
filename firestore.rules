@@ -157,21 +157,56 @@ service cloud.firestore {
       allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
     }
 
-    // ── Accounts and Payroll Subcollections — School Admin & Super Admin ONLY ──
-    // Payslips: School Admin & Super Admin read/write; Teachers can ONLY read their own payslip
-    match /tenant_data/{schoolId}/payroll_payslips/{payslipId} {
-      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin() ||
-                      (isSchoolTeacher(schoolId) &&
-                       resource.data.get('teacherId', '') == getTeacherId(schoolId));
-      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    // ── Accounts and Payroll Subcollections — School Admin ONLY (Super Admin BLOCKED) ──
+
+    // 1. Accounts Settings: School Admin read/write; no deletes
+    match /tenant_data/{schoolId}/accounts_settings/{docId} {
+      allow read:  if isSchoolAdmin(schoolId);
+      allow create, update: if isSchoolAdmin(schoolId);
+      allow delete: if false;
     }
 
-    // Accounts collections and other payroll collections (structures, runs, etc.)
+    // 2. Chart of Accounts: School Admin read/write; no deletes
+    match /tenant_data/{schoolId}/accounts_chart/{code} {
+      allow read:  if isSchoolAdmin(schoolId);
+      allow create, update: if isSchoolAdmin(schoolId);
+      allow delete: if false;
+    }
+
+    // 3. Accounts Expenses: School Admin create; update ONLY for cancellation; no deletes
+    match /tenant_data/{schoolId}/accounts_expenses/{expenseId} {
+      allow read:   if isSchoolAdmin(schoolId);
+      allow create: if isSchoolAdmin(schoolId);
+      allow update: if isSchoolAdmin(schoolId) &&
+                       resource.data.get('status', 'active') == 'active' &&
+                       request.resource.data.get('status', '') == 'cancelled' &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                         'status',
+                         'cancelReason',
+                         'cancelledAt',
+                         'cancelledBy'
+                       ]);
+      allow delete: if false;
+    }
+
+    // 4. Payslips: School Admin read/write; Teachers can ONLY read their own payslip; Super Admin BLOCKED
+    match /tenant_data/{schoolId}/payroll_payslips/{payslipId} {
+      allow read:  if isSchoolAdmin(schoolId) ||
+                      (isSchoolTeacher(schoolId) &&
+                       resource.data.get('teacherId', '') == getTeacherId(schoolId));
+      allow write: if isSchoolAdmin(schoolId);
+    }
+
+    // 5. Other accounts/payroll collections (structures, runs, journals, vouchers, etc.) and staff (Super Admin BLOCKED)
     match /tenant_data/{schoolId}/{restrictedSubcol}/{allChildren=**} {
-      allow read, write: if (restrictedSubcol.matches('accounts_.*') ||
+      allow read, write: if (
+                            (restrictedSubcol.matches('accounts_.*') &&
+                             restrictedSubcol != 'accounts_settings' &&
+                             restrictedSubcol != 'accounts_chart' &&
+                             restrictedSubcol != 'accounts_expenses') ||
                             (restrictedSubcol.matches('payroll_.*') && restrictedSubcol != 'payroll_payslips') ||
                             restrictedSubcol == 'staff')
-                         && (isSchoolAdmin(schoolId) || isSuperAdmin());
+                         && isSchoolAdmin(schoolId);
     }
 
     // Private subcollection — Admin SDK only (completely blocked for all client roles)
@@ -192,6 +227,7 @@ service cloud.firestore {
                       && subcollection != 'attendance_months'
                       && subcollection != 'exam_marks'
                       && subcollection != 'payroll_payslips'
+                      && subcollection != 'staff'
                       && !subcollection.matches('accounts_.*')
                       && !subcollection.matches('payroll_.*')
                       && (canAccessSchool(schoolId) || isSuperAdmin());
@@ -206,6 +242,7 @@ service cloud.firestore {
                       && subcollection != 'attendance_months'
                       && subcollection != 'exam_marks'
                       && subcollection != 'payroll_payslips'
+                      && subcollection != 'staff'
                       && !subcollection.matches('accounts_.*')
                       && !subcollection.matches('payroll_.*')
                       && (isSchoolAdmin(schoolId) || isSuperAdmin());
