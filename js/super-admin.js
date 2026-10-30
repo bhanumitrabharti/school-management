@@ -2951,8 +2951,12 @@ window.saAuth = auth;
             data.schools[idx].renewal_date       = renewal;
             data.schools[idx].logo_url           = logoUrl;
             data.schools[idx].allowed_features   = selectedFeatures;
-            data.schools[idx].settings           = {
-                schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
+            var existingSchoolSettings = data.schools[idx].settings || {};
+            var existingSchoolInfoMeta = existingSchoolSettings.schoolInfo || {};
+            data.schools[idx].settings           = Object.assign({}, existingSchoolSettings, {
+                schoolInfo: Object.assign({}, existingSchoolInfoMeta, {
+                    name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode
+                }),
                 // Also write the FLAT fields — the School Admin Settings page
                 // (admin.js) reads/writes settings.schoolName / .phone / etc
                 // directly, not settings.schoolInfo.*. Without these, a newly
@@ -2971,10 +2975,14 @@ window.saAuth = auth;
                 extraCharges: formExtraCharges,
                 setupCompletedBySuperAdmin: true,
                 clientCanEdit: true,
-                theme: (data.schools[idx].settings && data.schools[idx].settings.theme) || 'dark',
-                attendanceTime: (data.schools[idx].settings && data.schools[idx].settings.attendanceTime) || '09:00',
-                academicYear: (data.schools[idx].settings && data.schools[idx].settings.academicYear) || getCurrentAcademicYear()
-            };
+                theme: existingSchoolSettings.theme || 'dark',
+                attendanceTime: existingSchoolSettings.attendanceTime || '09:00',
+                academicYear: existingSchoolSettings.academicYear || getCurrentAcademicYear()
+            });
+
+            if (existingSchoolSettings.credentialsIsolated === true) {
+                data.schools[idx].settings.credentialsIsolated = true;
+            }
 
             delete data.schools[idx].adminPassword;
             if (data.schools[idx].settings) {
@@ -3018,47 +3026,68 @@ window.saAuth = auth;
                     }
                 }
 
-                // Merge settings cleanly — never touch rosters or subcollections
-                var updatedSettings = {
-                    schoolInfo: { name: name, tagline: tagline, logoUrl: logoUrl, phone: phone, email: email, address: address, affiliation: affiliation, udiseCode: udiseCode },
-                    schoolName: name,
+                // Merge schoolInfo fields into existing schoolInfo so nested properties survive
+                var existingSchoolInfo = (existingTenantData.settings && existingTenantData.settings.schoolInfo) || {};
+                var mergedSchoolInfo = Object.assign({}, existingSchoolInfo, {
+                    name: name,
                     tagline: tagline,
+                    logoUrl: logoUrl,
                     phone: phone,
                     email: email,
                     address: address,
                     affiliation: affiliation,
-                    udiseCode: udiseCode,
-                    adminUsername: adminUsername,
-                    // Client never writes passwords; server endpoint manages credentials
-                    adminEmail: adminEmail,
-                    classes: formClasses,
-                    sections: formSections,
-                    feeStructure: formFeeStructure,
-                    extraCharges: formExtraCharges,
-                    setupCompletedBySuperAdmin: true,
-                    clientCanEdit: true,
-                    // Keep compatibility settings
-                    theme: (existingTenantData.settings && existingTenantData.settings.theme) || 'dark',
-                    attendanceTime: (existingTenantData.settings && existingTenantData.settings.attendanceTime) || '09:00',
-                    academicYear: (existingTenantData.settings && existingTenantData.settings.academicYear) || getCurrentAcademicYear(),
-                    restructured: (existingTenantData.settings && existingTenantData.settings.restructured !== undefined) ? existingTenantData.settings.restructured : true
+                    udiseCode: udiseCode
+                });
+
+                // Update settings using DOT-PATH updates — NEVER replace the settings map,
+                // so all other settings keys survive untouched (credentialsIsolated, geofence,
+                // customFieldDefinitions, report card config, fee reminder config, accounts keys, etc.)
+                var updatePayload = {
+                    'settings.schoolInfo': mergedSchoolInfo,
+                    'settings.schoolName': name,
+                    'settings.tagline': tagline,
+                    'settings.logoUrl': logoUrl,
+                    'settings.phone': phone,
+                    'settings.email': email,
+                    'settings.address': address,
+                    'settings.affiliation': affiliation,
+                    'settings.udiseCode': udiseCode,
+                    'settings.adminUsername': adminUsername,
+                    'settings.adminEmail': adminEmail,
+                    'settings.classes': formClasses,
+                    'settings.sections': formSections,
+                    'settings.feeStructure': formFeeStructure,
+                    'settings.extraCharges': formExtraCharges,
+                    'settings.setupCompletedBySuperAdmin': true,
+                    'settings.clientCanEdit': true
                 };
 
-                // For legacy schools without credentialsIsolated, preserve existing root password;
-                // for isolated schools, NEVER write adminPassword to root
-                if (existingTenantData.settings && existingTenantData.settings.credentialsIsolated !== true) {
-                    if (existingTenantData.settings.adminPassword) {
-                        updatedSettings.adminPassword = existingTenantData.settings.adminPassword;
-                    }
+                // Compatibility / fallback settings
+                if (existingTenantData.settings && existingTenantData.settings.theme) {
+                    updatePayload['settings.theme'] = existingTenantData.settings.theme;
                 } else {
-                    delete updatedSettings.adminPassword;
+                    updatePayload['settings.theme'] = 'dark';
+                }
+                if (existingTenantData.settings && existingTenantData.settings.attendanceTime) {
+                    updatePayload['settings.attendanceTime'] = existingTenantData.settings.attendanceTime;
+                } else {
+                    updatePayload['settings.attendanceTime'] = '09:00';
+                }
+                if (existingTenantData.settings && existingTenantData.settings.academicYear) {
+                    updatePayload['settings.academicYear'] = existingTenantData.settings.academicYear;
+                } else {
+                    updatePayload['settings.academicYear'] = getCurrentAcademicYear();
                 }
 
-                var updatePayload = {
-                    settings: updatedSettings
-                };
-                if (updatedSettings.restructured) {
+                // Guard: if existing settings.credentialsIsolated === true, the save must keep it true (defence in depth)
+                if (existingTenantData.settings && existingTenantData.settings.credentialsIsolated === true) {
+                    updatePayload['settings.credentialsIsolated'] = true;
+                }
+
+                // Preserve restructured flag
+                if (existingTenantData.restructured || (existingTenantData.settings && existingTenantData.settings.restructured !== false)) {
                     updatePayload.restructured = true;
+                    updatePayload['settings.restructured'] = true;
                 }
 
                 await updateDoc(tenantRef, updatePayload);

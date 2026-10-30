@@ -36,6 +36,7 @@ async function runAccountsRulesTests() {
     }
   });
 
+  await testEnv.clearFirestore();
   console.log('--- Seeding Test Fixtures ---');
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();

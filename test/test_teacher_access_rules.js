@@ -16,6 +16,7 @@ async function runTests() {
     }
   });
 
+  await testEnv.clearFirestore();
   console.log('--- Seeding Test Fixtures (Bypassing Rules) ---');
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();

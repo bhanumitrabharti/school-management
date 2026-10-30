@@ -137,15 +137,17 @@ module.exports = async function handler(req, res) {
         const rootSnap = await t.get(schoolRef);
         if (!rootSnap.exists) throw new Error('School document does not exist.');
         const rootData = rootSnap.data();
-        const settings = Object.assign({}, rootData.settings || {});
+        const rootSettings = rootData.settings || {};
+        const updatePayload = {};
 
-        if (settings.credentialsIsolated === true) {
-          delete settings.adminPassword;
-        } else {
-          settings.adminPassword = passwordHash;
-        }
         if (adminUsername && typeof adminUsername === 'string') {
-          settings.adminUsername = adminUsername.trim();
+          updatePayload['settings.adminUsername'] = adminUsername.trim();
+        }
+        if (rootSettings.credentialsIsolated === true) {
+          updatePayload['settings.adminPassword'] = admin.firestore.FieldValue.delete();
+          updatePayload['settings.credentialsIsolated'] = true;
+        } else {
+          updatePayload['settings.adminPassword'] = passwordHash;
         }
 
         const credSnap = await t.get(privateCredRef);
@@ -154,10 +156,10 @@ module.exports = async function handler(req, res) {
         if (adminUsername && typeof adminUsername === 'string') {
           credData.adminUsername = adminUsername.trim();
         } else if (!credData.adminUsername) {
-          credData.adminUsername = settings.adminUsername || 'admin';
+          credData.adminUsername = (adminUsername && typeof adminUsername === 'string') ? adminUsername.trim() : (rootSettings.adminUsername || 'admin');
         }
 
-        t.update(schoolRef, { settings: settings });
+        t.update(schoolRef, updatePayload);
         t.set(privateCredRef, credData, { merge: true });
       });
 

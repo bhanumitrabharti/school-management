@@ -77,7 +77,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon/apple-touch-icon.png">
-  <link rel="stylesheet" href="css/styles.css?v=v66">
+  <link rel="stylesheet" href="css/styles.css?v=v67">
   <script>
     (function() {
       var savedTheme = localStorage.getItem('erp_theme_preference') || 'dark';
@@ -204,7 +204,7 @@
       </div>
       <!-- Powered by footer -->
       <div style="text-align: center; margin-top: 12px; font-size: 0.72rem; color: rgba(255,255,255,0.25);">
-        &copy; <span id="login-copyright-year"></span> Powered by <a href="https://ctrlshifts.in" target="_blank" rel="noopener" style="color: rgba(255,255,255,0.35); text-decoration: none;">Paathshala &middot; ctrlshifts.in</a> <span class="app-version-badge" style="margin-left: 6px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); font-size: 11px;">v66</span>
+        &copy; <span id="login-copyright-year"></span> Powered by <a href="https://ctrlshifts.in" target="_blank" rel="noopener" style="color: rgba(255,255,255,0.35); text-decoration: none;">Paathshala &middot; ctrlshifts.in</a> <span class="app-version-badge" style="margin-left: 6px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); font-size: 11px;">v67</span>
       </div>
     </div>
   </div>
@@ -289,7 +289,7 @@
             <span class="material-icons-round">logout</span>
           </button>
         </div>
-        <div class="sidebar-version" id="sidebar-version-tag">Paathshala v66</div>
+        <div class="sidebar-version" id="sidebar-version-tag">Paathshala v67</div>
       </div>
     </aside>
     <!-- Sidebar Overlay for mobile -->
@@ -476,25 +476,25 @@
 
   <!-- ==================== SCRIPTS ==================== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/bcryptjs/2.4.3/bcrypt.min.js"></script>
-  <script src="js/auth-utils.js?v=v66"></script>
-  <script src="js/storage-utils.js?v=v66"></script>
-  <script type="module" src="js/app.js?v=v66"></script>
-  <script type="module" src="js/utils.js?v=v66"></script>
-  <script type="module" src="js/students.js?v=v66"></script>
-  <script type="module" src="js/teachers.js?v=v66"></script>
-  <script type="module" src="js/attendance.js?v=v66"></script>
-  <script type="module" src="js/teacher-attendance.js?v=v66"></script>
-  <script type="module" src="js/fees.js?v=v66"></script>
-  <script type="module" src="js/accounts.js?v=v66"></script>
-  <script type="module" src="js/exams.js?v=v66"></script>
-  <script type="module" src="js/documents.js?v=v66"></script>
-  <script type="module" src="js/admin.js?v=v66"></script>
-  <script type="module" src="js/timetable.js?v=v66"></script>
-  <script type="module" src="js/help.js?v=v66"></script>
-  <script type="module" src="js/chatbot.js?v=v66"></script>
+  <script src="js/auth-utils.js?v=v67"></script>
+  <script src="js/storage-utils.js?v=v67"></script>
+  <script type="module" src="js/app.js?v=v67"></script>
+  <script type="module" src="js/utils.js?v=v67"></script>
+  <script type="module" src="js/students.js?v=v67"></script>
+  <script type="module" src="js/teachers.js?v=v67"></script>
+  <script type="module" src="js/attendance.js?v=v67"></script>
+  <script type="module" src="js/teacher-attendance.js?v=v67"></script>
+  <script type="module" src="js/fees.js?v=v67"></script>
+  <script type="module" src="js/accounts.js?v=v67"></script>
+  <script type="module" src="js/exams.js?v=v67"></script>
+  <script type="module" src="js/documents.js?v=v67"></script>
+  <script type="module" src="js/admin.js?v=v67"></script>
+  <script type="module" src="js/timetable.js?v=v67"></script>
+  <script type="module" src="js/help.js?v=v67"></script>
+  <script type="module" src="js/chatbot.js?v=v67"></script>
   <!-- Service Worker Registration + Auto-Update Engine -->
   <script>
-    window.APP_VERSION = 'v66';
+    window.APP_VERSION = 'v67';
 
     function hasUserStartedTypingOnLogin() {
       var loginPage = document.getElementById('login-page');
@@ -616,7 +616,7 @@
         var reloadingAfterUpdate = false;
         navigator.serviceWorker.addEventListener('controllerchange', function() {
           if (reloadingAfterUpdate) return;
-          var reloadToken = 'sw_controllerchange_' + (window.APP_VERSION || 'v66');
+          var reloadToken = 'sw_controllerchange_' + (window.APP_VERSION || 'v67');
           if (sessionStorage.getItem(reloadToken)) return;
 
           if (isFormDirty()) {
