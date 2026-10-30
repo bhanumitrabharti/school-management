@@ -14,26 +14,78 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
-// Helper to convert Firestore REST JSON value to JS value
-function parseFirestoreValue(val) {
+/**
+ * Hardened validator & parser for raw Firestore REST values:
+ * - Rejects timestampValue, referenceValue, geoPointValue, bytesValue (ABORT)
+ * - Converts integerValue to safe integer Number (or ABORT)
+ * - Traverses maps and arrays recursively
+ */
+function validateAndParseFirestoreValue(val, keyPath) {
   if (val === null || val === undefined) return null;
-  if ('stringValue' in val) return val.stringValue;
-  if ('integerValue' in val) return parseInt(val.integerValue, 10);
-  if ('doubleValue' in val) return val.doubleValue;
-  if ('booleanValue' in val) return val.booleanValue;
-  if ('timestampValue' in val) return val.timestampValue;
-  if ('nullValue' in val) return null;
+
+  if ('timestampValue' in val) {
+    throw new Error(`ABORT: Node at "${keyPath}" contains unsupported timestampValue`);
+  }
+  if ('referenceValue' in val) {
+    throw new Error(`ABORT: Node at "${keyPath}" contains unsupported referenceValue`);
+  }
+  if ('geoPointValue' in val) {
+    throw new Error(`ABORT: Node at "${keyPath}" contains unsupported geoPointValue`);
+  }
+  if ('bytesValue' in val) {
+    throw new Error(`ABORT: Node at "${keyPath}" contains unsupported bytesValue`);
+  }
+
+  if ('stringValue' in val) {
+    return val.stringValue;
+  }
+
+  if ('integerValue' in val) {
+    const num = Number(val.integerValue);
+    if (!Number.isSafeInteger(num)) {
+      throw new Error(`ABORT: integerValue at "${keyPath}" (${val.integerValue}) is not a safe integer`);
+    }
+    return num;
+  }
+
+  if ('doubleValue' in val) {
+    return val.doubleValue;
+  }
+
+  if ('booleanValue' in val) {
+    return val.booleanValue;
+  }
+
+  if ('nullValue' in val) {
+    return null;
+  }
+
   if ('mapValue' in val) {
     const res = {};
     const fields = val.mapValue.fields || {};
-    for (const k in fields) res[k] = parseFirestoreValue(fields[k]);
+    for (const k in fields) {
+      res[k] = validateAndParseFirestoreValue(fields[k], `${keyPath}.${k}`);
+    }
     return res;
   }
+
   if ('arrayValue' in val) {
     const vals = val.arrayValue.values || [];
-    return vals.map(parseFirestoreValue);
+    return vals.map((item, idx) => validateAndParseFirestoreValue(item, `${keyPath}[${idx}]`));
   }
-  return val;
+
+  throw new Error(`ABORT: Unknown node format at "${keyPath}": ${JSON.stringify(val)}`);
+}
+
+function describeJsType(val) {
+  if (val === null) return 'null';
+  if (val === undefined) return 'undefined';
+  if (Array.isArray(val)) return `Array (length: ${val.length})`;
+  if (typeof val === 'object') return `Object/Map (keys: ${Object.keys(val).length})`;
+  if (typeof val === 'number') {
+    return Number.isInteger(val) ? 'number (integer)' : 'number (float)';
+  }
+  return typeof val;
 }
 
 async function main() {
@@ -91,54 +143,58 @@ async function main() {
   }
   const pitrDoc = await pitrRes.json();
   const rawFields = pitrDoc.fields || {};
-  const parsedRoot = {};
-  for (const k in rawFields) {
-    parsedRoot[k] = parseFirestoreValue(rawFields[k]);
+
+  if (!rawFields.settings || !rawFields.settings.mapValue || !rawFields.settings.mapValue.fields) {
+    throw new Error('PITR document does not contain raw fields.settings map!');
   }
-  const pitrSettings = parsedRoot.settings || {};
-  const pitrSettingsKeys = Object.keys(pitrSettings).sort();
+  const rawSettingsFields = rawFields.settings.mapValue.fields;
+  const pitrSettingsKeys = Object.keys(rawSettingsFields).sort();
   console.log(`PITR pre-incident settings key count: ${pitrSettingsKeys.length}`);
-  console.log(`PITR credentialsIsolated: ${pitrSettings.credentialsIsolated}`);
 
   // 3. Compute key diff
   console.log('\n--- Step 3: Computing Key-Level Differences ---');
   const droppedKeys = pitrSettingsKeys.filter(k => !(k in currentSettings));
-  const changedKeys = pitrSettingsKeys.filter(k => (k in currentSettings) && JSON.stringify(pitrSettings[k]) !== JSON.stringify(currentSettings[k]));
+  const changedKeys = pitrSettingsKeys.filter(k => (k in currentSettings));
 
-  console.log(`Dropped settings keys (${droppedKeys.length}):`, droppedKeys);
-  console.log(`Changed settings keys (${changedKeys.length}):`, changedKeys);
+  console.log(`Dropped settings keys count: ${droppedKeys.length}`);
 
-  // 4. Build dot-path update payload
-  // We restore all dropped keys, and restore original values for critical metadata/branding fields
+  // 4. Harden and Validate each of the 23 keys to restore before proceeding
+  console.log('\n--- Step 4: Validating & Parsing Raw REST Nodes (Hardening Guard) ---');
+  const targetKeysToRestore = [
+    ...droppedKeys,
+    'schoolInfo',
+    'phone',
+    'feeStructure'
+  ];
+  // Deduplicate and sort
+  const uniqueKeysToRestore = Array.from(new Set(targetKeysToRestore)).sort();
+
   const dotPathUpdates = {};
 
-  // All dropped keys must be restored
-  for (const k of droppedKeys) {
-    dotPathUpdates[`settings.${k}`] = pitrSettings[k];
-  }
-
-  // Critical keys that must match pre-incident configuration:
-  // schoolInfo had extra fields (logoUrl, etc.)
-  if (pitrSettings.schoolInfo) {
-    dotPathUpdates['settings.schoolInfo'] = pitrSettings.schoolInfo;
-  }
-  if (pitrSettings.phone) {
-    dotPathUpdates['settings.phone'] = pitrSettings.phone;
-  }
-  if (pitrSettings.feeStructure) {
-    dotPathUpdates['settings.feeStructure'] = pitrSettings.feeStructure;
+  for (const k of uniqueKeysToRestore) {
+    const rawVal = rawSettingsFields[k];
+    if (!rawVal) {
+      throw new Error(`ABORT: Key "${k}" not found in PITR rawSettingsFields!`);
+    }
+    // Hardened recursive validation and parsing:
+    const parsedVal = validateAndParseFirestoreValue(rawVal, `settings.${k}`);
+    dotPathUpdates[`settings.${k}`] = parsedVal;
   }
 
   // Explicit defense-in-depth: credentialsIsolated MUST be true
   dotPathUpdates['settings.credentialsIsolated'] = true;
 
-  console.log('\n--- Step 4: Keys Prepared for Dot-Path Restoration ---');
+  console.log(`\nValidated all ${Object.keys(dotPathUpdates).length} fields successfully.`);
+  console.log('\n--- Step 5: Dot-Path Keys and JS Types (No Sensitive Values Printed) ---');
   const restoreKeys = Object.keys(dotPathUpdates).sort();
-  console.log(`Total dot-path fields to update (${restoreKeys.length}):`);
-  restoreKeys.forEach(k => console.log(`  • ${k}`));
+  restoreKeys.forEach(k => {
+    const val = dotPathUpdates[k];
+    const typeDesc = describeJsType(val);
+    console.log(`  • ${k.padEnd(40)} -> JS Type: ${typeDesc}`);
+  });
 
-  // 5. Check allowed_features on schools/{schoolId}
-  console.log('\n--- Step 5: Checking allowed_features for "accounts" ---');
+  // 6. Check allowed_features on schools/{schoolId}
+  console.log('\n--- Step 6: Checking allowed_features for "accounts" ---');
   const schoolSnap = await schoolRef.get();
   let schoolAllowed = [];
   if (schoolSnap.exists) {
@@ -146,16 +202,12 @@ async function main() {
   }
   const hasAccounts = schoolAllowed.includes('accounts');
   console.log(`schools/${schoolId} allowed_features contains "accounts": ${hasAccounts}`);
-  if (!hasAccounts) {
-    console.log('Will ensure "accounts" is added to allowed_features.');
-  } else {
-    console.log('"accounts" feature is already preserved in schools/' + schoolId);
-  }
 
-  // 6. Action Execution
+  // 7. Action Execution
   if (!isApply) {
     console.log('\n================================================================');
     console.log('DRY-RUN COMPLETE — ZERO WRITES PERFORMED.');
+    console.log('Validation passed: all 23 keys contain only safe types.');
     console.log('To apply these changes after receiving Bhanu\'s explicit GO, run:');
     console.log('  node scripts/restore-greenwood-settings-2026-10-29.js --apply');
     console.log('================================================================');
@@ -173,8 +225,16 @@ async function main() {
     fs.mkdirSync(backupDir, { recursive: true });
   }
   const backupTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupFilePath = path.join(backupDir, `greenwood_root_backup_pre_restore_${backupTimestamp}.json`);
+  const backupFileName = `greenwood_root_backup_pre_restore_${backupTimestamp}.json`;
+  const backupFilePath = path.join(backupDir, backupFileName);
   fs.writeFileSync(backupFilePath, JSON.stringify(currentRootData, null, 2), 'utf8');
+
+  // Also save a copy in scratch for safety
+  const scratchDir = 'C:/Users/bhanu/.gemini/antigravity/brain/06985d1a-3444-4a82-be77-f91f40399cc3/scratch';
+  if (fs.existsSync(scratchDir)) {
+    fs.writeFileSync(path.join(scratchDir, backupFileName), JSON.stringify(currentRootData, null, 2), 'utf8');
+  }
+
   console.log(`✅ Fresh pre-restore backup saved to: ${backupFilePath}`);
 
   // B. Perform dot-path update on tenant_data/svm_bokaro_001
@@ -189,21 +249,34 @@ async function main() {
     console.log('✅ schools/' + schoolId + ' allowed_features updated to include "accounts".');
   }
 
-  // D. Verify post-restore document
+  // D. Read-Back Verification
+  console.log('\n--- Step 7: Live Read-Back Verification ---');
   const verifySnap = await tenantRef.get();
   const verifyData = verifySnap.data();
   const verifySettings = verifyData.settings || {};
-  console.log('\n--- Post-Restore Verification ---');
-  console.log(`Settings key count now: ${Object.keys(verifySettings).length}`);
-  console.log(`credentialsIsolated: ${verifySettings.credentialsIsolated}`);
-  if (verifySettings.credentialsIsolated === true) {
-    console.log('✅ CONFIRMED: settings.credentialsIsolated is TRUE.');
-  } else {
-    console.error('❌ ERROR: settings.credentialsIsolated is NOT TRUE!');
+  const finalSettingsKeys = Object.keys(verifySettings).sort();
+
+  console.log(`Final settings key count: ${finalSettingsKeys.length} (Expected: 40)`);
+  console.log(`credentialsIsolated: ${verifySettings.credentialsIsolated} (Expected: true)`);
+  console.log(`geofence present?: ${'geofence' in verifySettings} (Expected: true)`);
+
+  const credSnap = await db.doc(`tenant_data/${schoolId}/private/credentials`).get();
+  console.log(`private/credentials exists: ${credSnap.exists}`);
+  if (credSnap.exists) {
+    console.log(`private/credentials keys: [${Object.keys(credSnap.data()).sort().join(', ')}]`);
+  }
+
+  const finalSchoolSnap = await schoolRef.get();
+  const finalAllowed = (finalSchoolSnap.exists && finalSchoolSnap.data().allowed_features) || [];
+  console.log(`allowed_features includes 'accounts': ${finalAllowed.includes('accounts')} (Expected: true)`);
+
+  if (finalSettingsKeys.length !== 40 || verifySettings.credentialsIsolated !== true || !('geofence' in verifySettings) || !finalAllowed.includes('accounts')) {
+    console.error('❌ Post-restore verification check failed!');
+    process.exit(1);
   }
 
   console.log('\n================================================================');
-  console.log('RESTORE SUCCESSFULLY COMPLETED.');
+  console.log('✅ RESTORE VERIFIED AND SUCCESSFULLY COMPLETED.');
   console.log('================================================================');
 }
 
