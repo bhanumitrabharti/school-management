@@ -673,6 +673,7 @@ window.SchoolApp = {
     }
     this._attendanceListeners = {};
     this._attendanceMonths = {};
+    this._attendanceFirstSnapDone = {};
 
     // 3. Unsubscribe and clear all fee subcollection listeners
     if (this._feesListeners) {
@@ -685,6 +686,7 @@ window.SchoolApp = {
     }
     this._feesListeners = {};
     this._feesYears = {};
+    this._feesFirstSnapDone = {};
 
     // 3b. Unsubscribe and clear student subcollection listener
     if (this._studentsSubcollectionUnsubscribe) {
@@ -1289,6 +1291,8 @@ window.SchoolApp = {
 
     var self = this;
     self._attendanceRetryCounts = self._attendanceRetryCounts || {};
+    self._attendanceFirstSnapDone = self._attendanceFirstSnapDone || {};
+    self._attendanceFirstSnapDone[yearMonth] = false;
     // F1: Hard cap: at most 3 retries per listener per page session
     if ((self._attendanceRetryCounts[yearMonth] || 0) >= 3) {
       console.warn('[Attendance Listener] Hard cap reached (3 retries) for ' + yearMonth + ' in this session; skipping listener attach.');
@@ -1327,6 +1331,8 @@ window.SchoolApp = {
         if (snap && snap.metadata && snap.metadata.fromCache === false) {
           self._attendanceRetryCounts[yearMonth] = 0;
         }
+        if (snap && typeof snap.docChanges === 'function' && snap.docChanges().length === 0 && self._attendanceFirstSnapDone[yearMonth]) return;
+        self._attendanceFirstSnapDone[yearMonth] = true;
         if (snap && !snap.empty) {
           var records = [];
           snap.forEach(function(docSnap) {
@@ -1594,6 +1600,8 @@ window.SchoolApp = {
 
     var self = this;
     self._feesRetryCounts = self._feesRetryCounts || {};
+    self._feesFirstSnapDone = self._feesFirstSnapDone || {};
+    self._feesFirstSnapDone[year] = false;
     // F1: Hard cap: at most 3 retries per listener per page session
     if ((self._feesRetryCounts[year] || 0) >= 3) {
       console.warn('[Fees Listener] Hard cap reached (3 retries) for ' + year + ' in this session; skipping listener attach.');
@@ -1632,6 +1640,8 @@ window.SchoolApp = {
         if (snap && snap.metadata && snap.metadata.fromCache === false) {
           self._feesRetryCounts[year] = 0;
         }
+        if (snap && typeof snap.docChanges === 'function' && snap.docChanges().length === 0 && self._feesFirstSnapDone[year]) return;
+        self._feesFirstSnapDone[year] = true;
         if (snap && !snap.empty) {
           var transactions = [];
           snap.forEach(function(docSnap) {

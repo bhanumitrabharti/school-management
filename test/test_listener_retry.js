@@ -641,6 +641,144 @@ async function runAllTests() {
     recordPass('D4: Fees listener strictly blocked for teacher role (immediate abort, no retry, no logout)');
   }
 
+  // =========================================================================
+  // Scenario E: Extra re-renders prevented on metadata-only snapshots (docChanges().length === 0)
+  // =========================================================================
+  console.log('\n--- Scenario E: Extra re-renders prevented on metadata-only snapshots ---');
+  {
+    // E1: AttendanceModule re-render suppressed on metadata-only snapshot; executed on real doc change
+    const env = createEnvironment();
+    let attModuleRenders = 0;
+    env.sandbox.window.AttendanceModule = {
+      render: () => { attModuleRenders++; }
+    };
+    env.app.currentPage = 'attendance';
+    const ym = '2026-11';
+    env.app.listenToAttendanceMonth(ym);
+    let l = env.getLatestListener();
+
+    // 1. Initial snapshot (first snap always processes even if docChanges is empty)
+    l.onNext({
+      metadata: { fromCache: true },
+      empty: false,
+      docChanges: () => [],
+      forEach: (cb) => {
+        cb({ data: () => ({ records: [{ studentId: 'S1', date: '2026-11-01', status: 'P' }] }) });
+      }
+    });
+    assert.strictEqual(attModuleRenders, 1, 'Initial attendance snapshot triggers render');
+
+    // 2. Metadata-only snapshot (e.g. fromCache/hasPendingWrites flip; docChanges().length === 0)
+    l.onNext({
+      metadata: { fromCache: false },
+      empty: false,
+      docChanges: () => [],
+      forEach: (cb) => {
+        cb({ data: () => ({ records: [{ studentId: 'S1', date: '2026-11-01', status: 'P' }] }) });
+      }
+    });
+    assert.strictEqual(attModuleRenders, 1, 'Metadata-only snapshot suppresses extra attendance render');
+
+    // 3. Real doc change snapshot (docChanges().length > 0)
+    l.onNext({
+      metadata: { fromCache: false },
+      empty: false,
+      docChanges: () => [{ type: 'modified' }],
+      forEach: (cb) => {
+        cb({ data: () => ({ records: [{ studentId: 'S1', date: '2026-11-01', status: 'A' }] }) });
+      }
+    });
+    assert.strictEqual(attModuleRenders, 2, 'Real document change triggers attendance render');
+    recordPass('E1: Attendance suppresses metadata-only re-renders and re-renders on real changes');
+  }
+
+  {
+    // E2: FeesModule re-render suppressed on metadata-only snapshot; executed on real doc change
+    const env = createEnvironment();
+    let feesModuleRenders = 0;
+    env.sandbox.window.FeesModule = {
+      render: () => { feesModuleRenders++; }
+    };
+    env.app.currentPage = 'fees';
+    const yr = '2026';
+    env.app.listenToFeesYear(yr);
+    let l = env.getLatestListener();
+
+    // 1. Initial snapshot (always processes)
+    l.onNext({
+      metadata: { fromCache: true },
+      empty: false,
+      docChanges: () => [],
+      forEach: (cb) => {
+        cb({ data: () => ({ transactions: [{ id: 'TX1', amount: 1000 }] }) });
+      }
+    });
+    assert.strictEqual(feesModuleRenders, 1, 'Initial fees snapshot triggers render');
+
+    // 2. Metadata-only snapshot (docChanges().length === 0)
+    l.onNext({
+      metadata: { fromCache: false },
+      empty: false,
+      docChanges: () => [],
+      forEach: (cb) => {
+        cb({ data: () => ({ transactions: [{ id: 'TX1', amount: 1000 }] }) });
+      }
+    });
+    assert.strictEqual(feesModuleRenders, 1, 'Metadata-only snapshot suppresses extra fees render');
+
+    // 3. Real doc change snapshot (docChanges().length > 0)
+    l.onNext({
+      metadata: { fromCache: false },
+      empty: false,
+      docChanges: () => [{ type: 'added' }],
+      forEach: (cb) => {
+        cb({ data: () => ({ transactions: [{ id: 'TX2', amount: 2000 }] }) });
+      }
+    });
+    assert.strictEqual(feesModuleRenders, 2, 'Real document change triggers fees render');
+    recordPass('E2: Fees suppresses metadata-only re-renders and re-renders on real changes');
+  }
+
+  {
+    // E3: Dashboard view re-render suppressed on metadata-only events for both attendance & fees
+    const env = createEnvironment();
+    let dashboardRenders = 0;
+    env.app.renderDashboard = () => { dashboardRenders++; };
+    env.app.currentPage = 'dashboard';
+
+    const ym = '2026-11';
+    env.app.listenToAttendanceMonth(ym);
+    let attListener = env.getLatestListener();
+
+    // Initial snapshot -> render 1
+    attListener.onNext({
+      metadata: { fromCache: true },
+      empty: false,
+      docChanges: () => [],
+      forEach: (cb) => { cb({ data: () => ({ records: [] }) }); }
+    });
+    assert.strictEqual(dashboardRenders, 1, 'Initial attendance snapshot renders dashboard');
+
+    // Metadata-only snapshot -> no render
+    attListener.onNext({
+      metadata: { fromCache: false },
+      empty: false,
+      docChanges: () => [],
+      forEach: (cb) => { cb({ data: () => ({ records: [] }) }); }
+    });
+    assert.strictEqual(dashboardRenders, 1, 'Metadata-only attendance snapshot does NOT re-render dashboard');
+
+    // Real doc change -> render 2
+    attListener.onNext({
+      metadata: { fromCache: false },
+      empty: false,
+      docChanges: () => [{ type: 'modified' }],
+      forEach: (cb) => { cb({ data: () => ({ records: [{ studentId: 'S1' }] }) }); }
+    });
+    assert.strictEqual(dashboardRenders, 2, 'Real attendance doc change re-renders dashboard');
+    recordPass('E3: Dashboard suppresses metadata-only re-renders from subcollections');
+  }
+
   console.log('\n================================================================');
   console.log(`ALL ${passedTests}/${totalTests} LISTENER RETRY TESTS PASSED!`);
   console.log('================================================================');
