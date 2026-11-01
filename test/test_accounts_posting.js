@@ -218,7 +218,7 @@ runTest('Non-payment due transaction is ignored without cluttering skipped list 
   assert.ok(res && res.ignored === true && res.ignoreType === 'ignoredDue', 'Should be ignored (ignoredDue)');
 });
 
-// 4c. Fee digital account validation (F4)
+// 4c. Fee digital account validation (F4 & B5)
 runTest('Fee payment via UPI without configured digital account returns config error (F4)', () => {
   const settings = {
     goLiveDate: '2026-04-01',
@@ -228,6 +228,37 @@ runTest('Fee payment via UPI without configured digital account returns config e
   const txn = { id: 'txn_004c', date: '2026-04-10', type: 'payment', mode: 'UPI', amount: 500 };
   const res = computeFeeJournalLines(txn, settings);
   assert.ok(res && res.error === true && res.configError === true && res.warningKey === 'MISSING_DIGITAL_ACCOUNT');
+});
+
+runTest('Fee payment via UPI with digital account pointing to non-cash/bank asset returns config error (B5)', () => {
+  const settings = {
+    goLiveDate: '2026-04-01',
+    feeCashAccount: '11100',
+    feeDigitalAccount: '12100' // Non cash/bank asset (e.g. Furniture)
+  };
+  const chartMap = {
+    '12100': { code: '12100', name: 'Furniture & Fixtures', type: 'asset', isActive: true }
+  };
+  const txn = { id: 'txn_004c2', date: '2026-04-10', type: 'payment', mode: 'UPI', amount: 500 };
+  const res = computeFeeJournalLines(txn, settings, chartMap);
+  assert.ok(res && res.error === true && res.configError === true && res.warningKey === 'INVALID_DIGITAL_ACCOUNT',
+    'Must return INVALID_DIGITAL_ACCOUNT when digital account is not a cash or bank asset (11100/11110/112xx)');
+});
+
+runTest('Fee payment via UPI with valid bank asset ledger 11210 succeeds (B5)', () => {
+  const settings = {
+    goLiveDate: '2026-04-01',
+    feeCashAccount: '11100',
+    feeDigitalAccount: '11210'
+  };
+  const chartMap = {
+    '11210': { code: '11210', name: 'Secondary Bank Account', type: 'asset', isActive: true },
+    '41100': { code: '41100', name: 'Fee Collections (Tuition)', type: 'income', isActive: true }
+  };
+  const txn = { id: 'txn_004c3', date: '2026-04-10', type: 'payment', mode: 'UPI', amount: 500 };
+  const res = computeFeeJournalLines(txn, settings, chartMap);
+  assert.ok(res && res.lines && res.lines.length > 0);
+  assert.strictEqual(res.lines[0].accountCode, '11210', 'Asset line must use configured bank ledger 11210');
 });
 
 // 4d. Negative allocation difference (F8)

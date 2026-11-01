@@ -162,7 +162,8 @@ function computeFeeJournalLines(txn, settings, chartMap) {
       };
     }
     const digAcc = chartMap[feeDigitalAccount];
-    if (!digAcc || digAcc.type !== 'asset' || digAcc.isActive === false) {
+    const isCashOrBank = /^(11100|11110|112\d\d)$/.test(String(feeDigitalAccount));
+    if (!digAcc || digAcc.type !== 'asset' || digAcc.isActive === false || !isCashOrBank) {
       return {
         skip: true,
         error: true,
@@ -578,13 +579,14 @@ async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
   });
 
   if (absentVouchers.length === 0) {
-    return { newlyPosted: 0, postedVoucherIds: [] };
+    return { newlyPosted: 0, postedVoucherIds: [], hasDigitalCommitted: false };
   }
 
   // 2. Process in chunks of up to 100 in ONE transaction per chunk
   const BATCH_SIZE = 100;
   let totalNewlyPosted = 0;
   const postedVoucherIds = [];
+  let hasDigitalCommitted = false;
 
   for (let i = 0; i < absentVouchers.length; i += BATCH_SIZE) {
     const batch = absentVouchers.slice(i, i + BATCH_SIZE);
@@ -618,6 +620,7 @@ async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
 
       const updatedFYs = new Set();
       toCreate.forEach(v => {
+        if (v.isDigital) hasDigitalCommitted = true;
         const vfy = v.fy || targetFY;
         applyVoucherToSummary(summaryByFY[vfy].accounts, v);
         updatedFYs.add(vfy);
@@ -644,7 +647,7 @@ async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
     });
   }
 
-  return { newlyPosted: totalNewlyPosted, postedVoucherIds };
+  return { newlyPosted: totalNewlyPosted, postedVoucherIds, hasDigitalCommitted };
 }
 
 // ── Main HTTP Handler ────────────────────────────────────────────────────────
@@ -830,7 +833,7 @@ async function handler(req, res) {
       const endYear = startYear + 1;
 
       // F1: Helper to persist used settings and lock flags
-      const ensureFeeSettingsPersisted = async (batch) => {
+      const ensureFeeSettingsPersisted = async () => {
         const updates = {};
         const fyStart = `${startYear}-04-01`;
 
@@ -845,12 +848,6 @@ async function handler(req, res) {
         if (!settings.hasFeeVouchers) {
           settings.hasFeeVouchers = true;
           updates.hasFeeVouchers = true;
-        }
-
-        const hasDigitalInBatch = Array.isArray(batch) && batch.some(v => v.isDigital);
-        if (hasDigitalInBatch && !settings.hasDigitalFeeVouchers) {
-          settings.hasDigitalFeeVouchers = true;
-          updates.hasDigitalFeeVouchers = true;
         }
 
         if (Object.keys(updates).length > 0) {
@@ -962,11 +959,16 @@ async function handler(req, res) {
               candidateBatch.push(res);
 
               if (candidateBatch.length >= 100) {
-                await ensureFeeSettingsPersisted(candidateBatch);
-                const { newlyPosted } = await postVouchersBatch(db, schoolId, candidateBatch, targetFY);
+                await ensureFeeSettingsPersisted();
+                const batchRes = await postVouchersBatch(db, schoolId, candidateBatch, targetFY);
+                const newlyPosted = batchRes.newlyPosted;
                 newFeesPosted += newlyPosted;
                 syncState.counts.feesPosted = (syncState.counts.feesPosted || 0) + newlyPosted;
                 syncState.counts.vouchersTotal = (syncState.counts.vouchersTotal || 0) + newlyPosted;
+                if (batchRes.hasDigitalCommitted && !settings.hasDigitalFeeVouchers) {
+                  settings.hasDigitalFeeVouchers = true;
+                  await settingsDoc.ref.set({ hasDigitalFeeVouchers: true }, { merge: true });
+                }
                 candidateBatch.length = 0;
               }
             }
@@ -978,11 +980,16 @@ async function handler(req, res) {
 
         // Post remaining candidate vouchers for this month doc
         if (candidateBatch.length > 0) {
-          await ensureFeeSettingsPersisted(candidateBatch);
-          const { newlyPosted } = await postVouchersBatch(db, schoolId, candidateBatch, targetFY);
+          await ensureFeeSettingsPersisted();
+          const batchRes = await postVouchersBatch(db, schoolId, candidateBatch, targetFY);
+          const newlyPosted = batchRes.newlyPosted;
           newFeesPosted += newlyPosted;
           syncState.counts.feesPosted = (syncState.counts.feesPosted || 0) + newlyPosted;
           syncState.counts.vouchersTotal = (syncState.counts.vouchersTotal || 0) + newlyPosted;
+          if (batchRes.hasDigitalCommitted && !settings.hasDigitalFeeVouchers) {
+            settings.hasDigitalFeeVouchers = true;
+            await settingsDoc.ref.set({ hasDigitalFeeVouchers: true }, { merge: true });
+          }
           candidateBatch.length = 0;
         }
 

@@ -1101,7 +1101,9 @@
     renderOverviewHTML: function () {
       var currentFY = this.getFinancialYear();
       var now = new Date();
-      var currentMonthPrefix = now.toISOString().slice(0, 7); // YYYY-MM
+      var nowY = now.getFullYear();
+      var nowM = now.getMonth() + 1;
+      var currentMonthPrefix = nowY + '-' + (nowM < 10 ? '0' : '') + nowM; // Local YYYY-MM
 
       // Calculate Cash & Bank Balances
       var cashInHandPaise = this.computeAccountBalance('11100');
@@ -1109,8 +1111,10 @@
       var bankAccounts = (this.settings && this.settings.bankAccounts) || [];
       var bankBalances = [];
       var totalBanksPaise = 0;
+      var handledBankCodes = new Set();
 
       bankAccounts.forEach(function (b) {
+        if (b.isActive === false) return;
         var bCode = b.ledgerAccountId || '11200';
         var bBal = this.computeAccountBalance(bCode);
         totalBanksPaise += bBal;
@@ -1120,10 +1124,43 @@
           balancePaise: bBal,
           last4: b.last4
         });
+        handledBankCodes.add(bCode);
       }.bind(this));
 
-      // Fallback if no configured bank accounts yet
-      if (bankAccounts.length === 0) {
+      // B4: Show EVERY cash/bank asset ledger that has a non-zero balance
+      var candidateAssetCodes = new Set(['11200', '11210']);
+      (this.chart || []).forEach(function (a) {
+        if (a && a.code && (a.code.startsWith('111') || a.code.startsWith('112'))) {
+          candidateAssetCodes.add(a.code);
+        }
+      });
+      var summaryAccounts = (this.summary && this.summary.accounts) ? this.summary.accounts : {};
+      Object.keys(summaryAccounts).forEach(function (c) {
+        if (c.startsWith('111') || c.startsWith('112')) {
+          candidateAssetCodes.add(c);
+        }
+      });
+
+      candidateAssetCodes.forEach(function (code) {
+        if (code === '11100' || code === '11110' || handledBankCodes.has(code)) return;
+        var bal = this.computeAccountBalance(code);
+        if (bal !== 0) {
+          var acc = this.chart ? this.chart.find(function (a) { return a.code === code; }) : null;
+          var accName = acc ? acc.name : (code === '11200' ? 'Primary Bank Account' : (code === '11210' ? 'Secondary Bank Account' : 'Bank Ledger'));
+          bankBalances.push({
+            label: accName + ' (' + code + ') — no bank details linked',
+            code: code,
+            balancePaise: bal,
+            last4: '—',
+            unlinked: true
+          });
+          totalBanksPaise += bal;
+          handledBankCodes.add(code);
+        }
+      }.bind(this));
+
+      // Fallback if no configured bank accounts and no active bank ledgers
+      if (bankBalances.length === 0) {
         var primBal = this.computeAccountBalance('11200');
         totalBanksPaise += primBal;
         bankBalances.push({
@@ -1186,6 +1223,8 @@
         html += '      <div style="font-size:20px; font-weight:800; color:var(--text-primary); margin:6px 0 2px 0;">' + this.formatINR(bb.balancePaise) + '</div>';
         if (bb.isFallback) {
           html += '      <span style="font-size:11px;"><a href="javascript:void(0)" onclick="SchoolApp.modules.accounts.switchTab(\'settings\')" style="color:var(--accent-primary); text-decoration:underline; font-weight:500;">Add bank in Settings</a></span>';
+        } else if (bb.unlinked) {
+          html += '      <span style="font-size:11px; color:var(--text-muted);"><a href="javascript:void(0)" onclick="SchoolApp.modules.accounts.switchTab(\'settings\')" style="color:var(--accent-primary); text-decoration:underline; font-weight:500;">Link in Settings</a></span>';
         } else {
           html += '      <span style="font-size:11px; color:var(--text-muted);">A/c **' + SchoolApp.escapeHTML(bb.last4) + '</span>';
         }
@@ -3068,10 +3107,11 @@
       var currentFY = this.getFinancialYear();
       var now = new Date();
       var y = now.getFullYear();
-      var m = now.getMonth();
-      var lastDay = new Date(y, m + 1, 0).getDate();
-      var monthStart = now.toISOString().slice(0, 7) + '-01';
-      var monthEnd = now.toISOString().slice(0, 7) + '-' + (lastDay < 10 ? '0' : '') + lastDay;
+      var m = now.getMonth() + 1;
+      var monthStr = y + '-' + (m < 10 ? '0' : '') + m;
+      var lastDay = new Date(y, m, 0).getDate();
+      var monthStart = monthStr + '-01';
+      var monthEnd = monthStr + '-' + (lastDay < 10 ? '0' : '') + lastDay;
 
       if (!this.reportParams.startDate) this.reportParams.startDate = monthStart;
       if (!this.reportParams.endDate) this.reportParams.endDate = monthEnd;
@@ -4141,17 +4181,21 @@
 
       var isGoLiveSaved = !!s.goLiveDate;
       var isGoLiveLocked = isGoLiveSaved && hasFeeVouchers;
+      var isGoLivePendingBackfill = !isGoLiveSaved && hasFeeVouchers;
       var suggestedGoLive = currentFY.split('-')[0] + '-04-01';
       var curGoLive = s.goLiveDate || suggestedGoLive;
 
       html += '    <div class="form-group" style="margin-bottom:16px;">';
       html += '      <label class="form-label" style="font-weight:600; display:block; margin-bottom:4px;">Accounting Go-Live Date * ' +
-        (isGoLiveLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (!isGoLiveSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : '')) +
+        (isGoLiveLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (isGoLivePendingBackfill ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Pending Sync</span>' : (!isGoLiveSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : ''))) +
         '</label>';
 
       if (isGoLiveLocked) {
         html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" disabled style="width:100%; background:var(--bg-secondary); cursor:not-allowed;" />';
         html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">🔒 <strong>Locked:</strong> Fee vouchers have already been posted to the general ledger. Accounting go-live date cannot be changed.</small>';
+      } else if (isGoLivePendingBackfill) {
+        html += '      <input type="text" class="form-control" id="settings-golive-date" value="Will be set automatically on next sync" disabled style="width:100%; background:var(--bg-secondary); cursor:not-allowed;" />';
+        html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">🔒 <strong>Pending Sync:</strong> Fee vouchers have already been posted to the general ledger. Accounting go-live date will be set automatically on next sync (financial year start date: ' + suggestedGoLive + ').</small>';
       } else {
         html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" required style="width:100%;" />';
         if (!isGoLiveSaved) {
@@ -4180,13 +4224,18 @@
       html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Cash Fee Collection Ledger ' +
         (isCashLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (!isCashSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : '')) +
         '</label>';
-      html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + curCash + '" ' + (isCashLocked ? 'disabled ' : 'readonly ') + 'style="background:var(--bg-secondary);' + (isCashLocked ? ' cursor:not-allowed;' : '') + '" />';
-      if (!isCashSaved) {
-        html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand (suggested default)</small>';
-      } else if (isCashLocked) {
+      if (isCashLocked) {
+        var cashChartAcc = this.chart ? this.chart.find(function (a) { return a.code === curCash; }) : null;
+        var cashName = cashChartAcc ? cashChartAcc.name : (curCash === '11100' ? 'Cash in Hand' : 'Cash Account');
+        html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + curCash + ' - ' + SchoolApp.escapeHTML(cashName) + '" disabled style="background:var(--bg-secondary); cursor:not-allowed;" />';
         html += '        <small class="form-text text-muted" style="font-size:11px;">🔒 <strong>Locked:</strong> Cash fee vouchers have already been posted to the general ledger.</small>';
       } else {
-        html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand</small>';
+        html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + curCash + '" readonly style="background:var(--bg-secondary);" />';
+        if (!isCashSaved) {
+          html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand (suggested default)</small>';
+        } else {
+          html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand</small>';
+        }
       }
       html += '      </div>';
 
@@ -4194,36 +4243,56 @@
       html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Digital Fee Collection Bank Ledger * ' +
         (isDigitalLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (!isDigitalSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : '')) +
         '</label>';
-      html += '        <select class="form-control form-select" id="settings-fee-digital-acc" ' + (isDigitalLocked ? 'disabled style="background:var(--bg-secondary); cursor:not-allowed;"' : 'required') + '>';
-
-      if (!isDigitalSaved) {
-        var suggestedCode = (bankAccounts.length > 0) ? (bankAccounts[0].ledgerAccountId || '11200') : '11200';
-        bankAccounts.forEach(function (b) {
-          var bCode = b.ledgerAccountId || '11200';
-          var isSugg = (bCode === suggestedCode);
-          html += '          <option value="' + bCode + '" ' + (isSugg ? 'selected' : '') + '>' + bCode + ' - ' + SchoolApp.escapeHTML(b.label || b.bankName) + ' (**' + (b.last4 || '') + ')' + (isSugg ? ' (suggested)' : '') + '</option>';
-        });
-        if (bankAccounts.length === 0) {
-          html += '          <option value="11200" selected>11200 - Primary Bank Account (suggested)</option>';
-        }
-      } else {
-        bankAccounts.forEach(function (b) {
-          var bCode = b.ledgerAccountId || '11200';
-          var sel = (s.feeDigitalAccount === bCode) ? 'selected' : '';
-          html += '          <option value="' + bCode + '" ' + sel + '>' + bCode + ' - ' + SchoolApp.escapeHTML(b.label || b.bankName) + ' (**' + (b.last4 || '') + ')</option>';
-        });
-        if (bankAccounts.length === 0) {
-          html += '          <option value="11200" selected>11200 - Primary Bank Account</option>';
-        }
-      }
-      html += '        </select>';
 
       if (isDigitalLocked) {
+        var digChartAcc = this.chart ? this.chart.find(function (a) { return a.code === s.feeDigitalAccount; }) : null;
+        var digBank = bankAccounts.find(function (b) { return b.ledgerAccountId === s.feeDigitalAccount; });
+        var digName = digBank ? ((digBank.label || digBank.bankName) + ' (**' + (digBank.last4 || '') + ')') : (digChartAcc ? digChartAcc.name : (s.feeDigitalAccount === '11200' ? 'Primary Bank Account' : 'Bank Ledger'));
+        var readOnlyDigText = s.feeDigitalAccount + ' - ' + digName;
+        html += '        <input type="text" class="form-control" id="settings-fee-digital-acc" value="' + SchoolApp.escapeHTML(readOnlyDigText) + '" disabled style="background:var(--bg-secondary); cursor:not-allowed;" />';
         html += '        <small class="form-text text-muted" style="font-size:11px;">🔒 <strong>Locked:</strong> Digital fee vouchers have already been posted to the general ledger. Target bank ledger cannot be changed.</small>';
-      } else if (!isDigitalSaved) {
-        html += '        <small class="form-text text-muted" style="font-size:11px;"><strong>Not set:</strong> Suggested default is preselected. Choose the target bank ledger for UPI, Net Banking, and Cheque fee receipts.</small>';
       } else {
-        html += '        <small class="form-text text-muted" style="font-size:11px;">Target bank ledger for UPI, Net Banking, and Cheque fee receipts. Can be updated until first digital fee voucher is posted.</small>';
+        html += '        <select class="form-control form-select" id="settings-fee-digital-acc" required>';
+        var offeredCodes = new Set();
+        var selectedDigCode = s.feeDigitalAccount || ((bankAccounts.length > 0 && bankAccounts[0].isActive !== false) ? (bankAccounts[0].ledgerAccountId || '11200') : '11200');
+
+        // 1. Configured active bank ledgers (B5)
+        bankAccounts.forEach(function (b) {
+          if (b.isActive !== false) {
+            var bCode = b.ledgerAccountId || '11200';
+            var sel = (selectedDigCode === bCode) ? 'selected' : '';
+            html += '          <option value="' + bCode + '" ' + sel + '>' + bCode + ' - ' + SchoolApp.escapeHTML(b.label || b.bankName) + ' (**' + (b.last4 || '') + ')' + (!isDigitalSaved && bCode === selectedDigCode ? ' (suggested)' : '') + '</option>';
+            offeredCodes.add(bCode);
+          }
+        });
+
+        // 2. Seeded 11200/11210 if not among active configured banks (B5)
+        if (!offeredCodes.has('11200')) {
+          var sel11200 = (selectedDigCode === '11200') ? 'selected' : '';
+          html += '          <option value="11200" ' + sel11200 + '>11200 - Primary Bank Account (no bank details linked · link below)' + (!isDigitalSaved && selectedDigCode === '11200' ? ' (suggested)' : '') + '</option>';
+          offeredCodes.add('11200');
+        }
+        if (!offeredCodes.has('11210')) {
+          var sel11210 = (selectedDigCode === '11210') ? 'selected' : '';
+          html += '          <option value="11210" ' + sel11210 + '>11210 - Secondary Bank Account (no bank details linked · link below)</option>';
+          offeredCodes.add('11210');
+        }
+
+        // 3. Saved value if not already in options (B1)
+        if (s.feeDigitalAccount && !offeredCodes.has(s.feeDigitalAccount)) {
+          var savedChartAcc = this.chart ? this.chart.find(function (a) { return a.code === s.feeDigitalAccount; }) : null;
+          var savedName = savedChartAcc ? savedChartAcc.name : 'Saved Account';
+          html += '          <option value="' + s.feeDigitalAccount + '" selected>' + s.feeDigitalAccount + ' - ' + SchoolApp.escapeHTML(savedName) + '</option>';
+          offeredCodes.add(s.feeDigitalAccount);
+        }
+
+        html += '        </select>';
+
+        if (!isDigitalSaved) {
+          html += '        <small class="form-text text-muted" style="font-size:11px;"><strong>Not set:</strong> Suggested default is preselected. Choose the target bank ledger for UPI, Net Banking, and Cheque fee receipts.</small>';
+        } else {
+          html += '        <small class="form-text text-muted" style="font-size:11px;">Target bank ledger for UPI, Net Banking, and Cheque fee receipts. Can be updated until first digital fee voucher is posted.</small>';
+        }
       }
       html += '      </div>';
       html += '    </div>';
@@ -4247,14 +4316,21 @@
         html += '            <td style="padding:8px 12px; font-weight:600;">' + SchoolApp.escapeHTML(h.name) + '</td>';
         html += '            <td style="padding:8px 12px;">';
         html += '              <select class="form-control form-select settings-fee-head-select" data-head-id="' + SchoolApp.escapeHTML(h.id) + '" style="font-size:12.5px;">';
+        var headOffered = new Set();
         incomeAccounts.forEach(function (acc) {
           var sel = (curMapped === acc.code) ? 'selected' : '';
           html += '                <option value="' + acc.code + '" ' + sel + '>' + acc.code + ' - ' + SchoolApp.escapeHTML(acc.name) + '</option>';
+          headOffered.add(acc.code);
         });
+        if (curMapped && !headOffered.has(curMapped)) {
+          var cAcc = this.chart ? this.chart.find(function (a) { return a.code === curMapped; }) : null;
+          var cName = cAcc ? cAcc.name : 'Mapped Account';
+          html += '                <option value="' + curMapped + '" selected>' + curMapped + ' - ' + SchoolApp.escapeHTML(cName) + '</option>';
+        }
         html += '              </select>';
         html += '            </td>';
         html += '          </tr>';
-      });
+      }.bind(this));
 
       html += '        </tbody>';
       html += '      </table>';
@@ -4340,6 +4416,10 @@
       html += '  </div>';
 
       // ── Card 4: Configured Bank Accounts ──
+      var unlinkedCodes = ['11200', '11210'].filter(function (c) {
+        return !bankAccounts.some(function (x) { return x.ledgerAccountId === c && x.isActive !== false; });
+      });
+
       html += '  <div class="card" style="padding:24px; border-radius:10px; margin-bottom:24px;">';
       html += '    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
       html += '      <h4 style="font-size:14px; font-weight:700; margin:0; color:var(--text-primary);">Configured Bank Accounts</h4>';
@@ -4361,16 +4441,51 @@
             ? '<button type="button" class="btn btn-sm btn-secondary b-toggle-btn" data-action="deactivate" style="font-size:11px; padding:4px 8px;" onclick="SchoolApp.modules.accounts.toggleBankStatus(this)">Deactivate</button>'
             : '<button type="button" class="btn btn-sm btn-secondary b-toggle-btn" data-action="activate" style="font-size:11px; padding:4px 8px;" onclick="SchoolApp.modules.accounts.toggleBankStatus(this)">Activate</button>';
 
+          // B3: Allow moving details from an empty ledger (zero balance, no vouchers) to an unlinked seeded ledger
+          var bCode = b.ledgerAccountId || '11200';
+          var bBal = this.computeAccountBalance(bCode);
+          var bSumm = (this.summary && this.summary.accounts && this.summary.accounts[bCode]) ? this.summary.accounts[bCode] : {};
+          var bHasVch = Object.values(bSumm).some(function (m) { return ((m.dr || 0) > 0 || (m.cr || 0) > 0); });
+          var isEmptyLedger = (bBal === 0 && !bHasVch && isAct);
+          var moveBtns = '';
+          if (isEmptyLedger && unlinkedCodes.length > 0) {
+            unlinkedCodes.forEach(function (uCode) {
+              moveBtns += ' <button type="button" class="btn btn-sm btn-outline-primary b-move-btn" style="font-size:11px; padding:4px 8px; margin-left:4px;" onclick="SchoolApp.modules.accounts.moveBankToSeededLedger(\'' + bCode + '\', \'' + uCode + '\')" title="Move details to seeded ledger ' + uCode + ' and deactivate ' + bCode + '">Move to ' + uCode + '</button>';
+            });
+          }
+
           html += '      <div class="bank-row bank-row-existing acc-bank-row" data-id="' + SchoolApp.escapeHTML(b.id || ('bank_' + (b.ledgerAccountId || idx))) + '" data-ledger-code="' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '" data-is-active="' + (isAct ? 'true' : 'false') + '" >';
           html += '        <input type="text" class="form-control b-label" placeholder="Label" value="' + SchoolApp.escapeHTML(b.label || '') + '" required />';
           html += '        <input type="text" class="form-control b-name" placeholder="Bank Name" value="' + SchoolApp.escapeHTML(b.bankName || '') + '" required />';
           html += '        <input type="text" class="form-control b-last4" placeholder="Last 4" maxlength="4" pattern="\\d{4}" value="' + SchoolApp.escapeHTML(b.last4 || '') + '" required />';
           html += '        <div style="font-size:11.5px; color:var(--text-secondary); text-align:center;">Code: <strong>' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '</strong></div>';
-          html += '        <div class="acc-bank-actions">' + statusBadge + ' ' + toggleBtn + '</div>';
+          html += '        <div class="acc-bank-actions">' + statusBadge + ' ' + toggleBtn + moveBtns + '</div>';
           html += '      </div>';
-        });
+        }.bind(this));
       }
       html += '    </div>';
+
+      // B3: Display unlinked seeded ledgers with option to link bank details
+      if (unlinkedCodes.length > 0) {
+        html += '    <div style="margin-top:16px; padding:14px; background:var(--bg-secondary); border-radius:8px; border:1px dashed var(--border-color);">';
+        html += '      <div style="font-size:12.5px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">Unlinked Seeded Bank Ledgers</div>';
+        html += '      <p style="font-size:11.5px; color:var(--text-secondary); margin:0 0 10px 0;">Standard system bank accounts available in Chart of Accounts without linked bank details.</p>';
+        unlinkedCodes.forEach(function (uCode) {
+          var uBal = this.computeAccountBalance(uCode);
+          var uName = (uCode === '11200') ? 'Primary Bank Account' : 'Secondary Bank Account';
+          var balBadge = (uBal !== 0) ? (' <span class="badge badge-info" style="font-size:10.5px; margin-left:4px;">Balance: ' + this.formatINR(uBal) + '</span>') : '';
+          html += '      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--border-color); flex-wrap:wrap; gap:8px;">';
+          html += '        <div>';
+          html += '          <strong style="font-size:12.5px;">' + uCode + ' - ' + uName + '</strong>' + balBadge;
+          html += '          <div style="font-size:11px; color:var(--text-muted);">No bank account details linked</div>';
+          html += '        </div>';
+          html += '        <button type="button" class="btn btn-sm btn-secondary" onclick="SchoolApp.modules.accounts.promptLinkBankDetails(\'' + uCode + '\')" style="font-size:11.5px; padding:4px 10px;">';
+          html += '          <span class="material-icons-round" style="font-size:15px; vertical-align:middle;">link</span> Link Bank Details';
+          html += '        </button>';
+          html += '      </div>';
+        }.bind(this));
+        html += '    </div>';
+      }
       html += '  </div>';
 
       // Submit Bar
@@ -4392,10 +4507,15 @@
 
       var html = '<div class="acc-opening-row" style="display:grid; grid-template-columns:2fr 1fr 1fr 36px; gap:8px; align-items:center;">';
       html += '  <select class="form-control form-select op-code" style="font-size:12.5px;">';
+      var codesOffered = new Set();
       this.chart.forEach(function (acc) {
         var sel = (acc.code === code) ? 'selected' : '';
         html += '    <option value="' + acc.code + '" ' + sel + '>' + acc.code + ' - ' + SchoolApp.escapeHTML(acc.name) + '</option>';
+        codesOffered.add(acc.code);
       });
+      if (code && !codesOffered.has(code)) {
+        html += '    <option value="' + code + '" selected>' + code + ' - Saved Account</option>';
+      }
       html += '  </select>';
       html += '  <input type="number" step="0.01" min="0" class="form-control op-dr" placeholder="Debit (Dr)" value="' + drVal + '" />';
       html += '  <input type="number" step="0.01" min="0" class="form-control op-cr" placeholder="Credit (Cr)" value="' + crVal + '" />';
@@ -4562,6 +4682,194 @@
       }
     },
 
+    getNextAvailableBankLedgerCode: function (currentBankAccounts) {
+      var linkedCodes = new Set();
+      (currentBankAccounts || []).forEach(function (b) {
+        if (b && b.ledgerAccountId) linkedCodes.add(String(b.ledgerAccountId));
+      });
+
+      // Seeded ledgers: 11200 and 11210 count as available if no bank entry is linked to them (B2)
+      if (!linkedCodes.has('11200')) {
+        return '11200';
+      }
+      if (!linkedCodes.has('11210')) {
+        return '11210';
+      }
+
+      // Next free 112xx (11220-11290)
+      var chartCodes = new Set();
+      (this.chart || []).forEach(function (a) {
+        if (a && a.code) chartCodes.add(String(a.code));
+      });
+
+      for (var c = 11220; c <= 11290; c += 10) {
+        var codeStr = String(c);
+        if (!linkedCodes.has(codeStr) && !chartCodes.has(codeStr)) {
+          return codeStr;
+        }
+      }
+
+      throw new Error('Maximum bank accounts reached (range 11200-11299 full).');
+    },
+
+    moveBankToSeededLedger: async function (fromCode, toCode) {
+      if (!fromCode || !toCode) return;
+      if (toCode !== '11200' && toCode !== '11210') {
+        SchoolApp.showToast('Target ledger must be a seeded ledger (11200 or 11210).', 'error');
+        return;
+      }
+
+      var bankAccounts = (this.settings && Array.isArray(this.settings.bankAccounts)) ? this.settings.bankAccounts : [];
+      var sourceBank = bankAccounts.find(function (b) { return b.ledgerAccountId === fromCode; });
+      if (!sourceBank) {
+        SchoolApp.showToast('Source bank entry not found for ledger ' + fromCode + '.', 'error');
+        return;
+      }
+
+      var targetBank = bankAccounts.find(function (b) { return b.ledgerAccountId === toCode && b.isActive !== false; });
+      if (targetBank) {
+        SchoolApp.showToast('Seeded ledger ' + toCode + ' already has an active bank account linked.', 'error');
+        return;
+      }
+
+      // Never re-point a ledger that has vouchers or non-zero balance (B3)
+      var bal = this.computeAccountBalance(fromCode);
+      var summaryData = (this.summary && this.summary.accounts && this.summary.accounts[fromCode]) ? this.summary.accounts[fromCode] : {};
+      var hasVouchers = Object.values(summaryData).some(function (m) { return ((m.dr || 0) > 0 || (m.cr || 0) > 0); });
+      if (bal !== 0 || hasVouchers) {
+        SchoolApp.showToast('Cannot re-point ledger ' + fromCode + ': this ledger already has posted vouchers or transactions.', 'error');
+        return;
+      }
+
+      if (typeof confirm === 'function' && !confirm('Move bank details from ' + fromCode + ' to seeded ledger ' + toCode + ' and deactivate ' + fromCode + '?')) {
+        return;
+      }
+
+      try {
+        var schoolId = this.getSchoolId();
+        var fs = window.firestore;
+        var db = window.db;
+        var nowIso = new Date().toISOString();
+
+        var updatedBankAccounts = bankAccounts.map(function (b) {
+          if (b.ledgerAccountId === fromCode) {
+            return Object.assign({}, b, { isActive: false });
+          }
+          return b;
+        });
+
+        var existingTargetIdx = updatedBankAccounts.findIndex(function (b) { return b.ledgerAccountId === toCode; });
+        var targetEntry = {
+          id: 'bank_' + toCode,
+          label: sourceBank.label || sourceBank.bankName,
+          bankName: sourceBank.bankName,
+          last4: sourceBank.last4,
+          ledgerAccountId: toCode,
+          isActive: true
+        };
+
+        if (existingTargetIdx >= 0) {
+          updatedBankAccounts[existingTargetIdx] = targetEntry;
+        } else {
+          updatedBankAccounts.push(targetEntry);
+        }
+
+        var updateSettings = {
+          bankAccounts: updatedBankAccounts,
+          updatedAt: nowIso
+        };
+
+        if (this.settings && this.settings.feeDigitalAccount === fromCode) {
+          updateSettings.feeDigitalAccount = toCode;
+          this.settings.feeDigitalAccount = toCode;
+        }
+
+        var batch = fs.writeBatch(db);
+        var settingsRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'main');
+        batch.update(settingsRef, updateSettings);
+
+        if (parseInt(fromCode, 10) >= 11220) {
+          var chartRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_chart', fromCode);
+          batch.update(chartRef, { isActive: false, updatedAt: nowIso });
+        }
+
+        await batch.commit();
+
+        this.settings.bankAccounts = updatedBankAccounts;
+        if (this.chart) {
+          var cAcc = this.chart.find(function (a) { return a.code === fromCode; });
+          if (cAcc) cAcc.isActive = false;
+        }
+
+        SchoolApp.showToast('Bank details moved to ' + toCode + ' and ' + fromCode + ' deactivated.', 'success');
+        await this.render();
+      } catch (err) {
+        console.error('Error moving bank to seeded ledger:', err);
+        SchoolApp.showToast('Failed to move bank details: ' + err.message, 'error');
+      }
+    },
+
+    linkBankDetails: async function (targetCode, details) {
+      if (!targetCode || !details) return;
+      if (targetCode !== '11200' && targetCode !== '11210') {
+        SchoolApp.showToast('Target ledger must be a seeded ledger (11200 or 11210).', 'error');
+        return;
+      }
+
+      var bankAccounts = (this.settings && Array.isArray(this.settings.bankAccounts)) ? this.settings.bankAccounts.slice() : [];
+      var existingIdx = bankAccounts.findIndex(function (b) { return b.ledgerAccountId === targetCode; });
+      var newEntry = {
+        id: 'bank_' + targetCode,
+        label: details.label || details.bankName,
+        bankName: details.bankName,
+        last4: String(details.last4 || '').slice(-4),
+        ledgerAccountId: targetCode,
+        isActive: true
+      };
+
+      if (existingIdx >= 0) {
+        bankAccounts[existingIdx] = newEntry;
+      } else {
+        bankAccounts.push(newEntry);
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+      var nowIso = new Date().toISOString();
+
+      var updatePayload = {
+        bankAccounts: bankAccounts,
+        updatedAt: nowIso
+      };
+
+      if (!this.settings.feeDigitalAccount) {
+        updatePayload.feeDigitalAccount = targetCode;
+        this.settings.feeDigitalAccount = targetCode;
+      }
+
+      var settingsRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'main');
+      await fs.updateDoc(settingsRef, updatePayload);
+
+      this.settings.bankAccounts = bankAccounts;
+      SchoolApp.showToast('Bank details linked to ledger ' + targetCode + '.', 'success');
+      await this.render();
+    },
+
+    promptLinkBankDetails: function (targetCode) {
+      var bankName = prompt('Enter Bank Name for ledger ' + targetCode + ' (e.g. ICICI Bank, SBI):');
+      if (!bankName || !bankName.trim()) return;
+      var last4 = prompt('Enter last 4 digits of bank account number:');
+      if (!last4 || !last4.trim()) return;
+      var label = prompt('Enter a label (optional, e.g. Operating Account):', bankName);
+
+      this.linkBankDetails(targetCode, {
+        bankName: bankName.trim(),
+        last4: last4.trim(),
+        label: (label || bankName).trim()
+      });
+    },
+
     addBankAccountRow: function () {
       var container = document.getElementById('settings-bank-accounts-list');
       if (!container) return;
@@ -4625,10 +4933,11 @@
         
         var isGoLiveSaved = !!s.goLiveDate;
         var isGoLiveLocked = isGoLiveSaved && hasFeeVouchers;
+        var isGoLivePendingBackfill = !isGoLiveSaved && hasFeeVouchers;
 
         var curGoLive = s.goLiveDate || '';
         var goLiveInput = document.getElementById('settings-golive-date');
-        var newGoLive = (goLiveInput && !goLiveInput.disabled) ? goLiveInput.value : (curGoLive || (currentFY.split('-')[0] + '-04-01'));
+        var newGoLive = isGoLivePendingBackfill ? '' : ((goLiveInput && !goLiveInput.disabled) ? goLiveInput.value : (curGoLive || (currentFY.split('-')[0] + '-04-01')));
 
         var isDigitalSaved = !!s.feeDigitalAccount;
         var isDigitalLocked = isDigitalSaved && !!s.hasDigitalFeeVouchers;
@@ -4638,7 +4947,7 @@
         var isCashSaved = !!s.feeCashAccount;
         var isCashLocked = isCashSaved && hasFeeVouchers;
         var cashAccInput = document.getElementById('settings-fee-cash-acc');
-        var feeCashAccount = (cashAccInput && !cashAccInput.disabled) ? cashAccInput.value : (s.feeCashAccount || '11100');
+        var feeCashAccount = (cashAccInput && !cashAccInput.disabled) ? (cashAccInput.value.slice(0, 5)) : (s.feeCashAccount || '11100');
 
         var shouldClearMonthDocUpdateTimes = (!hasFeeVouchers && newGoLive && curGoLive && newGoLive !== curGoLive);
 
@@ -4677,8 +4986,6 @@
           }
         });
 
-        (this.chart || []).forEach(function (a) { assignedCodes.add(a.code); });
-
         var newChartAccountsToCreate = [];
         newRows.forEach(function (row) {
           var lbl = row.querySelector('.b-label').value.trim();
@@ -4686,26 +4993,7 @@
           var l4 = row.querySelector('.b-last4').value.trim();
 
           if (nm && l4) {
-            var targetCode = null;
-            if (!assignedCodes.has('11200')) {
-              targetCode = '11200';
-            } else if (!assignedCodes.has('11210')) {
-              targetCode = '11210';
-            } else {
-              for (var c = 11220; c <= 11299; c += 10) {
-                var codeStr = String(c);
-                if (!assignedCodes.has(codeStr)) {
-                  targetCode = codeStr;
-                  break;
-                }
-              }
-            }
-
-            if (!targetCode) {
-              throw new Error('Maximum bank accounts reached (range 11200-11299 full).');
-            }
-
-            assignedCodes.add(targetCode);
+            var targetCode = this.getNextAvailableBankLedgerCode(bankAccounts);
             var permanentId = 'bank_' + targetCode;
             bankAccounts.push({
               id: permanentId,
@@ -4728,7 +5016,7 @@
               });
             }
           }
-        });
+        }.bind(this));
 
         var batch = fs.writeBatch(db);
         var settingsRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'main');
