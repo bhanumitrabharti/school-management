@@ -36,6 +36,7 @@
     { code: '22300', name: 'Professional Tax (PT) Payable', type: 'liability', group: 'Current Liabilities', isSystem: true, isActive: true },
     { code: '22400', name: 'TDS on Salaries Payable', type: 'liability', group: 'Current Liabilities', isSystem: true, isActive: true },
     { code: '22410', name: 'TDS on Vendor Contracts Payable', type: 'liability', group: 'Current Liabilities', isSystem: true, isActive: true },
+    { code: '22900', name: 'Other Payroll Deductions Payable', type: 'liability', group: 'Current Liabilities', isSystem: true, isActive: true },
     { code: '23100', name: 'Advance Fees Received from Students', type: 'liability', group: 'Current Liabilities', isSystem: true, isActive: true },
     { code: '24100', name: 'Student Caution Money / Security Deposits', type: 'liability', group: 'Current Liabilities', isSystem: true, isActive: true },
 
@@ -71,6 +72,15 @@
 
   const AccountsModule = {
     activeTab: 'overview',
+    payrollSubTab: 'runs',
+    selectedPayrollMonth: '',
+    currentRun: null,
+    currentRunLines: [],
+    staff: [],
+    payrollProfiles: [],
+    payrollSettings: null,
+    advances: [],
+    statutoryPayments: [],
     settings: null,
     chart: [],
     expenses: [],
@@ -455,7 +465,118 @@
       var syncStateSnap = await fs.getDoc(syncStateRef);
       this.syncState = syncStateSnap.exists() ? syncStateSnap.data() : null;
 
+      // 9. Fetch Staff Registry
+      try {
+        var staffColl = fs.collection(db, 'tenant_data', schoolId, 'staff');
+        var staffSnap = await fs.getDocs(staffColl);
+        this.staff = [];
+        staffSnap.forEach(function (docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          this.staff.push(d);
+        }.bind(this));
+        this.staff.sort(function (a, b) { return String(a.name || '').localeCompare(String(b.name || '')); });
+      } catch (e) {
+        console.warn('[Accounts] Staff fetch error:', e);
+        this.staff = [];
+      }
+
+      // 10. Fetch Payroll Profiles
+      try {
+        var profColl = fs.collection(db, 'tenant_data', schoolId, 'payroll_profiles');
+        var profSnap = await fs.getDocs(profColl);
+        this.payrollProfiles = [];
+        profSnap.forEach(function (docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          this.payrollProfiles.push(d);
+        }.bind(this));
+      } catch (e) {
+        console.warn('[Accounts] Profiles fetch error:', e);
+        this.payrollProfiles = [];
+      }
+
+      // 11. Fetch Payroll Settings
+      try {
+        var pSetRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_settings', 'main');
+        var pSetSnap = await fs.getDoc(pSetRef);
+        this.payrollSettings = pSetSnap.exists() ? pSetSnap.data() : null;
+      } catch (e) {
+        console.warn('[Accounts] Payroll settings fetch error:', e);
+        this.payrollSettings = null;
+      }
+
+      // 12. Fetch Advances
+      try {
+        var advColl = fs.collection(db, 'tenant_data', schoolId, 'accounts_advances');
+        var advSnap = await fs.getDocs(advColl);
+        this.advances = [];
+        advSnap.forEach(function (docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          this.advances.push(d);
+        }.bind(this));
+        this.advances.sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+      } catch (e) {
+        console.warn('[Accounts] Advances fetch error:', e);
+        this.advances = [];
+      }
+
+      // 13. Fetch Statutory Payments
+      try {
+        var statColl = fs.collection(db, 'tenant_data', schoolId, 'accounts_statutory_payments');
+        var statSnap = await fs.getDocs(statColl);
+        this.statutoryPayments = [];
+        statSnap.forEach(function (docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          this.statutoryPayments.push(d);
+        }.bind(this));
+        this.statutoryPayments.sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+      } catch (e) {
+        console.warn('[Accounts] Statutory fetch error:', e);
+        this.statutoryPayments = [];
+      }
+
+      // 14. Load current payroll run for selected month
+      if (!this.selectedPayrollMonth) {
+        var now = new Date();
+        var y = now.getFullYear();
+        var m = String(now.getMonth() + 1).padStart(2, '0');
+        this.selectedPayrollMonth = y + '-' + m;
+      }
+      await this.loadPayrollRunForMonth(this.selectedPayrollMonth);
+
       this.initialized = true;
+    },
+
+    loadPayrollRunForMonth: async function (month) {
+      var schoolId = this.getSchoolId();
+      if (!schoolId) return;
+      var fs = window.firestore;
+      var db = window.db;
+
+      try {
+        var runRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_runs', month);
+        var runSnap = await fs.getDoc(runRef);
+        if (runSnap.exists()) {
+          this.currentRun = runSnap.data();
+          var linesColl = fs.collection(db, 'tenant_data', schoolId, 'payroll_runs', month, 'lines');
+          var linesSnap = await fs.getDocs(linesColl);
+          this.currentRunLines = [];
+          linesSnap.forEach(function (docSnap) {
+            this.currentRunLines.push(docSnap.data());
+          }.bind(this));
+          this.currentRunLines.sort(function (a, b) { return String(a.employeeName || '').localeCompare(String(b.employeeName || '')); });
+        } else {
+          this.currentRun = null;
+          this.currentRunLines = [];
+        }
+      } catch (err) {
+        console.warn('[Accounts] Error loading payroll run for ' + month + ':', err);
+        this.currentRun = null;
+        this.currentRunLines = [];
+      }
     },
 
     // ── Server Sync Engine Caller ────────────────────────────────────────────
@@ -927,6 +1048,7 @@
         { id: 'income', label: 'Income (' + this.receipts.filter(function (r) { return r.status !== 'cancelled'; }).length + ')', icon: 'payments' },
         { id: 'expenses', label: 'Expenses (' + this.expenses.filter(function (e) { return e.status !== 'cancelled'; }).length + ')', icon: 'receipt_long' },
         { id: 'transfers', label: 'Transfers (' + this.transfers.filter(function (t) { return t.status !== 'cancelled'; }).length + ')', icon: 'swap_horiz' },
+        { id: 'payroll', label: 'Payroll', icon: 'badge' },
         { id: 'reports', label: 'Reports', icon: 'assessment' },
         { id: 'chart', label: 'Chart of Accounts (' + this.chart.length + ')', icon: 'account_tree' },
         { id: 'settings', label: 'Settings', icon: 'tune' }
@@ -982,6 +1104,9 @@
         this.attachExpenseEvents();
       } else if (this.activeTab === 'transfers') {
         contentEl.innerHTML = this.renderTransfersHTML();
+      } else if (this.activeTab === 'payroll') {
+        contentEl.innerHTML = this.renderPayrollHTML();
+        this.attachPayrollEvents();
       } else if (this.activeTab === 'reports') {
         contentEl.innerHTML = this.renderReportsHTML();
       } else if (this.activeTab === 'chart') {
@@ -1308,6 +1433,74 @@
       html += '    </div>';
       html += '  </div>';
 
+      html += '</div>';
+
+      // Section 2.5: Payroll & Statutory Dues Overview (Slice 3)
+      var statPf = this.computeAccountBalance('22100');
+      var statEmprPf = this.computeAccountBalance('22110');
+      var statEsi = this.computeAccountBalance('22200');
+      var statPt = this.computeAccountBalance('22300');
+      var statTds = this.computeAccountBalance('22400');
+      var totalStatutoryDues = statPf + statEmprPf + statEsi + statPt + statTds;
+
+      var salaryStatusText = 'Not calculated';
+      var salaryStatusColor = 'var(--text-muted)';
+      var salaryAmountPaise = 0;
+      if (this.currentRun) {
+        salaryAmountPaise = (this.currentRun.totals && this.currentRun.totals.netPayPaise) || 0;
+        if (this.currentRun.status === 'paid') {
+          salaryStatusText = 'Disbursed (' + this.formatINR(salaryAmountPaise) + ')';
+          salaryStatusColor = 'var(--success)';
+        } else if (this.currentRun.status === 'approved') {
+          salaryStatusText = 'Approved — Pending Payout';
+          salaryStatusColor = 'var(--accent-primary)';
+        } else if (this.currentRun.status === 'draft') {
+          salaryStatusText = 'Draft Calculation';
+          salaryStatusColor = 'var(--warning)';
+        } else if (this.currentRun.status === 'reversed') {
+          salaryStatusText = 'Reversed';
+          salaryStatusColor = 'var(--danger)';
+        }
+      }
+
+      html += '<div class="acc-overview-grid" style="margin-top:20px;">';
+      
+      // Card 1: Salary Payable This Month
+      html += '  <div class="card" style="padding:20px; border-radius:10px;">';
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
+      html += '      <h4 style="font-size:14.5px; font-weight:700; margin:0; color:var(--text-primary); display:flex; align-items:center; gap:6px;">';
+      html += '        <span class="material-icons-round" style="font-size:18px; color:var(--accent-primary);">badge</span>';
+      html += '        Salary Payable (This Month)';
+      html += '      </h4>';
+      html += '      <span class="badge" style="background:rgba(255,255,255,0.06); font-size:11px; color:' + salaryStatusColor + ';">' + salaryStatusText + '</span>';
+      html += '    </div>';
+      html += '    <div style="font-size:24px; font-weight:700; color:var(--text-primary); margin-bottom:8px;">' + this.formatINR(salaryAmountPaise) + '</div>';
+      html += '    <div style="font-size:12px; color:var(--text-secondary); margin-bottom:14px;">Net payroll amount payable to staff and teachers for ' + (this.selectedPayrollMonth || currentMonthPrefix) + '.</div>';
+      html += '    <div>';
+      html += '      <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.switchTab(\'payroll\')" style="font-size:11.5px; width:100%;">Open Monthly Payroll</button>';
+      html += '    </div>';
+      html += '  </div>';
+
+      // Card 2: Statutory Dues Outstanding
+      html += '  <div class="card" style="padding:20px; border-radius:10px;">';
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
+      html += '      <h4 style="font-size:14.5px; font-weight:700; margin:0; color:var(--text-primary); display:flex; align-items:center; gap:6px;">';
+      html += '        <span class="material-icons-round" style="font-size:18px; color:#f59e0b;">account_balance</span>';
+      html += '        Statutory Dues Outstanding';
+      html += '      </h4>';
+      html += '      <span class="badge ' + (totalStatutoryDues > 0 ? 'badge-warning' : 'badge-success') + '" style="font-size:11px;">' + (totalStatutoryDues > 0 ? 'Dues Pending' : 'Clear') + '</span>';
+      html += '    </div>';
+      html += '    <div style="font-size:24px; font-weight:700; color:' + (totalStatutoryDues > 0 ? '#f59e0b' : 'var(--success)') + '; margin-bottom:8px;">' + this.formatINR(totalStatutoryDues) + '</div>';
+      html += '    <div style="font-size:12px; color:var(--text-secondary); display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">';
+      html += '      <span>EPF: ' + this.formatINR(statPf + statEmprPf) + '</span>';
+      html += '      <span>• ESIC: ' + this.formatINR(statEsi) + '</span>';
+      html += '      <span>• PT: ' + this.formatINR(statPt) + '</span>';
+      html += '      <span>• TDS: ' + this.formatINR(statTds) + '</span>';
+      html += '    </div>';
+      html += '    <div>';
+      html += '      <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.switchPayrollSubTab(\'advances\'); SchoolApp.modules.accounts.switchTab(\'payroll\');" style="font-size:11.5px; width:100%;">Record Statutory Deposit</button>';
+      html += '    </div>';
+      html += '  </div>';
       html += '</div>';
 
       // Section 3: Quick Action Navigation
@@ -5052,7 +5245,2078 @@
           btn.innerHTML = '<span class="material-icons-round">save</span> Save Settings';
         }
       }
-    }
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // TAB: PAYROLL & COMPENSATION (Accounts Slice 3)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    switchPayrollSubTab: function (subTabId) {
+      this.payrollSubTab = subTabId;
+      this.renderCurrentTab();
+    },
+
+    changePayrollMonth: async function (month) {
+      if (!month) return;
+      this.selectedPayrollMonth = month;
+      await this.loadPayrollRunForMonth(month);
+      this.renderCurrentTab();
+    },
+
+    runPayrollAction: async function (actionName, payload) {
+      var schoolId = this.getSchoolId();
+      if (!schoolId) throw new Error('No school ID found');
+      var authUser = window.auth && window.auth.currentUser;
+      if (!authUser) throw new Error('Authentication session not ready');
+      var idToken = await authUser.getIdToken();
+
+      var body = Object.assign({
+        idToken: idToken,
+        schoolId: schoolId,
+        action: 'payroll-' + actionName,
+        month: this.selectedPayrollMonth
+      }, payload || {});
+
+      var res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      var data;
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error('Server returned invalid response');
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Server error (' + res.status + ')');
+      }
+      return data;
+    },
+
+    renderPayrollHTML: function () {
+      var html = '';
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">';
+      html += '  <div>';
+      html += '    <h3 style="margin:0; font-size:19px; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:8px;">';
+      html += '      <span class="material-icons-round" style="color:var(--accent-primary);">badge</span> Payroll & Compensation';
+      html += '    </h3>';
+      html += '    <p style="margin:4px 0 0 0; font-size:12.5px; color:var(--text-secondary);">Manage staff registry, salary profiles, monthly runs, advances, and statutory payments.</p>';
+      html += '  </div>';
+      html += '</div>';
+
+      // Sub-tab pills
+      var subTabs = [
+        { id: 'runs', label: 'Monthly Run', icon: 'calendar_month' },
+        { id: 'staff', label: 'Staff Registry (' + this.staff.length + ')', icon: 'people' },
+        { id: 'profiles', label: 'Salary Profiles', icon: 'badge' },
+        { id: 'advances', label: 'Advances & Statutory (' + this.advances.filter(function (a) { return a.status !== 'cancelled'; }).length + ')', icon: 'account_balance' },
+        { id: 'settings', label: 'Payroll Settings', icon: 'tune' }
+      ];
+
+      html += '<div class="acc-tab-bar" style="margin-bottom:18px;">';
+      subTabs.forEach(function (s) {
+        var isAct = (this.payrollSubTab === s.id);
+        html += '<button class="tab-btn ' + (isAct ? 'active' : '') + '" onclick="SchoolApp.modules.accounts.switchPayrollSubTab(\'' + s.id + '\')">';
+        html += '  <span class="material-icons-round">' + s.icon + '</span> ' + s.label;
+        html += '</button>';
+      }.bind(this));
+      html += '</div>';
+
+      if (this.payrollSubTab === 'runs') {
+        html += this.renderPayrollRunsHTML();
+      } else if (this.payrollSubTab === 'staff') {
+        html += this.renderPayrollStaffHTML();
+      } else if (this.payrollSubTab === 'profiles') {
+        html += this.renderPayrollProfilesHTML();
+      } else if (this.payrollSubTab === 'advances') {
+        html += this.renderPayrollAdvancesHTML();
+      } else if (this.payrollSubTab === 'settings') {
+        html += this.renderPayrollSettingsHTML();
+      }
+
+      return html;
+    },
+
+    // ── 1. Monthly Run Sub-tab ───────────────────────────────────────────────
+    renderPayrollRunsHTML: function () {
+      var html = '';
+      var run = this.currentRun;
+      var status = run ? run.status : 'not_calculated';
+      var lines = this.currentRunLines || [];
+
+      // Top control bar
+      html += '<div class="card" style="padding:14px 18px; border-radius:10px; margin-bottom:18px;">';
+      html += '  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+      html += '    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+      html += '      <div style="display:flex; align-items:center; gap:8px;">';
+      html += '        <label style="font-weight:600; font-size:13px; margin:0; color:var(--text-secondary);">Payroll Month:</label>';
+      html += '        <input type="month" class="form-control" style="width:auto; min-width:160px; font-weight:600;" value="' + this.selectedPayrollMonth + '" onchange="SchoolApp.modules.accounts.changePayrollMonth(this.value)" />';
+      html += '      </div>';
+
+      // Status pill
+      if (!run || status === 'not_calculated') {
+        html += '      <span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted); font-size:12px; padding:6px 12px;">Not Calculated</span>';
+      } else if (status === 'draft') {
+        html += '      <span class="badge badge-warning" style="font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px;">edit_note</span> Draft Calculation</span>';
+      } else if (status === 'approved') {
+        html += '      <span class="badge badge-info" style="font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px;">check_circle</span> Approved (Pending Payout)</span>';
+      } else if (status === 'paid') {
+        html += '      <span class="badge badge-success" style="font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px;">verified</span> Paid & Disbursed</span>';
+      } else if (status === 'reversed') {
+        html += '      <span class="badge badge-danger" style="font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:4px;"><span class="material-icons-round" style="font-size:14px;">undo</span> Reversed</span>';
+      }
+      html += '    </div>';
+
+      // Action buttons
+      html += '    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">';
+      if (!run || status === 'not_calculated') {
+        html += '      <button class="btn btn-primary" id="btn-calc-payroll" onclick="SchoolApp.modules.accounts.calculatePayrollRun()">';
+        html += '        <span class="material-icons-round">calculate</span> Calculate Payroll';
+        html += '      </button>';
+      } else if (status === 'draft') {
+        html += '      <button class="btn btn-secondary" id="btn-calc-payroll" onclick="SchoolApp.modules.accounts.calculatePayrollRun()">';
+        html += '        <span class="material-icons-round">sync</span> Recalculate';
+        html += '      </button>';
+        html += '      <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.confirmApproveRun()">';
+        html += '        <span class="material-icons-round">check_circle</span> Approve Run';
+        html += '      </button>';
+        html += '      <button class="btn btn-secondary" onclick="SchoolApp.modules.accounts.exportSalaryRegisterCSV()">';
+        html += '        <span class="material-icons-round">download</span> Salary Register CSV';
+        html += '      </button>';
+      } else if (status === 'approved') {
+        html += '      <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.openDisburseModal()">';
+        html += '        <span class="material-icons-round">payments</span> Pay / Disburse';
+        html += '      </button>';
+        html += '      <button class="btn btn-secondary" onclick="SchoolApp.modules.accounts.reopenPayrollRun()">';
+        html += '        <span class="material-icons-round">lock_open</span> Reopen Run';
+        html += '      </button>';
+        html += '      <button class="btn btn-secondary" onclick="SchoolApp.modules.accounts.exportSalaryRegisterCSV()">';
+        html += '        <span class="material-icons-round">download</span> Salary Register CSV';
+        html += '      </button>';
+      } else if (status === 'paid') {
+        html += '      <button class="btn btn-secondary" onclick="SchoolApp.modules.accounts.exportSalaryRegisterCSV()">';
+        html += '        <span class="material-icons-round">download</span> Salary Register CSV';
+        html += '      </button>';
+        html += '      <button class="btn btn-danger btn-sm" onclick="SchoolApp.modules.accounts.openReverseModal()" style="margin-left:4px;">';
+        html += '        <span class="material-icons-round">undo</span> Reverse Run';
+        html += '      </button>';
+      } else if (status === 'reversed') {
+        html += '      <button class="btn btn-primary" id="btn-calc-payroll" onclick="SchoolApp.modules.accounts.calculatePayrollRun()">';
+        html += '        <span class="material-icons-round">calculate</span> Recalculate Payroll';
+        html += '      </button>';
+        html += '      <button class="btn btn-secondary" onclick="SchoolApp.modules.accounts.exportSalaryRegisterCSV()">';
+        html += '        <span class="material-icons-round">download</span> Salary Register CSV';
+        html += '      </button>';
+      }
+      html += '    </div>';
+      html += '  </div>';
+      html += '</div>';
+
+      // Warnings banner
+      if (run && lines.length > 0) {
+        var negativeNetEmps = lines.filter(function (l) { return l.hasNegativeNet || l.netPayPaise < 0; });
+        var missingBankEmps = lines.filter(function (l) { return !l.accountNumber; });
+
+        if (negativeNetEmps.length > 0) {
+          html += '<div style="margin-bottom:16px; padding:12px 16px; border-radius:8px; background:rgba(239, 68, 68, 0.12); border-left:4px solid var(--danger); font-size:13px; color:var(--danger); display:flex; align-items:center; gap:8px;">';
+          html += '  <span class="material-icons-round" style="font-size:20px;">warning</span>';
+          html += '  <div><strong>Negative Net Pay Warning:</strong> ' + negativeNetEmps.length + ' employee(s) (' + negativeNetEmps.map(function (e) { return e.employeeName; }).join(', ') + ') have deductions exceeding their gross pay. Please click "Inputs" to adjust deductions or advance recovery before approval.</div>';
+          html += '</div>';
+        }
+
+        if (missingBankEmps.length > 0 && status !== 'paid') {
+          html += '<div style="margin-bottom:16px; padding:10px 14px; border-radius:8px; background:rgba(245, 158, 11, 0.1); border-left:4px solid #f59e0b; font-size:12.5px; color:#d97706; display:flex; align-items:center; gap:8px;">';
+          html += '  <span class="material-icons-round" style="font-size:18px;">info</span>';
+          html += '  <div><strong>Missing Bank Details:</strong> ' + missingBankEmps.length + ' employee(s) do not have bank account details configured in Salary Profiles. Cash payout or profile update required.</div>';
+          html += '</div>';
+        }
+      }
+
+      // Summary Cards
+      if (run && run.totals) {
+        var totals = run.totals;
+        var totalEeDed = (totals.employeePfPaise || 0) + (totals.employeeEsiPaise || 0) + (totals.ptPaise || 0) + (totals.tdsPaise || 0) + (totals.advanceRecoveryPaise || 0) + (totals.otherDeductionsPaise || 0);
+        var totalErContrib = (totals.employerPfPaise || 0) + (totals.employerEsiPaise || 0);
+        var totalCostToSchool = (totals.grossPaise || 0) + totalErContrib;
+
+        html += '<div class="acc-overview-grid" style="margin-bottom:20px;">';
+        
+        // Card 1: Gross Pay
+        html += '  <div class="card" style="padding:16px; border-radius:10px;">';
+        html += '    <div style="font-size:11.5px; font-weight:600; text-transform:uppercase; color:var(--text-secondary); margin-bottom:4px;">Gross Earnings</div>';
+        html += '    <div style="font-size:22px; font-weight:700; color:var(--text-primary);">' + this.formatINR(totals.grossPaise || 0) + '</div>';
+        html += '    <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">' + (lines.length) + ' employees in run</div>';
+        html += '  </div>';
+
+        // Card 2: Total Deductions
+        html += '  <div class="card" style="padding:16px; border-radius:10px;">';
+        html += '    <div style="font-size:11.5px; font-weight:600; text-transform:uppercase; color:var(--text-secondary); margin-bottom:4px;">Total Deductions</div>';
+        html += '    <div style="font-size:22px; font-weight:700; color:var(--danger);">' + this.formatINR(totalEeDed) + '</div>';
+        html += '    <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">PF, ESI, PT, TDS, Adv, Other</div>';
+        html += '  </div>';
+
+        // Card 3: Net Payable
+        html += '  <div class="card" style="padding:16px; border-radius:10px; border:1px solid var(--accent-primary); background:rgba(99, 102, 241, 0.04);">';
+        html += '    <div style="font-size:11.5px; font-weight:600; text-transform:uppercase; color:var(--accent-primary); margin-bottom:4px;">Net Payable to Staff</div>';
+        html += '    <div style="font-size:24px; font-weight:700; color:var(--accent-primary);">' + this.formatINR(totals.netPayPaise || 0) + '</div>';
+        html += '    <div style="font-size:11.5px; color:var(--text-secondary); margin-top:4px;">Disbursable amount</div>';
+        html += '  </div>';
+
+        // Card 4: Employer Costs
+        html += '  <div class="card" style="padding:16px; border-radius:10px;">';
+        html += '    <div style="font-size:11.5px; font-weight:600; text-transform:uppercase; color:var(--text-secondary); margin-bottom:4px;">Employer Statutory</div>';
+        html += '    <div style="font-size:22px; font-weight:700; color:#f59e0b;">' + this.formatINR(totalErContrib) + '</div>';
+        html += '    <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">PF + EPS + ESIC share</div>';
+        html += '  </div>';
+
+        // Card 5: Total Cost to School
+        html += '  <div class="card" style="padding:16px; border-radius:10px;">';
+        html += '    <div style="font-size:11.5px; font-weight:600; text-transform:uppercase; color:var(--text-secondary); margin-bottom:4px;">Total CTC (Cost to School)</div>';
+        html += '    <div style="font-size:22px; font-weight:700; color:var(--text-primary);">' + this.formatINR(totalCostToSchool) + '</div>';
+        html += '    <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">Gross + Employer Statutory</div>';
+        html += '  </div>';
+
+        html += '</div>';
+      }
+
+      // Employees Run Table
+      if (!run || lines.length === 0) {
+        html += '<div class="card" style="padding:48px 24px; text-align:center; border-radius:10px; color:var(--text-secondary);">';
+        html += '  <span class="material-icons-round" style="font-size:48px; color:var(--text-muted); margin-bottom:12px;">badge</span>';
+        html += '  <p style="font-weight:600; font-size:15px; margin:0 0 6px 0; color:var(--text-primary);">No payroll calculated for ' + this.selectedPayrollMonth + '</p>';
+        html += '  <p style="font-size:13px; max-width:520px; margin:0 auto 20px auto;">Click "Calculate Payroll" to aggregate teacher attendance records, staff base salaries, statutory rules, and generate monthly payslips.</p>';
+        html += '  <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.calculatePayrollRun()">';
+        html += '    <span class="material-icons-round">calculate</span> Calculate Payroll';
+        html += '  </button>';
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="padding:0; border-radius:10px; overflow:hidden;">';
+        html += '  <div class="table-responsive acc-table-container">';
+        html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse; font-size:12.5px;">';
+        html += '      <thead>';
+        html += '        <tr style="text-align:left; color:var(--text-secondary); border-bottom:1px solid var(--border-color); font-size:11.5px;">';
+        html += '          <th style="padding:10px 14px;">EMPLOYEE</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">DAYS</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">GROSS</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">PF (EE)</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">ESI (EE)</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">PT</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">TDS</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">ADV REC</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">OTHER DED</th>';
+        html += '          <th style="padding:10px 14px; text-align:right; font-weight:700;">NET PAY</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">ACTIONS</th>';
+        html += '        </tr>';
+        html += '      </thead>';
+        html += '      <tbody>';
+
+        lines.forEach(function (l) {
+          var isTeacher = (l.employeeType === 'teacher');
+          var roleBadge = isTeacher ? '<span class="badge" style="background:rgba(99,102,241,0.1); color:var(--accent-primary); font-size:10px;">Teacher</span>' : '<span class="badge" style="background:rgba(107,114,128,0.1); color:var(--text-secondary); font-size:10px;">Staff</span>';
+          var hasNeg = (l.hasNegativeNet || l.netPayPaise < 0);
+
+          html += '        <tr style="border-bottom:1px solid var(--border-color); ' + (hasNeg ? 'background:rgba(239,68,68,0.05);' : '') + '">';
+          html += '          <td style="padding:10px 14px;">';
+          html += '            <div style="font-weight:600; color:var(--text-primary);">' + SchoolApp.escapeHTML(l.employeeName || l.employeeId) + '</div>';
+          html += '            <div style="font-size:11px; margin-top:2px;">' + roleBadge + ' ' + (l.designation ? '<span style="color:var(--text-muted);">' + SchoolApp.escapeHTML(l.designation) + '</span>' : '') + '</div>';
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:center; font-size:11.5px;">';
+          html += '            <div><strong>' + (l.paidDays || 0) + '</strong> / ' + (l.workingDaysInMonth || 0) + '</div>';
+          if (l.lopDays > 0) {
+            html += '            <div style="color:var(--danger); font-size:10.5px;">LOP: ' + l.lopDays + 'd</div>';
+          }
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:600;">' + this.formatINR(l.grossPayPaise || 0) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.employeePfPaise > 0 ? this.formatINR(l.employeePfPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.employeeEsiPaise > 0 ? this.formatINR(l.employeeEsiPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.ptPaise > 0 ? this.formatINR(l.ptPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.tdsPaise > 0 ? this.formatINR(l.tdsPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.advanceRecoveryPaise > 0 ? this.formatINR(l.advanceRecoveryPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.otherDeductionsPaise > 0 ? this.formatINR(l.otherDeductionsPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:700; color:' + (hasNeg ? 'var(--danger)' : 'var(--text-primary)') + ';">' + this.formatINR(l.netPayPaise || 0) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:center; white-space:nowrap;">';
+          if (status === 'draft') {
+            html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.openEditInputsModal(\'' + l.employeeId + '\')" style="padding:3px 8px; font-size:11px; margin-right:4px;" title="Adjust LOP days, additions, deductions, advance recovery">';
+            html += '              <span class="material-icons-round" style="font-size:13px;">tune</span> Inputs';
+            html += '            </button>';
+          }
+          html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.showPayslipModal(\'' + l.employeeId + '\')" style="padding:3px 8px; font-size:11px;" title="View and print payslip">';
+          html += '              <span class="material-icons-round" style="font-size:13px;">receipt</span> Payslip';
+          html += '            </button>';
+          html += '          </td>';
+          html += '        </tr>';
+        }.bind(this));
+
+        html += '      </tbody>';
+        html += '    </table>';
+        html += '  </div>';
+        html += '</div>';
+      }
+
+      return html;
+    },
+
+    // ── Monthly Run Actions ──────────────────────────────────────────────────
+    calculatePayrollRun: async function () {
+      var btn = document.getElementById('btn-calc-payroll');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Calculating...';
+      }
+      try {
+        await this.runPayrollAction('calc');
+        await this.loadPayrollRunForMonth(this.selectedPayrollMonth);
+        SchoolApp.showToast('Payroll calculated successfully for ' + this.selectedPayrollMonth, 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Payroll calc error:', err);
+        SchoolApp.showToast('Calculation failed: ' + (err.message || 'Unknown error'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">calculate</span> Calculate Payroll';
+        }
+      }
+    },
+
+    confirmApproveRun: function () {
+      if (!this.currentRun || !this.currentRun.totals) return;
+      var totals = this.currentRun.totals;
+      var count = (this.currentRunLines || []).length;
+
+      var html = '';
+      html += '<div style="padding:8px 0;">';
+      html += '  <p style="font-size:13.5px; margin-bottom:16px;">Approving locks all employee inputs for <strong>' + this.selectedPayrollMonth + '</strong> and prepares the run for disbursement.</p>';
+      html += '  <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px; font-size:13px;">';
+      html += '    <div style="display:flex; justify-content:space-between;"><span>Employees in run:</span> <strong>' + count + '</strong></div>';
+      html += '    <div style="display:flex; justify-content:space-between;"><span>Total Gross Earnings:</span> <strong>' + this.formatINR(totals.grossPaise || 0) + '</strong></div>';
+      html += '    <div style="display:flex; justify-content:space-between;"><span>Total Employee Deductions:</span> <strong style="color:var(--danger);">- ' + this.formatINR((totals.employeePfPaise || 0) + (totals.employeeEsiPaise || 0) + (totals.ptPaise || 0) + (totals.tdsPaise || 0) + (totals.advanceRecoveryPaise || 0) + (totals.otherDeductionsPaise || 0)) + '</strong></div>';
+      html += '    <div style="border-top:1px dashed var(--border-color); padding-top:8px; display:flex; justify-content:space-between; font-size:15px;"><span>Net Payable to Staff:</span> <strong style="color:var(--accent-primary);">' + this.formatINR(totals.netPayPaise || 0) + '</strong></div>';
+      html += '    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); margin-top:4px;"><span>Employer Statutory Liability:</span> <span>' + this.formatINR((totals.employerPfPaise || 0) + (totals.employerEsiPaise || 0)) + '</span></div>';
+      html += '  </div>';
+      html += '</div>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="button" class="btn btn-primary" id="btn-approve-confirm" onclick="SchoolApp.modules.accounts.executeApproveRun()">';
+      footer += '  <span class="material-icons-round">check_circle</span> Confirm Approval';
+      footer += '</button>';
+
+      this.openModal('Approve Payroll Run (' + this.selectedPayrollMonth + ')', html, footer);
+    },
+
+    executeApproveRun: async function () {
+      var btn = document.getElementById('btn-approve-confirm');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Approving...';
+      }
+      try {
+        await this.runPayrollAction('approve');
+        await this.loadPayrollRunForMonth(this.selectedPayrollMonth);
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Payroll run approved successfully.', 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Approve error:', err);
+        SchoolApp.showToast('Approval failed: ' + (err.message || 'Unknown error'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">check_circle</span> Confirm Approval';
+        }
+      }
+    },
+
+    reopenPayrollRun: async function () {
+      if (!confirm('Reopen payroll run for ' + this.selectedPayrollMonth + '? This will unlock inputs and return status to Draft.')) return;
+      try {
+        await this.runPayrollAction('reopen');
+        await this.loadPayrollRunForMonth(this.selectedPayrollMonth);
+        SchoolApp.showToast('Payroll run reopened to Draft.', 'info');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Reopen error:', err);
+        SchoolApp.showToast('Reopen failed: ' + (err.message || 'Unknown error'), 'error');
+      }
+    },
+
+    openDisburseModal: function () {
+      if (!this.currentRun || !this.currentRun.totals) return;
+      var totals = this.currentRun.totals;
+      var today = new Date().toISOString().split('T')[0];
+      var bankAccounts = (this.settings && this.settings.bankAccounts) || [];
+
+      var html = '';
+      html += '<form id="form-disburse-payroll" onsubmit="SchoolApp.modules.accounts.executeDisburseRun(event)">';
+      html += '  <div style="background:rgba(99,102,241,0.06); border-radius:8px; padding:12px; margin-bottom:14px; font-size:13px;">';
+      html += '    <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Disbursing Month:</span> <strong>' + this.selectedPayrollMonth + '</strong></div>';
+      html += '    <div style="display:flex; justify-content:space-between; font-size:15px; font-weight:700;"><span>Total Net Payout:</span> <span style="color:var(--accent-primary);">' + this.formatINR(totals.netPayPaise || 0) + '</span></div>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Disburse From Account *</label>';
+      html += '    <select class="form-control form-select" id="disburse-account" required>';
+      html += '      <optgroup label="Cash">';
+      html += '        <option value="11100">11100 - Cash in Hand</option>';
+      html += '      </optgroup>';
+      html += '      <optgroup label="Bank Accounts">';
+      if (bankAccounts.length === 0) {
+        html += '        <option value="11200">11200 - Primary Bank Account</option>';
+      } else {
+        bankAccounts.forEach(function (b) {
+          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (' + SchoolApp.escapeHTML(b.accountNumber || '') + ')</option>';
+        });
+      }
+      html += '      </optgroup>';
+      html += '    </select>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Payment Date *</label>';
+      html += '      <input type="date" class="form-control" id="disburse-date" value="' + today + '" required />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Ref / Transaction No.</label>';
+      html += '      <input type="text" class="form-control" id="disburse-ref" placeholder="e.g. NEFT BATCH #449" />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div style="font-size:12px; color:var(--text-muted); line-height:1.4;">';
+      html += '    Posting this disbursement automatically creates journal voucher <code>vch_pay_' + this.selectedPayrollMonth + '</code> and updates the General Ledger.';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-disburse-payroll" class="btn btn-primary" id="btn-confirm-disburse">';
+      footer += '  <span class="material-icons-round">payments</span> Disburse & Post to Ledger';
+      footer += '</button>';
+
+      this.openModal('Disburse Monthly Payroll (' + this.selectedPayrollMonth + ')', html, footer);
+    },
+
+    executeDisburseRun: async function (e) {
+      if (e) e.preventDefault();
+      var paidFrom = document.getElementById('disburse-account').value;
+      var pDate = document.getElementById('disburse-date').value;
+      var refNo = document.getElementById('disburse-ref').value;
+
+      var btn = document.getElementById('btn-confirm-disburse');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Disbursing...';
+      }
+
+      try {
+        await this.runPayrollAction('pay', {
+          paidFromAccount: paidFrom,
+          paymentDate: pDate,
+          referenceNo: refNo
+        });
+        await this.loadPayrollRunForMonth(this.selectedPayrollMonth);
+        await this.loadData();
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Payroll disbursed and posted to General Ledger!', 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Disburse error:', err);
+        SchoolApp.showToast('Disbursement failed: ' + (err.message || 'Unknown error'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">payments</span> Disburse & Post to Ledger';
+        }
+      }
+    },
+
+    openReverseModal: function () {
+      var html = '';
+      html += '<form id="form-reverse-payroll" onsubmit="SchoolApp.modules.accounts.executeReverseRun(event)">';
+      html += '  <div style="background:rgba(239, 68, 68, 0.1); border-left:4px solid var(--danger); border-radius:6px; padding:12px; margin-bottom:14px; font-size:13px; color:var(--danger);">';
+      html += '    <strong>Caution:</strong> Reversing this payroll run will post an offsetting reversal voucher (<code>vch_payrev_' + this.selectedPayrollMonth + '</code>) to the General Ledger and mark the run as Reversed.';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Reason for Reversal *</label>';
+      html += '    <textarea class="form-control" id="reverse-reason" rows="3" placeholder="e.g. Bank payout cancelled / attendance corrections needed" required></textarea>';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-reverse-payroll" class="btn btn-danger" id="btn-confirm-reverse">';
+      footer += '  <span class="material-icons-round">undo</span> Confirm Reversal';
+      footer += '</button>';
+
+      this.openModal('Reverse Payroll Run (' + this.selectedPayrollMonth + ')', html, footer);
+    },
+
+    executeReverseRun: async function (e) {
+      if (e) e.preventDefault();
+      var reason = document.getElementById('reverse-reason').value;
+      var btn = document.getElementById('btn-confirm-reverse');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Reversing...';
+      }
+
+      try {
+        await this.runPayrollAction('reverse', { reason: reason });
+        await this.loadPayrollRunForMonth(this.selectedPayrollMonth);
+        await this.loadData();
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Payroll run reversed and reversal voucher posted.', 'info');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Reverse error:', err);
+        SchoolApp.showToast('Reversal failed: ' + (err.message || 'Unknown error'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">undo</span> Confirm Reversal';
+        }
+      }
+    },
+
+    // ── Edit Inputs Modal ────────────────────────────────────────────────────
+    openEditInputsModal: async function (empId) {
+      var line = (this.currentRunLines || []).find(function (l) { return l.employeeId === empId; });
+      if (!line) return;
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var existingInputs = {};
+      try {
+        var inpRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_inputs', this.selectedPayrollMonth);
+        var inpSnap = await fs.getDoc(inpRef);
+        if (inpSnap.exists() && inpSnap.data().employees) {
+          existingInputs = inpSnap.data().employees[empId] || {};
+        }
+      } catch (e) {
+        console.warn('Failed to load existing inputs:', e);
+      }
+
+      var lopVal = (existingInputs.lopDaysOverride !== undefined && existingInputs.lopDaysOverride !== null) ? existingInputs.lopDaysOverride : (line.lopDays || 0);
+      var addRupees = (existingInputs.additionPaise ? existingInputs.additionPaise / 100 : (line.oneTimeAdditionsPaise ? line.oneTimeAdditionsPaise / 100 : 0));
+      var addReason = existingInputs.additionReason || '';
+      var dedRupees = (existingInputs.deductionPaise ? existingInputs.deductionPaise / 100 : (line.oneTimeDeductionsPaise ? line.oneTimeDeductionsPaise / 100 : 0));
+      var dedReason = existingInputs.deductionReason || '';
+      var advRecRupees = (existingInputs.advanceRecoveryPaise !== undefined && existingInputs.advanceRecoveryPaise !== null ? existingInputs.advanceRecoveryPaise / 100 : (line.advanceRecoveryPaise ? line.advanceRecoveryPaise / 100 : 0));
+
+      var html = '';
+      html += '<form id="form-edit-inputs" onsubmit="SchoolApp.modules.accounts.savePayrollInputs(event, \'' + empId + '\')">';
+      html += '  <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:14px; font-size:13px;">';
+      html += '    <div style="font-weight:700; color:var(--text-primary);">' + SchoolApp.escapeHTML(line.employeeName) + '</div>';
+      html += '    <div style="color:var(--text-secondary); font-size:12px;">Base Gross Salary: ' + this.formatINR(line.baseGrossPaise || 0) + ' | Working Days: ' + (line.workingDaysInMonth || 26) + '</div>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">LOP Days Override (Loss of Pay)</label>';
+      html += '    <input type="number" step="0.5" min="0" max="31" class="form-control" id="inp-lop" value="' + lopVal + '" />';
+      html += '    <small style="color:var(--text-muted); font-size:11px;">Leave empty or set actual absent days for salary proration.</small>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">One-time Additions (INR ₹)</label>';
+      html += '      <input type="number" step="0.01" min="0" class="form-control" id="inp-add" value="' + addRupees + '" />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Additions Reason / Note</label>';
+      html += '      <input type="text" class="form-control" id="inp-add-reason" value="' + SchoolApp.escapeHTML(addReason) + '" placeholder="e.g. Festival bonus / exam duty" />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">One-time Deductions (INR ₹)</label>';
+      html += '      <input type="number" step="0.01" min="0" class="form-control" id="inp-ded" value="' + dedRupees + '" />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Deductions Reason / Note</label>';
+      html += '      <input type="text" class="form-control" id="inp-ded-reason" value="' + SchoolApp.escapeHTML(dedReason) + '" placeholder="e.g. Uniform / late coming" />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Advance Recovery Override (INR ₹)</label>';
+      html += '    <input type="number" step="0.01" min="0" class="form-control" id="inp-adv-rec" value="' + advRecRupees + '" />';
+      html += '    <small style="color:var(--text-muted); font-size:11px;">Defaults to open advance balance up to available gross salary.</small>';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-edit-inputs" class="btn btn-primary" id="btn-save-inputs">';
+      footer += '  <span class="material-icons-round">save</span> Save & Recalculate';
+      footer += '</button>';
+
+      this.openModal('Monthly Adjustments — ' + SchoolApp.escapeHTML(line.employeeName), html, footer);
+    },
+
+    savePayrollInputs: async function (e, empId) {
+      if (e) e.preventDefault();
+      var btn = document.getElementById('btn-save-inputs');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Saving...';
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var lop = parseFloat(document.getElementById('inp-lop').value) || 0;
+      var addRupees = parseFloat(document.getElementById('inp-add').value) || 0;
+      var addReason = document.getElementById('inp-add-reason').value.trim();
+      var dedRupees = parseFloat(document.getElementById('inp-ded').value) || 0;
+      var dedReason = document.getElementById('inp-ded-reason').value.trim();
+      var advRecRupees = parseFloat(document.getElementById('inp-adv-rec').value) || 0;
+
+      try {
+        var inpRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_inputs', this.selectedPayrollMonth);
+        var authUser = window.auth && window.auth.currentUser;
+
+        var payload = {
+          employees: {}
+        };
+        payload.employees[empId] = {
+          lopDaysOverride: lop,
+          additionPaise: Math.round(addRupees * 100),
+          additionReason: addReason,
+          deductionPaise: Math.round(dedRupees * 100),
+          deductionReason: dedReason,
+          advanceRecoveryPaise: Math.round(advRecRupees * 100)
+        };
+        payload.updatedAt = new Date().toISOString();
+        if (authUser) payload.updatedBy = authUser.email;
+
+        await fs.setDoc(inpRef, payload, { merge: true });
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Inputs updated. Recalculating...', 'info');
+        await this.calculatePayrollRun();
+      } catch (err) {
+        console.error('Save inputs error:', err);
+        SchoolApp.showToast('Failed to save inputs: ' + (err.message || 'Check connection'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Save & Recalculate';
+        }
+      }
+    },
+
+    // ── Payslip View Modal ───────────────────────────────────────────────────
+    showPayslipModal: function (empId) {
+      var line = (this.currentRunLines || []).find(function (l) { return l.employeeId === empId; });
+      if (!line) return;
+
+      var schoolName = (SchoolApp.state && SchoolApp.state.school && SchoolApp.state.school.name) || 'School Management System';
+
+      var html = '';
+      html += '<div id="printable-payslip" style="padding:16px; font-family:inherit; color:#1e293b; background:#fff; border-radius:8px;">';
+      
+      // Header
+      html += '  <div style="text-align:center; border-bottom:2px solid #e2e8f0; padding-bottom:12px; margin-bottom:14px;">';
+      html += '    <h3 style="margin:0; font-size:18px; color:#0f172a; font-weight:800;">' + SchoolApp.escapeHTML(schoolName) + '</h3>';
+      html += '    <div style="font-size:12px; color:#64748b; margin-top:2px; text-transform:uppercase; letter-spacing:0.5px;">Salary Payslip — ' + this.selectedPayrollMonth + '</div>';
+      html += '  </div>';
+
+      // Employee Info Grid
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:12px; background:#f8fafc; padding:12px; border-radius:6px; margin-bottom:14px;">';
+      html += '    <div><span style="color:#64748b;">Employee Name:</span> <strong>' + SchoolApp.escapeHTML(line.employeeName) + '</strong></div>';
+      html += '    <div><span style="color:#64748b;">Designation / Role:</span> <strong>' + SchoolApp.escapeHTML(line.designation || line.employeeType) + '</strong></div>';
+      html += '    <div><span style="color:#64748b;">Bank Name:</span> <span>' + SchoolApp.escapeHTML(line.bankName || 'Not configured') + '</span></div>';
+      html += '    <div><span style="color:#64748b;">Account No:</span> <span>' + SchoolApp.escapeHTML(line.accountNumber || '-') + '</span></div>';
+      html += '    <div><span style="color:#64748b;">IFSC Code:</span> <span>' + SchoolApp.escapeHTML(line.ifscCode || '-') + '</span></div>';
+      html += '    <div><span style="color:#64748b;">Paid Days / Total:</span> <strong>' + (line.paidDays || 0) + ' / ' + (line.workingDaysInMonth || 26) + '</strong> (LOP: ' + (line.lopDays || 0) + 'd)</div>';
+      html += '  </div>';
+
+      // 2-Column Earnings & Deductions
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px; font-size:12.5px;">';
+      
+      // Earnings Column
+      html += '    <div style="border:1px solid #e2e8f0; border-radius:6px; overflow:hidden;">';
+      html += '      <div style="background:#f1f5f9; padding:8px 12px; font-weight:700; color:#334155; font-size:12px;">EARNINGS</div>';
+      html += '      <div style="padding:10px 12px; display:flex; flex-direction:column; gap:6px;">';
+      html += '        <div style="display:flex; justify-content:space-between;"><span>Basic Pay:</span> <span>' + this.formatINR(line.basicPaise || 0) + '</span></div>';
+      if (line.daPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>Dearness Allowance (DA):</span> <span>' + this.formatINR(line.daPaise) + '</span></div>';
+      if (line.hraPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>House Rent Allowance (HRA):</span> <span>' + this.formatINR(line.hraPaise) + '</span></div>';
+      if (line.allowancesPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>Other Allowances:</span> <span>' + this.formatINR(line.allowancesPaise) + '</span></div>';
+      if (line.oneTimeAdditionsPaise > 0) html += '        <div style="display:flex; justify-content:space-between; color:#16a34a;"><span>Additions / Incentives:</span> <span>+' + this.formatINR(line.oneTimeAdditionsPaise) + '</span></div>';
+      html += '        <div style="border-top:1px dashed #cbd5e1; padding-top:6px; display:flex; justify-content:space-between; font-weight:700; color:#0f172a;"><span>Total Gross Earnings:</span> <span>' + this.formatINR(line.grossPayPaise || 0) + '</span></div>';
+      html += '      </div>';
+      html += '    </div>';
+
+      // Deductions Column
+      html += '    <div style="border:1px solid #e2e8f0; border-radius:6px; overflow:hidden;">';
+      html += '      <div style="background:#f1f5f9; padding:8px 12px; font-weight:700; color:#334155; font-size:12px;">DEDUCTIONS</div>';
+      html += '      <div style="padding:10px 12px; display:flex; flex-direction:column; gap:6px;">';
+      if (line.employeePfPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>EPF (Employee Share):</span> <span>' + this.formatINR(line.employeePfPaise) + '</span></div>';
+      if (line.employeeEsiPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>ESIC (Employee Share):</span> <span>' + this.formatINR(line.employeeEsiPaise) + '</span></div>';
+      if (line.ptPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>Professional Tax (PT):</span> <span>' + this.formatINR(line.ptPaise) + '</span></div>';
+      if (line.tdsPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>TDS on Salary:</span> <span>' + this.formatINR(line.tdsPaise) + '</span></div>';
+      if (line.advanceRecoveryPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>Salary Advance Recovery:</span> <span>' + this.formatINR(line.advanceRecoveryPaise) + '</span></div>';
+      if (line.otherDeductionsPaise > 0) html += '        <div style="display:flex; justify-content:space-between;"><span>Other Deductions:</span> <span>' + this.formatINR(line.otherDeductionsPaise) + '</span></div>';
+      var totalLineDed = (line.employeePfPaise || 0) + (line.employeeEsiPaise || 0) + (line.ptPaise || 0) + (line.tdsPaise || 0) + (line.advanceRecoveryPaise || 0) + (line.otherDeductionsPaise || 0);
+      html += '        <div style="border-top:1px dashed #cbd5e1; padding-top:6px; display:flex; justify-content:space-between; font-weight:700; color:#dc2626;"><span>Total Deductions:</span> <span>' + this.formatINR(totalLineDed) + '</span></div>';
+      html += '      </div>';
+      html += '    </div>';
+      html += '  </div>';
+
+      // Net Pay Banner
+      html += '  <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+      html += '    <div>';
+      html += '      <div style="font-size:11px; text-transform:uppercase; font-weight:700; color:#166534;">Net Salary Payable</div>';
+      html += '      <div style="font-size:12px; color:#15803d;">Take-home salary credited / disbursed</div>';
+      html += '    </div>';
+      html += '    <div style="font-size:22px; font-weight:800; color:#15803d;">' + this.formatINR(line.netPayPaise || 0) + '</div>';
+      html += '  </div>';
+
+      // Employer Contributions Note
+      if (line.employerPfPaise > 0 || line.employerEsiPaise > 0) {
+        html += '  <div style="font-size:11px; color:#64748b; border-top:1px dashed #e2e8f0; padding-top:8px;">';
+        html += '    Employer Contributions (School Cost): EPF ' + this.formatINR(line.employerPfPaise || 0) + ' | EPS ' + this.formatINR(line.employerEpsPaise || 0) + ' | ESIC ' + this.formatINR(line.employerEsiPaise || 0);
+        html += '  </div>';
+      }
+      html += '</div>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Close</button>';
+      footer += '<button type="button" class="btn btn-primary" onclick="window.print()">';
+      footer += '  <span class="material-icons-round">print</span> Print Payslip';
+      footer += '</button>';
+
+      this.openModal('Payslip — ' + SchoolApp.escapeHTML(line.employeeName), html, footer);
+    },
+
+    // ── Salary Register CSV Export ───────────────────────────────────────────
+    exportSalaryRegisterCSV: function () {
+      var lines = this.currentRunLines || [];
+      if (lines.length === 0) {
+        SchoolApp.showToast('No payroll lines available to export.', 'warning');
+        return;
+      }
+
+      var headers = [
+        'Employee ID', 'Employee Name', 'Role', 'Designation', 'Working Days', 'Paid Days', 'LOP Days',
+        'Basic (INR)', 'DA (INR)', 'HRA (INR)', 'Allowances (INR)', 'Additions (INR)', 'Gross Pay (INR)',
+        'PF Employee (INR)', 'ESI Employee (INR)', 'Professional Tax (INR)', 'TDS (INR)', 'Advance Recovery (INR)', 'Other Deductions (INR)', 'Total Deductions (INR)',
+        'Net Pay (INR)', 'PF Employer (INR)', 'EPS Employer (INR)', 'ESI Employer (INR)', 'Total CTC (INR)',
+        'Bank Name', 'Account Number', 'IFSC Code'
+      ];
+
+      var rows = lines.map(function (l) {
+        var totalDed = (l.employeePfPaise || 0) + (l.employeeEsiPaise || 0) + (l.ptPaise || 0) + (l.tdsPaise || 0) + (l.advanceRecoveryPaise || 0) + (l.otherDeductionsPaise || 0);
+        var totalCtc = (l.grossPayPaise || 0) + (l.employerPfPaise || 0) + (l.employerEsiPaise || 0);
+
+        return [
+          '"' + (l.employeeId || '').replace(/"/g, '""') + '"',
+          '"' + (l.employeeName || '').replace(/"/g, '""') + '"',
+          '"' + (l.employeeType || '').replace(/"/g, '""') + '"',
+          '"' + (l.designation || '').replace(/"/g, '""') + '"',
+          l.workingDaysInMonth || 26,
+          l.paidDays || 0,
+          l.lopDays || 0,
+          ((l.basicPaise || 0) / 100).toFixed(2),
+          ((l.daPaise || 0) / 100).toFixed(2),
+          ((l.hraPaise || 0) / 100).toFixed(2),
+          ((l.allowancesPaise || 0) / 100).toFixed(2),
+          ((l.oneTimeAdditionsPaise || 0) / 100).toFixed(2),
+          ((l.grossPayPaise || 0) / 100).toFixed(2),
+          ((l.employeePfPaise || 0) / 100).toFixed(2),
+          ((l.employeeEsiPaise || 0) / 100).toFixed(2),
+          ((l.ptPaise || 0) / 100).toFixed(2),
+          ((l.tdsPaise || 0) / 100).toFixed(2),
+          ((l.advanceRecoveryPaise || 0) / 100).toFixed(2),
+          ((l.otherDeductionsPaise || 0) / 100).toFixed(2),
+          (totalDed / 100).toFixed(2),
+          ((l.netPayPaise || 0) / 100).toFixed(2),
+          ((l.employerPfPaise || 0) / 100).toFixed(2),
+          ((l.employerEpsPaise || 0) / 100).toFixed(2),
+          ((l.employerEsiPaise || 0) / 100).toFixed(2),
+          (totalCtc / 100).toFixed(2),
+          '"' + (l.bankName || '').replace(/"/g, '""') + '"',
+          '"' + (l.accountNumber || '').replace(/"/g, '""') + '"',
+          '"' + (l.ifscCode || '').replace(/"/g, '""') + '"'
+        ].join(',');
+      });
+
+      var csvContent = [headers.join(',')].concat(rows).join('\r\n');
+      var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'Salary_Register_' + this.selectedPayrollMonth + '.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      SchoolApp.showToast('Salary Register CSV downloaded.', 'success');
+    },
+
+    // ── 2. Staff Registry Sub-tab ────────────────────────────────────────────
+    renderPayrollStaffHTML: function () {
+      var html = '';
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">';
+      html += '  <div>';
+      html += '    <h4 style="margin:0; font-size:16px; font-weight:700;">Non-Teaching Staff Registry</h4>';
+      html += '    <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Manage drivers, ayahs, security guards, accountants, and other non-teaching school employees.</p>';
+      html += '  </div>';
+      html += '  <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.openAddStaffModal()">';
+      html += '    <span class="material-icons-round">person_add</span> Add Staff Member';
+      html += '  </button>';
+      html += '</div>';
+
+      if (!this.staff || this.staff.length === 0) {
+        html += '<div class="card" style="padding:48px 24px; text-align:center; border-radius:10px; color:var(--text-secondary);">';
+        html += '  <span class="material-icons-round" style="font-size:48px; color:var(--text-muted); margin-bottom:12px;">people</span>';
+        html += '  <p style="font-weight:600; font-size:15px; margin:0 0 6px 0; color:var(--text-primary);">No non-teaching staff registered yet</p>';
+        html += '  <p style="font-size:13px; max-width:480px; margin:0 auto 18px auto;">Add administrative and support staff to calculate monthly compensation and track advances.</p>';
+        html += '  <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.openAddStaffModal()">';
+        html += '    <span class="material-icons-round">person_add</span> Add First Staff Member';
+        html += '  </button>';
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="padding:0; border-radius:10px; overflow:hidden;">';
+        html += '  <div class="table-responsive acc-table-container">';
+        html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse; font-size:13px;">';
+        html += '      <thead>';
+        html += '        <tr style="text-align:left; color:var(--text-secondary); border-bottom:1px solid var(--border-color); font-size:11.5px;">';
+        html += '          <th style="padding:10px 14px;">NAME</th>';
+        html += '          <th style="padding:10px 14px;">ROLE / DESIGNATION</th>';
+        html += '          <th style="padding:10px 14px;">CONTACT</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">BASE SALARY</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">JOINING DATE</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">STATUS</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">ACTIONS</th>';
+        html += '        </tr>';
+        html += '      </thead>';
+        html += '      <tbody>';
+
+        this.staff.forEach(function (s) {
+          var isLeft = (s.status === 'left');
+          html += '        <tr style="border-bottom:1px solid var(--border-color); ' + (isLeft ? 'opacity:0.6;' : '') + '">';
+          html += '          <td style="padding:10px 14px; font-weight:600; color:var(--text-primary);">' + SchoolApp.escapeHTML(s.name || s.id) + '</td>';
+          html += '          <td style="padding:10px 14px;">' + SchoolApp.escapeHTML(s.role || 'Staff') + '</td>';
+          html += '          <td style="padding:10px 14px; font-size:12px; color:var(--text-secondary);">' + SchoolApp.escapeHTML(s.phone || s.email || '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:600;">' + this.formatINR(s.monthlySalaryPaise || 0) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:center; font-size:12px; color:var(--text-secondary);">' + (s.joiningDate || '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:center;">';
+          if (isLeft) {
+            html += '            <span class="badge" style="background:rgba(239,68,68,0.1); color:var(--danger); font-size:10.5px;">Left (' + (s.leavingDate || '') + ')</span>';
+          } else {
+            html += '            <span class="badge badge-success" style="font-size:10.5px;">Active</span>';
+          }
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:center; white-space:nowrap;">';
+          html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.openEditProfileModal(\'' + s.id + '\', \'staff\')" style="padding:3px 8px; font-size:11px; margin-right:4px;">';
+          html += '              <span class="material-icons-round" style="font-size:13px;">tune</span> Salary Profile';
+          html += '            </button>';
+          if (!isLeft) {
+            html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.markStaffLeft(\'' + s.id + '\', \'' + SchoolApp.escapeHTML(s.name || '') + '\')" style="padding:3px 8px; font-size:11px; color:var(--danger);" title="Mark employee as Left">';
+            html += '              <span class="material-icons-round" style="font-size:13px;">person_remove</span>';
+            html += '            </button>';
+          }
+          html += '          </td>';
+          html += '        </tr>';
+        }.bind(this));
+
+        html += '      </tbody>';
+        html += '    </table>';
+        html += '  </div>';
+        html += '</div>';
+      }
+
+      return html;
+    },
+
+    openAddStaffModal: function () {
+      var today = new Date().toISOString().split('T')[0];
+      var html = '';
+      html += '<form id="form-add-staff" onsubmit="SchoolApp.modules.accounts.saveStaffMember(event)">';
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Full Name *</label>';
+      html += '    <input type="text" class="form-control" id="staff-name" placeholder="e.g. Ramesh Kumar" required />';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Role / Category *</label>';
+      html += '      <select class="form-control form-select" id="staff-role" required>';
+      html += '        <option value="Accountant">Accountant / Cashier</option>';
+      html += '        <option value="Clerk">Admin / Office Clerk</option>';
+      html += '        <option value="Peon">Office Peon</option>';
+      html += '        <option value="Security">Security Guard</option>';
+      html += '        <option value="Driver">Bus Driver</option>';
+      html += '        <option value="Conductor">Bus Conductor</option>';
+      html += '        <option value="Ayah">Ayah / Housekeeping</option>';
+      html += '        <option value="Lab Assistant">Lab Assistant</option>';
+      html += '        <option value="Librarian">Librarian</option>';
+      html += '        <option value="Maintenance">Maintenance / Electrician</option>';
+      html += '        <option value="Other">Other Non-Teaching Staff</option>';
+      html += '      </select>';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Monthly Base Salary (₹) *</label>';
+      html += '      <input type="number" step="1" min="1" class="form-control" id="staff-salary" placeholder="e.g. 15000" required />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Phone Number</label>';
+      html += '      <input type="tel" class="form-control" id="staff-phone" placeholder="10-digit mobile" />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Joining Date *</label>';
+      html += '      <input type="date" class="form-control" id="staff-joining" value="' + today + '" required />';
+      html += '    </div>';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-add-staff" class="btn btn-primary" id="btn-save-staff">';
+      footer += '  <span class="material-icons-round">save</span> Add Staff Member';
+      footer += '</button>';
+
+      this.openModal('Add Non-Teaching Staff Member', html, footer);
+    },
+
+    saveStaffMember: async function (e) {
+      if (e) e.preventDefault();
+      var btn = document.getElementById('btn-save-staff');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Saving...';
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var name = document.getElementById('staff-name').value.trim();
+      var role = document.getElementById('staff-role').value;
+      var salaryRupees = parseFloat(document.getElementById('staff-salary').value) || 0;
+      var phone = document.getElementById('staff-phone').value.trim();
+      var joiningDate = document.getElementById('staff-joining').value;
+
+      var staffId = 'staff_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      var grossPaise = Math.round(salaryRupees * 100);
+
+      try {
+        var batch = fs.writeBatch(db);
+        var staffRef = fs.doc(db, 'tenant_data', schoolId, 'staff', staffId);
+        batch.set(staffRef, {
+          id: staffId,
+          name: name,
+          role: role,
+          phone: phone,
+          monthlySalaryPaise: grossPaise,
+          joiningDate: joiningDate,
+          status: 'active',
+          createdAt: new Date().toISOString()
+        });
+
+        // Initialize default payroll profile
+        var profRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_profiles', staffId);
+        batch.set(profRef, {
+          employeeId: staffId,
+          employeeType: 'staff',
+          name: name,
+          grossSalaryPaise: grossPaise,
+          basicPaise: Math.round(grossPaise * 0.5),
+          hraPaise: Math.round(grossPaise * 0.4),
+          allowancesPaise: Math.round(grossPaise * 0.1),
+          epfEnabled: false,
+          esicEnabled: false,
+          ptEnabled: false,
+          updatedAt: new Date().toISOString()
+        });
+
+        await batch.commit();
+        await this.loadData();
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Staff member registered successfully.', 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Save staff error:', err);
+        SchoolApp.showToast('Failed to add staff: ' + (err.message || 'Check connection'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Add Staff Member';
+        }
+      }
+    },
+
+    markStaffLeft: async function (staffId, name) {
+      var today = new Date().toISOString().split('T')[0];
+      var leavingDate = prompt('Enter leaving date for ' + name + ' (YYYY-MM-DD):', today);
+      if (!leavingDate) return;
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      try {
+        var staffRef = fs.doc(db, 'tenant_data', schoolId, 'staff', staffId);
+        await fs.updateDoc(staffRef, {
+          status: 'left',
+          leavingDate: leavingDate,
+          updatedAt: new Date().toISOString()
+        });
+        await this.loadData();
+        SchoolApp.showToast(name + ' marked as left.', 'info');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Mark left error:', err);
+        SchoolApp.showToast('Failed to update status: ' + err.message, 'error');
+      }
+    },
+
+    // ── 3. Salary Profiles Sub-tab ───────────────────────────────────────────
+    renderPayrollProfilesHTML: function () {
+      var html = '';
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">';
+      html += '  <div>';
+      html += '    <h4 style="margin:0; font-size:16px; font-weight:700;">Employee Salary Profiles & Statutory Settings</h4>';
+      html += '    <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Configure salary components (Basic, DA, HRA), EPF/ESIC/PT eligibility, and bank payout details for all staff.</p>';
+      html += '  </div>';
+      html += '</div>';
+
+      // Aggregate all active employees: Teachers + Active Staff
+      var teachers = (SchoolApp.state && SchoolApp.state.teachers) || [];
+      var activeStaff = (this.staff || []).filter(function (s) { return s.status !== 'left'; });
+
+      var allEmps = [];
+      teachers.forEach(function (t) {
+        if (t.status !== 'inactive') {
+          allEmps.push({
+            id: t.id,
+            name: (t.firstName || '') + (t.lastName ? ' ' + t.lastName : '') || t.name || t.id,
+            type: 'teacher',
+            role: t.subject ? 'Teacher (' + t.subject + ')' : 'Teacher'
+          });
+        }
+      });
+      activeStaff.forEach(function (s) {
+        allEmps.push({
+          id: s.id,
+          name: s.name,
+          type: 'staff',
+          role: s.role || 'Staff'
+        });
+      });
+
+      allEmps.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+
+      if (allEmps.length === 0) {
+        html += '<div class="card" style="padding:48px 24px; text-align:center; border-radius:10px; color:var(--text-secondary);">';
+        html += '  <span class="material-icons-round" style="font-size:48px; color:var(--text-muted); margin-bottom:12px;">badge</span>';
+        html += '  <p style="font-weight:600; font-size:15px; margin:0 0 6px 0; color:var(--text-primary);">No active teachers or staff found</p>';
+        html += '  <p style="font-size:13px; max-width:480px; margin:0 auto 18px auto;">Add teachers in the Teachers module or staff in Staff Registry to configure salary profiles.</p>';
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="padding:0; border-radius:10px; overflow:hidden;">';
+        html += '  <div class="table-responsive acc-table-container">';
+        html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse; font-size:12.5px;">';
+        html += '      <thead>';
+        html += '        <tr style="text-align:left; color:var(--text-secondary); border-bottom:1px solid var(--border-color); font-size:11.5px;">';
+        html += '          <th style="padding:10px 14px;">EMPLOYEE</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">GROSS (CTC)</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">BASIC</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">DA</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">HRA</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">ALLOWANCES</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">STATUTORY</th>';
+        html += '          <th style="padding:10px 14px;">BANK ACCOUNT</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">ACTION</th>';
+        html += '        </tr>';
+        html += '      </thead>';
+        html += '      <tbody>';
+
+        allEmps.forEach(function (emp) {
+          var prof = (this.payrollProfiles || []).find(function (p) { return p.id === emp.id || p.employeeId === emp.id; }) || {};
+          var grossPaise = prof.grossSalaryPaise || 0;
+          var basicPaise = prof.basicPaise || 0;
+          var daPaise = prof.daPaise || 0;
+          var hraPaise = prof.hraPaise || 0;
+          var allowPaise = prof.allowancesPaise || 0;
+
+          html += '        <tr style="border-bottom:1px solid var(--border-color);">';
+          html += '          <td style="padding:10px 14px;">';
+          html += '            <div style="font-weight:600; color:var(--text-primary);">' + SchoolApp.escapeHTML(emp.name) + '</div>';
+          html += '            <div style="font-size:11px; color:var(--text-muted);">' + (emp.type === 'teacher' ? '<span class="badge" style="background:rgba(99,102,241,0.1); color:var(--accent-primary); font-size:9.5px;">Teacher</span> ' : '<span class="badge" style="background:rgba(107,114,128,0.1); color:var(--text-secondary); font-size:9.5px;">Staff</span> ') + SchoolApp.escapeHTML(emp.role) + '</div>';
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:700;">' + this.formatINR(grossPaise) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + this.formatINR(basicPaise) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (daPaise > 0 ? this.formatINR(daPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (hraPaise > 0 ? this.formatINR(hraPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (allowPaise > 0 ? this.formatINR(allowPaise) : '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:center; white-space:nowrap;">';
+          html += '            <span class="badge ' + (prof.epfEnabled ? 'badge-success' : '') + '" style="' + (!prof.epfEnabled ? 'background:rgba(255,255,255,0.05); color:var(--text-muted);' : '') + ' font-size:10px;">PF</span> ';
+          html += '            <span class="badge ' + (prof.esicEnabled ? 'badge-success' : '') + '" style="' + (!prof.esicEnabled ? 'background:rgba(255,255,255,0.05); color:var(--text-muted);' : '') + ' font-size:10px;">ESI</span> ';
+          html += '            <span class="badge ' + (prof.ptEnabled ? 'badge-success' : '') + '" style="' + (!prof.ptEnabled ? 'background:rgba(255,255,255,0.05); color:var(--text-muted);' : '') + ' font-size:10px;">PT</span>';
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; font-size:12px;">';
+          if (prof.accountNumber) {
+            html += '            <div style="font-weight:600;">' + SchoolApp.escapeHTML(prof.bankName || 'Bank') + '</div>';
+            html += '            <div style="color:var(--text-muted); font-size:11px;">A/C: ' + SchoolApp.escapeHTML(prof.accountNumber) + '</div>';
+          } else {
+            html += '            <span style="color:var(--text-muted); font-style:italic;">Not configured</span>';
+          }
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:center;">';
+          html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.openEditProfileModal(\'' + emp.id + '\', \'' + emp.type + '\')" style="padding:3px 8px; font-size:11px;">';
+          html += '              <span class="material-icons-round" style="font-size:13px;">edit</span> Edit';
+          html += '            </button>';
+          html += '          </td>';
+          html += '        </tr>';
+        }.bind(this));
+
+        html += '      </tbody>';
+        html += '    </table>';
+        html += '  </div>';
+        html += '</div>';
+      }
+
+      return html;
+    },
+
+    openEditProfileModal: function (empId, empType) {
+      var prof = (this.payrollProfiles || []).find(function (p) { return p.id === empId || p.employeeId === empId; }) || {};
+      
+      var empName = prof.name;
+      if (!empName) {
+        if (empType === 'teacher') {
+          var t = ((SchoolApp.state && SchoolApp.state.teachers) || []).find(function (x) { return x.id === empId; });
+          empName = t ? ((t.firstName || '') + (t.lastName ? ' ' + t.lastName : '') || t.name) : empId;
+        } else {
+          var s = (this.staff || []).find(function (x) { return x.id === empId; });
+          empName = s ? s.name : empId;
+        }
+      }
+
+      var grossRupees = (prof.grossSalaryPaise || 0) / 100;
+      var basicRupees = (prof.basicPaise || 0) / 100;
+      var daRupees = (prof.daPaise || 0) / 100;
+      var hraRupees = (prof.hraPaise || 0) / 100;
+      var allowRupees = (prof.allowancesPaise || 0) / 100;
+
+      var html = '';
+      html += '<form id="form-edit-profile" onsubmit="SchoolApp.modules.accounts.savePayrollProfile(event, \'' + empId + '\', \'' + empType + '\')">';
+      html += '  <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:14px; font-size:13px;">';
+      html += '    <div style="font-weight:700; color:var(--text-primary); font-size:14px;">' + SchoolApp.escapeHTML(empName) + '</div>';
+      html += '    <div style="color:var(--text-secondary); font-size:12px;">Type: ' + (empType === 'teacher' ? 'Teacher' : 'Non-Teaching Staff') + '</div>';
+      html += '  </div>';
+
+      html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">';
+      html += '    <label class="form-label" style="font-weight:700; margin:0;">Monthly Gross Salary (INR ₹) *</label>';
+      html += '    <button type="button" class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.autoFillSalaryComponents()" style="font-size:11px; padding:2px 8px;">';
+      html += '      <span class="material-icons-round" style="font-size:13px;">auto_fix_high</span> Auto-split (50% Basic, 40% HRA, 10% Other)';
+      html += '    </button>';
+      html += '  </div>';
+      html += '  <input type="number" step="1" min="0" class="form-control" id="prof-gross" value="' + grossRupees + '" style="font-size:16px; font-weight:700; margin-bottom:14px;" required oninput="SchoolApp.modules.accounts.updateSalarySplitPreview()" />';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Basic Pay (₹) *</label>';
+      html += '      <input type="number" step="1" min="0" class="form-control" id="prof-basic" value="' + basicRupees + '" required />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">DA (Dearness Allowance ₹)</label>';
+      html += '      <input type="number" step="1" min="0" class="form-control" id="prof-da" value="' + daRupees + '" />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">HRA (House Rent Allowance ₹)</label>';
+      html += '      <input type="number" step="1" min="0" class="form-control" id="prof-hra" value="' + hraRupees + '" />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Other Allowances (₹)</label>';
+      html += '      <input type="number" step="1" min="0" class="form-control" id="prof-allow" value="' + allowRupees + '" />';
+      html += '    </div>';
+      html += '  </div>';
+
+      // Statutory Toggles
+      html += '  <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:14px;">';
+      html += '    <div style="font-weight:700; font-size:12.5px; margin-bottom:10px; color:var(--text-primary);">Statutory Deductions Eligibility</div>';
+      html += '    <div style="display:flex; gap:20px; flex-wrap:wrap; font-size:13px;">';
+      html += '      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">';
+      html += '        <input type="checkbox" id="prof-epf" ' + (prof.epfEnabled ? 'checked' : '') + ' /> EPF Eligible';
+      html += '      </label>';
+      html += '      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">';
+      html += '        <input type="checkbox" id="prof-esic" ' + (prof.esicEnabled ? 'checked' : '') + ' /> ESIC Eligible';
+      html += '      </label>';
+      html += '      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">';
+      html += '        <input type="checkbox" id="prof-pt" ' + (prof.ptEnabled ? 'checked' : '') + ' /> Professional Tax (PT)';
+      html += '      </label>';
+      html += '    </div>';
+      html += '  </div>';
+
+      // Bank Details
+      html += '  <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:12px;">';
+      html += '    <div style="font-weight:700; font-size:12.5px; margin-bottom:10px; color:var(--text-primary);">Bank Payout Details</div>';
+      html += '    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">';
+      html += '      <div class="form-group">';
+      html += '        <label class="form-label" style="font-size:11.5px; font-weight:600;">Bank Name</label>';
+      html += '        <input type="text" class="form-control" id="prof-bank-name" value="' + SchoolApp.escapeHTML(prof.bankName || '') + '" placeholder="e.g. SBI / HDFC" />';
+      html += '      </div>';
+      html += '      <div class="form-group">';
+      html += '        <label class="form-label" style="font-size:11.5px; font-weight:600;">Account Number</label>';
+      html += '        <input type="text" class="form-control" id="prof-acc-no" value="' + SchoolApp.escapeHTML(prof.accountNumber || '') + '" placeholder="Account No" />';
+      html += '      </div>';
+      html += '      <div class="form-group">';
+      html += '        <label class="form-label" style="font-size:11.5px; font-weight:600;">IFSC Code</label>';
+      html += '        <input type="text" class="form-control" id="prof-ifsc" value="' + SchoolApp.escapeHTML(prof.ifscCode || '') + '" placeholder="SBIN0001234" />';
+      html += '      </div>';
+      html += '    </div>';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-edit-profile" class="btn btn-primary" id="btn-save-profile">';
+      footer += '  <span class="material-icons-round">save</span> Save Salary Profile';
+      footer += '</button>';
+
+      this.openModal('Salary Profile — ' + SchoolApp.escapeHTML(empName), html, footer);
+    },
+
+    autoFillSalaryComponents: function () {
+      var gross = parseFloat(document.getElementById('prof-gross').value) || 0;
+      var basic = Math.round(gross * 0.5);
+      var hra = Math.round(gross * 0.4);
+      var allow = gross - basic - hra;
+      if (allow < 0) allow = 0;
+
+      document.getElementById('prof-basic').value = basic;
+      document.getElementById('prof-da').value = 0;
+      document.getElementById('prof-hra').value = hra;
+      document.getElementById('prof-allow').value = allow;
+    },
+
+    updateSalarySplitPreview: function () {
+      // Optional realtime validation
+    },
+
+    savePayrollProfile: async function (e, empId, empType) {
+      if (e) e.preventDefault();
+      var btn = document.getElementById('btn-save-profile');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Saving...';
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var grossRupees = parseFloat(document.getElementById('prof-gross').value) || 0;
+      var basicRupees = parseFloat(document.getElementById('prof-basic').value) || 0;
+      var daRupees = parseFloat(document.getElementById('prof-da').value) || 0;
+      var hraRupees = parseFloat(document.getElementById('prof-hra').value) || 0;
+      var allowRupees = parseFloat(document.getElementById('prof-allow').value) || 0;
+
+      var epf = document.getElementById('prof-epf').checked;
+      var esic = document.getElementById('prof-esic').checked;
+      var pt = document.getElementById('prof-pt').checked;
+
+      var bankName = document.getElementById('prof-bank-name').value.trim();
+      var accNo = document.getElementById('prof-acc-no').value.trim();
+      var ifsc = document.getElementById('prof-ifsc').value.trim().toUpperCase();
+
+      var payload = {
+        employeeId: empId,
+        employeeType: empType,
+        grossSalaryPaise: Math.round(grossRupees * 100),
+        basicPaise: Math.round(basicRupees * 100),
+        daPaise: Math.round(daRupees * 100),
+        hraPaise: Math.round(hraRupees * 100),
+        allowancesPaise: Math.round(allowRupees * 100),
+        epfEnabled: epf,
+        esicEnabled: esic,
+        ptEnabled: pt,
+        bankName: bankName,
+        accountNumber: accNo,
+        ifscCode: ifsc,
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        var profRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_profiles', empId);
+        await fs.setDoc(profRef, payload, { merge: true });
+        await this.loadData();
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Salary profile saved successfully.', 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Save profile error:', err);
+        SchoolApp.showToast('Failed to save profile: ' + (err.message || 'Check connection'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Save Salary Profile';
+        }
+      }
+    },
+
+    // ── 4. Advances & Statutory Payments Sub-tab ─────────────────────────────
+    renderPayrollAdvancesHTML: function () {
+      var html = '';
+      
+      // SECTION A: Salary Advances
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:12px;">';
+      html += '  <div>';
+      html += '    <h4 style="margin:0; font-size:16px; font-weight:700;">Employee Salary Advances</h4>';
+      html += '    <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Record advances disbursed to teachers/staff. Advances post automatically to Ledger 13100 and recover via monthly payroll.</p>';
+      html += '  </div>';
+      html += '  <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.openAddAdvanceModal()">';
+      html += '    <span class="material-icons-round">payments</span> Give Salary Advance';
+      html += '  </button>';
+      html += '</div>';
+
+      if (!this.advances || this.advances.length === 0) {
+        html += '<div class="card" style="padding:28px 20px; text-align:center; border-radius:10px; color:var(--text-secondary); margin-bottom:28px;">';
+        html += '  <span class="material-icons-round" style="font-size:36px; color:var(--text-muted); margin-bottom:8px;">receipt_long</span>';
+        html += '  <p style="font-weight:600; font-size:13.5px; margin:0 0 4px 0;">No salary advances recorded</p>';
+        html += '  <p style="font-size:12px; margin:0 auto 14px auto;">Disbursed advances recover automatically against future salary runs.</p>';
+        html += '  <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.openAddAdvanceModal()">Give Advance</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="padding:0; border-radius:10px; overflow:hidden; margin-bottom:28px;">';
+        html += '  <div class="table-responsive acc-table-container">';
+        html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse; font-size:12.5px;">';
+        html += '      <thead>';
+        html += '        <tr style="text-align:left; color:var(--text-secondary); border-bottom:1px solid var(--border-color); font-size:11.5px;">';
+        html += '          <th style="padding:10px 14px;">DATE</th>';
+        html += '          <th style="padding:10px 14px;">EMPLOYEE</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">AMOUNT</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">REMAINING</th>';
+        html += '          <th style="padding:10px 14px;">PAID FROM</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">STATUS</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">ACTIONS</th>';
+        html += '        </tr>';
+        html += '      </thead>';
+        html += '      <tbody>';
+
+        this.advances.forEach(function (adv) {
+          var isCanc = (adv.status === 'cancelled');
+          var isFullRec = (adv.status === 'recovered' || adv.balancePaise === 0);
+          var canCancel = (adv.status === 'open' && adv.balancePaise === adv.amountPaise);
+
+          html += '        <tr style="border-bottom:1px solid var(--border-color); ' + (isCanc ? 'opacity:0.5;' : '') + '">';
+          html += '          <td style="padding:10px 14px; font-weight:600;">' + (adv.date || '-') + '</td>';
+          html += '          <td style="padding:10px 14px;">';
+          html += '            <div style="font-weight:600; color:var(--text-primary);">' + SchoolApp.escapeHTML(adv.employeeName || adv.employeeId) + '</div>';
+          html += '            <div style="font-size:11px; color:var(--text-muted);">' + (adv.reason ? SchoolApp.escapeHTML(adv.reason) : 'Salary Advance') + '</div>';
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:700;">' + this.formatINR(adv.amountPaise || 0) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:600; color:' + (isFullRec ? 'var(--text-muted)' : 'var(--accent-primary)') + ';">' + this.formatINR(adv.balancePaise || 0) + '</td>';
+          html += '          <td style="padding:10px 14px; font-size:12px;">' + (adv.paidFromAccount === '11100' ? 'Cash in Hand' : (adv.paidFromAccount || 'Bank')) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:center;">';
+          if (isCanc) {
+            html += '            <span class="badge" style="background:rgba(239,68,68,0.1); color:var(--danger); font-size:10px;">Cancelled</span>';
+          } else if (isFullRec) {
+            html += '            <span class="badge badge-success" style="font-size:10px;">Recovered</span>';
+          } else if (adv.status === 'recovering') {
+            html += '            <span class="badge badge-info" style="font-size:10px;">Recovering</span>';
+          } else {
+            html += '            <span class="badge badge-warning" style="font-size:10px;">Open</span>';
+          }
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:center;">';
+          if (canCancel) {
+            html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.cancelAdvance(\'' + adv.id + '\')" style="padding:3px 8px; font-size:11px; color:var(--danger);" title="Cancel advance and reverse journal voucher">';
+            html += '              <span class="material-icons-round" style="font-size:13px;">cancel</span> Cancel';
+            html += '            </button>';
+          } else {
+            html += '            <span style="color:var(--text-muted); font-size:11px;">-</span>';
+          }
+          html += '          </td>';
+          html += '        </tr>';
+        }.bind(this));
+
+        html += '      </tbody>';
+        html += '    </table>';
+        html += '  </div>';
+        html += '</div>';
+      }
+
+      // SECTION B: Statutory Payments
+      html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:12px;">';
+      html += '  <div>';
+      html += '    <h4 style="margin:0; font-size:16px; font-weight:700;">Statutory Payments & Challans</h4>';
+      html += '    <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Record monthly statutory deposits (EPF ECR, ESIC Challan, Jharkhand PT, TDS) to clear outstanding liabilities.</p>';
+      html += '  </div>';
+      html += '  <button class="btn btn-primary" onclick="SchoolApp.modules.accounts.openAddStatutoryPaymentModal()">';
+      html += '    <span class="material-icons-round">account_balance</span> Record Statutory Deposit';
+      html += '  </button>';
+      html += '</div>';
+
+      if (!this.statutoryPayments || this.statutoryPayments.length === 0) {
+        html += '<div class="card" style="padding:28px 20px; text-align:center; border-radius:10px; color:var(--text-secondary);">';
+        html += '  <span class="material-icons-round" style="font-size:36px; color:var(--text-muted); margin-bottom:8px;">account_balance</span>';
+        html += '  <p style="font-weight:600; font-size:13.5px; margin:0 0 4px 0;">No statutory deposits recorded</p>';
+        html += '  <p style="font-size:12px; margin:0 auto 14px auto;">Record monthly PF/ESIC challan payments to debit statutory liability ledgers and credit your bank.</p>';
+        html += '  <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.openAddStatutoryPaymentModal()">Record First Deposit</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="card" style="padding:0; border-radius:10px; overflow:hidden;">';
+        html += '  <div class="table-responsive acc-table-container">';
+        html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse; font-size:12.5px;">';
+        html += '      <thead>';
+        html += '        <tr style="text-align:left; color:var(--text-secondary); border-bottom:1px solid var(--border-color); font-size:11.5px;">';
+        html += '          <th style="padding:10px 14px;">DATE</th>';
+        html += '          <th style="padding:10px 14px;">TYPE</th>';
+        html += '          <th style="padding:10px 14px;">FOR MONTH</th>';
+        html += '          <th style="padding:10px 14px;">CHALLAN / REF</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">AMOUNT</th>';
+        html += '          <th style="padding:10px 14px;">BREAKDOWN</th>';
+        html += '          <th style="padding:10px 14px;">PAID FROM</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">STATUS</th>';
+        html += '          <th style="padding:10px 14px; text-align:center;">ACTIONS</th>';
+        html += '        </tr>';
+        html += '      </thead>';
+        html += '      <tbody>';
+
+        this.statutoryPayments.forEach(function (stat) {
+          var isCanc = (stat.status === 'cancelled');
+          var typeLabel = stat.type ? stat.type.toUpperCase() : 'STATUTORY';
+
+          html += '        <tr style="border-bottom:1px solid var(--border-color); ' + (isCanc ? 'opacity:0.5;' : '') + '">';
+          html += '          <td style="padding:10px 14px; font-weight:600;">' + (stat.date || '-') + '</td>';
+          html += '          <td style="padding:10px 14px;"><span class="badge badge-info" style="font-size:10.5px;">' + typeLabel + '</span></td>';
+          html += '          <td style="padding:10px 14px; font-weight:600;">' + (stat.forMonth || '-') + '</td>';
+          html += '          <td style="padding:10px 14px; font-size:12px;">' + SchoolApp.escapeHTML(stat.challanNumber || '-') + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:700;">' + this.formatINR(stat.amountPaise || 0) + '</td>';
+          html += '          <td style="padding:10px 14px; font-size:11px; color:var(--text-secondary);">';
+          if (stat.employeeSharePaise || stat.employerSharePaise) {
+            html += '            <div>EE: ' + this.formatINR(stat.employeeSharePaise || 0) + '</div>';
+            html += '            <div>ER: ' + this.formatINR(stat.employerSharePaise || 0) + '</div>';
+          } else {
+            html += '            <span>Direct Deposit</span>';
+          }
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; font-size:12px;">' + (stat.paidFromAccount === '11100' ? 'Cash' : (stat.paidFromAccount || 'Bank')) + '</td>';
+          html += '          <td style="padding:10px 14px; text-align:center;">';
+          if (isCanc) {
+            html += '            <span class="badge" style="background:rgba(239,68,68,0.1); color:var(--danger); font-size:10px;">Cancelled</span>';
+          } else {
+            html += '            <span class="badge badge-success" style="font-size:10px;">Deposited</span>';
+          }
+          html += '          </td>';
+          html += '          <td style="padding:10px 14px; text-align:center;">';
+          if (!isCanc) {
+            html += '            <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.cancelStatutoryPayment(\'' + stat.id + '\')" style="padding:3px 8px; font-size:11px; color:var(--danger);" title="Cancel deposit and reverse journal voucher">';
+            html += '              <span class="material-icons-round" style="font-size:13px;">cancel</span> Cancel';
+            html += '            </button>';
+          } else {
+            html += '            <span style="color:var(--text-muted); font-size:11px;">-</span>';
+          }
+          html += '          </td>';
+          html += '        </tr>';
+        }.bind(this));
+
+        html += '      </tbody>';
+        html += '    </table>';
+        html += '  </div>';
+        html += '</div>';
+      }
+
+      return html;
+    },
+
+    openAddAdvanceModal: function () {
+      var today = new Date().toISOString().split('T')[0];
+      var teachers = (SchoolApp.state && SchoolApp.state.teachers) || [];
+      var activeStaff = (this.staff || []).filter(function (s) { return s.status !== 'left'; });
+      var bankAccounts = (this.settings && this.settings.bankAccounts) || [];
+
+      var html = '';
+      html += '<form id="form-add-advance" onsubmit="SchoolApp.modules.accounts.saveAdvance(event)">';
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Employee *</label>';
+      html += '    <select class="form-control form-select" id="adv-emp" required>';
+      html += '      <option value="">Select Teacher or Staff...</option>';
+      html += '      <optgroup label="Teachers">';
+      teachers.forEach(function (t) {
+        if (t.status !== 'inactive') {
+          var tName = (t.firstName || '') + (t.lastName ? ' ' + t.lastName : '') || t.name;
+          html += '        <option value="teacher:' + t.id + ':' + SchoolApp.escapeHTML(tName) + '">' + SchoolApp.escapeHTML(tName) + ' (' + (t.subject || 'Teacher') + ')</option>';
+        }
+      });
+      html += '      </optgroup>';
+      html += '      <optgroup label="Non-Teaching Staff">';
+      activeStaff.forEach(function (s) {
+        html += '        <option value="staff:' + s.id + ':' + SchoolApp.escapeHTML(s.name) + '">' + SchoolApp.escapeHTML(s.name) + ' (' + (s.role || 'Staff') + ')</option>';
+      });
+      html += '      </optgroup>';
+      html += '    </select>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Advance Amount (INR ₹) *</label>';
+      html += '      <input type="number" step="1" min="1" class="form-control" id="adv-amount" placeholder="e.g. 5000" required />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Disbursement Date *</label>';
+      html += '      <input type="date" class="form-control" id="adv-date" value="' + today + '" required />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Paid From Account *</label>';
+      html += '    <select class="form-control form-select" id="adv-paid-from" required>';
+      html += '      <optgroup label="Cash">';
+      html += '        <option value="11100">11100 - Cash in Hand</option>';
+      html += '      </optgroup>';
+      html += '      <optgroup label="Bank Accounts">';
+      if (bankAccounts.length === 0) {
+        html += '        <option value="11200">11200 - Primary Bank Account</option>';
+      } else {
+        bankAccounts.forEach(function (b) {
+          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (' + SchoolApp.escapeHTML(b.accountNumber || '') + ')</option>';
+        });
+      }
+      html += '      </optgroup>';
+      html += '    </select>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Reason / Narration</label>';
+      html += '    <input type="text" class="form-control" id="adv-reason" placeholder="e.g. Festival advance / Medical emergency" />';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-add-advance" class="btn btn-primary" id="btn-save-adv">';
+      footer += '  <span class="material-icons-round">save</span> Disburse Advance';
+      footer += '</button>';
+
+      this.openModal('Give Salary Advance', html, footer);
+    },
+
+    saveAdvance: async function (e) {
+      if (e) e.preventDefault();
+      var btn = document.getElementById('btn-save-adv');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Disbursing...';
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var empVal = document.getElementById('adv-emp').value;
+      if (!empVal) {
+        SchoolApp.showToast('Please select an employee.', 'warning');
+        if (btn) btn.disabled = false;
+        return;
+      }
+      var parts = empVal.split(':');
+      var empType = parts[0];
+      var empId = parts[1];
+      var empName = parts.slice(2).join(':');
+
+      var amountRupees = parseFloat(document.getElementById('adv-amount').value) || 0;
+      var date = document.getElementById('adv-date').value;
+      var paidFrom = document.getElementById('adv-paid-from').value;
+      var reason = document.getElementById('adv-reason').value.trim();
+
+      var advId = 'adv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      var amountPaise = Math.round(amountRupees * 100);
+
+      try {
+        var advRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_advances', advId);
+        var authUser = window.auth && window.auth.currentUser;
+
+        await fs.setDoc(advRef, {
+          id: advId,
+          employeeId: empId,
+          employeeType: empType,
+          employeeName: empName,
+          date: date,
+          amountPaise: amountPaise,
+          balancePaise: amountPaise,
+          paidFromAccount: paidFrom,
+          paidFromType: (paidFrom === '11100' ? 'cash' : 'bank'),
+          status: 'open',
+          reason: reason,
+          createdAt: new Date().toISOString(),
+          createdBy: authUser ? authUser.email : 'admin'
+        });
+
+        // Trigger background sync to post voucher immediately
+        this.sync(true);
+
+        await this.loadData();
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Salary advance disbursed and ledger updated.', 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Save advance error:', err);
+        SchoolApp.showToast('Failed to disburse advance: ' + (err.message || 'Check connection'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Disburse Advance';
+        }
+      }
+    },
+
+    cancelAdvance: async function (advId) {
+      var reason = prompt('Enter reason for cancelling this salary advance:');
+      if (!reason) return;
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      try {
+        var advRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_advances', advId);
+        var authUser = window.auth && window.auth.currentUser;
+
+        await fs.updateDoc(advRef, {
+          status: 'cancelled',
+          cancelReason: reason,
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: authUser ? authUser.email : 'admin'
+        });
+
+        // Trigger background sync to post cancellation reversal voucher
+        this.sync(true);
+
+        await this.loadData();
+        SchoolApp.showToast('Salary advance cancelled and reversal posted.', 'info');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Cancel advance error:', err);
+        SchoolApp.showToast('Failed to cancel advance: ' + err.message, 'error');
+      }
+    },
+
+    openAddStatutoryPaymentModal: function () {
+      var today = new Date().toISOString().split('T')[0];
+      var now = new Date();
+      var lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      var defaultMonth = lastMonth.getFullYear() + '-' + String(lastMonth.getMonth() + 1).padStart(2, '0');
+      var bankAccounts = (this.settings && this.settings.bankAccounts) || [];
+
+      var html = '';
+      html += '<form id="form-add-statutory" onsubmit="SchoolApp.modules.accounts.saveStatutoryPayment(event)">';
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Statutory Type *</label>';
+      html += '      <select class="form-control form-select" id="stat-type" required onchange="SchoolApp.modules.accounts.toggleStatutoryShareFields(this.value)">';
+      html += '        <option value="epf">EPF (Provident Fund ECR Deposit)</option>';
+      html += '        <option value="esic">ESIC (Employee State Insurance)</option>';
+      html += '        <option value="pt">Professional Tax (Jharkhand PT)</option>';
+      html += '        <option value="tds">TDS on Salaries (Challan 281)</option>';
+      html += '      </select>';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Wage Month (For Month) *</label>';
+      html += '      <input type="month" class="form-control" id="stat-month" value="' + defaultMonth + '" required />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Challan / TRRN / BSR Ref No. *</label>';
+      html += '      <input type="text" class="form-control" id="stat-challan" placeholder="e.g. TRRN 1012345678" required />';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-weight:600;">Deposit Date *</label>';
+      html += '      <input type="date" class="form-control" id="stat-date" value="' + today + '" required />';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Total Paid Amount (INR ₹) *</label>';
+      html += '    <input type="number" step="0.01" min="1" class="form-control" id="stat-amount" placeholder="0.00" required oninput="SchoolApp.modules.accounts.splitStatutoryAmount()" />';
+      html += '  </div>';
+
+      html += '  <div id="stat-share-fields" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-size:12px; font-weight:600;">Employee Deductions Share (₹)</label>';
+      html += '      <input type="number" step="0.01" min="0" class="form-control" id="stat-ee-share" placeholder="0.00" />';
+      html += '      <small style="color:var(--text-muted); font-size:11px;">Clears Ledger 22100 / 22200</small>';
+      html += '    </div>';
+      html += '    <div class="form-group">';
+      html += '      <label class="form-label" style="font-size:12px; font-weight:600;">Employer Contribution Share (₹)</label>';
+      html += '      <input type="number" step="0.01" min="0" class="form-control" id="stat-er-share" placeholder="0.00" />';
+      html += '      <small style="color:var(--text-muted); font-size:11px;">Clears Ledger 22110 / 22200</small>';
+      html += '    </div>';
+      html += '  </div>';
+
+      html += '  <div class="form-group" style="margin-bottom:12px;">';
+      html += '    <label class="form-label" style="font-weight:600;">Paid From Account *</label>';
+      html += '    <select class="form-control form-select" id="stat-paid-from" required>';
+      html += '      <optgroup label="Bank Accounts">';
+      if (bankAccounts.length === 0) {
+        html += '        <option value="11200">11200 - Primary Bank Account</option>';
+      } else {
+        bankAccounts.forEach(function (b) {
+          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (' + SchoolApp.escapeHTML(b.accountNumber || '') + ')</option>';
+        });
+      }
+      html += '      </optgroup>';
+      html += '      <optgroup label="Cash">';
+      html += '        <option value="11100">11100 - Cash in Hand</option>';
+      html += '      </optgroup>';
+      html += '    </select>';
+      html += '  </div>';
+      html += '</form>';
+
+      var footer = '';
+      footer += '<button type="button" class="btn btn-secondary" onclick="SchoolApp.closeModal()">Cancel</button>';
+      footer += '<button type="submit" form="form-add-statutory" class="btn btn-primary" id="btn-save-stat">';
+      footer += '  <span class="material-icons-round">save</span> Record Deposit';
+      footer += '</button>';
+
+      this.openModal('Record Statutory Deposit (Challan)', html, footer);
+    },
+
+    toggleStatutoryShareFields: function (type) {
+      var shareFields = document.getElementById('stat-share-fields');
+      if (shareFields) {
+        if (type === 'epf' || type === 'esic') {
+          shareFields.style.display = 'grid';
+        } else {
+          shareFields.style.display = 'none';
+        }
+      }
+    },
+
+    splitStatutoryAmount: function () {
+      var typeEl = document.getElementById('stat-type');
+      if (!typeEl) return;
+      var type = typeEl.value;
+      if (type !== 'epf') return;
+
+      var total = parseFloat(document.getElementById('stat-amount').value) || 0;
+      var ee = Math.round(total / 2);
+      var er = total - ee;
+      var eeEl = document.getElementById('stat-ee-share');
+      var erEl = document.getElementById('stat-er-share');
+      if (eeEl && !eeEl.value) eeEl.value = ee;
+      if (erEl && !erEl.value) erEl.value = er;
+    },
+
+    saveStatutoryPayment: async function (e) {
+      if (e) e.preventDefault();
+      var btn = document.getElementById('btn-save-stat');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Recording...';
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var type = document.getElementById('stat-type').value;
+      var forMonth = document.getElementById('stat-month').value;
+      var challan = document.getElementById('stat-challan').value.trim();
+      var date = document.getElementById('stat-date').value;
+      var amountRupees = parseFloat(document.getElementById('stat-amount').value) || 0;
+      var eeShareRupees = parseFloat(document.getElementById('stat-ee-share') ? document.getElementById('stat-ee-share').value : 0) || 0;
+      var erShareRupees = parseFloat(document.getElementById('stat-er-share') ? document.getElementById('stat-er-share').value : 0) || 0;
+      var paidFrom = document.getElementById('stat-paid-from').value;
+
+      var statId = 'stat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      var amountPaise = Math.round(amountRupees * 100);
+      var eeSharePaise = Math.round(eeShareRupees * 100);
+      var erSharePaise = Math.round(erShareRupees * 100);
+
+      try {
+        var statRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_statutory_payments', statId);
+        var authUser = window.auth && window.auth.currentUser;
+
+        await fs.setDoc(statRef, {
+          id: statId,
+          type: type,
+          forMonth: forMonth,
+          challanNumber: challan,
+          date: date,
+          amountPaise: amountPaise,
+          employeeSharePaise: eeSharePaise,
+          employerSharePaise: erSharePaise,
+          paidFromAccount: paidFrom,
+          paidFromType: (paidFrom === '11100' ? 'cash' : 'bank'),
+          status: 'completed',
+          createdAt: new Date().toISOString(),
+          createdBy: authUser ? authUser.email : 'admin'
+        });
+
+        // Trigger background sync to post voucher immediately
+        this.sync(true);
+
+        await this.loadData();
+        SchoolApp.closeModal();
+        SchoolApp.showToast('Statutory deposit recorded and ledger updated.', 'success');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Save statutory payment error:', err);
+        SchoolApp.showToast('Failed to record deposit: ' + (err.message || 'Check connection'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Record Deposit';
+        }
+      }
+    },
+
+    cancelStatutoryPayment: async function (statId) {
+      var reason = prompt('Enter reason for cancelling this statutory deposit:');
+      if (!reason) return;
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      try {
+        var statRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_statutory_payments', statId);
+        var authUser = window.auth && window.auth.currentUser;
+
+        await fs.updateDoc(statRef, {
+          status: 'cancelled',
+          cancelReason: reason,
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: authUser ? authUser.email : 'admin'
+        });
+
+        // Trigger background sync to post cancellation reversal voucher
+        this.sync(true);
+
+        await this.loadData();
+        SchoolApp.showToast('Statutory payment cancelled and reversal posted.', 'info');
+        this.renderCurrentTab();
+      } catch (err) {
+        console.error('Cancel statutory payment error:', err);
+        SchoolApp.showToast('Failed to cancel payment: ' + err.message, 'error');
+      }
+    },
+
+    // ── 5. Payroll Settings Sub-tab ──────────────────────────────────────────
+    renderPayrollSettingsHTML: function () {
+      var s = this.payrollSettings || {};
+      var epf = s.epf || {};
+      var esic = s.esic || {};
+      var pt = s.pt || {};
+
+      var html = '';
+      html += '<div style="max-width:840px;">';
+      html += '  <div style="margin-bottom:16px;">';
+      html += '    <h4 style="margin:0; font-size:16px; font-weight:700;">Payroll Configuration & Statutory Rates</h4>';
+      html += '    <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Configure statutory deductions, working days basis, and state compliance presets.</p>';
+      html += '  </div>';
+
+      html += '  <form id="form-payroll-settings" onsubmit="SchoolApp.modules.accounts.savePayrollSettings(event)">';
+
+      // General: Working Days Basis
+      html += '    <div class="card" style="padding:18px; border-radius:10px; margin-bottom:18px;">';
+      html += '      <h5 style="margin:0 0 12px 0; font-size:14px; font-weight:700;">Working Days Basis for Salary Proration</h5>';
+      html += '      <div class="form-group" style="max-width:400px;">';
+      html += '        <select class="form-control form-select" id="pset-days-basis">';
+      html += '          <option value="working" ' + (s.workingDaysBasis === 'working' || !s.workingDaysBasis ? 'selected' : '') + '>Standard Working Days (Monday–Saturday, ~26 days)</option>';
+      html += '          <option value="actual" ' + (s.workingDaysBasis === 'actual' ? 'selected' : '') + '>Actual Calendar Days (28–31 days in month)</option>';
+      html += '          <option value="fixed30" ' + (s.workingDaysBasis === 'fixed30' ? 'selected' : '') + '>Fixed 30 Days (Uniform proration)</option>';
+      html += '        </select>';
+      html += '        <small style="color:var(--text-muted); font-size:11px; margin-top:4px; display:block;">Defines how per-day salary is calculated when an employee has Loss of Pay (LOP) days.</small>';
+      html += '      </div>';
+      html += '    </div>';
+
+      // EPF Settings
+      html += '    <div class="card" style="padding:18px; border-radius:10px; margin-bottom:18px;">';
+      html += '      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+      html += '        <div>';
+      html += '          <h5 style="margin:0; font-size:14px; font-weight:700;">Employees Provident Fund (EPF)</h5>';
+      html += '          <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Statutory retirement fund contributions under EPFO rules.</p>';
+      html += '        </div>';
+      html += '        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+      html += '          <input type="checkbox" id="pset-epf-enabled" ' + (epf.enabled ? 'checked' : '') + ' /> Enable EPF for School';
+      html += '        </label>';
+      html += '      </div>';
+
+      html += '      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '        <div class="form-group">';
+      html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Employee Rate (%)</label>';
+      html += '          <input type="number" step="0.01" class="form-control" id="pset-epf-ee-rate" value="' + (epf.employeeRate !== undefined ? epf.employeeRate : 12.0) + '" />';
+      html += '        </div>';
+      html += '        <div class="form-group">';
+      html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Employer EPF Rate (%)</label>';
+      html += '          <input type="number" step="0.01" class="form-control" id="pset-epf-er-rate" value="' + (epf.employerRate !== undefined ? epf.employerRate : 12.0) + '" />';
+      html += '        </div>';
+      html += '        <div class="form-group">';
+      html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Employer EPS Rate (%)</label>';
+      html += '          <input type="number" step="0.01" class="form-control" id="pset-epf-eps-rate" value="' + (epf.employerEpsRate !== undefined ? epf.employerEpsRate : 8.33) + '" />';
+      html += '        </div>';
+      html += '      </div>';
+
+      html += '      <div class="form-group">';
+      html += '        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">';
+      html += '          <input type="checkbox" id="pset-epf-cap" ' + (epf.wageCeilingEnabled !== false ? 'checked' : '') + ' /> Apply Statutory EPF Wage Ceiling (₹15,000 / month cap on eligible wage)';
+      html += '        </label>';
+      html += '      </div>';
+      html += '    </div>';
+
+      // ESIC Settings
+      html += '    <div class="card" style="padding:18px; border-radius:10px; margin-bottom:18px;">';
+      html += '      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+      html += '        <div>';
+      html += '          <h5 style="margin:0; font-size:14px; font-weight:700;">Employee State Insurance (ESIC)</h5>';
+      html += '          <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">Social security medical insurance under ESIC Act (rounded up to next higher rupee).</p>';
+      html += '        </div>';
+      html += '        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+      html += '          <input type="checkbox" id="pset-esic-enabled" ' + (esic.enabled ? 'checked' : '') + ' /> Enable ESIC for School';
+      html += '        </label>';
+      html += '      </div>';
+
+      html += '      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">';
+      html += '        <div class="form-group">';
+      html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Employee Rate (%)</label>';
+      html += '          <input type="number" step="0.01" class="form-control" id="pset-esic-ee-rate" value="' + (esic.employeeRate !== undefined ? esic.employeeRate : 0.75) + '" />';
+      html += '        </div>';
+      html += '        <div class="form-group">';
+      html += '          <label class="form-label" style="font-size:12px; font-weight:600;">Employer Rate (%)</label>';
+      html += '          <input type="number" step="0.01" class="form-control" id="pset-esic-er-rate" value="' + (esic.employerRate !== undefined ? esic.employerRate : 3.25) + '" />';
+      html += '        </div>';
+      html += '      </div>';
+
+      html += '      <div class="form-group">';
+      html += '        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">';
+      html += '          <input type="checkbox" id="pset-esic-cap" ' + (esic.wageCeilingEnabled !== false ? 'checked' : '') + ' /> Apply ESIC Wage Ceiling (exempt if gross exceeds ₹21,000 / month)';
+      html += '        </label>';
+      html += '      </div>';
+      html += '    </div>';
+
+      // Professional Tax (PT) Settings & Slabs
+      html += '    <div class="card" style="padding:18px; border-radius:10px; margin-bottom:20px;">';
+      html += '      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+      html += '        <div>';
+      html += '          <h5 style="margin:0; font-size:14px; font-weight:700;">Professional Tax (PT)</h5>';
+      html += '          <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">State statutory tax deducted from employee salaries.</p>';
+      html += '        </div>';
+      html += '        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+      html += '          <input type="checkbox" id="pset-pt-enabled" ' + (pt.enabled ? 'checked' : '') + ' /> Enable PT for School';
+      html += '        </label>';
+      html += '      </div>';
+
+      // CA Disclaimer Banner
+      html += '      <div style="background:rgba(245, 158, 11, 0.08); border:1px solid rgba(245, 158, 11, 0.3); border-radius:8px; padding:12px; margin-bottom:14px; font-size:12.5px; color:#d97706; display:flex; align-items:center; gap:8px;">';
+      html += '        <span class="material-icons-round" style="font-size:20px;">info</span>';
+      html += '        <div><strong>Statutory Notice:</strong> Professional Tax slabs are governed by state-specific legislation and may change periodically. The preset below uses Jharkhand PT slabs. Please verify all statutory rates with your Chartered Accountant (CA) or Tax Consultant.</div>';
+      html += '      </div>';
+
+      // Slabs display
+      html += '      <div style="font-weight:600; font-size:13px; margin-bottom:8px;">Jharkhand Professional Tax Slabs (Monthly Gross):</div>';
+      html += '      <div class="table-responsive" style="margin-bottom:8px;">';
+      html += '        <table class="table" style="width:100%; font-size:12px; border-collapse:collapse;">';
+      html += '          <thead>';
+      html += '            <tr style="border-bottom:1px solid var(--border-color); color:var(--text-secondary); text-align:left;">';
+      html += '              <th style="padding:6px 10px;">Monthly Gross Wage Bracket</th>';
+      html += '              <th style="padding:6px 10px; text-align:right;">Monthly Tax (₹)</th>';
+      html += '              <th style="padding:6px 10px; text-align:right;">Annual Cap</th>';
+      html += '            </tr>';
+      html += '          </thead>';
+      html += '          <tbody>';
+      html += '            <tr style="border-bottom:1px solid var(--border-color);"><td style="padding:6px 10px;">Up to ₹25,000</td><td style="padding:6px 10px; text-align:right; font-weight:600;">₹0</td><td style="padding:6px 10px; text-align:right; color:var(--text-muted);">Nil</td></tr>';
+      html += '            <tr style="border-bottom:1px solid var(--border-color);"><td style="padding:6px 10px;">₹25,001 to ₹41,666</td><td style="padding:6px 10px; text-align:right; font-weight:600;">₹100</td><td style="padding:6px 10px; text-align:right; color:var(--text-muted);">₹1,200</td></tr>';
+      html += '            <tr style="border-bottom:1px solid var(--border-color);"><td style="padding:6px 10px;">₹41,667 to ₹66,666</td><td style="padding:6px 10px; text-align:right; font-weight:600;">₹150</td><td style="padding:6px 10px; text-align:right; color:var(--text-muted);">₹1,800</td></tr>';
+      html += '            <tr style="border-bottom:1px solid var(--border-color);"><td style="padding:6px 10px;">₹66,667 to ₹83,333</td><td style="padding:6px 10px; text-align:right; font-weight:600;">₹175</td><td style="padding:6px 10px; text-align:right; color:var(--text-muted);">₹2,100</td></tr>';
+      html += '            <tr><td style="padding:6px 10px;">Above ₹83,333</td><td style="padding:6px 10px; text-align:right; font-weight:600;">₹208.33</td><td style="padding:6px 10px; text-align:right; color:var(--text-muted);">₹2,500</td></tr>';
+      html += '          </tbody>';
+      html += '        </table>';
+      html += '      </div>';
+      html += '    </div>';
+
+      // Submit Button
+      html += '    <button type="submit" class="btn btn-primary" id="btn-save-pset" style="min-width:180px;">';
+      html += '      <span class="material-icons-round">save</span> Save Payroll Settings';
+      html += '    </button>';
+      html += '  </form>';
+      html += '</div>';
+
+      return html;
+    },
+
+    savePayrollSettings: async function (e) {
+      if (e) e.preventDefault();
+      var btn = document.getElementById('btn-save-pset');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-icons-round" style="animation:spin 1s linear infinite;">sync</span> Saving...';
+      }
+
+      var schoolId = this.getSchoolId();
+      var fs = window.firestore;
+      var db = window.db;
+
+      var daysBasis = document.getElementById('pset-days-basis').value;
+      var epfEnabled = document.getElementById('pset-epf-enabled').checked;
+      var epfEeRate = parseFloat(document.getElementById('pset-epf-ee-rate').value) || 12.0;
+      var epfErRate = parseFloat(document.getElementById('pset-epf-er-rate').value) || 12.0;
+      var epfEpsRate = parseFloat(document.getElementById('pset-epf-eps-rate').value) || 8.33;
+      var epfCap = document.getElementById('pset-epf-cap').checked;
+
+      var esicEnabled = document.getElementById('pset-esic-enabled').checked;
+      var esicEeRate = parseFloat(document.getElementById('pset-esic-ee-rate').value) || 0.75;
+      var esicErRate = parseFloat(document.getElementById('pset-esic-er-rate').value) || 3.25;
+      var esicCap = document.getElementById('pset-esic-cap').checked;
+
+      var ptEnabled = document.getElementById('pset-pt-enabled').checked;
+
+      var payload = {
+        workingDaysBasis: daysBasis,
+        epf: {
+          enabled: epfEnabled,
+          employeeRate: epfEeRate,
+          employerRate: epfErRate,
+          employerEpsRate: epfEpsRate,
+          wageCeilingEnabled: epfCap
+        },
+        esic: {
+          enabled: esicEnabled,
+          employeeRate: esicEeRate,
+          employerRate: esicErRate,
+          wageCeilingEnabled: esicCap
+        },
+        pt: {
+          enabled: ptEnabled,
+          state: 'Jharkhand'
+        },
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        var psetRef = fs.doc(db, 'tenant_data', schoolId, 'payroll_settings', 'main');
+        await fs.setDoc(psetRef, payload, { merge: true });
+        this.payrollSettings = payload;
+        SchoolApp.showToast('Payroll settings saved successfully.', 'success');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Save Payroll Settings';
+        }
+      } catch (err) {
+        console.error('Save payroll settings error:', err);
+        SchoolApp.showToast('Failed to save settings: ' + (err.message || 'Check connection'), 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span class="material-icons-round">save</span> Save Payroll Settings';
+        }
+      }
+    },
+
+    attachPayrollEvents: function () {
+      // Event bindings if needed
+    },
+
   };
 
   SchoolApp.modules.accounts = AccountsModule;

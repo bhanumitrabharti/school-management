@@ -52,8 +52,8 @@ async function runTests() {
     await db.doc('tenant_data/school_1/teacher_profiles/T99').set({ phone: '8888' });
     await db.doc('tenant_data/school_1/fee_activity_logs/LOG1').set({ action: 'fee_collected' });
     await db.doc('tenant_data/school_1/private/credentials').set({ adminPassword: 'xxx' });
-    await db.doc('tenant_data/school_1/payroll_payslips/PAY_T1').set({ teacherId: 'T1', salary: 50000 });
-    await db.doc('tenant_data/school_1/payroll_payslips/PAY_T2').set({ teacherId: 'T2', salary: 60000 });
+    await db.doc('tenant_data/school_1/payroll_payslips/PAY_T1').set({ teacherId: 'T1', salary: 50000, status: 'paid' });
+    await db.doc('tenant_data/school_1/payroll_payslips/PAY_T2').set({ teacherId: 'T2', salary: 60000, status: 'paid' });
     await db.doc('tenant_data/school_1/accounts_vouchers/V1').set({ amount: 5000 });
     await db.doc('tenant_data/school_1/settings/general').set({ timezone: 'IST' });
 
@@ -326,8 +326,8 @@ async function runTests() {
     await assertSucceeds(adminDb.doc('tenant_data/school_1/payroll_payslips/PAY_T2').get());
   });
 
-  await test('B12: Admin can WRITE payroll_payslips', async () => {
-    await assertSucceeds(adminDb.doc('tenant_data/school_1/payroll_payslips/PAY_T3').set({
+  await test('B12: Admin WRITE to payroll_payslips is DENIED (Slice 3 server-written only)', async () => {
+    await assertFails(adminDb.doc('tenant_data/school_1/payroll_payslips/PAY_T3').set({
       teacherId: 'T3',
       salary: 45000
     }));

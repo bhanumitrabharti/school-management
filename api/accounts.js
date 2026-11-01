@@ -81,6 +81,13 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: '11200', name: 'Primary Bank Account', type: 'asset', isActive: true },
   { code: '11210', name: 'Secondary Bank Account', type: 'asset', isActive: true },
   { code: '12100', name: 'Student Fee Receivables', type: 'asset', isActive: true },
+  { code: '13100', name: 'Staff Salary Advances', type: 'asset', isActive: true },
+  { code: '22100', name: 'Employee PF Payable', type: 'liability', isActive: true },
+  { code: '22110', name: 'Employer PF Contribution Payable', type: 'liability', isActive: true },
+  { code: '22200', name: 'ESIC Payable', type: 'liability', isActive: true },
+  { code: '22300', name: 'Professional Tax (PT) Payable', type: 'liability', isActive: true },
+  { code: '22400', name: 'TDS on Salaries Payable', type: 'liability', isActive: true },
+  { code: '22900', name: 'Other Payroll Deductions Payable', type: 'liability', isActive: true },
   { code: '31100', name: 'General / Corpus Reserve', type: 'equity', isActive: true },
   { code: '41100', name: 'Tuition Fees', type: 'income', isActive: true },
   { code: '41200', name: 'Admission & Registration Fees', type: 'income', isActive: true },
@@ -90,6 +97,9 @@ const DEFAULT_CHART_OF_ACCOUNTS = [
   { code: '43100', name: 'Bank Interest Received', type: 'income', isActive: true },
   { code: '43200', name: 'Miscellaneous Receipts', type: 'income', isActive: true },
   { code: '51100', name: 'Teaching Staff Salaries', type: 'expense', isActive: true },
+  { code: '51200', name: 'Non-Teaching & Admin Salaries', type: 'expense', isActive: true },
+  { code: '51300', name: 'Employer EPF Contribution Expense', type: 'expense', isActive: true },
+  { code: '51400', name: 'Employer ESIC Contribution Expense', type: 'expense', isActive: true },
   { code: '52100', name: 'Printing, Stationery & Report Cards', type: 'expense', isActive: true },
   { code: '53100', name: 'Electricity & Water Utility', type: 'expense', isActive: true },
   { code: '55100', name: 'Student Fee Concessions & Discounts', type: 'expense', isActive: true }
@@ -538,6 +548,685 @@ function computeOpeningJournalLines(openingDoc) {
     sourceId: `opening_${fy}`,
     narration: `Opening Balances for FY ${fy}`,
     lines
+  };
+}
+
+
+function computeAdvanceJournalLines(adv, settings) {
+  if (!adv || !adv.id) return null;
+  const goLiveDate = settings && settings.goLiveDate;
+  if (goLiveDate && adv.date && adv.date < goLiveDate) {
+    return { ignored: true, ignoreType: 'beforeGoLive' };
+  }
+  const amountPaise = Number(adv.amountPaise) || 0;
+  if (amountPaise <= 0) {
+    return { skip: true, reason: 'Zero or invalid amount' };
+  }
+  const paidFrom = adv.paidFromAccountId || adv.paidFrom || '11100';
+
+  const normalVoucher = {
+    voucherId: `vch_adv_${adv.id}`,
+    date: adv.date,
+    financialYear: adv.financialYear || getFinancialYear(adv.date),
+    sourceType: 'advance',
+    sourceId: adv.id,
+    narration: `Staff Advance: ${adv.employeeName || adv.employeeId || ''} (${adv.id})`.trim(),
+    lines: [
+      { accountId: '13100', debitPaise: amountPaise, creditPaise: 0 },
+      { accountId: paidFrom, debitPaise: 0, creditPaise: amountPaise }
+    ]
+  };
+
+  let cancelVoucher = null;
+  if (adv.status === 'cancelled') {
+    cancelVoucher = {
+      voucherId: `vch_advcx_${adv.id}`,
+      date: (adv.cancelledAt ? adv.cancelledAt.slice(0, 10) : adv.date),
+      financialYear: adv.financialYear || getFinancialYear(adv.date),
+      sourceType: 'advance_cancellation',
+      sourceId: adv.id,
+      narration: `Reversal of Staff Advance ${adv.id}: ${adv.cancelReason || 'Cancelled'}`,
+      lines: [
+        { accountId: paidFrom, debitPaise: amountPaise, creditPaise: 0 },
+        { accountId: '13100', debitPaise: 0, creditPaise: amountPaise }
+      ]
+    };
+  }
+
+  return { normalVoucher, cancelVoucher };
+}
+
+function computeStatutoryPaymentJournalLines(stat, settings) {
+  if (!stat || !stat.id) return null;
+  const goLiveDate = settings && settings.goLiveDate;
+  if (goLiveDate && stat.date && stat.date < goLiveDate) {
+    return { ignored: true, ignoreType: 'beforeGoLive' };
+  }
+  const amountPaise = Number(stat.amountPaise) || 0;
+  if (amountPaise <= 0) {
+    return { skip: true, reason: 'Zero or invalid amount' };
+  }
+  const paidFrom = stat.paidFromAccountId || stat.paidFrom || '11200';
+  const liabilityAccount = stat.liabilityAccount || '22100';
+
+  const normalVoucher = {
+    voucherId: `vch_stat_${stat.id}`,
+    date: stat.date,
+    financialYear: stat.financialYear || getFinancialYear(stat.date),
+    sourceType: 'statutory_payment',
+    sourceId: stat.id,
+    narration: `Statutory Payment: A/c ${liabilityAccount} (${stat.id}) ${stat.challanRef ? 'Challan: ' + stat.challanRef : ''}`.trim(),
+    lines: [
+      { accountId: liabilityAccount, debitPaise: amountPaise, creditPaise: 0 },
+      { accountId: paidFrom, debitPaise: 0, creditPaise: amountPaise }
+    ]
+  };
+
+  let cancelVoucher = null;
+  if (stat.status === 'cancelled') {
+    cancelVoucher = {
+      voucherId: `vch_statcx_${stat.id}`,
+      date: (stat.cancelledAt ? stat.cancelledAt.slice(0, 10) : stat.date),
+      financialYear: stat.financialYear || getFinancialYear(stat.date),
+      sourceType: 'statutory_cancellation',
+      sourceId: stat.id,
+      narration: `Reversal of Statutory Payment ${stat.id}: ${stat.cancelReason || 'Cancelled'}`,
+      lines: [
+        { accountId: paidFrom, debitPaise: amountPaise, creditPaise: 0 },
+        { accountId: liabilityAccount, debitPaise: 0, creditPaise: amountPaise }
+      ]
+    };
+  }
+
+  return { normalVoucher, cancelVoucher };
+}
+
+function computeEmployeeLine({
+  employeeId,
+  teacherId,
+  employeeName,
+  employeeType,
+  designation,
+  department,
+  profile,
+  inputs,
+  settings,
+  daysInMonth,
+  workingDays,
+  paidDays,
+  lopAuto,
+  lopDays,
+  lopReason,
+  empAdvances,
+  priorRecoveredPaise,
+  warnings
+}) {
+  const flags = [];
+
+  if (!profile || profile.status === 'inactive') {
+    flags.push('NO_PROFILE');
+    warnings.push(`No active salary profile configured for ${employeeName} (${designation})`);
+    return {
+      employeeId,
+      ...(teacherId ? { teacherId } : {}),
+      employeeName,
+      employeeType,
+      designation,
+      department,
+      paymentMode: 'Bank',
+      daysInMonth,
+      workingDays,
+      paidDays,
+      lopAuto,
+      lopDays,
+      lopReason,
+      payableDays: Math.max(0, paidDays - lopDays),
+      grossPaise: 0,
+      earnedGrossPaise: 0,
+      basicPaise: 0,
+      daPaise: 0,
+      hraPaise: 0,
+      earnedBasicPaise: 0,
+      earnedDaPaise: 0,
+      earnedHraPaise: 0,
+      customAllowances: [],
+      earnedAllowances: [],
+      oneTimeAdditions: [],
+      totalEarningsPaise: 0,
+      pfWagesPaise: 0,
+      employeePfPaise: 0,
+      employerPfPaise: 0,
+      employerEpsPaise: 0,
+      employerEpfPaise: 0,
+      pfAdminChargesPaise: 0,
+      esiWagesPaise: 0,
+      employeeEsiPaise: 0,
+      employerEsiPaise: 0,
+      ptPaise: 0,
+      tdsPaise: 0,
+      fixedDeductions: [],
+      oneTimeDeductions: [],
+      advanceRecoveryPaise: 0,
+      otherDeductionsPaise: 0,
+      totalDeductionsPaise: 0,
+      netPayPaise: 0,
+      flags
+    };
+  }
+
+  const payableDays = Math.max(0, paidDays - lopDays);
+  const basicPaise = Number(profile.basicPaise) || 0;
+  const daPaise = Number(profile.daPaise) || 0;
+  const hraPaise = Number(profile.hraPaise) || 0;
+  const customAllowances = Array.isArray(profile.customAllowances) ? profile.customAllowances : [];
+
+  let grossPaise = basicPaise + daPaise + hraPaise;
+  customAllowances.forEach(a => { grossPaise += (Number(a.amountPaise) || 0); });
+
+  // Proration
+  const earnedBasicPaise = paidDays > 0 ? Math.round((basicPaise * payableDays) / paidDays) : 0;
+  const earnedDaPaise = paidDays > 0 ? Math.round((daPaise * payableDays) / paidDays) : 0;
+  const earnedHraPaise = paidDays > 0 ? Math.round((hraPaise * payableDays) / paidDays) : 0;
+  const earnedAllowances = customAllowances.map(a => ({
+    name: a.name,
+    amountPaise: paidDays > 0 ? Math.round(((Number(a.amountPaise) || 0) * payableDays) / paidDays) : 0
+  }));
+
+  let earnedGrossPaise = earnedBasicPaise + earnedDaPaise + earnedHraPaise;
+  earnedAllowances.forEach(a => { earnedGrossPaise += a.amountPaise; });
+
+  // One-time additions (from inputs)
+  const oneTimeAdditions = (inputs && Array.isArray(inputs.additions)) ? inputs.additions.map(a => ({
+    name: a.name,
+    amountPaise: Number(a.amountPaise) || 0
+  })) : [];
+  let totalAdditionsPaise = 0;
+  oneTimeAdditions.forEach(a => { totalAdditionsPaise += a.amountPaise; });
+
+  const totalEarningsPaise = earnedGrossPaise + totalAdditionsPaise;
+
+  // ── Statutory Deductions ──
+
+  // EPF / PF
+  let pfWagesPaise = 0;
+  let employeePfPaise = 0;
+  let employerPfPaise = 0;
+  let employerEpsPaise = 0;
+  let employerEpfPaise = 0;
+  let pfAdminChargesPaise = 0;
+
+  if (settings.pfEnabled && profile.pfApplicable) {
+    const pfWageBasis = earnedBasicPaise + earnedDaPaise;
+    const pfCeiling = (typeof settings.pfWageCeilingPaise === 'number' && settings.pfWageCeilingPaise > 0)
+      ? settings.pfWageCeilingPaise
+      : 1500000;
+    pfWagesPaise = Math.min(pfWageBasis, pfCeiling);
+
+    const empPct = (typeof settings.pfEmployeePct === 'number') ? settings.pfEmployeePct : 12;
+    const rawEmpPf = (pfWagesPaise * empPct) / 100;
+    employeePfPaise = (settings.pfRounding === 'actual') ? Math.round(rawEmpPf) : Math.round(rawEmpPf / 100) * 100;
+
+    const emprTotalPct = (typeof settings.pfEmployerPct === 'number') ? settings.pfEmployerPct : 12;
+    const epsPct = (typeof settings.pfEmployerEpsPct === 'number') ? settings.pfEmployerEpsPct : 8.33;
+    const epfPct = (typeof settings.pfEmployerEpfPct === 'number') ? settings.pfEmployerEpfPct : (emprTotalPct - epsPct);
+
+    const rawEps = (pfWagesPaise * epsPct) / 100;
+    const epsCeiling = (pfCeiling * epsPct) / 100;
+    employerEpsPaise = (settings.pfRounding === 'actual') ? Math.round(Math.min(rawEps, epsCeiling)) : Math.round(Math.min(rawEps, epsCeiling) / 100) * 100;
+
+    const rawEpf = (pfWagesPaise * epfPct) / 100;
+    employerEpfPaise = (settings.pfRounding === 'actual') ? Math.round(rawEpf) : Math.round(rawEpf / 100) * 100;
+
+    const adminPct = (Number(settings.pfAdminChargesPct) || 0) + (Number(settings.pfEdliPct) || 0);
+    if (adminPct > 0) {
+      const rawAdmin = (pfWagesPaise * adminPct) / 100;
+      pfAdminChargesPaise = (settings.pfRounding === 'actual') ? Math.round(rawAdmin) : Math.round(rawAdmin / 100) * 100;
+    }
+    employerPfPaise = employerEpsPaise + employerEpfPaise + pfAdminChargesPaise;
+  }
+
+  // ESIC / ESI
+  let esiWagesPaise = 0;
+  let employeeEsiPaise = 0;
+  let employerEsiPaise = 0;
+
+  if (settings.esiEnabled && profile.esiApplicable) {
+    const esiCeiling = (typeof settings.esiGrossCeilingPaise === 'number' && settings.esiGrossCeilingPaise > 0)
+      ? settings.esiGrossCeilingPaise
+      : 2100000;
+    if (grossPaise <= esiCeiling) {
+      esiWagesPaise = totalEarningsPaise;
+      const empEsiPct = (typeof settings.esiEmployeePct === 'number') ? settings.esiEmployeePct : 0.75;
+      const emprEsiPct = (typeof settings.esiEmployerPct === 'number') ? settings.esiEmployerPct : 3.25;
+
+      const rawEmpEsi = (esiWagesPaise * empEsiPct) / 100;
+      const rawEmprEsi = (esiWagesPaise * emprEsiPct) / 100;
+
+      if (settings.esiRounding === 'actual') {
+        employeeEsiPaise = Math.round(rawEmpEsi);
+        employerEsiPaise = Math.round(rawEmprEsi);
+      } else if (settings.esiRounding === 'nearest_rupee') {
+        employeeEsiPaise = Math.round(rawEmpEsi / 100) * 100;
+        employerEsiPaise = Math.round(rawEmprEsi / 100) * 100;
+      } else {
+        // 'higher_rupee' default
+        employeeEsiPaise = Math.ceil(rawEmpEsi / 100) * 100;
+        employerEsiPaise = Math.ceil(rawEmprEsi / 100) * 100;
+      }
+    }
+  }
+
+  // Professional Tax (PT)
+  let ptPaise = 0;
+  if (settings.ptEnabled && profile.ptApplicable) {
+    const slabs = Array.isArray(settings.ptSlabs) ? settings.ptSlabs : [];
+    for (const slab of slabs) {
+      const min = Number(slab.minMonthlyGrossPaise) || 0;
+      const max = (slab.maxMonthlyGrossPaise !== null && slab.maxMonthlyGrossPaise !== undefined) ? Number(slab.maxMonthlyGrossPaise) : Infinity;
+      if (totalEarningsPaise >= min && totalEarningsPaise <= max) {
+        ptPaise = Number(slab.ptPaise) || 0;
+        break;
+      }
+    }
+  }
+
+  // TDS
+  let tdsPaise = 0;
+  if (inputs && typeof inputs.tdsPaise === 'number') {
+    tdsPaise = Math.max(0, inputs.tdsPaise);
+  } else {
+    tdsPaise = Number(profile.monthlyTdsPaise) || 0;
+  }
+
+  // Advances Recovery
+  let totalAdvanceGiven = 0;
+  let plannedAdvanceRecovery = 0;
+  (empAdvances || []).forEach(adv => {
+    totalAdvanceGiven += (Number(adv.amountPaise) || 0);
+    plannedAdvanceRecovery += (Number(adv.recoveryMonthlyPaise) || 0);
+  });
+  const outstandingAdvancePaise = Math.max(0, totalAdvanceGiven - priorRecoveredPaise);
+
+  let targetRecoveryPaise = plannedAdvanceRecovery;
+  if (inputs && typeof inputs.advanceRecoveryPaise === 'number') {
+    targetRecoveryPaise = Math.max(0, inputs.advanceRecoveryPaise);
+  }
+
+  let advanceRecoveryPaise = Math.min(targetRecoveryPaise, outstandingAdvancePaise);
+  if (targetRecoveryPaise > outstandingAdvancePaise && targetRecoveryPaise > 0) {
+    flags.push('ADVANCE_RECOVERY_CAPPED');
+  }
+
+  // Fixed Deductions (from profile)
+  const fixedDeductions = Array.isArray(profile.fixedDeductions) ? profile.fixedDeductions.map(d => ({
+    name: d.name,
+    amountPaise: Number(d.amountPaise) || 0
+  })) : [];
+
+  // One-time Deductions (from inputs)
+  const oneTimeDeductions = (inputs && Array.isArray(inputs.deductions)) ? inputs.deductions.map(d => ({
+    name: d.name,
+    amountPaise: Number(d.amountPaise) || 0
+  })) : [];
+
+  let otherDeductionsPaise = 0;
+  fixedDeductions.forEach(d => { otherDeductionsPaise += d.amountPaise; });
+  oneTimeDeductions.forEach(d => { otherDeductionsPaise += d.amountPaise; });
+
+  // Total Deductions
+  const totalDeductionsPaise = employeePfPaise + employeeEsiPaise + ptPaise + tdsPaise + advanceRecoveryPaise + otherDeductionsPaise;
+
+  // Net Pay
+  const netPayPaise = totalEarningsPaise - totalDeductionsPaise;
+  if (netPayPaise < 0) {
+    flags.push('NEGATIVE_NET_PAY');
+    warnings.push(`Negative net pay (₹${(netPayPaise / 100).toFixed(2)}) for ${employeeName} (${designation})`);
+  }
+
+  return {
+    employeeId,
+    ...(teacherId ? { teacherId } : {}),
+    employeeName,
+    employeeType,
+    designation,
+    department,
+    paymentMode: profile.paymentMode || 'Bank',
+    daysInMonth,
+    workingDays,
+    paidDays,
+    lopAuto,
+    lopDays,
+    lopReason,
+    payableDays,
+    grossPaise,
+    earnedGrossPaise,
+    basicPaise,
+    daPaise,
+    hraPaise,
+    earnedBasicPaise,
+    earnedDaPaise,
+    earnedHraPaise,
+    customAllowances,
+    earnedAllowances,
+    oneTimeAdditions,
+    totalEarningsPaise,
+    pfWagesPaise,
+    employeePfPaise,
+    employerPfPaise,
+    employerEpsPaise,
+    employerEpfPaise,
+    pfAdminChargesPaise,
+    esiWagesPaise,
+    employeeEsiPaise,
+    employerEsiPaise,
+    ptPaise,
+    tdsPaise,
+    fixedDeductions,
+    oneTimeDeductions,
+    advanceRecoveryPaise,
+    otherDeductionsPaise,
+    totalDeductionsPaise,
+    netPayPaise,
+    flags
+  };
+}
+
+function calculatePayrollRun({
+  month,
+  staffList = [],
+  teachersList = [],
+  profilesMap = {},
+  inputsDoc = {},
+  settings = {},
+  teacherAttendance = [],
+  attendanceRequests = [],
+  advancesList = [],
+  paidPayslips = []
+}) {
+  const [yearStr, monthStr] = month.split('-');
+  const year = parseInt(yearStr, 10);
+  const mon = parseInt(monthStr, 10);
+  const daysInMonth = new Date(year, mon, 0).getDate();
+
+  // Determine working days (excluding Sundays)
+  let workingDaysInMonth = 0;
+  const workingDates = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dStr = `${yearStr}-${monthStr}-${String(d).padStart(2, '0')}`;
+    const dateObj = new Date(year, mon - 1, d);
+    if (dateObj.getDay() !== 0) {
+      workingDaysInMonth++;
+      workingDates.push(dStr);
+    }
+  }
+
+  let paidDays = daysInMonth;
+  if (settings.paidDaysBasis === '26') {
+    paidDays = 26;
+  } else if (settings.paidDaysBasis === '30') {
+    paidDays = 30;
+  }
+
+  const teacherPunchesByDate = new Map();
+  (teacherAttendance || []).forEach(p => {
+    if (p && p.teacherId && p.date && p.date.startsWith(month) && p.type === 'in') {
+      teacherPunchesByDate.set(`${p.teacherId}_${p.date}`, true);
+    }
+  });
+
+  const approvedReqsByDate = new Map();
+  (attendanceRequests || []).forEach(r => {
+    const rDate = r.requestDate || r.date;
+    const rStatus = (r.status || '').toLowerCase();
+    if (r && r.teacherId && rDate && rDate.startsWith(month) && rStatus === 'approved') {
+      approvedReqsByDate.set(`${r.teacherId}_${rDate}`, true);
+    }
+  });
+
+  const priorRecoveriesByEmp = new Map();
+  (paidPayslips || []).forEach(ps => {
+    if (ps.status === 'paid' && ps.employeeId) {
+      const prev = priorRecoveriesByEmp.get(ps.employeeId) || 0;
+      priorRecoveriesByEmp.set(ps.employeeId, prev + (Number(ps.advanceRecoveryPaise) || 0));
+    }
+  });
+
+  const advancesByEmp = new Map();
+  (advancesList || []).forEach(adv => {
+    if (adv.status !== 'cancelled' && adv.employeeId) {
+      const list = advancesByEmp.get(adv.employeeId) || [];
+      list.push(adv);
+      advancesByEmp.set(adv.employeeId, list);
+    }
+  });
+
+  const lines = [];
+  const warnings = [];
+
+  // 1. Teachers
+  teachersList.forEach(t => {
+    if (t.status !== 'Active') return;
+    const employeeId = t.id;
+    const empInputs = (inputsDoc && inputsDoc.employees && inputsDoc.employees[employeeId]) || {};
+    if (empInputs.excluded === true) return;
+
+    const profile = profilesMap[employeeId] || null;
+    const employeeName = ((t.firstName || '') + ' ' + (t.lastName || '')).trim() || 'Teacher ' + employeeId;
+    const designation = t.designation || 'Teacher';
+    const department = t.subject || 'Teaching';
+
+    let absentDaysCount = 0;
+    const tJoinDate = t.joiningDate || t.joinDate;
+    workingDates.forEach(dStr => {
+      if (tJoinDate && dStr < tJoinDate) return;
+      const hasPunch = teacherPunchesByDate.has(`${employeeId}_${dStr}`);
+      const hasApprovedReq = approvedReqsByDate.has(`${employeeId}_${dStr}`);
+      if (!hasPunch && !hasApprovedReq) {
+        absentDaysCount++;
+      }
+    });
+
+    const lopAuto = absentDaysCount;
+    let lopDays = lopAuto;
+    let lopReason = lopAuto > 0 ? 'Automated attendance absent days' : '';
+
+    if (typeof empInputs.lopDaysOverride === 'number') {
+      lopDays = Math.max(0, empInputs.lopDaysOverride);
+      lopReason = empInputs.lopReason || 'Manual override';
+    }
+
+    const line = computeEmployeeLine({
+      employeeId,
+      teacherId: employeeId,
+      employeeName,
+      employeeType: 'teacher',
+      designation,
+      department,
+      profile,
+      inputs: empInputs,
+      settings,
+      daysInMonth,
+      workingDays: workingDaysInMonth,
+      paidDays,
+      lopAuto,
+      lopDays,
+      lopReason,
+      empAdvances: advancesByEmp.get(employeeId) || [],
+      priorRecoveredPaise: priorRecoveriesByEmp.get(employeeId) || 0,
+      warnings
+    });
+    lines.push(line);
+  });
+
+  // 2. Staff
+  staffList.forEach(s => {
+    if (s.status === 'Left') return;
+    const employeeId = s.id;
+    const empInputs = (inputsDoc && inputsDoc.employees && inputsDoc.employees[employeeId]) || {};
+    if (empInputs.excluded === true) return;
+
+    const profile = profilesMap[employeeId] || null;
+    const employeeName = s.name || 'Staff ' + employeeId;
+    const designation = s.designation || 'Staff';
+    const department = s.department || 'Administration';
+
+    const lopAuto = 0;
+    let lopDays = 0;
+    let lopReason = '';
+
+    if (typeof empInputs.lopDaysOverride === 'number') {
+      lopDays = Math.max(0, empInputs.lopDaysOverride);
+      lopReason = empInputs.lopReason || 'Manual override';
+    }
+
+    const line = computeEmployeeLine({
+      employeeId,
+      employeeName,
+      employeeType: 'staff',
+      designation,
+      department,
+      profile,
+      inputs: empInputs,
+      settings,
+      daysInMonth,
+      workingDays: workingDaysInMonth,
+      paidDays,
+      lopAuto,
+      lopDays,
+      lopReason,
+      empAdvances: advancesByEmp.get(employeeId) || [],
+      priorRecoveredPaise: priorRecoveriesByEmp.get(employeeId) || 0,
+      warnings
+    });
+    lines.push(line);
+  });
+
+  lines.sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+
+  const totals = {
+    headcount: lines.length,
+    teacherGrossPaise: 0,
+    staffGrossPaise: 0,
+    totalGrossPaise: 0,
+    employerPfPaise: 0,
+    employerEsiPaise: 0,
+    employeePfPaise: 0,
+    esiPaise: 0,
+    ptPaise: 0,
+    tdsPaise: 0,
+    advanceRecoveryPaise: 0,
+    otherDeductionsPaise: 0,
+    totalDeductionsPaise: 0,
+    netPayPaise: 0,
+    netBankPaise: 0,
+    netCashPaise: 0
+  };
+
+  lines.forEach(l => {
+    if (l.employeeType === 'teacher') {
+      totals.teacherGrossPaise += l.totalEarningsPaise;
+    } else {
+      totals.staffGrossPaise += l.totalEarningsPaise;
+    }
+    totals.totalGrossPaise += l.totalEarningsPaise;
+    totals.employerPfPaise += l.employerPfPaise;
+    totals.employerEsiPaise += l.employerEsiPaise;
+    totals.employeePfPaise += l.employeePfPaise;
+    totals.esiPaise += (l.employeeEsiPaise + l.employerEsiPaise);
+    totals.ptPaise += l.ptPaise;
+    totals.tdsPaise += l.tdsPaise;
+    totals.advanceRecoveryPaise += l.advanceRecoveryPaise;
+    totals.otherDeductionsPaise += l.otherDeductionsPaise;
+    totals.totalDeductionsPaise += l.totalDeductionsPaise;
+    totals.netPayPaise += l.netPayPaise;
+    if (l.paymentMode === 'Cash') {
+      totals.netCashPaise += l.netPayPaise;
+    } else {
+      totals.netBankPaise += l.netPayPaise;
+    }
+  });
+
+  return { lines, totals, warnings, paidDays, workingDays: workingDaysInMonth, daysInMonth };
+}
+
+function buildPayrollVoucher(month, lines, totals, settings, paidFrom) {
+  const bankAccount = (paidFrom && paidFrom.bankAccount) || '11200';
+  const cashAccount = (paidFrom && paidFrom.cashAccount) || '11100';
+  const teacherExpenseAccount = (settings && settings.salaryExpenseAccounts && settings.salaryExpenseAccounts.teacher) || '51100';
+  const staffExpenseAccount = (settings && settings.salaryExpenseAccounts && settings.salaryExpenseAccounts.staff) || '51200';
+
+  const voucherLines = [];
+
+  // Debits
+  if (totals.teacherGrossPaise > 0) {
+    voucherLines.push({ accountId: teacherExpenseAccount, debitPaise: totals.teacherGrossPaise, creditPaise: 0 });
+  }
+  if (totals.staffGrossPaise > 0) {
+    voucherLines.push({ accountId: staffExpenseAccount, debitPaise: totals.staffGrossPaise, creditPaise: 0 });
+  }
+  if (totals.employerPfPaise > 0) {
+    voucherLines.push({ accountId: '51300', debitPaise: totals.employerPfPaise, creditPaise: 0 });
+  }
+  if (totals.employerEsiPaise > 0) {
+    voucherLines.push({ accountId: '51400', debitPaise: totals.employerEsiPaise, creditPaise: 0 });
+  }
+
+  // Credits
+  if (totals.employeePfPaise > 0) {
+    voucherLines.push({ accountId: '22100', debitPaise: 0, creditPaise: totals.employeePfPaise });
+  }
+  if (totals.employerPfPaise > 0) {
+    voucherLines.push({ accountId: '22110', debitPaise: 0, creditPaise: totals.employerPfPaise });
+  }
+  if (totals.esiPaise > 0) {
+    voucherLines.push({ accountId: '22200', debitPaise: 0, creditPaise: totals.esiPaise });
+  }
+  if (totals.ptPaise > 0) {
+    voucherLines.push({ accountId: '22300', debitPaise: 0, creditPaise: totals.ptPaise });
+  }
+  if (totals.tdsPaise > 0) {
+    voucherLines.push({ accountId: '22400', debitPaise: 0, creditPaise: totals.tdsPaise });
+  }
+  if (totals.advanceRecoveryPaise > 0) {
+    voucherLines.push({ accountId: '13100', debitPaise: 0, creditPaise: totals.advanceRecoveryPaise });
+  }
+  if (totals.otherDeductionsPaise > 0) {
+    voucherLines.push({ accountId: '22900', debitPaise: 0, creditPaise: totals.otherDeductionsPaise });
+  }
+  if (totals.netBankPaise > 0) {
+    voucherLines.push({ accountId: bankAccount, debitPaise: 0, creditPaise: totals.netBankPaise });
+  }
+  if (totals.netCashPaise > 0) {
+    voucherLines.push({ accountId: cashAccount, debitPaise: 0, creditPaise: totals.netCashPaise });
+  }
+
+  return {
+    voucherId: `vch_pay_${month}`,
+    date: (paidFrom && paidFrom.paidDate) || `${month}-01`,
+    financialYear: getFinancialYear(`${month}-01`),
+    sourceType: 'payroll',
+    sourceId: month,
+    narration: `Payroll Disbursement for ${month}: ${totals.headcount} employees`,
+    lines: voucherLines
+  };
+}
+
+function buildPayrollReversalVoucher(month, originalVoucher, reversalReason, reversalDate) {
+  const revDate = reversalDate || new Date().toISOString().slice(0, 10);
+  const revLines = (originalVoucher.lines || []).map(line => ({
+    accountId: line.accountId,
+    debitPaise: line.creditPaise,
+    creditPaise: line.debitPaise
+  }));
+
+  return {
+    voucherId: `vch_payrev_${month}`,
+    date: revDate,
+    financialYear: originalVoucher.financialYear || getFinancialYear(revDate),
+    sourceType: 'payroll_reversal',
+    sourceId: month,
+    narration: `Reversal of Payroll ${month}: ${reversalReason || 'Reversed by admin'}`,
+    lines: revLines
   };
 }
 
@@ -1126,6 +1815,72 @@ async function handler(req, res) {
         }
       }
 
+      // Step F: Staff Advances
+      let newAdvancesPosted = 0;
+      if (Date.now() - startTime < TIME_LIMIT_MS) {
+        const advSnaps = await db.collection(`tenant_data/${schoolId}/accounts_advances`)
+          .where('financialYear', '==', targetFY)
+          .get();
+
+        const advBatch = [];
+        for (const d of advSnaps.docs) {
+          if (Date.now() - startTime > TIME_LIMIT_MS) break;
+          const adv = d.data();
+          adv.id = d.id;
+          const resVch = computeAdvanceJournalLines(adv, settings);
+          if (resVch && resVch.ignored) {
+            if (resVch.ignoreType === 'beforeGoLive') syncState.counts.beforeGoLive = (syncState.counts.beforeGoLive || 0) + 1;
+            continue;
+          }
+          if (resVch && resVch.skip) {
+            syncState.skipped.push({ type: 'advance', id: adv.id, reason: resVch.reason });
+            continue;
+          }
+          if (resVch && resVch.normalVoucher) advBatch.push(resVch.normalVoucher);
+          if (resVch && resVch.cancelVoucher) advBatch.push(resVch.cancelVoucher);
+        }
+
+        if (advBatch.length > 0) {
+          const { newlyPosted } = await postVouchersBatch(db, schoolId, advBatch, targetFY);
+          newAdvancesPosted += newlyPosted;
+          syncState.counts.advancesPosted = (syncState.counts.advancesPosted || 0) + newlyPosted;
+          syncState.counts.vouchersTotal = (syncState.counts.vouchersTotal || 0) + newlyPosted;
+        }
+      }
+
+      // Step G: Statutory Payments
+      let newStatutoryPosted = 0;
+      if (Date.now() - startTime < TIME_LIMIT_MS) {
+        const statSnaps = await db.collection(`tenant_data/${schoolId}/accounts_statutory_payments`)
+          .where('financialYear', '==', targetFY)
+          .get();
+
+        const statBatch = [];
+        for (const d of statSnaps.docs) {
+          if (Date.now() - startTime > TIME_LIMIT_MS) break;
+          const stat = d.data();
+          stat.id = d.id;
+          const resVch = computeStatutoryPaymentJournalLines(stat, settings);
+          if (resVch && resVch.ignored) {
+            if (resVch.ignoreType === 'beforeGoLive') syncState.counts.beforeGoLive = (syncState.counts.beforeGoLive || 0) + 1;
+            continue;
+          }
+          if (resVch && resVch.skip) {
+            syncState.skipped.push({ type: 'statutory', id: stat.id, reason: resVch.reason });
+            continue;
+          }
+          if (resVch && resVch.normalVoucher) statBatch.push(resVch.normalVoucher);
+          if (resVch && resVch.cancelVoucher) statBatch.push(resVch.cancelVoucher);
+        }
+
+        if (statBatch.length > 0) {
+          const { newlyPosted } = await postVouchersBatch(db, schoolId, statBatch, targetFY);
+          newStatutoryPosted += newlyPosted;
+          syncState.counts.statutoryPosted = (syncState.counts.statutoryPosted || 0) + newlyPosted;
+          syncState.counts.vouchersTotal = (syncState.counts.vouchersTotal || 0) + newlyPosted;
+        }
+      }
+
       // F1: Lock settings once any fee voucher exists
       if (syncState.counts.feesPosted > 0 && !settings.hasFeeVouchers) {
         await ensureFeeSettingsPersisted();
@@ -1161,7 +1916,9 @@ async function handler(req, res) {
           expenses: newExpensesPosted,
           receipts: newReceiptsPosted,
           transfers: newTransfersPosted,
-          opening: newOpeningPosted
+          opening: newOpeningPosted,
+          advances: typeof newAdvancesPosted !== 'undefined' ? newAdvancesPosted : 0,
+          statutory: typeof newStatutoryPosted !== 'undefined' ? newStatutoryPosted : 0
         },
         counts: syncState.counts,
         skippedCount: syncState.skipped.length,
@@ -1174,6 +1931,404 @@ async function handler(req, res) {
         await syncStateRef.set({ leaseUntil: null }, { merge: true }).catch(() => {});
       }
     }
+  }
+
+  
+  // ── Action: payroll-calc ───────────────────────────────────────────────────
+  if (action === 'payroll-calc') {
+    const month = (req.body && req.body.month) || (req.query && req.query.month);
+    if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ error: "A valid 'month' parameter (YYYY-MM) is required." });
+    }
+
+    const runRef = db.doc(`tenant_data/${schoolId}/payroll_runs/${month}`);
+    const runSnap = await runRef.get();
+    if (runSnap.exists) {
+      const currentStatus = runSnap.data().status;
+      if (currentStatus === 'approved' || currentStatus === 'paid') {
+        return res.status(400).json({ error: `Cannot recalculate run in '${currentStatus}' status. Please reopen first.` });
+      }
+    }
+
+    // 1. Fetch Root Doc for Teachers, teacherAttendance, attendanceRequests
+    const rootDocRef = db.doc(`tenant_data/${schoolId}`);
+    const rootSnap = await rootDocRef.get();
+    const rootData = rootSnap.exists ? rootSnap.data() : {};
+    const teachersList = Array.isArray(rootData.teachers) ? rootData.teachers : [];
+    const teacherAttendance = Array.isArray(rootData.teacherAttendance) ? rootData.teacherAttendance : [];
+    const attendanceRequests = Array.isArray(rootData.attendanceRequests) ? rootData.attendanceRequests : (Array.isArray(rootData.teacherCorrectionRequests) ? rootData.teacherCorrectionRequests : []);
+
+    // 2. Fetch Staff
+    const staffSnaps = await db.collection(`tenant_data/${schoolId}/staff`).get();
+    const staffList = [];
+    staffSnaps.forEach(d => {
+      const s = d.data();
+      s.id = d.id;
+      staffList.push(s);
+    });
+
+    // 3. Fetch Payroll Profiles
+    const profileSnaps = await db.collection(`tenant_data/${schoolId}/payroll_profiles`).get();
+    const profilesMap = {};
+    profileSnaps.forEach(d => {
+      profilesMap[d.id] = d.data();
+    });
+
+    // 4. Fetch Payroll Inputs
+    const inputSnap = await db.doc(`tenant_data/${schoolId}/payroll_inputs/${month}`).get();
+    const inputsDoc = inputSnap.exists ? inputSnap.data() : {};
+
+    // 5. Fetch Payroll Settings
+    const setSnap = await db.doc(`tenant_data/${schoolId}/payroll_settings/main`).get();
+    const payrollSettings = setSnap.exists ? setSnap.data() : {
+      pfEnabled: false,
+      pfEmployeePct: 12,
+      pfEmployerPct: 12,
+      pfWageCeilingPaise: 1500000,
+      pfEmployerEpsPct: 8.33,
+      pfEmployerEpfPct: 3.67,
+      pfAdminChargesPct: 0.5,
+      pfEdliPct: 0.5,
+      pfRounding: 'nearest_rupee',
+      esiEnabled: false,
+      esiEmployeePct: 0.75,
+      esiEmployerPct: 3.25,
+      esiGrossCeilingPaise: 2100000,
+      esiRounding: 'higher_rupee',
+      ptEnabled: false,
+      ptState: 'Jharkhand',
+      ptSlabs: [
+        { minMonthlyGrossPaise: 0, maxMonthlyGrossPaise: 2500000, ptPaise: 0 },
+        { minMonthlyGrossPaise: 2500001, maxMonthlyGrossPaise: 4166600, ptPaise: 10000 },
+        { minMonthlyGrossPaise: 4166601, maxMonthlyGrossPaise: 6666600, ptPaise: 15000 },
+        { minMonthlyGrossPaise: 6666601, maxMonthlyGrossPaise: 8333300, ptPaise: 17500 },
+        { minMonthlyGrossPaise: 8333301, maxMonthlyGrossPaise: null, ptPaise: 20800 }
+      ],
+      paidDaysBasis: 'calendar',
+      salaryExpenseAccounts: { teacher: '51100', staff: '51200' }
+    };
+
+    // 6. Fetch Active Staff Advances
+    const advSnaps = await db.collection(`tenant_data/${schoolId}/accounts_advances`).get();
+    const advancesList = [];
+    advSnaps.forEach(d => {
+      const adv = d.data();
+      adv.id = d.id;
+      advancesList.push(adv);
+    });
+
+    // 7. Fetch Paid Payslips for Prior Recovery Calculation
+    const payslipSnaps = await db.collection(`tenant_data/${schoolId}/payroll_payslips`)
+      .where('status', '==', 'paid')
+      .get();
+    const paidPayslips = [];
+    payslipSnaps.forEach(d => {
+      paidPayslips.push(d.data());
+    });
+
+    // Perform Calculation
+    const calcResult = calculatePayrollRun({
+      month,
+      staffList,
+      teachersList,
+      profilesMap,
+      inputsDoc,
+      settings: payrollSettings,
+      teacherAttendance,
+      attendanceRequests,
+      advancesList,
+      paidPayslips
+    });
+
+    const nowISO = new Date().toISOString();
+    const runDocData = {
+      month,
+      financialYear: getFinancialYear(`${month}-01`),
+      status: 'draft',
+      calculatedAt: nowISO,
+      calculatedBy: uid,
+      approvedAt: null,
+      approvedBy: null,
+      paidAt: null,
+      paidBy: null,
+      paidFrom: null,
+      voucherIds: [],
+      totals: calcResult.totals,
+      warnings: calcResult.warnings,
+      paidDays: calcResult.paidDays,
+      workingDays: calcResult.workingDays,
+      daysInMonth: calcResult.daysInMonth
+    };
+
+    // Write runDoc and lines
+    await runRef.set(runDocData);
+
+    // Write lines in subcollection
+    const linesCollection = db.collection(`tenant_data/${schoolId}/payroll_runs/${month}/lines`);
+    // Delete existing lines if any (e.g. from recalculation)
+    const oldLines = await linesCollection.get();
+    const batch = db.batch();
+    oldLines.forEach(d => { batch.delete(d.ref); });
+    calcResult.lines.forEach(line => {
+      const lineRef = linesCollection.doc(line.employeeId);
+      batch.set(lineRef, line);
+    });
+    await batch.commit();
+
+    return res.status(200).json({
+      status: 'ok',
+      month,
+      run: runDocData,
+      lines: calcResult.lines,
+      warnings: calcResult.warnings
+    });
+  }
+
+  // ── Action: payroll-approve ────────────────────────────────────────────────
+  if (action === 'payroll-approve') {
+    const month = (req.body && req.body.month) || (req.query && req.query.month);
+    if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ error: "A valid 'month' parameter (YYYY-MM) is required." });
+    }
+
+    const runRef = db.doc(`tenant_data/${schoolId}/payroll_runs/${month}`);
+    const runSnap = await runRef.get();
+    if (!runSnap.exists) {
+      return res.status(404).json({ error: `No payroll run found for month ${month}. Calculate draft first.` });
+    }
+    const runData = runSnap.data();
+    if (runData.status !== 'draft') {
+      return res.status(400).json({ error: `Cannot approve payroll run in '${runData.status}' status. Must be draft.` });
+    }
+
+    const nowISO = new Date().toISOString();
+    const update = {
+      status: 'approved',
+      approvedAt: nowISO,
+      approvedBy: uid
+    };
+    await runRef.set(update, { merge: true });
+
+    return res.status(200).json({
+      status: 'ok',
+      month,
+      run: { ...runData, ...update }
+    });
+  }
+
+  // ── Action: payroll-reopen ─────────────────────────────────────────────────
+  if (action === 'payroll-reopen') {
+    const month = (req.body && req.body.month) || (req.query && req.query.month);
+    if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ error: "A valid 'month' parameter (YYYY-MM) is required." });
+    }
+
+    const runRef = db.doc(`tenant_data/${schoolId}/payroll_runs/${month}`);
+    const runSnap = await runRef.get();
+    if (!runSnap.exists) {
+      return res.status(404).json({ error: `No payroll run found for month ${month}.` });
+    }
+    const runData = runSnap.data();
+    if (runData.status !== 'approved') {
+      return res.status(400).json({ error: `Cannot reopen payroll run in '${runData.status}' status. Only approved runs can be reopened.` });
+    }
+
+    const update = {
+      status: 'draft',
+      approvedAt: null,
+      approvedBy: null
+    };
+    await runRef.set(update, { merge: true });
+
+    return res.status(200).json({
+      status: 'ok',
+      month,
+      run: { ...runData, ...update }
+    });
+  }
+
+  // ── Action: payroll-pay ────────────────────────────────────────────────────
+  if (action === 'payroll-pay') {
+    const month = (req.body && req.body.month) || (req.query && req.query.month);
+    const paidDate = (req.body && req.body.paidDate) || new Date().toISOString().slice(0, 10);
+    const bankAccount = (req.body && req.body.bankAccount) || '11200';
+    const cashAccount = (req.body && req.body.cashAccount) || '11100';
+
+    if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ error: "A valid 'month' parameter (YYYY-MM) is required." });
+    }
+
+    const runRef = db.doc(`tenant_data/${schoolId}/payroll_runs/${month}`);
+    const runSnap = await runRef.get();
+    if (!runSnap.exists) {
+      return res.status(404).json({ error: `No payroll run found for month ${month}.` });
+    }
+    const runData = runSnap.data();
+    if (runData.status !== 'approved') {
+      return res.status(400).json({ error: `Cannot pay run in '${runData.status}' status. Run must be approved.` });
+    }
+
+    // Load lines
+    const lineSnaps = await db.collection(`tenant_data/${schoolId}/payroll_runs/${month}/lines`).get();
+    const lines = [];
+    lineSnaps.forEach(d => { lines.push(d.data()); });
+
+    // Load Payroll Settings for account mappings
+    const setSnap = await db.doc(`tenant_data/${schoolId}/payroll_settings/main`).get();
+    const payrollSettings = setSnap.exists ? setSnap.data() : {};
+
+    // 1. Build and post balanced voucher
+    const targetFY = runData.financialYear || getFinancialYear(`${month}-01`);
+    const voucher = buildPayrollVoucher(month, lines, runData.totals, payrollSettings, {
+      bankAccount,
+      cashAccount,
+      paidDate
+    });
+
+    const postRes = await postVouchersBatch(db, schoolId, [voucher], targetFY);
+
+    // 2. Write payslips
+    const payslipBatch = db.batch();
+    const nowISO = new Date().toISOString();
+    lines.forEach(line => {
+      const payslipId = `PAY_${month}_${line.employeeId}`;
+      const payslipRef = db.doc(`tenant_data/${schoolId}/payroll_payslips/${payslipId}`);
+      const payslipData = {
+        id: payslipId,
+        month,
+        employeeId: line.employeeId,
+        ...(line.teacherId ? { teacherId: line.teacherId } : {}),
+        employeeName: line.employeeName,
+        employeeType: line.employeeType,
+        designation: line.designation,
+        department: line.department,
+        paymentMode: line.paymentMode,
+        paidDate,
+        status: 'paid',
+        daysInMonth: line.daysInMonth,
+        workingDays: line.workingDays,
+        paidDays: line.paidDays,
+        lopDays: line.lopDays,
+        payableDays: line.payableDays,
+        earnings: {
+          basicPaise: line.earnedBasicPaise,
+          daPaise: line.earnedDaPaise,
+          hraPaise: line.earnedHraPaise,
+          allowances: line.earnedAllowances || [],
+          oneTimeAdditions: line.oneTimeAdditions || [],
+          totalEarningsPaise: line.totalEarningsPaise
+        },
+        deductions: {
+          employeePfPaise: line.employeePfPaise,
+          employeeEsiPaise: line.employeeEsiPaise,
+          ptPaise: line.ptPaise,
+          tdsPaise: line.tdsPaise,
+          advanceRecoveryPaise: line.advanceRecoveryPaise,
+          fixedDeductions: line.fixedDeductions || [],
+          oneTimeDeductions: line.oneTimeDeductions || [],
+          totalDeductionsPaise: line.totalDeductionsPaise
+        },
+        employerContributions: {
+          pfPaise: line.employerPfPaise,
+          esiPaise: line.employerEsiPaise
+        },
+        netPayPaise: line.netPayPaise,
+        voucherId: voucher.voucherId,
+        createdAt: nowISO
+      };
+      payslipBatch.set(payslipRef, payslipData);
+    });
+    await payslipBatch.commit();
+
+    // 3. Update Run Status
+    const update = {
+      status: 'paid',
+      paidAt: nowISO,
+      paidBy: uid,
+      paidFrom: { bankAccount, cashAccount, paidDate },
+      voucherIds: [voucher.voucherId]
+    };
+    await runRef.set(update, { merge: true });
+
+    return res.status(200).json({
+      status: 'ok',
+      month,
+      run: { ...runData, ...update },
+      voucherId: voucher.voucherId,
+      newlyPosted: postRes.newlyPosted
+    });
+  }
+
+  // ── Action: payroll-reverse ────────────────────────────────────────────────
+  if (action === 'payroll-reverse') {
+    const month = (req.body && req.body.month) || (req.query && req.query.month);
+    const reason = (req.body && req.body.reason) || 'Reversed by admin';
+    const confirmText = (req.body && req.body.confirmText) || '';
+
+    if (confirmText !== 'REVERSE') {
+      return res.status(400).json({ error: "Reversal requires explicit confirmation. Please pass confirmText: 'REVERSE'." });
+    }
+    if (!month || !/^[0-9]{4}-[0-9]{2}$/.test(month)) {
+      return res.status(400).json({ error: "A valid 'month' parameter (YYYY-MM) is required." });
+    }
+
+    const runRef = db.doc(`tenant_data/${schoolId}/payroll_runs/${month}`);
+    const runSnap = await runRef.get();
+    if (!runSnap.exists) {
+      return res.status(404).json({ error: `No payroll run found for month ${month}.` });
+    }
+    const runData = runSnap.data();
+    if (runData.status !== 'paid') {
+      return res.status(400).json({ error: `Cannot reverse run in '${runData.status}' status. Only paid runs can be reversed.` });
+    }
+
+    const voucherId = `vch_pay_${month}`;
+    const vchRef = db.doc(`tenant_data/${schoolId}/accounts_journal/${voucherId}`);
+    const vchSnap = await vchRef.get();
+    if (!vchSnap.exists) {
+      return res.status(404).json({ error: `Original payroll voucher '${voucherId}' not found in journal.` });
+    }
+    const originalVoucher = vchSnap.data();
+
+    // 1. Build and post reversal mirror voucher
+    const targetFY = runData.financialYear || getFinancialYear(`${month}-01`);
+    const revVoucher = buildPayrollReversalVoucher(month, originalVoucher, reason);
+    const postRes = await postVouchersBatch(db, schoolId, [revVoucher], targetFY);
+
+    // 2. Void Payslips
+    const payslips = await db.collection(`tenant_data/${schoolId}/payroll_payslips`)
+      .where('month', '==', month)
+      .get();
+    const voidBatch = db.batch();
+    const nowISO = new Date().toISOString();
+    payslips.forEach(d => {
+      voidBatch.set(d.ref, {
+        status: 'void',
+        voidedAt: nowISO,
+        voidedBy: uid,
+        voidReason: reason
+      }, { merge: true });
+    });
+    await voidBatch.commit();
+
+    // 3. Update Run Status
+    const existingVouchers = Array.isArray(runData.voucherIds) ? runData.voucherIds : [voucherId];
+    const update = {
+      status: 'reversed',
+      reversalReason: reason,
+      reversedAt: nowISO,
+      reversedBy: uid,
+      voucherIds: Array.from(new Set([...existingVouchers, revVoucher.voucherId]))
+    };
+    await runRef.set(update, { merge: true });
+
+    return res.status(200).json({
+      status: 'ok',
+      month,
+      run: { ...runData, ...update },
+      reverseVoucherId: revVoucher.voucherId,
+      newlyPosted: postRes.newlyPosted
+    });
   }
 
   return res.status(400).json({ error: `Unknown action: '${action}'` });
@@ -1189,3 +2344,10 @@ module.exports.computeTransferJournalLines = computeTransferJournalLines;
 module.exports.computeOpeningJournalLines = computeOpeningJournalLines;
 module.exports.applyVoucherToSummary = applyVoucherToSummary;
 module.exports.postVouchersBatch = postVouchersBatch;
+module.exports.computeAdvanceJournalLines = computeAdvanceJournalLines;
+module.exports.computeStatutoryPaymentJournalLines = computeStatutoryPaymentJournalLines;
+module.exports.computeEmployeeLine = computeEmployeeLine;
+module.exports.calculatePayrollRun = calculatePayrollRun;
+module.exports.buildPayrollVoucher = buildPayrollVoucher;
+module.exports.buildPayrollReversalVoucher = buildPayrollReversalVoucher;
+

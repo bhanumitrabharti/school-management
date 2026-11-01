@@ -775,6 +775,237 @@ async function runAccountsRulesTests() {
     }));
   });
 
+  // ========================================================
+  // === Category 6: Slice 3 Payroll & Staff Rules ========
+  // ========================================================
+  console.log('\n=== Category 6: Slice 3 Payroll & Staff Rules ===');
+
+  // Seed Slice 3 fixtures with rules disabled
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    // 1. Paid payslip for teacher T1
+    await db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T1').set({
+      id: 'PAY_2026-04_T1',
+      month: '2026-04',
+      employeeId: 'T1',
+      teacherId: 'T1',
+      employeeName: 'Teacher One',
+      employeeType: 'teacher',
+      status: 'paid',
+      netPayPaise: 3500000
+    });
+
+    // 2. Paid payslip for teacher T2 (different teacher)
+    await db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T2').set({
+      id: 'PAY_2026-04_T2',
+      month: '2026-04',
+      employeeId: 'T2',
+      teacherId: 'T2',
+      employeeName: 'Teacher Two',
+      employeeType: 'teacher',
+      status: 'paid',
+      netPayPaise: 4000000
+    });
+
+    // 3. Void payslip for teacher T1
+    await db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-03_T1').set({
+      id: 'PAY_2026-03_T1',
+      month: '2026-03',
+      employeeId: 'T1',
+      teacherId: 'T1',
+      employeeName: 'Teacher One',
+      employeeType: 'teacher',
+      status: 'void',
+      netPayPaise: 3500000
+    });
+
+    // 4. Draft run for 2026-04
+    await db.doc('tenant_data/school_1/payroll_runs/2026-04').set({
+      month: '2026-04',
+      status: 'draft',
+      totals: {}
+    });
+
+    // 5. Approved run for 2026-05
+    await db.doc('tenant_data/school_1/payroll_runs/2026-05').set({
+      month: '2026-05',
+      status: 'approved',
+      totals: {}
+    });
+  });
+
+  await recordTest('S3_1', 'Teacher can READ own PAID payslip -> ALLOW', async () => {
+    await assertSucceeds(teacher1Db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T1').get());
+  });
+
+  await recordTest('S3_2', 'Teacher CANNOT read other teacher paid payslip -> DENY', async () => {
+    await assertFails(teacher1Db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T2').get());
+  });
+
+  await recordTest('S3_3', 'Teacher CANNOT read own VOID payslip -> DENY', async () => {
+    await assertFails(teacher1Db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-03_T1').get());
+  });
+
+  await recordTest('S3_4', 'Client (admin & teacher) write to payroll_payslips -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-06_T1').set({
+      month: '2026-06', status: 'paid'
+    }));
+    await assertFails(teacher1Db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T1').update({
+      status: 'void'
+    }));
+  });
+
+  await recordTest('S3_5', 'Client (admin) write to payroll_runs and lines -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/payroll_runs/2026-07').set({
+      month: '2026-07', status: 'draft'
+    }));
+    await assertFails(admin1Db.doc('tenant_data/school_1/payroll_runs/2026-04/lines/T1').set({
+      netPayPaise: 50000
+    }));
+  });
+
+  await recordTest('S3_6', 'Admin can write payroll_inputs when run missing or draft -> ALLOW', async () => {
+    // 2026-04 is in 'draft' status -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/payroll_inputs/2026-04').set({
+      employees: { T1: { lopDaysOverride: 2 } }
+    }));
+    // 2026-08 run does not exist -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/payroll_inputs/2026-08').set({
+      employees: { T1: { lopDaysOverride: 0 } }
+    }));
+  });
+
+  await recordTest('S3_7', 'Admin CANNOT write payroll_inputs once run is approved or paid -> DENY', async () => {
+    // 2026-05 is in 'approved' status -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/payroll_inputs/2026-05').set({
+      employees: { T1: { lopDaysOverride: 1 } }
+    }));
+  });
+
+  await recordTest('S3_8', 'Admin can create/update staff, but CANNOT delete staff -> ALLOW create/update, DENY delete', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/staff/staff_01').set({
+      name: 'Ramesh Sharma',
+      designation: 'Clerk',
+      department: 'Admin',
+      phone: '9876543210',
+      joinDate: '2026-04-01',
+      status: 'Active'
+    }));
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/staff/staff_01').update({
+      status: 'Left',
+      leftDate: '2026-04-30'
+    }));
+    await assertFails(admin1Db.doc('tenant_data/school_1/staff/staff_01').delete());
+  });
+
+  await recordTest('S3_9', 'Admin can create/update payroll_profiles, but CANNOT delete -> ALLOW create/update, DENY delete', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/payroll_profiles/T1').set({
+      employeeId: 'T1',
+      employeeType: 'teacher',
+      basicPaise: 3000000,
+      daPaise: 500000,
+      hraPaise: 750000,
+      status: 'active'
+    }));
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/payroll_profiles/T1').update({
+      basicPaise: 3200000
+    }));
+    await assertFails(admin1Db.doc('tenant_data/school_1/payroll_profiles/T1').delete());
+  });
+
+  await recordTest('S3_10', 'Admin can create/update payroll_settings, but CANNOT delete -> ALLOW create/update, DENY delete', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/payroll_settings/main').set({
+      pfEnabled: false,
+      esiEnabled: false,
+      ptEnabled: false,
+      paidDaysBasis: 'calendar'
+    }));
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/payroll_settings/main').update({
+      pfEnabled: true
+    }));
+    await assertFails(admin1Db.doc('tenant_data/school_1/payroll_settings/main').delete());
+  });
+
+  await recordTest('S3_11', 'Admin can CREATE/CANCEL accounts_advances, but CANNOT delete or edit amount -> ALLOW/DENY', async () => {
+    // Valid create -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_advances/ADV_001').set({
+      date: '2026-04-10',
+      financialYear: '2026-27',
+      employeeId: 'T1',
+      employeeName: 'Teacher One',
+      employeeType: 'teacher',
+      amountPaise: 500000,
+      paidFromAccountId: '11100',
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: '2026-04-10T10:00:00Z'
+    }));
+
+    // Edit amount -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_advances/ADV_001').update({
+      amountPaise: 600000
+    }));
+
+    // Cancel with reason -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_advances/ADV_001').update({
+      status: 'cancelled',
+      cancelReason: 'Wrong employee',
+      cancelledAt: '2026-04-11T10:00:00Z',
+      cancelledBy: 'Admin'
+    }));
+
+    // Delete -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_advances/ADV_001').delete());
+  });
+
+  await recordTest('S3_12', 'Admin can CREATE/CANCEL accounts_statutory_payments, but CANNOT delete or edit amount -> ALLOW/DENY', async () => {
+    // Valid create -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_statutory_payments/STAT_001').set({
+      date: '2026-05-15',
+      financialYear: '2026-27',
+      liabilityAccount: '22100',
+      amountPaise: 360000,
+      paidFromAccountId: '11200',
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: '2026-05-15T10:00:00Z'
+    }));
+
+    // Edit amount -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_statutory_payments/STAT_001').update({
+      amountPaise: 400000
+    }));
+
+    // Cancel with reason -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_statutory_payments/STAT_001').update({
+      status: 'cancelled',
+      cancelReason: 'Payment cancelled by bank',
+      cancelledAt: '2026-05-16T10:00:00Z',
+      cancelledBy: 'Admin'
+    }));
+
+    // Delete -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_statutory_payments/STAT_001').delete());
+  });
+
+  await recordTest('S3_13', 'Super Admin is DENIED all access on Slice 3 subcollections -> DENY', async () => {
+    await assertFails(superAdminDb.doc('tenant_data/school_1/staff/staff_01').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/payroll_profiles/T1').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/payroll_settings/main').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/payroll_inputs/2026-04').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/payroll_runs/2026-04').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T1').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_advances/ADV_001').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_statutory_payments/STAT_001').get());
+  });
+
+  await recordTest('S3_14', 'Cross-tenant admin (school_2) CANNOT read or write school_1 payroll/staff -> DENY', async () => {
+    await assertFails(admin2Db.doc('tenant_data/school_1/staff/staff_01').get());
+    await assertFails(admin2Db.doc('tenant_data/school_1/payroll_profiles/T1').get());
+    await assertFails(admin2Db.doc('tenant_data/school_1/payroll_payslips/PAY_2026-04_T1').get());
+  });
+
+
   console.log('\n========================================');
   console.log(`ACCOUNTS RULES TEST SUMMARY: Total: ${passedCount + failedCount} | Passed: ${passedCount} | Failed: ${failedCount}`);
   console.log('========================================');
