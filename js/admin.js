@@ -76,7 +76,7 @@
     if (!confirm('Remove school logo?')) return;
     if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
     SchoolApp.store.settings.schoolLogo = '';
-    SchoolApp.store.settings.logoUrl = '';
+    SchoolApp.store.settings.logoUrl = ''; SchoolApp.store.settings.logoStorageUrl = '';
     if (SchoolApp.store.settings.schoolInfo) {
       SchoolApp.store.settings.schoolInfo.schoolLogo = '';
       SchoolApp.store.settings.schoolInfo.logoUrl = '';
@@ -165,7 +165,7 @@
   window.removeSignature = function() {
     if (!confirm('Remove digital signature?')) return;
     if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
-    SchoolApp.store.settings.principalSignatureUrl = '';
+    SchoolApp.store.settings.principalSignatureUrl = ''; SchoolApp.store.settings.principalSignatureStorageUrl = '';
     if (SchoolApp.store.settings.schoolInfo) {
       SchoolApp.store.settings.schoolInfo.principalSignatureUrl = '';
     }
@@ -2967,7 +2967,7 @@
     html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
     
     
-        var logoSrc = s.schoolLogo || s.logoUrl || (s.schoolInfo && (s.schoolInfo.schoolLogo || s.schoolInfo.logoUrl)) || '';
+        var logoSrc = s.logoStorageUrl || s.schoolLogo || s.logoUrl || (s.schoolInfo && (s.schoolInfo.logoStorageUrl || s.schoolInfo.schoolLogo || s.schoolInfo.logoUrl)) || '';
     html += '        <div class="form-group">';
     html += '          <label class="form-label">School Logo</label>';
     html += '          <input type="file" id="school-logo-input" accept="image/*" class="form-input" onchange="window.handleLogoSelect(this)" />';
@@ -2992,7 +2992,7 @@
     html += '          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Appears on certificates, admit cards, and official documents</div>';
     html += '        </div>';
 
-    var sigSrc = s.principalSignatureUrl || '';
+    var sigSrc = s.principalSignatureStorageUrl || s.principalSignatureUrl || (s.schoolInfo && (s.schoolInfo.principalSignatureStorageUrl || s.schoolInfo.principalSignatureUrl)) || '';
     html += '        <div class="form-group">';
     html += '          <label class="form-label">Digital Signature</label>';
     html += '          <input type="file" id="settings-signature-upload" accept="image/png, image/jpeg" class="form-input" onchange="window.handleSignatureSelect(this)" />';

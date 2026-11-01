@@ -1267,7 +1267,7 @@
 
     var settings = SchoolApp.store.settings || {};
     var info = settings.schoolInfo || {};
-    var logoUrl = settings.logoUrl || info.logoUrl || '';
+    var logoUrl = settings.logoStorageUrl || settings.logoUrl || (info && (info.logoStorageUrl || info.logoUrl)) || '';
     if (!logoUrl) {
       logoUrl = new URL('school-logo-updated.jpg', window.location.href).href + '?t=' + new Date().getTime();
     }
@@ -1956,7 +1956,7 @@
     var schoolAddress = settings.address || schoolInfo.address || '';
     var schoolPhone = settings.phone || schoolInfo.phone || '';
     var schoolEmail = settings.email || schoolInfo.email || '';
-    var logoUrl = settings.schoolLogo || settings.logoUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo || '';
+    var logoUrl = settings.logoStorageUrl || settings.schoolLogo || settings.logoUrl || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.schoolLogo || schoolInfo.logoUrl)) || '';
     var primaryColor = (settings.branding && settings.branding.primaryColor) || '#1E3A8A';
 
     var schoolPrefix = (SchoolApp.currentSchoolId || 'SVM').substring(0, 4).toUpperCase();

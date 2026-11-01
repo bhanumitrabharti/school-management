@@ -40,7 +40,7 @@ service firebase.storage {
 
     // ── Validation helpers ───────────────────────────────────────────────────
     function isValidLogo(fileName) {
-      return fileName.matches('^logo\\.(png|jpg|jpeg|svg|webp)$')
+      return (fileName.matches('^logo\\.(png|jpg|jpeg|svg|webp)$') || fileName.matches('^signature\\.(png|jpg|jpeg|svg|webp)$') || fileName.matches('^principal_signature\\.(png|jpg|jpeg|svg|webp)$'))
         && (request.resource == null || (
              request.resource.size <= 500 * 1024
              && request.resource.contentType.matches('image/.*')

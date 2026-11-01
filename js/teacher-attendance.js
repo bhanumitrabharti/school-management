@@ -184,7 +184,13 @@
               }
             } catch (punchErr) {
               console.error('[Teacher Attendance] Error saving punch out record:', punchErr);
-              SchoolApp.showToast('Failed to record punch out: ' + (punchErr.message || 'Check connection'), 'error');
+              var isPerm = punchErr && (punchErr.code === 'permission-denied' || (punchErr.message && punchErr.message.includes('PERMISSION_DENIED')));
+              if (isPerm) {
+                SchoolApp.showToast('Please refresh your browser to update the app.', 'warning', 10000);
+                if (typeof window.checkServerVersion === 'function') window.checkServerVersion();
+              } else {
+                SchoolApp.showToast('Failed to record punch out: ' + (punchErr.message || 'Check connection'), 'error');
+              }
               return;
             }
           } else {
@@ -260,7 +266,13 @@
           }
         } catch (punchErr) {
           console.error('[Teacher Attendance] Error saving punch record:', punchErr);
-          SchoolApp.showToast('Failed to record punch: ' + (punchErr.message || 'Check connection'), 'error');
+          var isPerm = punchErr && (punchErr.code === 'permission-denied' || (punchErr.message && punchErr.message.includes('PERMISSION_DENIED')));
+          if (isPerm) {
+            SchoolApp.showToast('Please refresh your browser to update the app.', 'warning', 10000);
+            if (typeof window.checkServerVersion === 'function') window.checkServerVersion();
+          } else {
+            SchoolApp.showToast('Failed to record punch: ' + (punchErr.message || 'Check connection'), 'error');
+          }
           return;
         }
       } else {

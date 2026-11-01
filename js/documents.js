@@ -61,12 +61,12 @@
 
   function getSchoolLogo() {
     var s = getSettings();
-    return s.logoUrl || s.schoolLogo || (s.schoolInfo && (s.schoolInfo.logoUrl || s.schoolInfo.schoolLogo)) || '';
+    return s.logoStorageUrl || s.logoUrl || s.schoolLogo || (s.schoolInfo && (s.schoolInfo.logoStorageUrl || s.schoolInfo.logoUrl || s.schoolInfo.schoolLogo)) || '';
   }
 
   function getPrincipalSignature() {
     var s = getSettings();
-    return s.principalSignatureUrl || '';
+    return s.principalSignatureStorageUrl || s.principalSignatureUrl || (s.schoolInfo && (s.schoolInfo.principalSignatureStorageUrl || s.schoolInfo.principalSignatureUrl)) || '';
   }
 
   function getPrincipalName() {
@@ -1696,10 +1696,31 @@
         if (win) {
           win.onload = function() {
             win.focus();
-            setTimeout(function() {
-              win.print();
+            var doPrint = function() {
+              try { win.print(); } catch(e) {}
               URL.revokeObjectURL(url);
-            }, 300);
+            };
+            var imgs = Array.from((win.document && win.document.images) || []);
+            var pending = imgs.filter(function(img) { return !img.complete; });
+            if (pending.length === 0) {
+              setTimeout(doPrint, 150);
+            } else {
+              var count = 0;
+              var timeout = setTimeout(doPrint, 3000);
+              pending.forEach(function(img) {
+                var onDone = function() {
+                  img.removeEventListener('load', onDone);
+                  img.removeEventListener('error', onDone);
+                  count++;
+                  if (count >= pending.length) {
+                    clearTimeout(timeout);
+                    doPrint();
+                  }
+                };
+                img.addEventListener('load', onDone);
+                img.addEventListener('error', onDone);
+              });
+            }
           };
         } else {
           // Popup blocked fallback: hidden iframe print

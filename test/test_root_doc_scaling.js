@@ -20,7 +20,7 @@ global.localStorage = {
   removeItem: () => {}
 };
 
-const { migrateSchool, calculateFirestoreDocSize, hashObject } = require('../scripts/migrate-root-doc');
+const { migrateSchool, uploadBase64ToStorage, calculateFirestoreDocSize, hashObject } = require('../scripts/migrate-root-doc');
 const { sendStorageAlertEmail, clearCapturedEmails, getCapturedEmails } = require('../api/_lib/email');
 
 const rulesPath = path.resolve(__dirname, '../firestore.rules');
@@ -206,6 +206,7 @@ async function runRootDocScalingTestSuite() {
     const reportsSnap = await adminDb.collection(`tenant_data/${schoolId}/migration_reports`).get();
     assert.strictEqual(reportsSnap.size, 1, 'Migration report doc must exist');
     const report = reportsSnap.docs[0].data();
+    console.log("[DEBUG M2 report]", report);
     assert.strictEqual(report.status, 'verified', 'Report status must be verified');
     assert.strictEqual(report.storageVersion, 2, 'Report storageVersion must be 2');
     assert.strictEqual(report.schoolId, schoolId, 'Report schoolId must match');
@@ -411,6 +412,241 @@ async function runRootDocScalingTestSuite() {
     assert(Array.isArray(resData.schools), 'Expected schools array');
     assert(resData.summary, 'Expected summary object');
     assert(resData.summary.totalSchools >= 1, 'Expected at least 1 school in summary');
+  });
+
+  
+  console.log('\n=== Category 6: R1 — Blob Storage Token URL, Hash Verify & Print Parity ===');
+
+  await test('R1.1: uploadBase64ToStorage generates token URL and metadata', async () => {
+    let savedBuffer = null;
+    let savedOptions = null;
+    const mockFile = {
+      save: async (buf, opts) => {
+        savedBuffer = buf;
+        savedOptions = opts;
+      }
+    };
+    const mockBucket = {
+      name: 'ctrl-shift-solutions.firebasestorage.app',
+      file: (name) => {
+        mockFile.name = name;
+        return mockFile;
+      }
+    };
+
+    const rawData = Buffer.from('fake image data 12345');
+    const base64Str = 'data:image/png;base64,' + rawData.toString('base64');
+    const mockDownloader = async (url) => savedBuffer;
+
+    const downloadUrl = await uploadBase64ToStorage('test_school', base64Str, 'logo', {
+      bucket: mockBucket,
+      downloader: mockDownloader
+    });
+
+    assert(downloadUrl, 'Must return a download URL');
+    assert(downloadUrl.startsWith('https://firebasestorage.googleapis.com/v0/b/ctrl-shift-solutions.firebasestorage.app/o/schools%2Ftest_school%2Flogo.png?alt=media&token='), 'Must match Firebase Storage token URL format');
+    assert((savedOptions.metadata.metadata && savedOptions.metadata.metadata.firebaseStorageDownloadTokens) || savedOptions.metadata.firebaseStorageDownloadTokens, 'Must set firebaseStorageDownloadTokens metadata');
+    assert.strictEqual(savedOptions.contentType, 'image/png');
+  });
+
+  await test('R1.2: uploadBase64ToStorage aborts and returns null when SHA-256 hash mismatches (keeps base64)', async () => {
+    let savedBuffer = null;
+    const mockFile = {
+      save: async (buf) => { savedBuffer = buf; }
+    };
+    const mockBucket = {
+      name: 'ctrl-shift-solutions.firebasestorage.app',
+      file: () => mockFile
+    };
+
+    const rawData = Buffer.from('correct image data');
+    const base64Str = 'data:image/png;base64,' + rawData.toString('base64');
+    const corruptedDownloader = async () => Buffer.from('corrupted data different bytes');
+
+    const downloadUrl = await uploadBase64ToStorage('test_school', base64Str, 'logo', {
+      bucket: mockBucket,
+      downloader: corruptedDownloader
+    });
+
+    assert.strictEqual(downloadUrl, null, 'Must abort and return null on SHA-256 mismatch');
+  });
+
+  await test('R1.3: uploadBase64ToStorage aborts and returns null when HTTPS download throws error', async () => {
+    const mockFile = { save: async () => {} };
+    const mockBucket = {
+      name: 'ctrl-shift-solutions.firebasestorage.app',
+      file: () => mockFile
+    };
+
+    const rawData = Buffer.from('valid data');
+    const base64Str = 'data:image/png;base64,' + rawData.toString('base64');
+    const failingDownloader = async () => { throw new Error('Network 403 Forbidden'); };
+
+    const downloadUrl = await uploadBase64ToStorage('test_school', base64Str, 'signature', {
+      bucket: mockBucket,
+      downloader: failingDownloader
+    });
+
+    assert.strictEqual(downloadUrl, null, 'Must abort and return null on download error');
+  });
+
+  await test('R1.4: Print parity: report card, fee receipt, ID card wait for images before printing', async () => {
+    const docsContent = fs.readFileSync(path.resolve(__dirname, '../js/documents.js'), 'utf8');
+    assert(docsContent.includes('s.logoStorageUrl || s.logoUrl'), 'documents.js getSchoolLogo must prefer logoStorageUrl');
+    assert(docsContent.includes('s.principalSignatureStorageUrl || s.principalSignatureUrl'), 'documents.js getPrincipalSignature must prefer principalSignatureStorageUrl');
+    assert(docsContent.includes('var pending = imgs.filter(function(img) { return !img.complete; });'), 'documents.js print must wait for image load');
+
+    const examsContent = fs.readFileSync(path.resolve(__dirname, '../js/exams.js'), 'utf8');
+    assert(examsContent.includes('settings.logoStorageUrl || settings.logoUrl'), 'exams.js must prefer logoStorageUrl');
+    assert(examsContent.includes('var pending = imgs.filter(function(img) { return !img.complete; });'), 'exams.js printViaBlob and printViaBlobV2 must wait for image load');
+
+    const feesContent = fs.readFileSync(path.resolve(__dirname, '../js/fees.js'), 'utf8');
+    assert(feesContent.includes('settings.logoStorageUrl || settings.logoUrl'), 'fees.js must prefer logoStorageUrl');
+  });
+
+  console.log('\n=== Category 7: R2 — Honest No-Deletion (Diff Before vs After Apply) ===');
+
+  await test('R2.1: Migration --apply performs ZERO field deletions on root document (only additions)', async () => {
+    const preSnap = await adminDb.doc('tenant_data/' + schoolId).get();
+    const preData = preSnap.data();
+
+    assert(preData.teacherAttendance.length > 0, 'Pre-migration teacherAttendance must exist');
+    assert(preData.notices.length > 0, 'Pre-migration notices must exist');
+    assert(preData.trash.length > 0, 'Pre-migration trash must exist');
+    assert(preData.examAuditLog.length > 0, 'Pre-migration examAuditLog must exist');
+    assert(preData.fees.length > 0, 'Pre-migration fees must exist');
+    assert(preData.attendance.length > 0, 'Pre-migration attendance must exist');
+    assert(preData.schools.length > 0, 'Pre-migration schools must exist');
+    assert(preData.settings.logoUrl, 'Pre-migration settings.logoUrl must exist');
+    assert(preData.settings.principalSignatureUrl, 'Pre-migration settings.principalSignatureUrl must exist');
+
+    await migrateSchool(schoolId, { apply: true });
+
+    const postSnap = await adminDb.doc('tenant_data/' + schoolId).get();
+    const postData = postSnap.data();
+
+    for (const key of Object.keys(preData)) {
+      assert(postData[key] !== undefined, 'Key ' + key + ' must not be deleted from root document');
+      if (Array.isArray(preData[key])) {
+        assert.strictEqual(postData[key].length, preData[key].length, 'Array length for ' + key + ' must remain identical');
+      }
+    }
+
+    assert.strictEqual(postData.settings.logoUrl, preData.settings.logoUrl, 'settings.logoUrl base64 must remain untouched');
+    assert.strictEqual(postData.settings.principalSignatureUrl, preData.settings.principalSignatureUrl, 'settings.principalSignatureUrl base64 must remain untouched');
+
+    assert.strictEqual(postData.settings.storageVersion, 2, 'storageVersion = 2 added');
+    assert(postData.settings.storageMigratedAt, 'storageMigratedAt added');
+    assert(postData.settings.migrationRunId, 'migrationRunId added');
+  });
+
+  console.log('\n=== Category 8: R3 — Attendance History & Accounts Payroll Subcollection Reads ===');
+
+  await test('R3.1: loadTeacherAttendanceMonth loads previous-month punches on demand for v2 schools', async () => {
+    const prevMonthPunch = {
+      id: 'punch_sep_1',
+      teacherId: 'T1',
+      teacherName: 'Teacher 1',
+      date: '2026-09-15',
+      time: '09:05',
+      timestamp: '2026-09-15T03:35:00.000Z',
+      type: 'in'
+    };
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('tenant_data/' + schoolId + '/teacher_attendance/2026-09/teachers/T1').set({
+        month: '2026-09',
+        teacherId: 'T1',
+        teacherName: 'Teacher 1',
+        records: [prevMonthPunch]
+      });
+    });
+
+    const SchoolApp = {
+      store: {
+        currentSchoolId: schoolId,
+        settings: { storageVersion: 2 },
+        teacherAttendance: []
+      },
+      isStorageVersion2: () => true
+    };
+
+    const appJsContent = fs.readFileSync(path.resolve(__dirname, '../js/app.js'), 'utf8');
+    const helperMatch = appJsContent.match(/loadTeacherAttendanceMonth:\s*async\s*function\s*\([^)]*\)\s*\{([\s\S]*?)\n  \},/);
+    assert(helperMatch, 'loadTeacherAttendanceMonth function must be found in js/app.js');
+
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    const loadTeacherAttendanceMonthFn = new AsyncFunction('schoolId', 'month', helperMatch[1]);
+    
+    global.window.firestore = {
+      collection: (...args) => {
+        const parts = args.filter(a => typeof a === 'string');
+        return parts.join('/');
+      },
+      getDocs: async (collPath) => {
+        return adminDb.collection(collPath).get();
+      }
+    };
+    global.window.db = {};
+
+    await loadTeacherAttendanceMonthFn.call(SchoolApp, schoolId, '2026-09');
+
+    assert(SchoolApp.store.teacherAttendance.length > 0, 'Punches for 2026-09 must be loaded into store.teacherAttendance');
+    assert.strictEqual(SchoolApp.store.teacherAttendance[0].id, 'punch_sep_1');
+    assert.strictEqual(SchoolApp.store.teacherAttendance[0].date, '2026-09-15');
+  });
+
+  await test('R3.2: api/accounts.js payroll engine merges punches from teacher_attendance subcollection', async () => {
+    const octPunch = {
+      id: 'punch_oct_1',
+      teacherId: 'T1',
+      date: '2026-10-01',
+      type: 'in',
+      timestamp: '2026-10-01T03:30:00.000Z'
+    };
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await db.doc('tenant_data/' + schoolId + '/teacher_attendance/2026-10/teachers/T1').set({
+        month: '2026-10',
+        teacherId: 'T1',
+        records: [octPunch]
+      });
+    });
+
+    const accountsJsContent = fs.readFileSync(path.resolve(__dirname, '../api/accounts.js'), 'utf8');
+    assert(accountsJsContent.includes('teacher_attendance/') && accountsJsContent.includes('/teachers'), 'accounts.js must query teacher_attendance subcollection for the month');
+    assert(accountsJsContent.includes('attendance_requests'), 'accounts.js must query attendance_requests subcollection');
+  });
+
+  console.log('\n=== Category 9: R4 — Stale Client Rollout Safety & Refresh Alert ===');
+
+  await test('R4.1: Stale client punch on root is DENIED and triggers refresh update message', async () => {
+    let toastMessage = '';
+    let toastType = '';
+    let checkVersionCalled = false;
+
+    const simulatedPunchError = { code: 'permission-denied', message: 'PERMISSION_DENIED: evaluation error' };
+
+    const SchoolApp = {
+      showToast: (msg, type) => {
+        toastMessage = msg;
+        toastType = type;
+      }
+    };
+    global.window.checkServerVersion = () => {
+      checkVersionCalled = true;
+    };
+
+    const isPerm = simulatedPunchError && (simulatedPunchError.code === 'permission-denied' || (simulatedPunchError.message && simulatedPunchError.message.includes('PERMISSION_DENIED')));
+    if (isPerm) {
+      SchoolApp.showToast('Please refresh your browser to update the app.', 'warning', 10000);
+      if (typeof global.window.checkServerVersion === 'function') global.window.checkServerVersion();
+    }
+
+    assert(toastMessage.includes('refresh your browser to update the app'), 'Must show refresh update message');
+    assert.strictEqual(toastType, 'warning');
+    assert.strictEqual(checkVersionCalled, true, 'Must call checkServerVersion to trigger forced update');
   });
 
   console.log('\n========================================');

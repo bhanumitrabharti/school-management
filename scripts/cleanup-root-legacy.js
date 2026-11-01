@@ -108,6 +108,33 @@ async function cleanupRootLegacy(schoolId, confirmSchool, iHaveBhanuGo) {
     }
   }
 
+  // Base64 field cleanup (only when Storage URL is present and verified)
+  if (data.settings && data.settings.logoStorageUrl) {
+    if (data.settings.logoUrl && data.settings.logoUrl.startsWith('data:')) {
+      deleteUpdate['settings.logoUrl'] = '';
+      removedCount++;
+      console.log('  - Clearing base64 settings.logoUrl (logoStorageUrl is verified)');
+    }
+    if (data.settings.schoolInfo && data.settings.schoolInfo.logoUrl && data.settings.schoolInfo.logoUrl.startsWith('data:')) {
+      deleteUpdate['settings.schoolInfo.logoUrl'] = '';
+      removedCount++;
+      console.log('  - Clearing base64 settings.schoolInfo.logoUrl');
+    }
+  }
+
+  if (data.settings && data.settings.principalSignatureStorageUrl) {
+    if (data.settings.principalSignatureUrl && data.settings.principalSignatureUrl.startsWith('data:')) {
+      deleteUpdate['settings.principalSignatureUrl'] = '';
+      removedCount++;
+      console.log('  - Clearing base64 settings.principalSignatureUrl (principalSignatureStorageUrl is verified)');
+    }
+    if (data.settings.schoolInfo && data.settings.schoolInfo.principalSignatureUrl) {
+      deleteUpdate['settings.schoolInfo.principalSignatureUrl'] = '';
+      removedCount++;
+      console.log('  - Clearing base64 settings.schoolInfo.principalSignatureUrl');
+    }
+  }
+
   if (removedCount === 0) {
     console.log(`No legacy fields found on root doc. Root is already clean.`);
     return;

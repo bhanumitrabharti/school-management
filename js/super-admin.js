@@ -2640,7 +2640,7 @@ window.saAuth = auth;
             document.getElementById('sf-plan').value      = school.plan || 'Basic';
             document.getElementById('sf-status').value    = school.status || 'Active';
             document.getElementById('sf-renewal').value   = school.renewal_date || '';
-            document.getElementById('sf-logo-url').value  = school.logo_url || '';
+            document.getElementById('sf-logo-url').value  = school.logo_url || (school.settings && (school.settings.logoStorageUrl || school.settings.logoUrl)) || '';
 
             // Check matching feature toggles if school already has explicit allowed_features
             var features = school.allowed_features;

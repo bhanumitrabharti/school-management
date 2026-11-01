@@ -2096,8 +2096,63 @@ async function handler(req, res) {
     const rootSnap = await rootDocRef.get();
     const rootData = rootSnap.exists ? rootSnap.data() : {};
     const teachersList = Array.isArray(rootData.teachers) ? rootData.teachers : [];
-    const teacherAttendance = Array.isArray(rootData.teacherAttendance) ? rootData.teacherAttendance : [];
-    const attendanceRequests = Array.isArray(rootData.attendanceRequests) ? rootData.attendanceRequests : (Array.isArray(rootData.teacherCorrectionRequests) ? rootData.teacherCorrectionRequests : []);
+    const rootAttendance = Array.isArray(rootData.teacherAttendance) ? rootData.teacherAttendance : [];
+    const rootRequests = Array.isArray(rootData.attendanceRequests) ? rootData.attendanceRequests : (Array.isArray(rootData.teacherCorrectionRequests) ? rootData.teacherCorrectionRequests : []);
+
+    // 1b. Fetch teacher_attendance for this month from subcollection (tenant_data/${schoolId}/teacher_attendance/${month}/teachers)
+    const subPunches = [];
+    try {
+      const punchDocsSnap = await db.collection(`tenant_data/${schoolId}/teacher_attendance/${month}/teachers`).get();
+      punchDocsSnap.forEach(d => {
+        const pData = d.data();
+        if (Array.isArray(pData.records)) {
+          subPunches.push(...pData.records);
+        }
+      });
+    } catch (err) {
+      console.warn('[Accounts Payroll] Note: could not fetch teacher_attendance subcollection for', month, err.message);
+    }
+
+    // Merge and deduplicate punches
+    const punchMap = new Map();
+    rootAttendance.forEach((p, idx) => {
+      if (!p) return;
+      const key = p.id || `${p.teacherId || ''}_${p.date || ''}_${p.timestamp || ''}_${p.type || ''}` || `root_punch_${idx}`;
+      punchMap.set(key, p);
+    });
+    subPunches.forEach((p, idx) => {
+      if (!p) return;
+      const key = p.id || `${p.teacherId || ''}_${p.date || ''}_${p.timestamp || ''}_${p.type || ''}` || `sub_punch_${idx}`;
+      punchMap.set(key, p);
+    });
+    const teacherAttendance = Array.from(punchMap.values());
+
+    // 1c. Fetch attendance_requests from subcollection (tenant_data/${schoolId}/attendance_requests)
+    const subRequests = [];
+    try {
+      const reqDocsSnap = await db.collection(`tenant_data/${schoolId}/attendance_requests`).get();
+      reqDocsSnap.forEach(d => {
+        const rData = d.data();
+        rData.id = d.id;
+        subRequests.push(rData);
+      });
+    } catch (err) {
+      console.warn('[Accounts Payroll] Note: could not fetch attendance_requests subcollection:', err.message);
+    }
+
+    // Merge and deduplicate attendance requests
+    const reqMap = new Map();
+    rootRequests.forEach((r, idx) => {
+      if (!r) return;
+      const key = r.id || `${r.teacherId || ''}_${r.requestDate || r.date || ''}_${r.type || ''}` || `root_req_${idx}`;
+      reqMap.set(key, r);
+    });
+    subRequests.forEach((r, idx) => {
+      if (!r) return;
+      const key = r.id || `${r.teacherId || ''}_${r.requestDate || r.date || ''}_${r.type || ''}` || `sub_req_${idx}`;
+      reqMap.set(key, r);
+    });
+    const attendanceRequests = Array.from(reqMap.values());
 
     // 2. Fetch Staff
     const staffSnaps = await db.collection(`tenant_data/${schoolId}/staff`).get();

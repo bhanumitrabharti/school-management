@@ -154,11 +154,36 @@
     }
     printWin.onload = function() {
       printWin.document.title = filename;
-      printWin.focus();
-      printWin.print();
+      var doPrint = function() {
+        try {
+          printWin.focus();
+          printWin.print();
+        } catch(e) {}
+      };
+      var imgs = Array.from((printWin.document && printWin.document.images) || []);
+      var pending = imgs.filter(function(img) { return !img.complete; });
+      if (pending.length === 0) {
+        doPrint();
+      } else {
+        var count = 0;
+        var timeout = setTimeout(doPrint, 3000);
+        pending.forEach(function(img) {
+          var onDone = function() {
+            img.removeEventListener('load', onDone);
+            img.removeEventListener('error', onDone);
+            count++;
+            if (count >= pending.length) {
+              clearTimeout(timeout);
+              doPrint();
+            }
+          };
+          img.addEventListener('load', onDone);
+          img.addEventListener('error', onDone);
+        });
+      }
       setTimeout(function() {
         URL.revokeObjectURL(url);
-      }, 5000);
+      }, 60000);
     };
   }
 
@@ -207,8 +232,33 @@
     }
     printWin.onload = function() {
       printWin.document.title = filename;
-      printWin.focus();
-      printWin.print();
+      var doPrint = function() {
+        try {
+          printWin.focus();
+          printWin.print();
+        } catch(e) {}
+      };
+      var imgs = Array.from((printWin.document && printWin.document.images) || []);
+      var pending = imgs.filter(function(img) { return !img.complete; });
+      if (pending.length === 0) {
+        doPrint();
+      } else {
+        var count = 0;
+        var timeout = setTimeout(doPrint, 3000);
+        pending.forEach(function(img) {
+          var onDone = function() {
+            img.removeEventListener('load', onDone);
+            img.removeEventListener('error', onDone);
+            count++;
+            if (count >= pending.length) {
+              clearTimeout(timeout);
+              doPrint();
+            }
+          };
+          img.addEventListener('load', onDone);
+          img.addEventListener('error', onDone);
+        });
+      }
       setTimeout(function() {
         URL.revokeObjectURL(url);
       }, 60000);
@@ -759,7 +809,7 @@ calculateMultiExamResult: function(params) {
       var website = settings.website || settings.schoolWebsite || schoolInfo.website || '';
       var udise = settings.udiseCode || settings.udiseNo || schoolInfo.udiseCode || '';
       var affiliation = settings.affiliation || settings.affiliationNo || schoolInfo.affiliation || '';
-      var logo = settings.logoUrl || settings.schoolLogo || schoolInfo.logoUrl || '';
+      var logo = settings.logoStorageUrl || settings.logoUrl || settings.schoolLogo || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo)) || '';
 
       var termName = activeTerm ? activeTerm.name : 'TERM EXAMINATION';
       // FIX 3: No invented session in v2 code (empty string if no session configured)
@@ -3132,7 +3182,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
     var email = settings.email || settings.schoolEmail || schoolInfo.email || '';
     var website = settings.website || settings.schoolWebsite || schoolInfo.website || '';
     var udise = settings.udiseCode || settings.udiseNo || settings.udise || schoolInfo.udiseCode || schoolInfo.udise || '';
-    var logo = settings.logoUrl || schoolInfo.logoUrl || '';
+    var logo = settings.logoStorageUrl || settings.logoUrl || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl)) || '';
 
     var termName = activeTerm ? activeTerm.name : 'ANNUAL EXAMINATION';
     var academicSession = (settings && settings.academicYear) || '2025-26';
@@ -3474,7 +3524,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     var settings = SchoolApp.store.settings || {};
     var info = settings.schoolInfo || {};
-    var logoUrl = settings.logoUrl || info.logoUrl || '';
+    var logoUrl = settings.logoStorageUrl || settings.logoUrl || (info && (info.logoStorageUrl || info.logoUrl)) || '';
     if (!logoUrl) {
       logoUrl = new URL('school-logo-updated.jpg', window.location.href).href + '?t=' + new Date().getTime();
     }

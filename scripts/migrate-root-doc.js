@@ -2,6 +2,8 @@ const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
+const http = require('http');
 
 // Load Admin SDK
 if (!admin.apps.length) {
@@ -70,24 +72,82 @@ function calculateFirestoreDocSize(docPath, data) {
   return pathBytes + 32 + fieldsSize;
 }
 
-async function uploadBase64ToStorage(schoolId, base64Str, blobName) {
-  if (!bucket || !base64Str || !base64Str.startsWith('data:')) return null;
+function downloadBufferOverHttps(url) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https:') ? https : http;
+    const req = client.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return downloadBufferOverHttps(res.headers.location).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP status ${res.statusCode}`));
+      }
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', err => reject(err));
+    });
+    req.on('error', err => reject(err));
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('Download timeout after 10s'));
+    });
+  });
+}
+
+async function uploadBase64ToStorage(schoolId, base64Str, blobName, options = {}) {
+  const currentBucket = options.bucket || bucket;
+  if (!currentBucket || !base64Str || !base64Str.startsWith('data:')) return null;
   const match = base64Str.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) return null;
   const mimeType = match[1];
   const buffer = Buffer.from(match[2], 'base64');
-  const ext = mimeType.split('/')[1] || 'png';
-  const fileName = `schools/${schoolId}/branding/${blobName}_${Date.now()}.${ext}`;
-  const file = bucket.file(fileName);
+  let ext = mimeType.split('/')[1] || 'png';
+  if (ext === 'jpeg') ext = 'jpg';
+  if (ext === 'svg+xml') ext = 'svg';
+
+  // Standard storage path convention:
+  // Logo: schools/{schoolId}/logo.<ext>
+  // Signature: schools/{schoolId}/signature.<ext>
+  let fileName;
+  if (blobName === 'logo' || blobName.includes('logo')) {
+    fileName = `schools/${schoolId}/logo.${ext}`;
+  } else {
+    fileName = `schools/${schoolId}/signature.${ext}`;
+  }
+
+  const token = (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'));
+  const file = currentBucket.file(fileName);
 
   await file.save(buffer, {
     contentType: mimeType,
     metadata: {
-      cacheControl: 'public, max-age=31536000'
+      cacheControl: 'public, max-age=31536000',
+      metadata: {
+        firebaseStorageDownloadTokens: token
+      }
     }
   });
-  await file.makePublic().catch(() => {});
-  return `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+  const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${currentBucket.name}/o/${encodeURIComponent(fileName)}?alt=media&token=${token}`;
+
+  // SHA-256 verification before returning URL
+  const expectedHash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const downloader = options.downloader || downloadBufferOverHttps;
+  try {
+    const downloadedBuffer = await downloader(downloadUrl);
+    const actualHash = crypto.createHash('sha256').update(downloadedBuffer).digest('hex');
+    if (expectedHash !== actualHash) {
+      console.error(`[BLOB ABORT] SHA-256 mismatch for ${blobName} at ${downloadUrl}. Expected: ${expectedHash}, Actual: ${actualHash}. Aborting blob update; keeping base64.`);
+      return null;
+    }
+    console.log(`✔ [Blob Verified] SHA-256 matched (${expectedHash.slice(0, 12)}...) for ${fileName}`);
+  } catch (downloadErr) {
+    console.error(`[BLOB ABORT] Failed to download uploaded blob over HTTPS for verification: ${downloadErr.message}. Aborting blob update; keeping base64.`);
+    return null;
+  }
+
+  return downloadUrl;
 }
 
 async function migrateSchool(schoolId, options = {}) {
@@ -122,190 +182,87 @@ async function migrateSchool(schoolId, options = {}) {
     keys: {},
     blobs: [],
     projectedFreedBytes: 0,
-    projectedFinalBytes: currentSizeBytes
+    projectedAfterMigrationBytes: 0,
+    projectedAfterMigrationKB: 0,
+    projectedAfterCleanupBytes: 0,
+    projectedAfterCleanupKB: 0,
+    cleanupSavingsKB: 0,
+    reductionPercent: 0
   };
 
-  // 1. Teacher Attendance Punches
+  // 1. teacherAttendance -> tenant_data/{schoolId}/teacher_attendance/{YYYY-MM}/teachers/{teacherId}
   if (!targetKey || targetKey === 'teacherAttendance') {
-    const rawPunches = Array.isArray(rootData.teacherAttendance) ? rootData.teacherAttendance : [];
-    const rawBytes = getFirestoreValueSize(rawPunches);
-    const buckets = {}; // monthKey -> teacherId -> records[]
+    const rawAttendance = rootData.teacherAttendance;
+    if (Array.isArray(rawAttendance) && rawAttendance.length > 0) {
+      const bytes = getFirestoreValueSize(rawAttendance);
+      const buckets = {};
+      rawAttendance.forEach(p => {
+        if (!p) return;
+        const dateStr = p.date || (p.timestamp ? p.timestamp.slice(0, 10) : new Date().toISOString().slice(0, 10));
+        const monthKey = dateStr.slice(0, 7);
+        const teacherId = p.teacherId || 'unknown_teacher';
 
-    for (const p of rawPunches) {
-      if (!p) continue;
-      const mKey = (p.date || '').slice(0, 7) || 'unknown';
-      const tId = p.teacherId || 'unknown';
-      if (!buckets[mKey]) buckets[mKey] = {};
-      if (!buckets[mKey][tId]) buckets[mKey][tId] = [];
-      buckets[mKey][tId].push(p);
-    }
+        if (!buckets[monthKey]) buckets[monthKey] = {};
+        if (!buckets[monthKey][teacherId]) buckets[monthKey][teacherId] = [];
+        buckets[monthKey][teacherId].push(p);
+      });
 
-    let docCount = 0;
-    Object.keys(buckets).forEach(m => { docCount += Object.keys(buckets[m]).length; });
+      let targetDocCount = 0;
+      Object.keys(buckets).forEach(m => {
+        targetDocCount += Object.keys(buckets[m]).length;
+      });
 
-    plan.keys.teacherAttendance = {
-      sourceCount: rawPunches.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/teacher_attendance/{YYYY-MM}/teachers/{teacherId}`,
-      targetDocCount: docCount,
-      hash: hashObject(rawPunches),
-      buckets
-    };
-    plan.projectedFreedBytes += rawBytes;
-  }
-
-  // 2. Attendance Requests & Teacher Correction Requests
-  if (!targetKey || targetKey === 'attendanceRequests') {
-    const reqs1 = Array.isArray(rootData.attendanceRequests) ? rootData.attendanceRequests : [];
-    const reqs2 = Array.isArray(rootData.teacherCorrectionRequests) ? rootData.teacherCorrectionRequests : [];
-    const seenIds = new Set();
-    const combinedReqs = [];
-    [...reqs1, ...reqs2].forEach(r => {
-      if (!r) return;
-      const rid = r.id || hashObject(r);
-      if (!seenIds.has(rid)) {
-        seenIds.add(rid);
-        combinedReqs.push({ ...r, id: rid });
-      }
-    });
-
-    const rawBytes = getFirestoreValueSize(reqs1) + getFirestoreValueSize(reqs2);
-    plan.keys.attendanceRequests = {
-      sourceCount: combinedReqs.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/attendance_requests/{id}`,
-      targetDocCount: combinedReqs.length,
-      hash: hashObject(combinedReqs),
-      records: combinedReqs
-    };
-    plan.projectedFreedBytes += rawBytes;
-  }
-
-  // 3. Absence Intimations
-  if (!targetKey || targetKey === 'absenceIntimationLog') {
-    const rawIntimations = Array.isArray(rootData.absenceIntimationLog) ? rootData.absenceIntimationLog : [];
-    const rawBytes = getFirestoreValueSize(rawIntimations);
-    const records = rawIntimations.map((item, idx) => ({ ...item, id: item.id || `INTIM_${idx}_${hashObject(item)}` }));
-
-    plan.keys.absenceIntimationLog = {
-      sourceCount: records.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/absence_intimations/{id}`,
-      targetDocCount: records.length,
-      hash: hashObject(records),
-      records
-    };
-    plan.projectedFreedBytes += rawBytes;
-  }
-
-  // 4. Notices
-  if (!targetKey || targetKey === 'notices') {
-    const rawNotices = Array.isArray(rootData.notices) ? rootData.notices : [];
-    const rawBytes = getFirestoreValueSize(rawNotices);
-    const records = rawNotices.map((n, idx) => ({ ...n, id: n.id || `NOTICE_${idx}_${hashObject(n)}` }));
-
-    plan.keys.notices = {
-      sourceCount: records.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/notices/{id}`,
-      targetDocCount: records.length,
-      hash: hashObject(records),
-      records
-    };
-    plan.projectedFreedBytes += rawBytes;
-  }
-
-  // 5. Notifications
-  if (!targetKey || targetKey === 'notifications') {
-    const rawNotifs = Array.isArray(rootData.notifications) ? rootData.notifications : [];
-    const rawBytes = getFirestoreValueSize(rawNotifs);
-    const records = rawNotifs.map((n, idx) => ({ ...n, id: n.id || `NOTIF_${idx}_${hashObject(n)}` }));
-
-    plan.keys.notifications = {
-      sourceCount: records.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/notifications/{id}`,
-      targetDocCount: records.length,
-      hash: hashObject(records),
-      records
-    };
-    plan.projectedFreedBytes += rawBytes;
-  }
-
-  // 6. Exam Audit Log
-  if (!targetKey || targetKey === 'examAuditLog') {
-    const rawLogs1 = Array.isArray(rootData.examAuditLog) ? rootData.examAuditLog : [];
-    const rawLogs2 = Array.isArray(rootData.examMarksAuditLog) ? rootData.examMarksAuditLog : [];
-    const combined = [...rawLogs1, ...rawLogs2];
-    const rawBytes = getFirestoreValueSize(combined);
-    const records = combined.map((l, idx) => ({ ...l, id: l.id || `EXAUDIT_${idx}_${hashObject(l)}` }));
-
-    plan.keys.examAuditLog = {
-      sourceCount: records.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/exam_audit_log/{id}`,
-      targetDocCount: records.length,
-      hash: hashObject(records),
-      records
-    };
-    plan.projectedFreedBytes += rawBytes;
-  }
-
-  // 7. Fee Activity Log (only if present on root doc)
-  if (!targetKey || targetKey === 'feeActivityLog') {
-    const rawLogs = Array.isArray(rootData.feeActivityLog) ? rootData.feeActivityLog : [];
-    if (rawLogs.length > 0) {
-      const rawBytes = getFirestoreValueSize(rawLogs);
-      const records = rawLogs.map((l, idx) => ({ ...l, id: l.id || `FEELOG_${idx}_${hashObject(l)}` }));
-      plan.keys.feeActivityLog = {
-        sourceCount: records.length,
-        sourceBytes: rawBytes,
-        sourceKB: +(rawBytes / 1024).toFixed(2),
-        targetCollection: `tenant_data/${schoolId}/fee_activity_logs/{id}`,
-        targetDocCount: records.length,
-        hash: hashObject(records),
-        records
+      plan.keys.teacherAttendance = {
+        sourceCount: rawAttendance.length,
+        sourceBytes: bytes,
+        sourceKB: +(bytes / 1024).toFixed(2),
+        targetCollection: `tenant_data/${schoolId}/teacher_attendance/{YYYY-MM}/teachers/{teacherId}`,
+        targetDocCount,
+        hash: hashObject(rawAttendance),
+        buckets
       };
-      plan.projectedFreedBytes += rawBytes;
+      plan.projectedFreedBytes += bytes;
     }
   }
 
-  // 8. Trash
-  if (!targetKey || targetKey === 'trash') {
-    const rawTrash = Array.isArray(rootData.trash) ? rootData.trash : [];
-    const rawBytes = getFirestoreValueSize(rawTrash);
-    const records = rawTrash.map((t, idx) => ({ ...t, id: t.id || `TRASH_${idx}_${hashObject(t)}` }));
-
-    plan.keys.trash = {
-      sourceCount: records.length,
-      sourceBytes: rawBytes,
-      sourceKB: +(rawBytes / 1024).toFixed(2),
-      targetCollection: `tenant_data/${schoolId}/trash/{id}`,
-      targetDocCount: records.length,
-      hash: hashObject(records),
-      records
-    };
-    plan.projectedFreedBytes += rawBytes;
+  // Helper for single document records
+  function planSingleCollection(keyName, targetSub) {
+    if (targetKey && targetKey !== keyName) return;
+    const raw = rootData[keyName];
+    if (Array.isArray(raw) && raw.length > 0) {
+      const bytes = getFirestoreValueSize(raw);
+      plan.keys[keyName] = {
+        sourceCount: raw.length,
+        sourceBytes: bytes,
+        sourceKB: +(bytes / 1024).toFixed(2),
+        targetCollection: `tenant_data/${schoolId}/${targetSub}/{id}`,
+        targetDocCount: raw.length,
+        hash: hashObject(raw),
+        records: raw
+      };
+      plan.projectedFreedBytes += bytes;
+    }
   }
 
-  // 9. Base64 Blobs in Settings
-  if (!targetKey || targetKey === 'blobs') {
-    const s = rootData.settings || {};
-    const checkBlob = (val, pathName) => {
-      if (typeof val === 'string' && val.startsWith('data:image/')) {
-        const bBytes = getFirestoreValueSize(val);
-        plan.blobs.push({
-          path: pathName,
-          sizeBytes: bBytes,
-          sizeKB: +(bBytes / 1024).toFixed(2)
-        });
-        plan.projectedFreedBytes += bBytes;
+  planSingleCollection('attendanceRequests', 'attendance_requests');
+  if (!plan.keys.attendanceRequests) {
+    planSingleCollection('teacherCorrectionRequests', 'attendance_requests');
+  }
+  planSingleCollection('absenceIntimationLog', 'absence_intimations');
+  planSingleCollection('notices', 'notices');
+  planSingleCollection('notifications', 'notifications');
+  planSingleCollection('examAuditLog', 'exam_audit_log');
+  planSingleCollection('feeActivityLog', 'fee_activity_logs');
+  planSingleCollection('trash', 'trash');
+
+  // Base64 Blobs in settings
+  if (rootData.settings && typeof rootData.settings === 'object') {
+    const s = rootData.settings;
+    const checkBlob = (val, p) => {
+      if (typeof val === 'string' && val.startsWith('data:')) {
+        const b = Buffer.byteLength(val, 'utf8');
+        plan.blobs.push({ path: p, sizeBytes: b, sizeKB: +(b / 1024).toFixed(2) });
+        plan.projectedFreedBytes += b;
       }
     };
     checkBlob(s.logoUrl, 'settings.logoUrl');
@@ -316,7 +273,7 @@ async function migrateSchool(schoolId, options = {}) {
     }
   }
 
-  // 10. Legacy arrays already migrated or obsolete (fees, attendance, examMarks, schools, marks)
+  // Legacy arrays already migrated or obsolete
   const legacyKeys = ['fees', 'attendance', 'examMarks', 'marks', 'schools'];
   legacyKeys.forEach(lk => {
     if (rootData[lk] !== undefined) {
@@ -332,16 +289,31 @@ async function migrateSchool(schoolId, options = {}) {
     }
   });
 
-  plan.projectedFinalBytes = Math.max(0, currentSizeBytes - plan.projectedFreedBytes);
-  plan.projectedFinalKB = +(plan.projectedFinalBytes / 1024).toFixed(2);
-  plan.projectedPctOf1MB = +((plan.projectedFinalBytes / 1048576) * 100).toFixed(1);
-  plan.reductionPercent = +(((currentSizeBytes - plan.projectedFinalBytes) / currentSizeBytes) * 100).toFixed(1);
+  // Size calculations:
+  // 1. After migration: root doc fields preserved (no deletion). Only new config fields added.
+  const addedConfigBytes = 350; // storageVersion, storageMigratedAt, migrationRunId, *StorageUrl
+  plan.projectedAfterMigrationBytes = currentSizeBytes + addedConfigBytes;
+  plan.projectedAfterMigrationKB = +(plan.projectedAfterMigrationBytes / 1024).toFixed(2);
+  plan.projectedAfterMigrationPct = +((plan.projectedAfterMigrationBytes / 1048576) * 100).toFixed(1);
+
+  // 2. After cleanup: Phase C (cleanup-root-legacy.js) removes legacy arrays & base64 fields
+  plan.projectedAfterCleanupBytes = Math.max(0, currentSizeBytes - plan.projectedFreedBytes);
+  plan.projectedAfterCleanupKB = +(plan.projectedAfterCleanupBytes / 1024).toFixed(2);
+  plan.projectedAfterCleanupPct = +((plan.projectedAfterCleanupBytes / 1048576) * 100).toFixed(1);
+  plan.cleanupSavingsBytes = plan.projectedFreedBytes;
+  plan.cleanupSavingsKB = +(plan.projectedFreedBytes / 1024).toFixed(2);
+  plan.cleanupReductionPercent = +(((currentSizeBytes - plan.projectedAfterCleanupBytes) / currentSizeBytes) * 100).toFixed(1);
+
+  // Backward compatibility alias:
+  plan.projectedFinalBytes = plan.projectedAfterCleanupBytes;
+  plan.projectedFinalKB = plan.projectedAfterCleanupKB;
+  plan.reductionPercent = plan.cleanupReductionPercent;
 
   // Print Summary Table
   console.log(`\n--- Migration Plan Summary for ${schoolId} ---`);
-  console.log(`Current Root Size   : ${currentSizeKB} KB (${pctOf1MB}% of 1 MiB)`);
-  console.log(`Projected Final Size: ${plan.projectedFinalKB} KB (${plan.projectedPctOf1MB}% of 1 MiB)`);
-  console.log(`Expected Reduction  : ${plan.reductionPercent}% (saves ${(plan.projectedFreedBytes / 1024).toFixed(2)} KB)\n`);
+  console.log(`Current Root Size     : ${currentSizeKB} KB (${pctOf1MB}% of 1 MiB)`);
+  console.log(`After Migration       : ${plan.projectedAfterMigrationKB} KB (${plan.projectedAfterMigrationPct}% of 1 MiB) [Root preserved + ~0.35 KB config]`);
+  console.log(`After Phase C Cleanup : ${plan.projectedAfterCleanupKB} KB (${plan.projectedAfterCleanupPct}% of 1 MiB) [Saves ${plan.cleanupSavingsKB} KB, ${plan.cleanupReductionPercent}% reduction]\n`);
 
   console.log(`Key Breakdown:`);
   Object.keys(plan.keys).forEach(k => {
@@ -351,7 +323,7 @@ async function migrateSchool(schoolId, options = {}) {
   if (plan.blobs.length > 0) {
     console.log(`Base64 Blobs:`);
     plan.blobs.forEach(b => {
-      console.log(`  - ${b.path.padEnd(40)}: ${b.sizeKB} KB -> Storage`);
+      console.log(`  - ${b.path.padEnd(40)}: ${b.sizeKB} KB -> Storage (writes to *StorageUrl, preserves base64)`);
     });
   }
 
@@ -378,62 +350,57 @@ async function migrateSchool(schoolId, options = {}) {
   let currentBatch = db.batch();
   let batchOps = 0;
 
-  const commitBatchIfNeeded = async () => {
+  async function queueWrite(docRef, data, merge = true) {
+    currentBatch.set(docRef, data, { merge });
+    batchOps++;
     if (batchOps >= batchLimit) {
       await currentBatch.commit();
+      console.log(`  ... committed batch of ${batchOps} ops`);
       currentBatch = db.batch();
       batchOps = 0;
     }
-  };
+  }
 
-  const finalCommit = async () => {
+  async function finalCommit() {
     if (batchOps > 0) {
       await currentBatch.commit();
+      console.log(`  ... committed final batch of ${batchOps} ops`);
       currentBatch = db.batch();
       batchOps = 0;
     }
-  };
+  }
 
-  // 2. Migrate Teacher Attendance
-  if (plan.keys.teacherAttendance && plan.keys.teacherAttendance.buckets) {
+  // 2. Migrate teacherAttendance
+  if (plan.keys.teacherAttendance) {
     const buckets = plan.keys.teacherAttendance.buckets;
     for (const mKey of Object.keys(buckets)) {
       for (const tId of Object.keys(buckets[mKey])) {
         const records = buckets[mKey][tId];
         const teacherName = (records[0] && records[0].teacherName) || '';
-        const targetDocRef = db.doc(`tenant_data/${schoolId}/teacher_attendance/${mKey}/teachers/${tId}`);
-
-        // Merge records deterministically
-        currentBatch.set(targetDocRef, {
+        const targetRef = db.doc(`tenant_data/${schoolId}/teacher_attendance/${mKey}/teachers/${tId}`);
+        await queueWrite(targetRef, {
           month: mKey,
           teacherId: tId,
           teacherName,
           records,
-          recordCount: records.length,
           updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        batchOps++;
-        await commitBatchIfNeeded();
+        });
       }
     }
   }
 
-  // Helper for single-record subcollections
-  const migrateSingleRecords = async (records, colPath) => {
-    if (!Array.isArray(records)) return;
+  // Migrate single record collections
+  async function migrateSingleRecords(records, subColName) {
     for (const rec of records) {
-      const docRef = db.doc(`tenant_data/${schoolId}/${colPath}/${rec.id}`);
-      currentBatch.set(docRef, {
-        ...rec,
-        _migratedAt: new Date().toISOString()
-      }, { merge: true });
-      batchOps++;
-      await commitBatchIfNeeded();
+      const recId = rec.id || `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const recData = { ...rec, id: recId };
+      const targetRef = db.doc(`tenant_data/${schoolId}/${subColName}/${recId}`);
+      await queueWrite(targetRef, recData);
     }
-  };
+  }
 
   if (plan.keys.attendanceRequests) await migrateSingleRecords(plan.keys.attendanceRequests.records, 'attendance_requests');
+  if (plan.keys.teacherCorrectionRequests && !plan.keys.attendanceRequests) await migrateSingleRecords(plan.keys.teacherCorrectionRequests.records, 'attendance_requests');
   if (plan.keys.absenceIntimationLog) await migrateSingleRecords(plan.keys.absenceIntimationLog.records, 'absence_intimations');
   if (plan.keys.notices) await migrateSingleRecords(plan.keys.notices.records, 'notices');
   if (plan.keys.notifications) await migrateSingleRecords(plan.keys.notifications.records, 'notifications');
@@ -444,7 +411,7 @@ async function migrateSchool(schoolId, options = {}) {
   await finalCommit();
   console.log(`✅ [Subcollections] All candidate subcollection documents committed.`);
 
-  // 3. Migrate Base64 Blobs to Storage (if any)
+  // 3. Migrate Base64 Blobs to Storage (R1 + R2: Honest No Deletion, Token URLs, SHA-256 Verified)
   const settingsUpdates = {};
   for (const b of plan.blobs) {
     let base64Val = null;
@@ -465,13 +432,26 @@ async function migrateSchool(schoolId, options = {}) {
 
     if (base64Val && base64Val.startsWith('data:')) {
       try {
-        const storageUrl = await uploadBase64ToStorage(schoolId, base64Val, blobType);
+        const storageUrl = await uploadBase64ToStorage(schoolId, base64Val, blobType, options);
         if (storageUrl) {
-          settingsUpdates[b.path] = storageUrl;
+          // R2: Write to NEW fields, NEVER overwrite or delete existing base64 fields!
+          if (blobType === 'logo') {
+            settingsUpdates['settings.logoStorageUrl'] = storageUrl;
+            if (rootData.settings && rootData.settings.schoolInfo) {
+              settingsUpdates['settings.schoolInfo.logoStorageUrl'] = storageUrl;
+            }
+          } else if (blobType === 'signature') {
+            settingsUpdates['settings.principalSignatureStorageUrl'] = storageUrl;
+            if (rootData.settings && rootData.settings.schoolInfo) {
+              settingsUpdates['settings.schoolInfo.principalSignatureStorageUrl'] = storageUrl;
+            }
+          }
           console.log(`✅ [Blob -> Storage] Uploaded ${b.path} -> ${storageUrl}`);
+        } else {
+          console.warn(`[Blob Abort] Upload or hash verification failed for ${b.path}. Base64 field kept unchanged.`);
         }
       } catch (uploadErr) {
-        console.warn(`[Blob Warning] Could not upload ${b.path} to Storage:`, uploadErr.message);
+        console.warn(`[Blob Warning] Could not upload ${b.path} to Storage: ${uploadErr.message}. Base64 kept.`);
       }
     }
   }
@@ -507,12 +487,15 @@ async function migrateSchool(schoolId, options = {}) {
   const reportData = {
     runId,
     schoolId,
+    storageVersion: 2,
     timestamp: new Date().toISOString(),
     status: 'verified',
-    storageVersion: 2,
-    originalRootSizeKB: currentSizeKB,
-    projectedFinalKB: plan.projectedFinalKB,
-    reductionPercent: plan.reductionPercent,
+    currentSizeBytes,
+    currentSizeKB,
+    projectedAfterMigrationKB: plan.projectedAfterMigrationKB,
+    projectedAfterCleanupKB: plan.projectedAfterCleanupKB,
+    cleanupSavingsKB: plan.cleanupSavingsKB,
+    reductionPercent: plan.cleanupReductionPercent,
     backupFile: path.basename(backupFile),
     migratedKeys: Object.keys(plan.keys).map(k => ({
       key: k,
@@ -525,7 +508,7 @@ async function migrateSchool(schoolId, options = {}) {
   await reportDocRef.set(reportData);
   console.log(`✅ [Report] Migration report written to ${reportDocRef.path}`);
 
-  // 6. Dot-Path Update settings.storageVersion = 2 (Root doc fields are NOT deleted)
+  // 6. Dot-Path Update settings.storageVersion = 2 (R2: Root doc fields are NOT deleted)
   const dotPathUpdates = {
     'settings.storageVersion': 2,
     'settings.storageMigratedAt': new Date().toISOString(),
@@ -533,55 +516,50 @@ async function migrateSchool(schoolId, options = {}) {
     ...settingsUpdates
   };
 
-  // If duplicate signature exists in schoolInfo, clear it
-  if (rootData.settings && rootData.settings.schoolInfo && rootData.settings.schoolInfo.principalSignatureUrl) {
-    dotPathUpdates['settings.schoolInfo.principalSignatureUrl'] = '';
-  }
+  // R2 Honest "no deletion": Root fields are left 100% intact.
+  // Existing values (including base64 logo/signatures) are never cleared or replaced in migration.
 
   await docRef.update(dotPathUpdates);
-  console.log(`✅ [Root Update] Dot-path write: settings.storageVersion = 2 committed. (Root fields left intact).`);
+  console.log(`✅ [Root Update] Dot-path write: settings.storageVersion = 2 committed. (Root fields left 100% intact; only additions).`);
   console.log(`========================================================================\n`);
 
   return plan;
 }
 
-// CLI handler
 async function main() {
   const args = process.argv.slice(2);
   let school = null;
-  let apply = false;
-  let key = null;
-  let all = false;
+  let isApply = false;
+  let targetKey = null;
+  let allSchools = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--school' && args[i + 1]) { school = args[i + 1]; i++; }
-    else if (args[i] === '--apply') { apply = true; }
-    else if (args[i] === '--dry-run') { apply = false; }
-    else if (args[i] === '--key' && args[i + 1]) { key = args[i + 1]; i++; }
-    else if (args[i] === '--all') { all = true; }
+    else if (args[i] === '--apply') { isApply = true; }
+    else if (args[i] === '--key' && args[i + 1]) { targetKey = args[i + 1]; i++; }
+    else if (args[i] === '--all') { allSchools = true; }
   }
 
-  if (all) {
-    const tenantsSnap = await db.collection('tenant_data').get();
-    const allPlans = [];
-    for (const doc of tenantsSnap.docs) {
-      const plan = await migrateSchool(doc.id, { apply: false });
-      if (plan) allPlans.push(plan);
+  if (allSchools) {
+    console.log(`Starting migration ${isApply ? 'APPLY' : 'DRY-RUN'} across all schools...`);
+    const schoolsSnap = await db.collection('tenant_data').get();
+    const results = [];
+    for (const doc of schoolsSnap.docs) {
+      const plan = await migrateSchool(doc.id, { apply: isApply, key: targetKey });
+      if (plan) results.push(plan);
     }
-    const sumOut = path.resolve(__dirname, '../backups/all_schools_dry_run_summary.json');
-    fs.mkdirSync(path.dirname(sumOut), { recursive: true });
-    fs.writeFileSync(sumOut, JSON.stringify(allPlans, null, 2), 'utf8');
-    console.log(`Saved dry run summary for all schools to ${sumOut}`);
+    const sumPath = path.resolve(__dirname, '../backups/all_schools_dry_run_summary.json');
+    fs.writeFileSync(sumPath, JSON.stringify(results, null, 2), 'utf8');
+    console.log(`\nAll-school summary saved to ${sumPath}`);
     return;
   }
 
   if (!school) {
-    console.error('Usage: node scripts/migrate-root-doc.js --school <schoolId> [--dry-run (default) | --apply] [--key <k>]');
-    console.error('   or: node scripts/migrate-root-doc.js --all');
+    console.error('Usage: node scripts/migrate-root-doc.js --school <id> [--apply] [--key <k>] [--all]');
     process.exit(1);
   }
 
-  await migrateSchool(school, { apply, key });
+  await migrateSchool(school, { apply: isApply, key: targetKey });
 }
 
 if (require.main === module) {
@@ -593,7 +571,8 @@ if (require.main === module) {
 
 module.exports = {
   migrateSchool,
+  uploadBase64ToStorage,
+  downloadBufferOverHttps,
   calculateFirestoreDocSize,
-  getFirestoreValueSize,
-  hashObject
+  getFirestoreValueSize
 };

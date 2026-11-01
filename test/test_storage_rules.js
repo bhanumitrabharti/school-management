@@ -96,6 +96,10 @@ async function runStorageRulesTests() {
     const ref = adminA.storage().ref('schools/school_1/logo.png');
     await assertSucceeds(ref.getDownloadURL());
   });
+  await recordTest('S1.4', 'School-A admin uploads signature (80 KB PNG) → ALLOW', async () => {
+    const ref = adminA.storage().ref('schools/school_1/signature.png');
+    await assertSucceeds(ref.put(makeBuffer(80), { contentType: 'image/png' }));
+  });
 
   console.log('\n=== S2: Cross-Tenant Isolation: School-B Admin writes to schools/school_1/ ===');
   await recordTest('S2.1', 'School-B admin uploads logo to schools/school_1/ → DENY', async () => {

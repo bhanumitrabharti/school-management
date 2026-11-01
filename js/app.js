@@ -479,7 +479,7 @@ window.SchoolApp = {
     }
     
     // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
-    var canonicalLogo = payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && payload.settings.schoolInfo.logoUrl) || '';
+    var canonicalLogo = payload.settings.logoStorageUrl || payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && (payload.settings.schoolInfo.logoStorageUrl || payload.settings.schoolInfo.logoUrl)) || '';
     if (!canonicalLogo) {
       try {
         var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
@@ -682,7 +682,13 @@ window.SchoolApp = {
       if (!bypassLoader) {
         this.hideLoader();
       }
-      this.showToast('Failed to save changes to Firestore. Please check your connection.', 'error');
+      var isPermDenied = e && (e.code === 'permission-denied' || (e.message && e.message.includes('PERMISSION_DENIED')));
+      if (isPermDenied) {
+        this.showToast('Please refresh your browser to update the app.', 'warning', 10000);
+        if (typeof window.checkServerVersion === 'function') window.checkServerVersion();
+      } else {
+        this.showToast('Failed to save changes to Firestore. Please check your connection.', 'error');
+      }
       return false;
     }
   },
@@ -1226,15 +1232,24 @@ window.SchoolApp = {
     }
   },
 
-  loadV2Subcollections: async function(schoolId) {
-    if (!schoolId || !window.firestore || !window.db) return;
+  getLocalMonthString: function(dateObj) {
+    var d = dateObj || new Date();
+    var year = d.getFullYear();
+    var month = String(d.getMonth() + 1).padStart(2, '0');
+    return year + '-' + month;
+  },
+
+  loadTeacherAttendanceMonth: async function(schoolId, month) {
+    if (!schoolId || !month || !window.firestore || !window.db) return;
+    this._loadedAttendanceMonths = this._loadedAttendanceMonths || new Set();
+    var cacheKey = schoolId + '_' + month;
+    if (this._loadedAttendanceMonths.has(cacheKey)) return;
+    this._loadedAttendanceMonths.add(cacheKey);
+
     var fs = window.firestore;
     var db = window.db;
-
     try {
-      // 1. Current month teacher attendance
-      var currentMonth = new Date().toISOString().slice(0, 7);
-      var punchDocsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'teacher_attendance', currentMonth, 'teachers')).catch(function() { return null; });
+      var punchDocsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'teacher_attendance', month, 'teachers')).catch(function() { return null; });
       if (punchDocsSnap && !punchDocsSnap.empty) {
         var subPunches = [];
         punchDocsSnap.forEach(function(docSnap) {
@@ -1246,14 +1261,28 @@ window.SchoolApp = {
         if (subPunches.length > 0) {
           var punchMap = new Map();
           (this.store.teacherAttendance || []).forEach(function(p) {
-            if (p && (p.id || p.timestamp)) punchMap.set(p.id || (p.teacherId + '_' + p.timestamp), p);
+            if (p && (p.id || (p.teacherId && p.timestamp))) punchMap.set(p.id || (p.teacherId + '_' + p.timestamp), p);
           });
           subPunches.forEach(function(p) {
-            if (p && (p.id || p.timestamp)) punchMap.set(p.id || (p.teacherId + '_' + p.timestamp), p);
+            if (p && (p.id || (p.teacherId && p.timestamp))) punchMap.set(p.id || (p.teacherId + '_' + p.timestamp), p);
           });
           this.store.teacherAttendance = Array.from(punchMap.values());
         }
       }
+    } catch (err) {
+      console.warn('[loadTeacherAttendanceMonth] Warning loading punches for ' + month, err);
+    }
+  },
+
+  loadV2Subcollections: async function(schoolId) {
+    if (!schoolId || !window.firestore || !window.db) return;
+    var fs = window.firestore;
+    var db = window.db;
+
+    try {
+      // 1. Current month teacher attendance (LOCAL month in IST)
+      var currentMonth = this.getLocalMonthString();
+      await this.loadTeacherAttendanceMonth(schoolId, currentMonth);
 
       // 2. Notices
       var noticesSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notices')).catch(function() { return null; });
@@ -1326,7 +1355,47 @@ window.SchoolApp = {
         this.store.trash = Array.from(trashMap.values());
       }
 
-      // 6. Fee activity logs
+      // 6. Absence Intimations
+      var intimSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'absence_intimations')).catch(function() { return null; });
+      if (intimSnap && !intimSnap.empty) {
+        var subIntim = [];
+        intimSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          subIntim.push(d);
+        });
+        var intimMap = new Map();
+        (this.store.absenceIntimationLog || []).forEach(function(i) {
+          if (i && (i.id || (i.studentId && i.date))) intimMap.set(i.id || (i.studentId + '_' + i.date), i);
+        });
+        subIntim.forEach(function(i) {
+          if (i && (i.id || (i.studentId && i.date))) intimMap.set(i.id || (i.studentId + '_' + i.date), i);
+        });
+        this.store.absenceIntimationLog = Array.from(intimMap.values());
+      }
+
+      // 7. Exam Audit Log
+      var auditSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'exam_audit_log')).catch(function() { return null; });
+      if (auditSnap && !auditSnap.empty) {
+        var subAudit = [];
+        this._serverExamAuditMap = new Map();
+        auditSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          subAudit.push(d);
+          SchoolApp._serverExamAuditMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var auditMap = new Map();
+        (this.store.examAuditLog || []).forEach(function(a) {
+          if (a && (a.id || a.timestamp)) auditMap.set(a.id || (a.action + '_' + a.timestamp), a);
+        });
+        subAudit.forEach(function(a) {
+          if (a && (a.id || a.timestamp)) auditMap.set(a.id || (a.action + '_' + a.timestamp), a);
+        });
+        this.store.examAuditLog = Array.from(auditMap.values());
+      }
+
+      // 8. Fee activity logs
       if (this.isFeeLogMigrated(schoolId) || this.isStorageVersion2(schoolId)) {
         await this.loadFeeActivityLogs(false);
       }
@@ -3165,7 +3234,7 @@ window.SchoolApp = {
     });
 
     // On login page & sidebar → if logoUrl exists show it, else show nothing (no placeholder, no SVM logo)
-    var logoUrl = (settings.logoUrl && settings.logoUrl.trim() !== "") ? settings.logoUrl : ((info.logoUrl && info.logoUrl.trim() !== "") ? info.logoUrl : ((ms && ms.logo_url && ms.logo_url.trim() !== "") ? ms.logo_url : ""));
+    var logoUrl = (settings.logoStorageUrl && settings.logoStorageUrl.trim() !== "") ? settings.logoStorageUrl : ((settings.logoUrl && settings.logoUrl.trim() !== "") ? settings.logoUrl : ((info && info.logoStorageUrl && info.logoStorageUrl.trim() !== "") ? info.logoStorageUrl : ((info && info.logoUrl && info.logoUrl.trim() !== "") ? info.logoUrl : ((ms && ms.logo_url && ms.logo_url.trim() !== "") ? ms.logo_url : ""))));
     if (logoUrl && logoUrl.trim() !== "") {
       document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
         img.src = logoUrl.trim();
