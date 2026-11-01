@@ -55,7 +55,7 @@ runTest('Fee payment with discount and 2 allocations balances and maps correctly
   const settings = {
     goLiveDate: '2026-04-01',
     feeCashAccount: '11100',
-    feeDigitalAccount: '11120',
+    feeDigitalAccount: '11200',
     feeHeadMapping: {
       'head_tuition': '41100',
       'head_annual': '41200'
@@ -115,7 +115,7 @@ runTest('Fee reversal mirrors payment and combined effect nets to zero', () => {
   const settings = {
     goLiveDate: '2026-04-01',
     feeCashAccount: '11100',
-    feeDigitalAccount: '11120',
+    feeDigitalAccount: '11200',
     feeHeadMapping: {
       'head_tuition': '41100'
     }
@@ -164,7 +164,7 @@ runTest('Fee reversal mirrors payment and combined effect nets to zero', () => {
   addLines(revVch.lines);
 
   // Both accounts must net exactly to 0
-  assert.strictEqual(netBalances['11120'], 0, 'Bank account 11120 nets to 0');
+  assert.strictEqual(netBalances['11200'], 0, 'Bank account 11200 nets to 0');
   assert.strictEqual(netBalances['41100'], 0, 'Income account 41100 nets to 0');
 });
 
@@ -202,12 +202,56 @@ runTest('Fee allocations mismatch credits difference to default income account 4
   assert.strictEqual(crTuition, 100000, 'Default account 41100 gets 80000p + 20000p diff = 100000p');
 });
 
-// 4. goLiveDate filter
-runTest('Fee transaction before goLiveDate is skipped', () => {
+// 4. goLiveDate filter (F5: ignored record before goLiveDate)
+runTest('Fee transaction before goLiveDate is ignored without cluttering skipped list (F5)', () => {
   const settings = { goLiveDate: '2026-04-01' };
   const txn = { id: 'txn_004', date: '2026-03-31', type: 'payment', amount: 500 };
   const res = computeFeeJournalLines(txn, settings);
-  assert.ok(res && res.skip === true, 'Should be skipped');
+  assert.ok(res && res.ignored === true && res.ignoreType === 'beforeGoLive', 'Should be ignored (beforeGoLive)');
+});
+
+// 4b. Non-payment 'due' transaction filter (F5)
+runTest('Non-payment due transaction is ignored without cluttering skipped list (F5)', () => {
+  const settings = { goLiveDate: '2026-04-01' };
+  const txn = { id: 'txn_004b', date: '2026-04-10', type: 'due', amount: 500 };
+  const res = computeFeeJournalLines(txn, settings);
+  assert.ok(res && res.ignored === true && res.ignoreType === 'ignoredDue', 'Should be ignored (ignoredDue)');
+});
+
+// 4c. Fee digital account validation (F4)
+runTest('Fee payment via UPI without configured digital account returns config error (F4)', () => {
+  const settings = {
+    goLiveDate: '2026-04-01',
+    feeCashAccount: '11100',
+    feeDigitalAccount: '' // missing
+  };
+  const txn = { id: 'txn_004c', date: '2026-04-10', type: 'payment', mode: 'UPI', amount: 500 };
+  const res = computeFeeJournalLines(txn, settings);
+  assert.ok(res && res.error === true && res.configError === true && res.warningKey === 'MISSING_DIGITAL_ACCOUNT');
+});
+
+// 4d. Negative allocation difference (F8)
+runTest('Fee allocations exceeding gross amount is flagged as data problem and not posted (F8)', () => {
+  const settings = {
+    goLiveDate: '2026-04-01',
+    feeCashAccount: '11100',
+    feeDigitalAccount: '11200',
+    feeHeadMapping: { 'head_tuition': '41100' }
+  };
+  const txn = {
+    id: 'txn_004d',
+    date: '2026-04-10',
+    type: 'payment',
+    mode: 'Cash',
+    amount: 1000,
+    discount: 0,
+    grossAmount: 1000,
+    allocations: [
+      { feeHeadId: 'head_tuition', amount: 1200 } // 1200 > 1000 => allocPaiseSum > grossPaise (diff < 0)
+    ]
+  };
+  const res = computeFeeJournalLines(txn, settings);
+  assert.ok(res && res.isDataProblem === true, 'Allocations exceeding gross amount must be marked as data problem');
 });
 
 // 5. Expense normal & cancel reversal

@@ -478,6 +478,7 @@
 
         var done = false;
         var iterations = 0;
+        var busyRetries = 0;
         var lastRes = null;
 
         while (!done && iterations < 15) {
@@ -499,6 +500,18 @@
           }
 
           lastRes = await res.json();
+          if (lastRes && lastRes.busy) {
+            busyRetries++;
+            if (busyRetries > 10) {
+              throw new Error('Sync in progress in another session. Please wait a moment and try again.');
+            }
+            if (!silent && SchoolApp.showToast && busyRetries === 1) {
+              SchoolApp.showToast('Another sync is running; waiting for it to finish...', 'info');
+            }
+            await new Promise(function (resolve) { setTimeout(resolve, 2000); });
+            iterations--;
+            continue;
+          }
           done = lastRes.done;
         }
 
@@ -3938,12 +3951,18 @@
       html += '      </select>';
       html += '    </div>';
 
-      // Go-Live Date
+      // Go-Live Date & Fee Voucher Lock
+      var hasFeeVouchers = !!(s.hasFeeVouchers || (this.syncState && this.syncState.counts && this.syncState.counts.feesPosted > 0));
       var curGoLive = s.goLiveDate || (currentFY.split('-')[0] + '-04-01');
       html += '    <div class="form-group" style="margin-bottom:16px;">';
-      html += '      <label class="form-label" style="font-weight:600; display:block; margin-bottom:4px;">Accounting Go-Live Date *</label>';
-      html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" required style="width:100%;" />';
-      html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">Transactions dated before this date are treated as historical and NOT posted to the general ledger.</small>';
+      html += '      <label class="form-label" style="font-weight:600; display:block; margin-bottom:4px;">Accounting Go-Live Date * ' + (hasFeeVouchers ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : '') + '</label>';
+      if (hasFeeVouchers) {
+        html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" disabled style="width:100%; background:var(--bg-secondary); cursor:not-allowed;" />';
+        html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">🔒 <strong>Locked:</strong> Fee vouchers have already been posted to the general ledger. Accounting go-live date cannot be changed.</small>';
+      } else {
+        html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" required style="width:100%;" />';
+        html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">Transactions dated before this date are treated as historical and NOT posted to the general ledger.</small>';
+      }
       html += '    </div>';
       html += '  </div>';
 
@@ -3955,12 +3974,12 @@
       html += '    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">';
       html += '      <div class="form-group">';
       html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Cash Fee Collection Ledger</label>';
-      html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + (s.feeCashAccount || '11100') + '" readonly style="background:var(--bg-secondary);" />';
+      html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + (s.feeCashAccount || '11100') + '" ' + (hasFeeVouchers ? 'disabled ' : 'readonly ') + 'style="background:var(--bg-secondary);' + (hasFeeVouchers ? ' cursor:not-allowed;' : '') + '" />';
       html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand</small>';
       html += '      </div>';
       html += '      <div class="form-group">';
-      html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Digital Fee Collection Bank Ledger *</label>';
-      html += '        <select class="form-control form-select" id="settings-fee-digital-acc" required>';
+      html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Digital Fee Collection Bank Ledger * ' + (hasFeeVouchers ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : '') + '</label>';
+      html += '        <select class="form-control form-select" id="settings-fee-digital-acc" ' + (hasFeeVouchers ? 'disabled style="background:var(--bg-secondary); cursor:not-allowed;"' : 'required') + '>';
       bankAccounts.forEach(function (b) {
         var bCode = b.ledgerAccountId || '11200';
         var sel = (s.feeDigitalAccount === bCode) ? 'selected' : '';
@@ -3970,12 +3989,17 @@
         html += '          <option value="11200" selected>11200 - Primary Bank Account</option>';
       }
       html += '        </select>';
-      html += '        <small class="form-text text-muted" style="font-size:11px;">Target bank ledger for UPI, Net Banking, and Cheque fee receipts.</small>';
+      if (hasFeeVouchers) {
+        html += '        <small class="form-text text-muted" style="font-size:11px;">🔒 <strong>Locked:</strong> Digital fee collection bank account cannot be changed after fee vouchers are posted.</small>';
+      } else {
+        html += '        <small class="form-text text-muted" style="font-size:11px;">Target bank ledger for UPI, Net Banking, and Cheque fee receipts.</small>';
+      }
       html += '      </div>';
       html += '    </div>';
 
       // Fee Head Mapping Table
-      html += '    <h4 style="font-size:13.5px; font-weight:700; margin:0 0 10px 0; color:var(--text-primary);">Fee Head to Income Account Mapping</h4>';
+      html += '    <h4 style="font-size:13.5px; font-weight:700; margin:0 0 4px 0; color:var(--text-primary);">Fee Head to Income Account Mapping</h4>';
+      html += '    <p style="font-size:12px; color:var(--text-secondary); margin:0 0 10px 0;"><strong>Notice:</strong> Changes to fee head mappings apply to future postings only.</p>';
       html += '    <div class="table-responsive acc-table-container" style="border:1px solid var(--border-color); border-radius:8px;">';
       html += '      <table class="table" style="width:100%; margin:0; font-size:12.5px;">';
       html += '        <thead>';
@@ -4361,11 +4385,22 @@
       var db = window.db;
 
       try {
+        var s = this.settings || {};
+        var hasFeeVouchers = !!(s.hasFeeVouchers || (this.syncState && this.syncState.counts && this.syncState.counts.feesPosted > 0));
+
         var entityType = document.getElementById('settings-entity-type').value;
         var fyMonthInput = document.getElementById('settings-fy-month');
-        var fyMonth = fyMonthInput && !fyMonthInput.disabled ? parseInt(fyMonthInput.value, 10) : (this.settings ? this.settings.financialYearStartMonth : 4);
-        var goLiveDate = document.getElementById('settings-golive-date').value;
-        var feeDigitalAccount = document.getElementById('settings-fee-digital-acc').value;
+        var fyMonth = fyMonthInput && !fyMonthInput.disabled ? parseInt(fyMonthInput.value, 10) : (s.financialYearStartMonth || 4);
+        
+        var goLiveInput = document.getElementById('settings-golive-date');
+        var newGoLive = (goLiveInput && !goLiveInput.disabled) ? goLiveInput.value : (s.goLiveDate || '');
+        var curGoLive = s.goLiveDate || '';
+
+        var digitalAccInput = document.getElementById('settings-fee-digital-acc');
+        var feeDigitalAccount = (digitalAccInput && !digitalAccInput.disabled) ? digitalAccInput.value : (s.feeDigitalAccount || '11200');
+        var feeCashAccount = s.feeCashAccount || '11100';
+
+        var shouldClearMonthDocUpdateTimes = (!hasFeeVouchers && newGoLive && curGoLive && newGoLive !== curGoLive);
 
         // Fee Head Mapping
         var headSelects = document.querySelectorAll('.settings-fee-head-select');
@@ -4457,15 +4492,20 @@
 
         var batch = fs.writeBatch(db);
         var settingsRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_settings', 'main');
-        batch.update(settingsRef, {
+        var updatePayload = {
           entityType: entityType,
           financialYearStartMonth: fyMonth,
           bankAccounts: bankAccounts,
-          goLiveDate: goLiveDate,
+          goLiveDate: newGoLive,
           feeDigitalAccount: feeDigitalAccount,
+          feeCashAccount: feeCashAccount,
           feeHeadMapping: feeHeadMapping,
           updatedAt: new Date().toISOString()
-        });
+        };
+        if (shouldClearMonthDocUpdateTimes) {
+          updatePayload.clearMonthDocUpdateTimes = true;
+        }
+        batch.update(settingsRef, updatePayload);
 
         newChartAccountsToCreate.forEach(function (acc) {
           var accRef = fs.doc(db, 'tenant_data', schoolId, 'accounts_chart', acc.code);

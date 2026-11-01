@@ -97,6 +97,15 @@ async function runAccountsRulesTests() {
       counts: {}
     });
 
+    await db.doc('tenant_data/school_1/accounts_settings/main').set({
+      entityType: 'trust_society',
+      goLiveDate: '2026-04-01',
+      feeCashAccount: '11100',
+      feeDigitalAccount: '11200',
+      hasFeeVouchers: false,
+      feeHeadMapping: { 'tuition': '41100' }
+    });
+
     // Existing active expense for update/delete tests
     await db.doc('tenant_data/school_1/accounts_expenses/EXP_001').set({
       expenseNo: 'EXP-2026-27-0001',
@@ -690,6 +699,41 @@ async function runAccountsRulesTests() {
     await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_receipts/RCP_001').get());
     await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_transfers/TRF_001').get());
     await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_journal/vch_test_001').get());
+  });
+
+  await recordTest('S2_19', 'Admin CAN change goLiveDate and feeDigitalAccount when hasFeeVouchers is false', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      goLiveDate: '2026-04-15',
+      feeDigitalAccount: '11210'
+    }));
+  });
+
+  await recordTest('S2_20', 'Admin CANNOT change goLiveDate or feeDigitalAccount when hasFeeVouchers is true (F6)', async () => {
+    // First set hasFeeVouchers: true
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      hasFeeVouchers: true
+    }));
+
+    // Attempt to change goLiveDate -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      goLiveDate: '2026-05-01'
+    }));
+
+    // Attempt to change feeDigitalAccount -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      feeDigitalAccount: '11200'
+    }));
+
+    // Attempt to unlock hasFeeVouchers -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      hasFeeVouchers: false
+    }));
+  });
+
+  await recordTest('S2_21', 'Admin CAN update feeHeadMapping even when hasFeeVouchers is true (F6)', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      feeHeadMapping: { 'tuition': '41100', 'sports': '41200' }
+    }));
   });
 
   console.log('\n========================================');

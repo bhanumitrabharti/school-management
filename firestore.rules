@@ -273,6 +273,16 @@ service cloud.firestore {
              d.get('status', '') in ['draft', 'locked'];
     }
 
+    function validMainSettingsUpdate() {
+      let hasVch = resource.data.get('hasFeeVouchers', false) == true;
+      return !hasVch || (
+        request.resource.data.get('goLiveDate', '') == resource.data.get('goLiveDate', '') &&
+        request.resource.data.get('feeDigitalAccount', '') == resource.data.get('feeDigitalAccount', '') &&
+        request.resource.data.get('feeCashAccount', '') == resource.data.get('feeCashAccount', '') &&
+        request.resource.data.get('hasFeeVouchers', false) == true
+      );
+    }
+
     function validExpenseCreate() {
       let d = request.resource.data;
       return d.keys().hasOnly([
@@ -353,6 +363,7 @@ service cloud.firestore {
       allow update: if isSchoolAdmin(schoolId) &&
                        (docId == 'counters' ? validCountersUpdate() :
                         docId == 'opening' ? validOpeningUpdate() :
+                        docId == 'main' ? validMainSettingsUpdate() :
                         true);
       allow delete: if false;
     }
