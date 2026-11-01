@@ -219,11 +219,63 @@ async function sendWelcomeEmail({ email, schoolName, subdomain, adminUsername })
   return { success: true };
 }
 
+/**
+ * Sends critical storage alert to connect@ctrlshifts.in when tenant document > 600 KB
+ */
+async function sendStorageAlertEmail({ schoolId, schoolName, rootSizeKB, pctOf1MB }) {
+  const alertRecipient = 'connect@ctrlshifts.in';
+  if (isMockMode() || !process.env.SMTP_HOST) {
+    capturedEmails.push({
+      to: alertRecipient,
+      type: 'storage_alert',
+      schoolId,
+      schoolName,
+      rootSizeKB,
+      pctOf1MB,
+      sentAt: new Date().toISOString()
+    });
+    console.log(`[MOCK EMAIL] Storage alert sent for ${schoolId} (${rootSizeKB} KB, ${pctOf1MB}%) to ${alertRecipient}`);
+    return { success: true, mock: true };
+  }
+
+  const transporter = getSmtpTransport();
+  const senderEmail = process.env.SMTP_FROM || process.env.SMTP_USER || 'connect@ctrlshifts.in';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #fecaca; border-radius: 12px; background: #ffffff;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="color: #dc2626; margin: 0 0 6px 0;">⚠️ Storage Alert: Tenant Exceeds 600 KB</h2>
+        <p style="color: #64748b; font-size: 14px; margin: 0;">Firestore 1 MiB Document Scaling Monitor</p>
+      </div>
+      <p style="font-size: 15px; color: #1e293b;">The following school's root document has crossed the 600 KB warning threshold:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; width: 140px;">School Name:</td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${escapeHTML(schoolName || schoolId)}</td></tr>
+        <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">School ID:</td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><code>${escapeHTML(schoolId)}</code></td></tr>
+        <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">Root Doc Size:</td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0; color: #dc2626; font-weight: bold;">${rootSizeKB} KB (${pctOf1MB}% of 1 MiB)</td></tr>
+        <tr><td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold;">Action Required:</td><td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">Run <code>node scripts/migrate-root-doc.js --school ${escapeHTML(schoolId)} --apply</code> to migrate legacy collections and reduce document size.</td></tr>
+      </table>
+      <p style="font-size: 13px; color: #64748b; margin-top: 24px;">This is an automated system health alert from Paathshala ERP Cloud.</p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"Paathshala Storage Monitor" <${senderEmail}>`,
+    to: alertRecipient,
+    subject: `🚨 Storage Warning: ${schoolName || schoolId} is at ${rootSizeKB} KB (${pctOf1MB}% of 1 MiB)`,
+    text: `Storage Warning for ${schoolName || schoolId}: root document is ${rootSizeKB} KB (${pctOf1MB}% of 1 MiB). Please run migration.`,
+    html: html
+  });
+
+  return { success: true };
+}
+
+
 module.exports = {
   WHATSAPP_OTP_TEMPLATE,
   getCapturedEmails,
   clearCapturedEmails,
   getLastOtpFor,
   sendOtpEmail,
-  sendWelcomeEmail
+  sendWelcomeEmail,
+  sendStorageAlertEmail
 };

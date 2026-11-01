@@ -12,7 +12,46 @@ const {
   buildTenantRecord,
   buildPrivateCredentialsRecord
 } = require('./_lib/school-template');
-const { sendWelcomeEmail } = require('./_lib/email');
+const { sendWelcomeEmail, sendStorageAlertEmail } = require('./_lib/email');
+
+// Helper for Firestore exact size calculation
+function getFirestoreValSize(val) {
+  if (val === null || val === undefined) return 1;
+  if (typeof val === 'boolean') return 1;
+  if (typeof val === 'number') return 8;
+  if (typeof val === 'string') return Buffer.byteLength(val, 'utf8') + 1;
+  if (val instanceof Date) return 8;
+  if (Buffer.isBuffer(val)) return val.length;
+  if (val && typeof val.toMillis === 'function') return 8;
+  if (Array.isArray(val)) {
+    let size = 8;
+    for (let i = 0; i < val.length; i++) size += getFirestoreValSize(val[i]);
+    return size;
+  }
+  if (typeof val === 'object') {
+    let size = 0;
+    const keys = Object.keys(val);
+    for (let i = 0; i < keys.length; i++) {
+      size += Buffer.byteLength(keys[i], 'utf8') + 1;
+      size += getFirestoreValSize(val[keys[i]]);
+    }
+    return size;
+  }
+  return 0;
+}
+
+function calcFirestoreDocSize(docPath, data) {
+  const segments = docPath.split('/').filter(Boolean);
+  let pathBytes = 16;
+  for (const s of segments) pathBytes += Buffer.byteLength(s, 'utf8');
+  let fieldsSize = 0;
+  if (data && typeof data === 'object') {
+    for (const k of Object.keys(data)) {
+      fieldsSize += (Buffer.byteLength(k, 'utf8') + 1 + getFirestoreValSize(data[k]));
+    }
+  }
+  return pathBytes + 32 + fieldsSize;
+}
 const { sendTelegramAlert } = require('./_lib/telegram');
 
 function applyCors(req, res) {
@@ -307,6 +346,82 @@ module.exports = async function handler(req, res) {
       }
 
       return res.status(200).json({ success: true, message: 'School reactivated successfully.' });
+    }
+
+    // 6. STORAGE HEALTH MONITOR (Super Admin)
+    if (action === 'storage-health' || action === 'check-storage-health') {
+      const tenantsSnap = await db.collection('tenant_data').get();
+      const schoolsSnap = await db.collection('schools').get();
+      const schoolNamesMap = {};
+      schoolsSnap.forEach(s => {
+        const sd = s.data();
+        schoolNamesMap[s.id] = sd.school_name || sd.name || s.id;
+      });
+
+      const schoolReports = [];
+      const summary = {
+        totalSchools: tenantsSnap.size,
+        over600KB: 0,
+        over400KB: 0,
+        migratedCount: 0,
+        alertsSent: 0
+      };
+
+      for (const tDoc of tenantsSnap.docs) {
+        const sid = tDoc.id;
+        const tData = tDoc.data();
+        const sizeBytes = calcFirestoreDocSize(`tenant_data/${sid}`, tData);
+        const sizeKB = +(sizeBytes / 1024).toFixed(2);
+        const pctOf1MB = +((sizeBytes / 1048576) * 100).toFixed(1);
+        const storageVersion = (tData.settings && tData.settings.storageVersion) || 1;
+        const isMigrated = storageVersion >= 2;
+        const schoolName = schoolNamesMap[sid] || (tData.settings && tData.settings.schoolName) || sid;
+
+        if (isMigrated) summary.migratedCount++;
+        if (sizeKB >= 400) summary.over400KB++;
+
+        let alertTriggered = false;
+        if (sizeKB >= 600) {
+          summary.over600KB++;
+          try {
+            await sendStorageAlertEmail({
+              schoolId: sid,
+              schoolName: schoolName,
+              rootSizeKB: sizeKB,
+              pctOf1MB: pctOf1MB
+            });
+            alertTriggered = true;
+            summary.alertsSent++;
+          } catch (eAlert) {
+            console.warn('[Storage Health] Failed sending alert email for', sid, eAlert.message);
+          }
+        }
+
+        const reportEntry = {
+          schoolId: sid,
+          schoolName: schoolName,
+          rootSizeBytes: sizeBytes,
+          rootSizeKB: sizeKB,
+          pctOf1MB: pctOf1MB,
+          storageVersion: storageVersion,
+          isMigrated: isMigrated,
+          alertRequired: sizeKB >= 600,
+          alertTriggered: alertTriggered,
+          checkedAt: new Date().toISOString()
+        };
+
+        // Cache snapshot in platform_health/{schoolId}
+        await db.collection('platform_health').doc(sid).set(reportEntry, { merge: true }).catch(() => {});
+        schoolReports.push(reportEntry);
+      }
+
+      schoolReports.sort((a, b) => b.rootSizeBytes - a.rootSizeBytes);
+
+      return res.status(200).json({
+        success: true,
+        summary: summary,
+        schools: schoolReports
+      });
     }
 
     return res.status(400).json({ error: `Unknown action: ${action}` });

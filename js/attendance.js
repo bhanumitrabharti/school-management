@@ -1781,14 +1781,25 @@
 
     if (SchoolApp.isTeacher()) {
       var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
-      if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
-        var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-        window.firestore.updateDoc(rootDocRef, {
-          absenceIntimationLog: window.firestore.arrayUnion(entry)
-        }).catch(function(err) {
-          console.warn('[Attendance] Error logging absence intimation via arrayUnion:', err);
-        });
-        return;
+      if (currentSchoolId && window.firestore) {
+        if (SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId)) {
+          var intimId = entry.id || ('int_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+          entry.id = intimId;
+          var intRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'absence_intimations', intimId);
+          window.firestore.setDoc(intRef, entry, { merge: true }).catch(function(err) {
+            console.warn('[Attendance] Error logging absence intimation via subcollection:', err);
+          });
+          return;
+        }
+        if (window.firestore.updateDoc && window.firestore.arrayUnion) {
+          var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+          window.firestore.updateDoc(rootDocRef, {
+            absenceIntimationLog: window.firestore.arrayUnion(entry)
+          }).catch(function(err) {
+            console.warn('[Attendance] Error logging absence intimation via arrayUnion:', err);
+          });
+          return;
+        }
       }
     }
     SchoolApp.save(true);

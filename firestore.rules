@@ -72,14 +72,32 @@ service cloud.firestore {
           && request.resource.data.transactions.size() <= 1000;
     }
 
-    // Rule for teacher-allowed targeted root document updates
+    // Rule for teacher-allowed targeted root document updates (v1 legacy only)
     function isTeacherAllowedRootUpdate(schoolId) {
       return isSchoolTeacher(schoolId) &&
+             (resource.data.get('settings', {}).get('storageVersion', 1) < 2) &&
              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'teacherAttendance',
                'attendanceRequests',
                'teacherCorrectionRequests',
                'absenceIntimationLog'
+             ]);
+    }
+
+    // Anti-resurrection guard: prevent migrated keys from being reintroduced or modified on root doc once storageVersion >= 2
+    function noMigratedKeysResurrection() {
+      return (resource.data.get('settings', {}).get('storageVersion', 1) < 2) ||
+             !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+               'teacherAttendance',
+               'attendanceRequests',
+               'teacherCorrectionRequests',
+               'absenceIntimationLog',
+               'notices',
+               'notifications',
+               'examAuditLog',
+               'examMarksAuditLog',
+               'trash',
+               'feeActivityLog'
              ]);
     }
 
@@ -95,6 +113,7 @@ service cloud.firestore {
       allow create: if isSuperAdmin();
       allow update: if isSuperAdmin() ||
                        (isSchoolAdmin(schoolId) &&
+                        noMigratedKeysResurrection() &&
                         notWipingRoster('students') &&
                         notWipingRoster('teachers') &&
                         notWipingLedger('fees') &&
@@ -155,6 +174,62 @@ service cloud.firestore {
     match /tenant_data/{schoolId}/settings/{docId=**} {
       allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
       allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // ── Scaled Subcollections (storageVersion >= 2) ──────────────────────────
+    // Teacher Attendance Punches (Monthly doc per teacher)
+    match /tenant_data/{schoolId}/teacher_attendance/{month}/teachers/{teacherId} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin() ||
+                      (isSchoolTeacher(schoolId) && isOwnTeacherProfile(schoolId, teacherId));
+    }
+
+    // Attendance Requests & Regularizations
+    match /tenant_data/{schoolId}/attendance_requests/{requestId} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin() ||
+                      (isSchoolTeacher(schoolId) && request.resource.data.get('teacherId', '') == getTeacherId(schoolId));
+    }
+
+    // Absence Intimations
+    match /tenant_data/{schoolId}/absence_intimations/{intimationId} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if canAccessSchool(schoolId) || isSuperAdmin();
+    }
+
+    // Notices / Announcements
+    match /tenant_data/{schoolId}/notices/{noticeId} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Notifications
+    match /tenant_data/{schoolId}/notifications/{notifId} {
+      allow read:  if canAccessSchool(schoolId) || isSuperAdmin();
+      allow write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Exam Audit Log
+    match /tenant_data/{schoolId}/exam_audit_log/{logId} {
+      allow read:   if isSchoolAdmin(schoolId) || isSuperAdmin();
+      allow create: if canAccessSchool(schoolId) || isSuperAdmin();
+      allow update, delete: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Trash / Recycle Bin
+    match /tenant_data/{schoolId}/trash/{trashId} {
+      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
+    // Migration Reports
+    match /tenant_data/{schoolId}/migration_reports/{reportId} {
+      allow read:  if isSchoolAdmin(schoolId) || isSuperAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Platform Health Monitor
+    match /platform_health/{schoolId} {
+      allow read, write: if isSuperAdmin();
     }
 
     // ── Accounts and Payroll Subcollections — School Admin ONLY (Super Admin BLOCKED) ──
@@ -625,6 +700,14 @@ service cloud.firestore {
                       && subcollection != 'exam_marks'
                       && subcollection != 'payroll_payslips'
                       && subcollection != 'staff'
+                      && subcollection != 'teacher_attendance'
+                      && subcollection != 'attendance_requests'
+                      && subcollection != 'absence_intimations'
+                      && subcollection != 'notices'
+                      && subcollection != 'notifications'
+                      && subcollection != 'exam_audit_log'
+                      && subcollection != 'trash'
+                      && subcollection != 'migration_reports'
                       && !subcollection.matches('accounts_.*')
                       && !subcollection.matches('payroll_.*')
                       && (canAccessSchool(schoolId) || isSuperAdmin());
@@ -640,6 +723,14 @@ service cloud.firestore {
                       && subcollection != 'exam_marks'
                       && subcollection != 'payroll_payslips'
                       && subcollection != 'staff'
+                      && subcollection != 'teacher_attendance'
+                      && subcollection != 'attendance_requests'
+                      && subcollection != 'absence_intimations'
+                      && subcollection != 'notices'
+                      && subcollection != 'notifications'
+                      && subcollection != 'exam_audit_log'
+                      && subcollection != 'trash'
+                      && subcollection != 'migration_reports'
                       && !subcollection.matches('accounts_.*')
                       && !subcollection.matches('payroll_.*')
                       && (isSchoolAdmin(schoolId) || isSuperAdmin());

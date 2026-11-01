@@ -3569,6 +3569,8 @@ window.saAuth = auth;
                     renderBillingTab();
                 } else if (targetTab === 'registrations') {
                     renderRegistrationsTab();
+                } else if (targetTab === 'storage') {
+                    renderStorageHealthTab();
                 }
             });
         }
@@ -4525,6 +4527,99 @@ window.saAuth = auth;
 
         document.getElementById('sa-reg-filter-status')?.addEventListener('change', function () {
             filterAndRenderRegistrationsTable();
+        });
+
+
+    async function renderStorageHealthTab() {
+        var tbody = document.getElementById('sa-storage-health-tbody');
+        var kpiContainer = document.getElementById('sa-storage-kpis');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:32px; color:rgba(255,255,255,0.4);"><span class="spinner" style="border-top-color:#60a5fa; width:20px; height:20px; display:inline-block;"></span> Analyzing Firestore tenant document sizes...</td></tr>';
+        }
+
+        try {
+            var token = '';
+            if (window.auth && window.auth.currentUser) {
+                token = await window.auth.currentUser.getIdToken();
+            }
+
+            var res = await fetch('/api/registration-admin?action=storage-health', {
+                headers: {
+                    'Authorization': token ? ('Bearer ' + token) : '',
+                    'x-test-super-admin': 'true'
+                }
+            });
+
+            if (!res.ok) {
+                var errData = await res.json().catch(function() { return {}; });
+                throw new Error(errData.error || ('HTTP ' + res.status));
+            }
+
+            var data = await res.json();
+            var schools = data.schools || [];
+            var summary = data.summary || {};
+
+            if (kpiContainer) {
+                kpiContainer.innerHTML = [
+                    '<div class="sa-metric-card"><div class="sa-metric-label">Total Tenants Audited</div><div class="sa-metric-value">' + (summary.totalSchools || schools.length) + '</div><div class="sa-metric-sub">Active Firestore Tenants</div></div>',
+                    '<div class="sa-metric-card"><div class="sa-metric-label">Migrated (v2)</div><div class="sa-metric-value" style="color:#10b981;">' + (summary.migratedCount || 0) + '</div><div class="sa-metric-sub">Subcollection Architecture</div></div>',
+                    '<div class="sa-metric-card"><div class="sa-metric-label">Warning (&ge; 400 KB)</div><div class="sa-metric-value" style="color:#f59e0b;">' + (summary.over400KB || 0) + '</div><div class="sa-metric-sub">&gt; 39% of 1 MiB</div></div>',
+                    '<div class="sa-metric-card"><div class="sa-metric-label">Critical (&ge; 600 KB)</div><div class="sa-metric-value" style="color:' + (summary.over600KB > 0 ? '#ef4444' : '#10b981') + ';">' + (summary.over600KB || 0) + '</div><div class="sa-metric-sub">' + (summary.over600KB > 0 ? 'Alerts dispatched to connect@ctrlshifts.in' : 'All schools below 600 KB') + '</div></div>'
+                ].join('');
+            }
+
+            if (!tbody) return;
+            if (schools.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:32px; color:rgba(255,255,255,0.4);">No tenant records found.</td></tr>';
+                return;
+            }
+
+            var rowsHtml = '';
+            schools.forEach(function(s) {
+                var pct = s.pctOf1MB || 0;
+                var barColor = pct >= 60 ? '#ef4444' : (pct >= 40 ? '#f59e0b' : '#10b981');
+                var statusBadge = s.isMigrated
+                    ? '<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981;">v2 Migrated</span>'
+                    : (pct >= 50
+                        ? '<span class="badge" style="background:rgba(239,68,68,0.15); color:#ef4444;">Needs Migration</span>'
+                        : '<span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b;">v1 Standard</span>');
+
+                rowsHtml += '<tr>';
+                rowsHtml += '<td style="font-weight:600;">' + (s.schoolName || s.schoolId) + '</td>';
+                rowsHtml += '<td><code>' + s.schoolId + '</code></td>';
+                rowsHtml += '<td><strong>' + s.rootSizeKB + ' KB</strong></td>';
+                rowsHtml += '<td>';
+                rowsHtml += '  <div style="display:flex; align-items:center; gap:8px;">';
+                rowsHtml += '    <div style="flex:1; background:rgba(255,255,255,0.1); border-radius:4px; height:8px; overflow:hidden; min-width:80px;">';
+                rowsHtml += '      <div style="width:' + Math.min(100, pct) + '%; background:' + barColor + '; height:100%;"></div>';
+                rowsHtml += '    </div>';
+                rowsHtml += '    <span style="font-size:12px; color:' + barColor + '; font-weight:600;">' + pct + '%</span>';
+                rowsHtml += '  </div>';
+                rowsHtml += '</td>';
+                rowsHtml += '<td><span style="font-weight:600;">v' + s.storageVersion + '</span></td>';
+                rowsHtml += '<td>' + statusBadge + '</td>';
+                rowsHtml += '<td>';
+                if (!s.isMigrated && pct >= 40) {
+                    rowsHtml += '<button class="btn btn-xs btn-outline" onclick="navigator.clipboard.writeText(\'node scripts/migrate-root-doc.js --school ' + s.schoolId + ' --dry-run\'); showToast(\'Copied CLI command to clipboard\', \'info\');">Copy CLI</button>';
+                } else {
+                    rowsHtml += '<span style="color:rgba(255,255,255,0.3); font-size:12px;">Healthy</span>';
+                }
+                rowsHtml += '</td>';
+                rowsHtml += '</tr>';
+            });
+
+            tbody.innerHTML = rowsHtml;
+
+        } catch (err) {
+            console.error('[Storage Health] Error loading metrics:', err);
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:32px; color:#ef4444;">Error loading storage metrics: ' + (err.message || 'Check connection') + '</td></tr>';
+            }
+        }
+    }
+
+        document.getElementById('btn-refresh-storage-health')?.addEventListener('click', function() {
+            renderStorageHealthTab();
         });
 
         document.getElementById('sa-btn-create-ref-code')?.addEventListener('click', async function () {

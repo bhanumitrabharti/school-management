@@ -162,12 +162,26 @@
           SchoolApp.store.teacherAttendance.push(punchOutRecord);
 
           var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
-          if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+          if (currentSchoolId && window.firestore) {
             try {
-              var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-              await window.firestore.updateDoc(rootDocRef, {
-                teacherAttendance: window.firestore.arrayUnion(punchOutRecord)
-              });
+              if (SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId)) {
+                var mKey = (punchOutRecord.date || new Date().toISOString().split('T')[0]).slice(0, 7);
+                var punchDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'teacher_attendance', mKey, 'teachers', punchOutRecord.teacherId);
+                await window.firestore.setDoc(punchDocRef, {
+                  month: mKey,
+                  teacherId: punchOutRecord.teacherId,
+                  teacherName: punchOutRecord.teacherName || '',
+                  records: window.firestore.arrayUnion(punchOutRecord),
+                  updatedAt: new Date().toISOString()
+                }, { merge: true });
+              } else if (window.firestore.updateDoc && window.firestore.arrayUnion) {
+                var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+                await window.firestore.updateDoc(rootDocRef, {
+                  teacherAttendance: window.firestore.arrayUnion(punchOutRecord)
+                });
+              } else {
+                SchoolApp.save();
+              }
             } catch (punchErr) {
               console.error('[Teacher Attendance] Error saving punch out record:', punchErr);
               SchoolApp.showToast('Failed to record punch out: ' + (punchErr.message || 'Check connection'), 'error');
@@ -224,12 +238,26 @@
       SchoolApp.store.teacherAttendance.push(punchRecord);
 
       var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
-      if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+      if (currentSchoolId && window.firestore) {
         try {
-          var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-          await window.firestore.updateDoc(rootDocRef, {
-            teacherAttendance: window.firestore.arrayUnion(punchRecord)
-          });
+          if (SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId)) {
+            var mKey = (punchRecord.date || new Date().toISOString().split('T')[0]).slice(0, 7);
+            var punchDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'teacher_attendance', mKey, 'teachers', punchRecord.teacherId);
+            await window.firestore.setDoc(punchDocRef, {
+              month: mKey,
+              teacherId: punchRecord.teacherId,
+              teacherName: punchRecord.teacherName || '',
+              records: window.firestore.arrayUnion(punchRecord),
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          } else if (window.firestore.updateDoc && window.firestore.arrayUnion) {
+            var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+            await window.firestore.updateDoc(rootDocRef, {
+              teacherAttendance: window.firestore.arrayUnion(punchRecord)
+            });
+          } else {
+            SchoolApp.save();
+          }
         } catch (punchErr) {
           console.error('[Teacher Attendance] Error saving punch record:', punchErr);
           SchoolApp.showToast('Failed to record punch: ' + (punchErr.message || 'Check connection'), 'error');
@@ -493,13 +521,20 @@
       SchoolApp.store.teacherCorrectionRequests.push(request);
 
       var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
-      if (currentSchoolId && window.firestore && window.firestore.updateDoc && window.firestore.arrayUnion) {
+      if (currentSchoolId && window.firestore) {
         try {
-          var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-          await window.firestore.updateDoc(rootDocRef, {
-            attendanceRequests: window.firestore.arrayUnion(request),
-            teacherCorrectionRequests: window.firestore.arrayUnion(request)
-          });
+          if (SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId)) {
+            var reqDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'attendance_requests', request.id);
+            await window.firestore.setDoc(reqDocRef, request, { merge: true });
+          } else if (window.firestore.updateDoc && window.firestore.arrayUnion) {
+            var rootDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+            await window.firestore.updateDoc(rootDocRef, {
+              attendanceRequests: window.firestore.arrayUnion(request),
+              teacherCorrectionRequests: window.firestore.arrayUnion(request)
+            });
+          } else {
+            SchoolApp.save();
+          }
         } catch (updateErr) {
           console.error('[Teacher Attendance] Error submitting regularization request:', updateErr);
           SchoolApp.showToast('Failed to submit request: ' + (updateErr.message || 'Check connection'), 'error');

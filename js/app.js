@@ -514,6 +514,35 @@ window.SchoolApp = {
       delete payload.feeActivityLog;
     }
 
+    // SCALED ARCHITECTURE (storageVersion >= 2):
+    // Prune all migrated keys, legacy arrays, and base64 signature/logo bloat
+    if (this.isStorageVersion2(currentSchoolId)) {
+      delete payload.teacherAttendance;
+      delete payload.attendanceRequests;
+      delete payload.teacherCorrectionRequests;
+      delete payload.absenceIntimationLog;
+      delete payload.notices;
+      delete payload.notifications;
+      delete payload.examAuditLog;
+      delete payload.examMarksAuditLog;
+      delete payload.trash;
+      delete payload.feeActivityLog;
+      delete payload.schools;
+      delete payload.fees;
+      delete payload.attendance;
+      delete payload.examMarks;
+      delete payload.marks;
+
+      if (payload.settings) {
+        if (typeof payload.settings.principalSignatureUrl === 'string' && payload.settings.principalSignatureUrl.startsWith('data:')) {
+          delete payload.settings.principalSignatureUrl;
+        }
+        if (payload.settings.schoolInfo && typeof payload.settings.schoolInfo.principalSignatureUrl === 'string') {
+          delete payload.settings.schoolInfo.principalSignatureUrl;
+        }
+      }
+    }
+
     // Safety guard against accidental erasure of examTerms / examSubjects
     var serverExamTermsBaseline = this.initialServerExamTermsCount || 0;
     if (!allowWipe && serverExamTermsBaseline > 0) {
@@ -529,17 +558,17 @@ window.SchoolApp = {
     var estimatedBytes = (typeof Blob !== 'undefined') ? new Blob([payloadStr]).size : payloadStr.length;
     var estimatedWireBytes = Math.round(estimatedBytes * 1.12); // Accounts for Protobuf map framing overhead
 
-    // HARD STOP: Firestore's document limit is 1,048,576 bytes.
-    if (estimatedWireBytes >= 1000000) {
-      console.error("[Storage Limit Alert] BLOCKED save for " + currentSchoolId + " — estimated ~" + Math.round(estimatedWireBytes / 1024) + " KB, at/over the safe threshold.");
-      this.showToast("❌ Your school's data has reached its storage limit. This change was NOT saved — please contact support immediately.", "error");
+    // HARD STOP: Client blocks save at > 700 KB (716,800 bytes)
+    if (estimatedWireBytes > 700 * 1024 || estimatedBytes > 700 * 1024) {
+      console.error("[Storage Guard] BLOCKED save for " + currentSchoolId + " — estimated ~" + Math.round(estimatedWireBytes / 1024) + " KB exceeds 700 KB safety limit.");
+      this.showToast("❌ Save blocked: School data size (" + Math.round(estimatedWireBytes / 1024) + " KB) exceeds the 700 KB limit. Contact support to optimize storage.", "error");
       if (!bypassLoader) this.hideLoader();
-      return { success: false, reason: 'storage_limit_exceeded' };
+      return { success: false, reason: 'storage_limit_exceeded', estimatedWireBytes: estimatedWireBytes };
     }
 
-    if (estimatedBytes >= 900000 || estimatedWireBytes >= 900000) {
+    if (estimatedWireBytes >= 550 * 1024 || estimatedBytes >= 550 * 1024) {
       console.warn("[Storage Limit Alert] Tenant document size for " + currentSchoolId + " is approaching limit: ~" + Math.round(estimatedWireBytes / 1024) + " KB (" + Math.round((estimatedWireBytes / 1048576) * 100) + "% of 1MB limit).");
-      this.showToast("Your school's data is approaching storage limits. Please contact support.", "warning");
+      this.showToast("Your school's data is approaching storage limits (" + Math.round(estimatedWireBytes / 1024) + " KB).", "warning");
     }
 
     return {
@@ -574,6 +603,11 @@ window.SchoolApp = {
       // CHANGE 2: Subcollection Safety Net — diff and sync any mutated student docs
       if (this.isStudentsMigrated(currentSchoolId) && window.firestore && window.db) {
         await this.syncStoreStudentsToSubcollection(currentSchoolId);
+      }
+
+      // SCALED ARCHITECTURE: Sync mutated notices, notifications, trash, audit logs to subcollections
+      if (this.isStorageVersion2(currentSchoolId) && window.firestore && window.db) {
+        await this.syncStoreV2Subcollections(currentSchoolId);
       }
 
       const saveFn = () => window.firestore.setDoc(docRef, payload, { merge: true });
@@ -823,6 +857,13 @@ window.SchoolApp = {
     }
 
     return { success: true };
+  },
+
+  isStorageVersion2: function(schoolId) {
+    var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!sid) return false;
+    var settings = (this.store && this.store.settings) || {};
+    return typeof settings.storageVersion === 'number' && settings.storageVersion >= 2;
   },
 
   isFeeLogMigrated: function(schoolId) {
@@ -1096,6 +1137,202 @@ window.SchoolApp = {
     self.initialServerStudentCount = students.length;
     self._serverStudentsBaseline = students.slice();
     return students;
+  },
+
+  syncStoreV2Subcollections: async function(schoolId) {
+    if (!schoolId || !window.firestore || !window.db) return;
+    var fs = window.firestore;
+    var db = window.db;
+
+    try {
+      // 1. Sync Notices
+      if (Array.isArray(this.store.notices)) {
+        var serverNotices = this._serverNoticesMap || new Map();
+        for (var i = 0; i < this.store.notices.length; i++) {
+          var n = this.store.notices[i];
+          if (!n || !n.id) continue;
+          var cached = serverNotices.get(n.id);
+          if (!cached || JSON.stringify(cached) !== JSON.stringify(n)) {
+            var nRef = fs.doc(db, 'tenant_data', schoolId, 'notices', n.id);
+            await fs.setDoc(nRef, n, { merge: true });
+            serverNotices.set(n.id, JSON.parse(JSON.stringify(n)));
+          }
+        }
+      }
+
+      // 2. Sync Notifications
+      if (Array.isArray(this.store.notifications)) {
+        var serverNotifs = this._serverNotificationsMap || new Map();
+        for (var j = 0; j < this.store.notifications.length; j++) {
+          var notif = this.store.notifications[j];
+          if (!notif || !notif.id) continue;
+          var cachedN = serverNotifs.get(notif.id);
+          if (!cachedN || JSON.stringify(cachedN) !== JSON.stringify(notif)) {
+            var notifRef = fs.doc(db, 'tenant_data', schoolId, 'notifications', notif.id);
+            await fs.setDoc(notifRef, notif, { merge: true });
+            serverNotifs.set(notif.id, JSON.parse(JSON.stringify(notif)));
+          }
+        }
+      }
+
+      // 3. Sync Trash
+      if (Array.isArray(this.store.trash)) {
+        var serverTrash = this._serverTrashMap || new Map();
+        for (var k = 0; k < this.store.trash.length; k++) {
+          var tr = this.store.trash[k];
+          if (!tr || !tr.id) continue;
+          var cachedTr = serverTrash.get(tr.id);
+          if (!cachedTr || JSON.stringify(cachedTr) !== JSON.stringify(tr)) {
+            var trRef = fs.doc(db, 'tenant_data', schoolId, 'trash', tr.id);
+            await fs.setDoc(trRef, tr, { merge: true });
+            serverTrash.set(tr.id, JSON.parse(JSON.stringify(tr)));
+          }
+        }
+      }
+
+      // 4. Sync Exam Audit Log
+      if (Array.isArray(this.store.examAuditLog)) {
+        var serverAudit = this._serverAuditMap || new Set();
+        for (var aIdx = 0; aIdx < this.store.examAuditLog.length; aIdx++) {
+          var a = this.store.examAuditLog[aIdx];
+          if (!a) continue;
+          var aid = a.id || (a.timestamp + '_' + (a.studentId || '') + '_' + (a.termId || ''));
+          if (!serverAudit.has(aid)) {
+            a.id = aid;
+            var aRef = fs.doc(db, 'tenant_data', schoolId, 'exam_audit_log', aid);
+            await fs.setDoc(aRef, a, { merge: true });
+            serverAudit.add(aid);
+          }
+        }
+      }
+
+      // 5. Sync Attendance Requests
+      var allReqs = (this.store.attendanceRequests || []).concat(this.store.teacherCorrectionRequests || []);
+      if (allReqs.length > 0) {
+        var serverReqs = this._serverAttendanceRequestsMap || new Map();
+        for (var rIdx = 0; rIdx < allReqs.length; rIdx++) {
+          var req = allReqs[rIdx];
+          if (!req || !req.id) continue;
+          var cachedR = serverReqs.get(req.id);
+          if (!cachedR || JSON.stringify(cachedR) !== JSON.stringify(req)) {
+            var rRef = fs.doc(db, 'tenant_data', schoolId, 'attendance_requests', req.id);
+            await fs.setDoc(rRef, req, { merge: true });
+            serverReqs.set(req.id, JSON.parse(JSON.stringify(req)));
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn('[V2 Subcollection Sync] Warning syncing subcollections:', syncErr);
+    }
+  },
+
+  loadV2Subcollections: async function(schoolId) {
+    if (!schoolId || !window.firestore || !window.db) return;
+    var fs = window.firestore;
+    var db = window.db;
+
+    try {
+      // 1. Current month teacher attendance
+      var currentMonth = new Date().toISOString().slice(0, 7);
+      var punchDocsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'teacher_attendance', currentMonth, 'teachers')).catch(function() { return null; });
+      if (punchDocsSnap && !punchDocsSnap.empty) {
+        var subPunches = [];
+        punchDocsSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          if (Array.isArray(d.records)) {
+            subPunches = subPunches.concat(d.records);
+          }
+        });
+        if (subPunches.length > 0) {
+          var punchMap = new Map();
+          (this.store.teacherAttendance || []).forEach(function(p) {
+            if (p && (p.id || p.timestamp)) punchMap.set(p.id || (p.teacherId + '_' + p.timestamp), p);
+          });
+          subPunches.forEach(function(p) {
+            if (p && (p.id || p.timestamp)) punchMap.set(p.id || (p.teacherId + '_' + p.timestamp), p);
+          });
+          this.store.teacherAttendance = Array.from(punchMap.values());
+        }
+      }
+
+      // 2. Notices
+      var noticesSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notices')).catch(function() { return null; });
+      if (noticesSnap && !noticesSnap.empty) {
+        var subNotices = [];
+        this._serverNoticesMap = new Map();
+        noticesSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          subNotices.push(d);
+          SchoolApp._serverNoticesMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var noticeMap = new Map();
+        (this.store.notices || []).forEach(function(n) { if (n && n.id) noticeMap.set(n.id, n); });
+        subNotices.forEach(function(n) { noticeMap.set(n.id, n); });
+        this.store.notices = Array.from(noticeMap.values());
+      }
+
+      // 3. Notifications
+      var notifsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notifications')).catch(function() { return null; });
+      if (notifsSnap && !notifsSnap.empty) {
+        var subNotifs = [];
+        this._serverNotificationsMap = new Map();
+        notifsSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          subNotifs.push(d);
+          SchoolApp._serverNotificationsMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var notifMap = new Map();
+        (this.store.notifications || []).forEach(function(n) { if (n && n.id) notifMap.set(n.id, n); });
+        subNotifs.forEach(function(n) { notifMap.set(n.id, n); });
+        this.store.notifications = Array.from(notifMap.values());
+      }
+
+      // 4. Attendance Requests
+      var reqsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'attendance_requests')).catch(function() { return null; });
+      if (reqsSnap && !reqsSnap.empty) {
+        var subReqs = [];
+        this._serverAttendanceRequestsMap = new Map();
+        reqsSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          subReqs.push(d);
+          SchoolApp._serverAttendanceRequestsMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var reqMap = new Map();
+        (this.store.attendanceRequests || []).concat(this.store.teacherCorrectionRequests || []).forEach(function(r) {
+          if (r && r.id) reqMap.set(r.id, r);
+        });
+        subReqs.forEach(function(r) { reqMap.set(r.id, r); });
+        this.store.attendanceRequests = Array.from(reqMap.values());
+        this.store.teacherCorrectionRequests = this.store.attendanceRequests;
+      }
+
+      // 5. Trash
+      var trashSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'trash')).catch(function() { return null; });
+      if (trashSnap && !trashSnap.empty) {
+        var subTrash = [];
+        this._serverTrashMap = new Map();
+        trashSnap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          subTrash.push(d);
+          SchoolApp._serverTrashMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var trashMap = new Map();
+        (this.store.trash || []).forEach(function(t) { if (t && t.id) trashMap.set(t.id, t); });
+        subTrash.forEach(function(t) { trashMap.set(t.id, t); });
+        this.store.trash = Array.from(trashMap.values());
+      }
+
+      // 6. Fee activity logs
+      if (this.isFeeLogMigrated(schoolId) || this.isStorageVersion2(schoolId)) {
+        await this.loadFeeActivityLogs(false);
+      }
+    } catch (e) {
+      console.warn('[loadV2Subcollections] Error loading subcollections for ' + schoolId, e);
+    }
   },
 
   syncStoreStudentsToSubcollection: async function(currentSchoolId) {
@@ -2653,6 +2890,13 @@ window.SchoolApp = {
           var preservedAttendance = (self.store && self.store.attendance && self.store.attendance.length > 0 && (!parsed.attendance || parsed.attendance.length === 0)) ? self.store.attendance : [];
           var preservedExamMarks = (self.store && self.store.examMarks && Object.keys(self.store.examMarks).length > 0 && (!parsed.examMarks || Object.keys(parsed.examMarks).length === 0)) ? self.store.examMarks : {};
 
+          var isV2 = (parsed.settings && parsed.settings.storageVersion >= 2);
+          var preservedTeacherAttendance = (isV2 && self.store && Array.isArray(self.store.teacherAttendance) && self.store.teacherAttendance.length > 0) ? self.store.teacherAttendance : null;
+          var preservedNotices = (isV2 && self.store && Array.isArray(self.store.notices) && self.store.notices.length > 0) ? self.store.notices : null;
+          var preservedNotifications = (isV2 && self.store && Array.isArray(self.store.notifications) && self.store.notifications.length > 0) ? self.store.notifications : null;
+          var preservedRequests = (isV2 && self.store && Array.isArray(self.store.attendanceRequests) && self.store.attendanceRequests.length > 0) ? self.store.attendanceRequests : null;
+          var preservedTrash = (isV2 && self.store && Array.isArray(self.store.trash) && self.store.trash.length > 0) ? self.store.trash : null;
+
           self.store = Object.assign(self.getInitialStore(), parsed, {
             currentSchoolId: schoolId
           });
@@ -2661,6 +2905,14 @@ window.SchoolApp = {
           if (preservedFees.length > 0) self.store.fees = preservedFees;
           if (preservedAttendance.length > 0) self.store.attendance = preservedAttendance;
           if (Object.keys(preservedExamMarks).length > 0) self.store.examMarks = preservedExamMarks;
+          if (preservedTeacherAttendance) self.store.teacherAttendance = preservedTeacherAttendance;
+          if (preservedNotices) self.store.notices = preservedNotices;
+          if (preservedNotifications) self.store.notifications = preservedNotifications;
+          if (preservedRequests) {
+            self.store.attendanceRequests = preservedRequests;
+            self.store.teacherCorrectionRequests = preservedRequests;
+          }
+          if (preservedTrash) self.store.trash = preservedTrash;
 
           self.initialServerStudentCount = (parsed.students || []).length;
           self.initialServerTeacherCount = (parsed.teachers || []).length;
@@ -2715,6 +2967,11 @@ window.SchoolApp = {
           // CHANGE 2: Connect to students subcollection if migrated mode is active
           if (parsed.settings && parsed.settings.studentsMigrated === true) {
             self.initStudentsSubcollectionListener(schoolId);
+          }
+
+          // SCALED ARCHITECTURE: Connect to v2 subcollections
+          if (parsed.settings && parsed.settings.storageVersion >= 2) {
+            self.loadV2Subcollections(schoolId);
           }
         }
 
