@@ -562,34 +562,55 @@ function computeAdvanceJournalLines(adv, settings) {
   if (amountPaise <= 0) {
     return { skip: true, reason: 'Zero or invalid amount' };
   }
-  const paidFrom = adv.paidFromAccountId || adv.paidFrom || '11100';
+  const paidFrom = adv.paidFromAccount || adv.paidFromAccountId || adv.paidFrom || '11100';
+  const fy = adv.fy || adv.financialYear || getFinancialYear(adv.date);
+
+  const normalLines = [
+    { accountCode: '13100', drPaise: amountPaise, crPaise: 0, description: `Staff Advance: ${adv.employeeName || adv.employeeId || ''}`.trim() },
+    { accountCode: paidFrom, drPaise: 0, crPaise: amountPaise, description: `Advance disbursement via ${paidFrom}` }
+  ];
+  const nDr = normalLines.reduce((s, l) => s + l.drPaise, 0);
+  const nCr = normalLines.reduce((s, l) => s + l.crPaise, 0);
+  if (nDr !== nCr) {
+    throw new Error(`Unbalanced advance voucher for ${adv.id}: Dr ${nDr} != Cr ${nCr}`);
+  }
 
   const normalVoucher = {
     voucherId: `vch_adv_${adv.id}`,
+    voucherNo: `VCH-ADV-${adv.id.slice(-6).toUpperCase()}`,
+    type: 'payment',
     date: adv.date,
-    financialYear: adv.financialYear || getFinancialYear(adv.date),
-    sourceType: 'advance',
+    fy,
+    source: 'advance',
     sourceId: adv.id,
     narration: `Staff Advance: ${adv.employeeName || adv.employeeId || ''} (${adv.id})`.trim(),
-    lines: [
-      { accountId: '13100', debitPaise: amountPaise, creditPaise: 0 },
-      { accountId: paidFrom, debitPaise: 0, creditPaise: amountPaise }
-    ]
+    lines: normalLines
   };
 
   let cancelVoucher = null;
   if (adv.status === 'cancelled') {
+    const cancelDate = adv.cancelledAt ? adv.cancelledAt.slice(0, 10) : adv.date;
+    const cancelFY = adv.cancelledAt ? getFinancialYear(cancelDate) : fy;
+    const cancelLines = [
+      { accountCode: paidFrom, drPaise: amountPaise, crPaise: 0, description: `Reversal of advance disbursement via ${paidFrom}` },
+      { accountCode: '13100', drPaise: 0, crPaise: amountPaise, description: `Reversal of Staff Advance: ${adv.employeeName || adv.employeeId || ''}`.trim() }
+    ];
+    const cDr = cancelLines.reduce((s, l) => s + l.drPaise, 0);
+    const cCr = cancelLines.reduce((s, l) => s + l.crPaise, 0);
+    if (cDr !== cCr) {
+      throw new Error(`Unbalanced advance cancellation voucher for ${adv.id}: Dr ${cDr} != Cr ${cCr}`);
+    }
+
     cancelVoucher = {
       voucherId: `vch_advcx_${adv.id}`,
-      date: (adv.cancelledAt ? adv.cancelledAt.slice(0, 10) : adv.date),
-      financialYear: adv.financialYear || getFinancialYear(adv.date),
-      sourceType: 'advance_cancellation',
+      voucherNo: `VCH-ADVCX-${adv.id.slice(-6).toUpperCase()}`,
+      type: 'receipt',
+      date: cancelDate,
+      fy: cancelFY,
+      source: 'advance_cancellation',
       sourceId: adv.id,
       narration: `Reversal of Staff Advance ${adv.id}: ${adv.cancelReason || 'Cancelled'}`,
-      lines: [
-        { accountId: paidFrom, debitPaise: amountPaise, creditPaise: 0 },
-        { accountId: '13100', debitPaise: 0, creditPaise: amountPaise }
-      ]
+      lines: cancelLines
     };
   }
 
@@ -606,35 +627,79 @@ function computeStatutoryPaymentJournalLines(stat, settings) {
   if (amountPaise <= 0) {
     return { skip: true, reason: 'Zero or invalid amount' };
   }
-  const paidFrom = stat.paidFromAccountId || stat.paidFrom || '11200';
-  const liabilityAccount = stat.liabilityAccount || '22100';
+  const paidFrom = stat.paidFromAccount || stat.paidFromAccountId || stat.paidFrom || '11200';
+  const fy = stat.fy || stat.financialYear || getFinancialYear(stat.date);
+
+  let liabilityAccount = stat.liabilityAccount;
+  if (!liabilityAccount) {
+    const t = String(stat.type || '').toLowerCase();
+    if (t === 'epf') liabilityAccount = '22100';
+    else if (t === 'esic') liabilityAccount = '22200';
+    else if (t === 'pt') liabilityAccount = '22300';
+    else if (t === 'tds') liabilityAccount = '22400';
+    else liabilityAccount = '22100';
+  }
+
+  const normalLines = [];
+  if (String(stat.type || '').toLowerCase() === 'epf' && (stat.employeeSharePaise || stat.employerSharePaise)) {
+    const ee = Number(stat.employeeSharePaise) || 0;
+    const er = Number(stat.employerSharePaise) || 0;
+    if (ee > 0) normalLines.push({ accountCode: '22100', drPaise: ee, crPaise: 0, description: `EPF Employee Share (${stat.forMonth || stat.period || ''})` });
+    if (er > 0) normalLines.push({ accountCode: '22110', drPaise: er, crPaise: 0, description: `EPF Employer Share (${stat.forMonth || stat.period || ''})` });
+    const rem = amountPaise - ee - er;
+    if (rem !== 0) {
+      normalLines.push({ accountCode: liabilityAccount, drPaise: rem, crPaise: 0, description: `EPF Balance (${stat.forMonth || stat.period || ''})` });
+    }
+  } else {
+    normalLines.push({ accountCode: liabilityAccount, drPaise: amountPaise, crPaise: 0, description: `Statutory Payment ${liabilityAccount} (${stat.forMonth || stat.period || ''})` });
+  }
+  normalLines.push({ accountCode: paidFrom, drPaise: 0, crPaise: amountPaise, description: `Statutory disbursement via ${paidFrom}` });
+
+  const nDr = normalLines.reduce((s, l) => s + l.drPaise, 0);
+  const nCr = normalLines.reduce((s, l) => s + l.crPaise, 0);
+  if (nDr !== nCr) {
+    throw new Error(`Unbalanced statutory voucher for ${stat.id}: Dr ${nDr} != Cr ${nCr}`);
+  }
 
   const normalVoucher = {
     voucherId: `vch_stat_${stat.id}`,
+    voucherNo: `VCH-STAT-${stat.id.slice(-6).toUpperCase()}`,
+    type: 'payment',
     date: stat.date,
-    financialYear: stat.financialYear || getFinancialYear(stat.date),
-    sourceType: 'statutory_payment',
+    fy,
+    source: 'statutory_payment',
     sourceId: stat.id,
-    narration: `Statutory Payment: A/c ${liabilityAccount} (${stat.id}) ${stat.challanRef ? 'Challan: ' + stat.challanRef : ''}`.trim(),
-    lines: [
-      { accountId: liabilityAccount, debitPaise: amountPaise, creditPaise: 0 },
-      { accountId: paidFrom, debitPaise: 0, creditPaise: amountPaise }
-    ]
+    narration: `Statutory Payment: A/c ${liabilityAccount} (${stat.id}) ${stat.challanRef || stat.challanNumber ? 'Challan: ' + (stat.challanRef || stat.challanNumber) : ''}`.trim(),
+    lines: normalLines
   };
 
   let cancelVoucher = null;
   if (stat.status === 'cancelled') {
+    const cancelDate = stat.cancelledAt ? stat.cancelledAt.slice(0, 10) : stat.date;
+    const cancelFY = stat.cancelledAt ? getFinancialYear(cancelDate) : fy;
+    const cancelLines = normalLines.map(l => ({
+      accountCode: l.accountCode,
+      drPaise: l.crPaise,
+      crPaise: l.drPaise,
+      description: `Reversal of: ${l.description || l.accountCode}`
+    }));
+
+    const cDr = cancelLines.reduce((s, l) => s + l.drPaise, 0);
+    const cCr = cancelLines.reduce((s, l) => s + l.crPaise, 0);
+    if (cDr !== cCr) {
+      throw new Error(`Unbalanced statutory cancellation voucher for ${stat.id}: Dr ${cDr} != Cr ${cCr}`);
+    }
+
     cancelVoucher = {
       voucherId: `vch_statcx_${stat.id}`,
-      date: (stat.cancelledAt ? stat.cancelledAt.slice(0, 10) : stat.date),
-      financialYear: stat.financialYear || getFinancialYear(stat.date),
-      sourceType: 'statutory_cancellation',
+      voucherNo: `VCH-STATCX-${stat.id.slice(-6).toUpperCase()}`,
+      type: 'receipt',
+      date: cancelDate,
+      fy: cancelFY,
+      source: 'statutory_cancellation',
       sourceId: stat.id,
       narration: `Reversal of Statutory Payment ${stat.id}: ${stat.cancelReason || 'Cancelled'}`,
-      lines: [
-        { accountId: paidFrom, debitPaise: amountPaise, creditPaise: 0 },
-        { accountId: liabilityAccount, debitPaise: 0, creditPaise: amountPaise }
-      ]
+      lines: cancelLines
     };
   }
 
@@ -883,6 +948,14 @@ function computeEmployeeLine({
     warnings.push(`Negative net pay (₹${(netPayPaise / 100).toFixed(2)}) for ${employeeName} (${designation})`);
   }
 
+  const pMode = profile.paymentMode || 'Bank';
+  const pLast4 = profile.last4 ? String(profile.last4).slice(-4) : (profile.accountNumber ? String(profile.accountNumber).slice(-4) : '');
+  const pBankName = profile.bankName || '';
+  if (pMode === 'Bank' && (!pBankName || !pLast4)) {
+    flags.push('BANK_DETAILS_MISSING');
+    warnings.push(`Bank details missing (last 4 digits / bank name) for ${employeeName}`);
+  }
+
   return {
     employeeId,
     ...(teacherId ? { teacherId } : {}),
@@ -890,7 +963,10 @@ function computeEmployeeLine({
     employeeType,
     designation,
     department,
-    paymentMode: profile.paymentMode || 'Bank',
+    paymentMode: pMode,
+    bankName: pBankName,
+    ifscCode: profile.ifscCode || '',
+    last4: pLast4,
     daysInMonth,
     workingDays,
     paidDays,
@@ -948,13 +1024,20 @@ function calculatePayrollRun({
   const mon = parseInt(monthStr, 10);
   const daysInMonth = new Date(year, mon, 0).getDate();
 
-  // Determine working days (excluding Sundays)
+  const todayStr = (settings && settings.currentDate) || new Date().toISOString().slice(0, 10);
+  const monthEndStr = `${yearStr}-${monthStr}-${String(daysInMonth).padStart(2, '0')}`;
+  const isCalculatedBeforeMonthEnd = (todayStr < monthEndStr);
+
+  const lopFromAttendance = !!(settings && (settings.lopFromAttendance === true || (settings.lop && settings.lop.fromAttendance === true)));
+  const holidaysSet = new Set(Array.isArray(settings && settings.holidays) ? settings.holidays : []);
+
+  // Determine working days (excluding Sundays and holidays)
   let workingDaysInMonth = 0;
   const workingDates = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const dStr = `${yearStr}-${monthStr}-${String(d).padStart(2, '0')}`;
     const dateObj = new Date(year, mon - 1, d);
-    if (dateObj.getDay() !== 0) {
+    if (dateObj.getDay() !== 0 && !holidaysSet.has(dStr)) {
       workingDaysInMonth++;
       workingDates.push(dStr);
     }
@@ -1003,6 +1086,10 @@ function calculatePayrollRun({
   const lines = [];
   const warnings = [];
 
+  if (isCalculatedBeforeMonthEnd) {
+    warnings.push(`Payroll calculated on ${todayStr} before month end (${monthEndStr}). Attendance Loss of Pay (LOP) only reflects punches through ${todayStr}.`);
+  }
+
   // 1. Teachers
   teachersList.forEach(t => {
     if (t.status !== 'Active') return;
@@ -1015,25 +1102,32 @@ function calculatePayrollRun({
     const designation = t.designation || 'Teacher';
     const department = t.subject || 'Teaching';
 
-    let absentDaysCount = 0;
-    const tJoinDate = t.joiningDate || t.joinDate;
-    workingDates.forEach(dStr => {
-      if (tJoinDate && dStr < tJoinDate) return;
-      const hasPunch = teacherPunchesByDate.has(`${employeeId}_${dStr}`);
-      const hasApprovedReq = approvedReqsByDate.has(`${employeeId}_${dStr}`);
-      if (!hasPunch && !hasApprovedReq) {
-        absentDaysCount++;
-      }
-    });
+    let lopAuto = 0;
+    if (lopFromAttendance) {
+      const tJoinDate = t.joiningDate || t.joinDate;
+      const tInactiveDate = t.inactiveDate || t.leavingDate || t.relievingDate;
+      const effectiveCutoff = (todayStr < monthEndStr ? todayStr : monthEndStr);
 
-    const lopAuto = absentDaysCount;
-    let lopDays = lopAuto;
-    let lopReason = lopAuto > 0 ? 'Automated attendance absent days' : '';
-
-    if (typeof empInputs.lopDaysOverride === 'number') {
-      lopDays = Math.max(0, empInputs.lopDaysOverride);
-      lopReason = empInputs.lopReason || 'Manual override';
+      let absentDaysCount = 0;
+      workingDates.forEach(dStr => {
+        if (dStr > effectiveCutoff) return; // only up to min(today, month end)
+        if (tJoinDate && dStr < tJoinDate) return; // on or after joiningDate
+        if (tInactiveDate && dStr > tInactiveDate) return; // exclude after becoming inactive
+        const hasPunch = teacherPunchesByDate.has(`${employeeId}_${dStr}`);
+        const hasApprovedReq = approvedReqsByDate.has(`${employeeId}_${dStr}`);
+        if (!hasPunch && !hasApprovedReq) {
+          absentDaysCount++;
+        }
+      });
+      lopAuto = absentDaysCount;
     }
+
+    let lopDays = (typeof empInputs.lopDaysOverride === 'number')
+      ? Math.max(0, empInputs.lopDaysOverride)
+      : lopAuto;
+    let lopReason = (typeof empInputs.lopDaysOverride === 'number')
+      ? (empInputs.lopReason || 'Manual override')
+      : (lopAuto > 0 ? 'Automated attendance absent days' : '');
 
     const line = computeEmployeeLine({
       employeeId,
@@ -1150,8 +1244,8 @@ function calculatePayrollRun({
 }
 
 function buildPayrollVoucher(month, lines, totals, settings, paidFrom) {
-  const bankAccount = (paidFrom && paidFrom.bankAccount) || '11200';
-  const cashAccount = (paidFrom && paidFrom.cashAccount) || '11100';
+  const bankAccount = (paidFrom && (paidFrom.bankAccount || paidFrom.paidFromAccount)) || '11200';
+  const cashAccount = (paidFrom && (paidFrom.cashAccount || paidFrom.paidFromAccount)) || '11100';
   const teacherExpenseAccount = (settings && settings.salaryExpenseAccounts && settings.salaryExpenseAccounts.teacher) || '51100';
   const staffExpenseAccount = (settings && settings.salaryExpenseAccounts && settings.salaryExpenseAccounts.staff) || '51200';
 
@@ -1159,54 +1253,65 @@ function buildPayrollVoucher(month, lines, totals, settings, paidFrom) {
 
   // Debits
   if (totals.teacherGrossPaise > 0) {
-    voucherLines.push({ accountId: teacherExpenseAccount, debitPaise: totals.teacherGrossPaise, creditPaise: 0 });
+    voucherLines.push({ accountCode: teacherExpenseAccount, drPaise: totals.teacherGrossPaise, crPaise: 0, description: `Teacher Salaries (${month})` });
   }
   if (totals.staffGrossPaise > 0) {
-    voucherLines.push({ accountId: staffExpenseAccount, debitPaise: totals.staffGrossPaise, creditPaise: 0 });
+    voucherLines.push({ accountCode: staffExpenseAccount, drPaise: totals.staffGrossPaise, crPaise: 0, description: `Staff Salaries (${month})` });
   }
   if (totals.employerPfPaise > 0) {
-    voucherLines.push({ accountId: '51300', debitPaise: totals.employerPfPaise, creditPaise: 0 });
+    voucherLines.push({ accountCode: '51300', drPaise: totals.employerPfPaise, crPaise: 0, description: `Employer PF Contribution (${month})` });
   }
   if (totals.employerEsiPaise > 0) {
-    voucherLines.push({ accountId: '51400', debitPaise: totals.employerEsiPaise, creditPaise: 0 });
+    voucherLines.push({ accountCode: '51400', drPaise: totals.employerEsiPaise, crPaise: 0, description: `Employer ESIC Contribution (${month})` });
   }
 
   // Credits
   if (totals.employeePfPaise > 0) {
-    voucherLines.push({ accountId: '22100', debitPaise: 0, creditPaise: totals.employeePfPaise });
+    voucherLines.push({ accountCode: '22100', drPaise: 0, crPaise: totals.employeePfPaise, description: `Employee PF Deductions (${month})` });
   }
   if (totals.employerPfPaise > 0) {
-    voucherLines.push({ accountId: '22110', debitPaise: 0, creditPaise: totals.employerPfPaise });
+    voucherLines.push({ accountCode: '22110', drPaise: 0, crPaise: totals.employerPfPaise, description: `Employer PF Payable (${month})` });
   }
   if (totals.esiPaise > 0) {
-    voucherLines.push({ accountId: '22200', debitPaise: 0, creditPaise: totals.esiPaise });
+    voucherLines.push({ accountCode: '22200', drPaise: 0, crPaise: totals.esiPaise, description: `ESIC Payable (${month})` });
   }
   if (totals.ptPaise > 0) {
-    voucherLines.push({ accountId: '22300', debitPaise: 0, creditPaise: totals.ptPaise });
+    voucherLines.push({ accountCode: '22300', drPaise: 0, crPaise: totals.ptPaise, description: `Professional Tax Payable (${month})` });
   }
   if (totals.tdsPaise > 0) {
-    voucherLines.push({ accountId: '22400', debitPaise: 0, creditPaise: totals.tdsPaise });
+    voucherLines.push({ accountCode: '22400', drPaise: 0, crPaise: totals.tdsPaise, description: `TDS on Salaries Payable (${month})` });
   }
   if (totals.advanceRecoveryPaise > 0) {
-    voucherLines.push({ accountId: '13100', debitPaise: 0, creditPaise: totals.advanceRecoveryPaise });
+    voucherLines.push({ accountCode: '13100', drPaise: 0, crPaise: totals.advanceRecoveryPaise, description: `Salary Advance Recovery (${month})` });
   }
   if (totals.otherDeductionsPaise > 0) {
-    voucherLines.push({ accountId: '22900', debitPaise: 0, creditPaise: totals.otherDeductionsPaise });
+    voucherLines.push({ accountCode: '22900', drPaise: 0, crPaise: totals.otherDeductionsPaise, description: `Other Payroll Deductions (${month})` });
   }
   if (totals.netBankPaise > 0) {
-    voucherLines.push({ accountId: bankAccount, debitPaise: 0, creditPaise: totals.netBankPaise });
+    voucherLines.push({ accountCode: bankAccount, drPaise: 0, crPaise: totals.netBankPaise, description: `Salary Net Bank Payout (${month})` });
   }
   if (totals.netCashPaise > 0) {
-    voucherLines.push({ accountId: cashAccount, debitPaise: 0, creditPaise: totals.netCashPaise });
+    voucherLines.push({ accountCode: cashAccount, drPaise: 0, crPaise: totals.netCashPaise, description: `Salary Net Cash Payout (${month})` });
   }
+
+  const sumDr = voucherLines.reduce((s, l) => s + l.drPaise, 0);
+  const sumCr = voucherLines.reduce((s, l) => s + l.crPaise, 0);
+  if (sumDr !== sumCr) {
+    throw new Error(`Unbalanced payroll voucher for ${month}: Dr ${sumDr} != Cr ${sumCr}`);
+  }
+
+  const pDate = (paidFrom && (paidFrom.paidDate || paidFrom.paymentDate)) || `${month}-01`;
+  const fy = getFinancialYear(pDate);
 
   return {
     voucherId: `vch_pay_${month}`,
-    date: (paidFrom && paidFrom.paidDate) || `${month}-01`,
-    financialYear: getFinancialYear(`${month}-01`),
-    sourceType: 'payroll',
+    voucherNo: `VCH-PAY-${month}`,
+    type: 'payment',
+    date: pDate,
+    fy,
+    source: 'payroll',
     sourceId: month,
-    narration: `Payroll Disbursement for ${month}: ${totals.headcount} employees`,
+    narration: `Payroll Disbursement for ${month}: ${totals.headcount || lines.length} employees`,
     lines: voucherLines
   };
 }
@@ -1214,16 +1319,27 @@ function buildPayrollVoucher(month, lines, totals, settings, paidFrom) {
 function buildPayrollReversalVoucher(month, originalVoucher, reversalReason, reversalDate) {
   const revDate = reversalDate || new Date().toISOString().slice(0, 10);
   const revLines = (originalVoucher.lines || []).map(line => ({
-    accountId: line.accountId,
-    debitPaise: line.creditPaise,
-    creditPaise: line.debitPaise
+    accountCode: line.accountCode,
+    drPaise: line.crPaise,
+    crPaise: line.drPaise,
+    description: `Reversal of: ${line.description || line.accountCode}`
   }));
+
+  const sumDr = revLines.reduce((s, l) => s + l.drPaise, 0);
+  const sumCr = revLines.reduce((s, l) => s + l.crPaise, 0);
+  if (sumDr !== sumCr) {
+    throw new Error(`Unbalanced payroll reversal voucher for ${month}: Dr ${sumDr} != Cr ${sumCr}`);
+  }
+
+  const fy = originalVoucher.fy || getFinancialYear(revDate);
 
   return {
     voucherId: `vch_payrev_${month}`,
+    voucherNo: `VCH-PAYREV-${month}`,
+    type: 'journal',
     date: revDate,
-    financialYear: originalVoucher.financialYear || getFinancialYear(revDate),
-    sourceType: 'payroll_reversal',
+    fy,
+    source: 'payroll_reversal',
     sourceId: month,
     narration: `Reversal of Payroll ${month}: ${reversalReason || 'Reversed by admin'}`,
     lines: revLines
@@ -1254,6 +1370,31 @@ function applyVoucherToSummary(accountsObj, voucher) {
 async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
   if (!candidateVouchers || candidateVouchers.length === 0) {
     return { newlyPosted: 0, postedVoucherIds: [] };
+  }
+
+  // Validate every candidate voucher line structure and Dr == Cr balance
+  for (const v of candidateVouchers) {
+    if (!v || !v.voucherId) {
+      throw new Error('Voucher missing voucherId');
+    }
+    if (!Array.isArray(v.lines) || v.lines.length === 0) {
+      throw new Error(`Voucher ${v.voucherId} has no lines`);
+    }
+    let sumDr = 0;
+    let sumCr = 0;
+    for (const l of v.lines) {
+      if (!l.accountCode || typeof l.drPaise !== 'number' || typeof l.crPaise !== 'number' || isNaN(l.drPaise) || isNaN(l.crPaise)) {
+        throw new Error(`Invalid voucher line in ${v.voucherId}: line missing accountCode, drPaise, or crPaise`);
+      }
+      if (l.drPaise < 0 || l.crPaise < 0) {
+        throw new Error(`Negative amount in voucher ${v.voucherId} line: dr=${l.drPaise}, cr=${l.crPaise}`);
+      }
+      sumDr += l.drPaise;
+      sumCr += l.crPaise;
+    }
+    if (sumDr !== sumCr) {
+      throw new Error(`Unbalanced voucher ${v.voucherId}: Dr ${sumDr} != Cr ${sumCr}`);
+    }
   }
 
   // 1. Cheap getAll pre-check outside transaction to skip already-posted vouchers
@@ -1818,15 +1959,15 @@ async function handler(req, res) {
       // Step F: Staff Advances
       let newAdvancesPosted = 0;
       if (Date.now() - startTime < TIME_LIMIT_MS) {
-        const advSnaps = await db.collection(`tenant_data/${schoolId}/accounts_advances`)
-          .where('financialYear', '==', targetFY)
-          .get();
+        const advSnaps = await db.collection(`tenant_data/${schoolId}/accounts_advances`).get();
 
         const advBatch = [];
         for (const d of advSnaps.docs) {
           if (Date.now() - startTime > TIME_LIMIT_MS) break;
           const adv = d.data();
           adv.id = d.id;
+          const advFY = adv.fy || adv.financialYear || getFinancialYear(adv.date);
+          if (advFY !== targetFY) continue;
           const resVch = computeAdvanceJournalLines(adv, settings);
           if (resVch && resVch.ignored) {
             if (resVch.ignoreType === 'beforeGoLive') syncState.counts.beforeGoLive = (syncState.counts.beforeGoLive || 0) + 1;
@@ -1851,15 +1992,15 @@ async function handler(req, res) {
       // Step G: Statutory Payments
       let newStatutoryPosted = 0;
       if (Date.now() - startTime < TIME_LIMIT_MS) {
-        const statSnaps = await db.collection(`tenant_data/${schoolId}/accounts_statutory_payments`)
-          .where('financialYear', '==', targetFY)
-          .get();
+        const statSnaps = await db.collection(`tenant_data/${schoolId}/accounts_statutory_payments`).get();
 
         const statBatch = [];
         for (const d of statSnaps.docs) {
           if (Date.now() - startTime > TIME_LIMIT_MS) break;
           const stat = d.data();
           stat.id = d.id;
+          const statFY = stat.fy || stat.financialYear || getFinancialYear(stat.date);
+          if (statFY !== targetFY) continue;
           const resVch = computeStatutoryPaymentJournalLines(stat, settings);
           if (resVch && resVch.ignored) {
             if (resVch.ignoreType === 'beforeGoLive') syncState.counts.beforeGoLive = (syncState.counts.beforeGoLive || 0) + 1;
@@ -2203,6 +2344,9 @@ async function handler(req, res) {
         designation: line.designation,
         department: line.department,
         paymentMode: line.paymentMode,
+        bankName: line.bankName || '',
+        ifscCode: line.ifscCode || '',
+        last4: line.last4 || '',
         paidDate,
         status: 'paid',
         daysInMonth: line.daysInMonth,

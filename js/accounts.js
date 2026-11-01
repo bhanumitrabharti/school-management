@@ -3368,6 +3368,244 @@
     },
 
     // ── 1. Day Book Report ───────────────────────────────────────────────────
+    getDayBookVouchers: function (startDate, endDate) {
+      var vouchers = [];
+
+      // Fee collections in range
+      var feesList = (SchoolApp.store && Array.isArray(SchoolApp.store.fees)) ? SchoolApp.store.fees : [];
+      feesList.forEach(function (f) {
+        if (!f.date || f.date < startDate || f.date > endDate) return;
+        var mode = (f.mode || 'Cash').toLowerCase();
+        var drAccount = (mode === 'cash') ? '11100' : '11200';
+        var amountPaise = Math.round(Number(f.amount || 0) * 100);
+        if (amountPaise <= 0) return;
+        vouchers.push({
+          date: f.date,
+          no: 'FEE-' + (f.receiptNo || f.id),
+          type: 'receipt',
+          narration: 'Fee collection: student ' + (f.studentId || '') + (f.remarks ? ' - ' + f.remarks : ''),
+          lines: [
+            { code: drAccount, dr: amountPaise, cr: 0 },
+            { code: '41100', dr: 0, cr: amountPaise }
+          ]
+        });
+      });
+
+      // Expenses in range
+      (this.expenses || []).forEach(function (e) {
+        if (!e.date || e.date < startDate || e.date > endDate) return;
+        vouchers.push({
+          date: e.date,
+          no: e.expenseNo || e.id,
+          type: 'payment',
+          narration: 'Expense: ' + (e.vendorName || '') + ' - ' + (e.description || ''),
+          lines: [
+            { code: e.categoryAccountId, dr: e.amountPaise, cr: 0 },
+            { code: e.paidFromAccountId || '11100', dr: 0, cr: e.amountPaise }
+          ]
+        });
+        if (e.status === 'cancelled' && e.cancelledAt) {
+          var cDate = e.cancelledAt.split('T')[0];
+          if (cDate >= startDate && cDate <= endDate) {
+            vouchers.push({
+              date: cDate,
+              no: 'CX-' + (e.expenseNo || e.id),
+              type: 'journal',
+              narration: 'Reversal: ' + (e.cancelReason || 'Cancelled'),
+              lines: [
+                { code: e.paidFromAccountId || '11100', dr: e.amountPaise, cr: 0 },
+                { code: e.categoryAccountId, dr: 0, cr: e.amountPaise }
+              ]
+            });
+          }
+        }
+      });
+
+      // Receipts in range
+      (this.receipts || []).forEach(function (r) {
+        if (!r.date || r.date < startDate || r.date > endDate) return;
+        vouchers.push({
+          date: r.date,
+          no: r.receiptNo || r.id,
+          type: 'receipt',
+          narration: 'Other Income: ' + (r.payerName || '') + ' - ' + (r.description || ''),
+          lines: [
+            { code: r.receivedInAccountId || '11100', dr: r.amountPaise, cr: 0 },
+            { code: r.categoryAccountId, dr: 0, cr: r.amountPaise }
+          ]
+        });
+        if (r.status === 'cancelled' && r.cancelledAt) {
+          var cDate = r.cancelledAt.split('T')[0];
+          if (cDate >= startDate && cDate <= endDate) {
+            vouchers.push({
+              date: cDate,
+              no: 'CX-' + (r.receiptNo || r.id),
+              type: 'journal',
+              narration: 'Reversal: ' + (r.cancelReason || 'Cancelled'),
+              lines: [
+                { code: r.categoryAccountId, dr: r.amountPaise, cr: 0 },
+                { code: r.receivedInAccountId || '11100', dr: 0, cr: r.amountPaise }
+              ]
+            });
+          }
+        }
+      });
+
+      // Transfers in range
+      (this.transfers || []).forEach(function (t) {
+        if (!t.date || t.date < startDate || t.date > endDate) return;
+        vouchers.push({
+          date: t.date,
+          no: t.transferNo || t.id,
+          type: 'contra',
+          narration: 'Contra: From ' + t.fromAccountId + ' to ' + t.toAccountId + ' (' + (t.description || '') + ')',
+          lines: [
+            { code: t.toAccountId, dr: t.amountPaise, cr: 0 },
+            { code: t.fromAccountId, dr: 0, cr: t.amountPaise }
+          ]
+        });
+        if (t.status === 'cancelled' && t.cancelledAt) {
+          var cDate = t.cancelledAt.split('T')[0];
+          if (cDate >= startDate && cDate <= endDate) {
+            vouchers.push({
+              date: cDate,
+              no: 'CX-' + (t.transferNo || t.id),
+              type: 'contra',
+              narration: 'Reversal of Transfer: ' + (t.cancelReason || 'Cancelled'),
+              lines: [
+                { code: t.fromAccountId, dr: t.amountPaise, cr: 0 },
+                { code: t.toAccountId, dr: 0, cr: t.amountPaise }
+              ]
+            });
+          }
+        }
+      });
+
+      // Advances in range (C1)
+      (this.advances || []).forEach(function (adv) {
+        if (!adv.date || adv.date < startDate || adv.date > endDate) return;
+        vouchers.push({
+          date: adv.date,
+          no: 'ADV-' + (adv.id ? adv.id.slice(-6).toUpperCase() : ''),
+          type: 'payment',
+          narration: 'Staff Advance: ' + (adv.employeeName || adv.employeeId || '') + (adv.reason ? ' (' + adv.reason + ')' : ''),
+          lines: [
+            { code: '13100', dr: adv.amountPaise || 0, cr: 0 },
+            { code: adv.paidFromAccount || '11100', dr: 0, cr: adv.amountPaise || 0 }
+          ]
+        });
+        if (adv.status === 'cancelled' && adv.cancelledAt) {
+          var cDate = adv.cancelledAt.split('T')[0];
+          if (cDate >= startDate && cDate <= endDate) {
+            vouchers.push({
+              date: cDate,
+              no: 'CX-ADV-' + (adv.id ? adv.id.slice(-6).toUpperCase() : ''),
+              type: 'journal',
+              narration: 'Reversal of Staff Advance: ' + (adv.cancelReason || 'Cancelled'),
+              lines: [
+                { code: adv.paidFromAccount || '11100', dr: adv.amountPaise || 0, cr: 0 },
+                { code: '13100', dr: 0, cr: adv.amountPaise || 0 }
+              ]
+            });
+          }
+        }
+      });
+
+      // Statutory payments in range (C1)
+      (this.statutoryPayments || []).forEach(function (stat) {
+        if (!stat.date || stat.date < startDate || stat.date > endDate) return;
+        var lCode = stat.liabilityAccount;
+        if (!lCode) {
+          var st = String(stat.type || '').toLowerCase();
+          lCode = (st === 'esic' ? '22200' : (st === 'pt' ? '22300' : (st === 'tds' ? '22400' : '22100')));
+        }
+        var statLines = [];
+        if (String(stat.type || '').toLowerCase() === 'epf' && (stat.employeeSharePaise || stat.employerSharePaise)) {
+          var ee = Number(stat.employeeSharePaise) || 0;
+          var er = Number(stat.employerSharePaise) || 0;
+          if (ee > 0) statLines.push({ code: '22100', dr: ee, cr: 0 });
+          if (er > 0) statLines.push({ code: '22110', dr: er, cr: 0 });
+          var rem = (stat.amountPaise || 0) - ee - er;
+          if (rem !== 0) statLines.push({ code: lCode, dr: rem, cr: 0 });
+        } else {
+          statLines.push({ code: lCode, dr: stat.amountPaise || 0, cr: 0 });
+        }
+        statLines.push({ code: stat.paidFromAccount || '11200', dr: 0, cr: stat.amountPaise || 0 });
+
+        vouchers.push({
+          date: stat.date,
+          no: 'STAT-' + (stat.id ? stat.id.slice(-6).toUpperCase() : ''),
+          type: 'payment',
+          narration: 'Statutory Deposit: ' + String(stat.type || '').toUpperCase() + (stat.challanNumber ? ' (' + stat.challanNumber + ')' : ''),
+          lines: statLines
+        });
+
+        if (stat.status === 'cancelled' && stat.cancelledAt) {
+          var cDate = stat.cancelledAt.split('T')[0];
+          if (cDate >= startDate && cDate <= endDate) {
+            var revStatLines = statLines.map(function (sl) {
+              return { code: sl.code, dr: sl.cr, cr: sl.dr };
+            });
+            vouchers.push({
+              date: cDate,
+              no: 'CX-STAT-' + (stat.id ? stat.id.slice(-6).toUpperCase() : ''),
+              type: 'journal',
+              narration: 'Reversal of Statutory Deposit: ' + (stat.cancelReason || 'Cancelled'),
+              lines: revStatLines
+            });
+          }
+        }
+      });
+
+      // Payroll run in range (C1)
+      if (this.currentRun && (this.currentRun.status === 'paid' || this.currentRun.status === 'reversed')) {
+        var pDate = this.currentRun.paymentDate || (this.currentRun.paidFrom && this.currentRun.paidFrom.paidDate) || (this.currentRun.month + '-01');
+        var totals = this.currentRun.totals || {};
+        var pLines = [];
+        if (totals.teacherGrossPaise > 0) pLines.push({ code: '51100', dr: totals.teacherGrossPaise, cr: 0 });
+        if (totals.staffGrossPaise > 0) pLines.push({ code: '51200', dr: totals.staffGrossPaise, cr: 0 });
+        if (totals.employerPfPaise > 0) pLines.push({ code: '51300', dr: totals.employerPfPaise, cr: 0 });
+        if (totals.employerEsiPaise > 0) pLines.push({ code: '51400', dr: totals.employerEsiPaise, cr: 0 });
+        if (totals.employeePfPaise > 0) pLines.push({ code: '22100', dr: 0, cr: totals.employeePfPaise });
+        if (totals.employerPfPaise > 0) pLines.push({ code: '22110', dr: 0, cr: totals.employerPfPaise });
+        if (totals.esiPaise > 0) pLines.push({ code: '22200', dr: 0, cr: totals.esiPaise });
+        if (totals.ptPaise > 0) pLines.push({ code: '22300', dr: 0, cr: totals.ptPaise });
+        if (totals.tdsPaise > 0) pLines.push({ code: '22400', dr: 0, cr: totals.tdsPaise });
+        if (totals.advanceRecoveryPaise > 0) pLines.push({ code: '13100', dr: 0, cr: totals.advanceRecoveryPaise });
+        if (totals.otherDeductionsPaise > 0) pLines.push({ code: '22900', dr: 0, cr: totals.otherDeductionsPaise });
+        var payoutAcc = (this.currentRun.paidFrom && (this.currentRun.paidFrom.bankAccount || this.currentRun.paidFrom.cashAccount)) || this.currentRun.paidFromAccount || '11200';
+        if (totals.netBankPaise > 0) pLines.push({ code: payoutAcc, dr: 0, cr: totals.netBankPaise });
+        if (totals.netCashPaise > 0) pLines.push({ code: '11100', dr: 0, cr: totals.netCashPaise });
+
+        if (pDate >= startDate && pDate <= endDate && pLines.length > 0) {
+          vouchers.push({
+            date: pDate,
+            no: 'PAY-' + this.currentRun.month,
+            type: 'payment',
+            narration: 'Payroll Disbursement for ' + this.currentRun.month,
+            lines: pLines
+          });
+        }
+
+        if (this.currentRun.status === 'reversed' && this.currentRun.reversedAt) {
+          var rDate = this.currentRun.reversedAt.split('T')[0];
+          if (rDate >= startDate && rDate <= endDate && pLines.length > 0) {
+            var revPLines = pLines.map(function (pl) { return { code: pl.code, dr: pl.cr, cr: pl.dr }; });
+            vouchers.push({
+              date: rDate,
+              no: 'CX-PAY-' + this.currentRun.month,
+              type: 'journal',
+              narration: 'Reversal of Payroll ' + this.currentRun.month + ': ' + (this.currentRun.reversalReason || 'Reversed'),
+              lines: revPLines
+            });
+          }
+        }
+      }
+
+      vouchers.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+      return vouchers;
+    },
+
     renderDayBookHTML: function () {
       var html = '';
       html += '<div class="card" style="padding:16px; border-radius:10px; margin-bottom:16px;">';
@@ -4049,9 +4287,25 @@
       if (this.reportType === 'daybook') {
         var start = this.reportParams.startDate;
         var end = this.reportParams.endDate;
-        var csv = 'Date,Voucher No,Account Code,Account Name,Debit (INR),Credit (INR)\r\n';
-        // Download daybook
-        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var rows = ['Date,Voucher No,Type,Account Code,Account Name,Narration,Debit (INR),Credit (INR)'];
+        var vouchers = this.getDayBookVouchers(start, end);
+        vouchers.forEach(function (v) {
+          v.lines.forEach(function (l) {
+            var acc = this.chart.find(function (a) { return a.code === l.code; });
+            var accName = acc ? acc.name : l.code;
+            rows.push([
+              '"' + v.date + '"',
+              '"' + (v.no || '').replace(/"/g, '""') + '"',
+              '"' + (v.type || '').replace(/"/g, '""') + '"',
+              '"' + l.code + '"',
+              '"' + accName.replace(/"/g, '""') + '"',
+              '"' + (v.narration || '').replace(/"/g, '""') + '"',
+              ((l.dr || 0) / 100).toFixed(2),
+              ((l.cr || 0) / 100).toFixed(2)
+            ].join(','));
+          }.bind(this));
+        }.bind(this));
+        var blob = new Blob([rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
         var link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = 'DayBook_' + schoolId + '_' + start + '_to_' + end + '.csv';
@@ -5418,7 +5672,16 @@
       // Warnings banner
       if (run && lines.length > 0) {
         var negativeNetEmps = lines.filter(function (l) { return l.hasNegativeNet || l.netPayPaise < 0; });
-        var missingBankEmps = lines.filter(function (l) { return !l.accountNumber; });
+        var missingBankEmps = lines.filter(function (l) { return !l.last4; });
+
+        if (run.warnings && run.warnings.length > 0) {
+          run.warnings.forEach(function (w) {
+            html += '<div style="margin-bottom:12px; padding:10px 14px; border-radius:8px; background:rgba(245, 158, 11, 0.1); border-left:4px solid #f59e0b; font-size:12.5px; color:#d97706; display:flex; align-items:center; gap:8px;">';
+            html += '  <span class="material-icons-round" style="font-size:18px;">info</span>';
+            html += '  <div>' + SchoolApp.escapeHTML(w) + '</div>';
+            html += '</div>';
+          });
+        }
 
         if (negativeNetEmps.length > 0) {
           html += '<div style="margin-bottom:16px; padding:12px 16px; border-radius:8px; background:rgba(239, 68, 68, 0.12); border-left:4px solid var(--danger); font-size:13px; color:var(--danger); display:flex; align-items:center; gap:8px;">';
@@ -5430,7 +5693,7 @@
         if (missingBankEmps.length > 0 && status !== 'paid') {
           html += '<div style="margin-bottom:16px; padding:10px 14px; border-radius:8px; background:rgba(245, 158, 11, 0.1); border-left:4px solid #f59e0b; font-size:12.5px; color:#d97706; display:flex; align-items:center; gap:8px;">';
           html += '  <span class="material-icons-round" style="font-size:18px;">info</span>';
-          html += '  <div><strong>Missing Bank Details:</strong> ' + missingBankEmps.length + ' employee(s) do not have bank account details configured in Salary Profiles. Cash payout or profile update required.</div>';
+          html += '  <div><strong>Missing Bank Details:</strong> ' + missingBankEmps.length + ' employee(s) do not have bank details (last 4 digits) configured in Salary Profiles. Cash payout or profile update required.</div>';
           html += '</div>';
         }
       }
@@ -5524,10 +5787,8 @@
           html += '            <div style="font-size:11px; margin-top:2px;">' + roleBadge + ' ' + (l.designation ? '<span style="color:var(--text-muted);">' + SchoolApp.escapeHTML(l.designation) + '</span>' : '') + '</div>';
           html += '          </td>';
           html += '          <td style="padding:10px 14px; text-align:center; font-size:11.5px;">';
-          html += '            <div><strong>' + (l.paidDays || 0) + '</strong> / ' + (l.workingDaysInMonth || 0) + '</div>';
-          if (l.lopDays > 0) {
-            html += '            <div style="color:var(--danger); font-size:10.5px;">LOP: ' + l.lopDays + 'd</div>';
-          }
+          html += '            <div><strong>' + (l.paidDays || 0) + '</strong> / ' + (l.workingDaysInMonth || l.workingDays || 0) + '</div>';
+          html += '            <div style="font-size:10px; color:var(--text-secondary); margin-top:2px;">Auto: <strong>' + (l.lopAuto || 0) + 'd</strong> | Final: <strong style="' + ((l.lopDays || 0) > 0 ? 'color:var(--danger);' : '') + '">' + (l.lopDays || 0) + 'd</strong></div>';
           html += '          </td>';
           html += '          <td style="padding:10px 14px; text-align:right; font-weight:600;">' + this.formatINR(l.grossPayPaise || 0) + '</td>';
           html += '          <td style="padding:10px 14px; text-align:right; color:var(--text-secondary);">' + (l.employeePfPaise > 0 ? this.formatINR(l.employeePfPaise) : '-') + '</td>';
@@ -5929,7 +6190,7 @@
       html += '    <div><span style="color:#64748b;">Employee Name:</span> <strong>' + SchoolApp.escapeHTML(line.employeeName) + '</strong></div>';
       html += '    <div><span style="color:#64748b;">Designation / Role:</span> <strong>' + SchoolApp.escapeHTML(line.designation || line.employeeType) + '</strong></div>';
       html += '    <div><span style="color:#64748b;">Bank Name:</span> <span>' + SchoolApp.escapeHTML(line.bankName || 'Not configured') + '</span></div>';
-      html += '    <div><span style="color:#64748b;">Account No:</span> <span>' + SchoolApp.escapeHTML(line.accountNumber || '-') + '</span></div>';
+      html += '    <div><span style="color:#64748b;">Account No:</span> <span>' + (line.last4 ? ('•••• ' + SchoolApp.escapeHTML(line.last4)) : '-') + '</span></div>';
       html += '    <div><span style="color:#64748b;">IFSC Code:</span> <span>' + SchoolApp.escapeHTML(line.ifscCode || '-') + '</span></div>';
       html += '    <div><span style="color:#64748b;">Paid Days / Total:</span> <strong>' + (line.paidDays || 0) + ' / ' + (line.workingDaysInMonth || 26) + '</strong> (LOP: ' + (line.lopDays || 0) + 'd)</div>';
       html += '  </div>';
@@ -6005,7 +6266,7 @@
         'Basic (INR)', 'DA (INR)', 'HRA (INR)', 'Allowances (INR)', 'Additions (INR)', 'Gross Pay (INR)',
         'PF Employee (INR)', 'ESI Employee (INR)', 'Professional Tax (INR)', 'TDS (INR)', 'Advance Recovery (INR)', 'Other Deductions (INR)', 'Total Deductions (INR)',
         'Net Pay (INR)', 'PF Employer (INR)', 'EPS Employer (INR)', 'ESI Employer (INR)', 'Total CTC (INR)',
-        'Bank Name', 'Account Number', 'IFSC Code'
+        'Bank Name', 'Account Last 4', 'IFSC Code'
       ];
 
       var rows = lines.map(function (l) {
@@ -6039,7 +6300,7 @@
           ((l.employerEsiPaise || 0) / 100).toFixed(2),
           (totalCtc / 100).toFixed(2),
           '"' + (l.bankName || '').replace(/"/g, '""') + '"',
-          '"' + (l.accountNumber || '').replace(/"/g, '""') + '"',
+          '"' + (l.last4 || '').replace(/"/g, '""') + '"',
           '"' + (l.ifscCode || '').replace(/"/g, '""') + '"'
         ].join(',');
       });
@@ -6087,7 +6348,7 @@
         html += '          <th style="padding:10px 14px;">NAME</th>';
         html += '          <th style="padding:10px 14px;">ROLE / DESIGNATION</th>';
         html += '          <th style="padding:10px 14px;">CONTACT</th>';
-        html += '          <th style="padding:10px 14px; text-align:right;">BASE SALARY</th>';
+        html += '          <th style="padding:10px 14px; text-align:right;">MONTHLY GROSS</th>';
         html += '          <th style="padding:10px 14px; text-align:center;">JOINING DATE</th>';
         html += '          <th style="padding:10px 14px; text-align:center;">STATUS</th>';
         html += '          <th style="padding:10px 14px; text-align:center;">ACTIONS</th>';
@@ -6101,7 +6362,11 @@
           html += '          <td style="padding:10px 14px; font-weight:600; color:var(--text-primary);">' + SchoolApp.escapeHTML(s.name || s.id) + '</td>';
           html += '          <td style="padding:10px 14px;">' + SchoolApp.escapeHTML(s.role || 'Staff') + '</td>';
           html += '          <td style="padding:10px 14px; font-size:12px; color:var(--text-secondary);">' + SchoolApp.escapeHTML(s.phone || s.email || '-') + '</td>';
-          html += '          <td style="padding:10px 14px; text-align:right; font-weight:600;">' + this.formatINR(s.monthlySalaryPaise || 0) + '</td>';
+          var prof = (this.payrollProfiles || []).find(function (p) { return p.id === s.id || p.employeeId === s.id; });
+          var grossDisplay = (prof && prof.grossSalaryPaise > 0)
+            ? this.formatINR(prof.grossSalaryPaise)
+            : '<span style="color:var(--text-muted); font-style:italic;">No salary profile</span>';
+          html += '          <td style="padding:10px 14px; text-align:right; font-weight:600;">' + grossDisplay + '</td>';
           html += '          <td style="padding:10px 14px; text-align:center; font-size:12px; color:var(--text-secondary);">' + (s.joiningDate || '-') + '</td>';
           html += '          <td style="padding:10px 14px; text-align:center;">';
           if (isLeft) {
@@ -6159,7 +6424,7 @@
       html += '      </select>';
       html += '    </div>';
       html += '    <div class="form-group">';
-      html += '      <label class="form-label" style="font-weight:600;">Monthly Base Salary (₹) *</label>';
+      html += '      <label class="form-label" style="font-weight:600;">Monthly Gross Salary (₹) *</label>';
       html += '      <input type="number" step="1" min="1" class="form-control" id="staff-salary" placeholder="e.g. 15000" required />';
       html += '    </div>';
       html += '  </div>';
@@ -6214,7 +6479,6 @@
           name: name,
           role: role,
           phone: phone,
-          monthlySalaryPaise: grossPaise,
           joiningDate: joiningDate,
           status: 'active',
           createdAt: new Date().toISOString()
@@ -6361,9 +6625,9 @@
           html += '            <span class="badge ' + (prof.ptEnabled ? 'badge-success' : '') + '" style="' + (!prof.ptEnabled ? 'background:rgba(255,255,255,0.05); color:var(--text-muted);' : '') + ' font-size:10px;">PT</span>';
           html += '          </td>';
           html += '          <td style="padding:10px 14px; font-size:12px;">';
-          if (prof.accountNumber) {
+          if (prof.last4) {
             html += '            <div style="font-weight:600;">' + SchoolApp.escapeHTML(prof.bankName || 'Bank') + '</div>';
-            html += '            <div style="color:var(--text-muted); font-size:11px;">A/C: ' + SchoolApp.escapeHTML(prof.accountNumber) + '</div>';
+            html += '            <div style="color:var(--text-muted); font-size:11px;">A/C: •••• ' + SchoolApp.escapeHTML(prof.last4) + '</div>';
           } else {
             html += '            <span style="color:var(--text-muted); font-style:italic;">Not configured</span>';
           }
@@ -6467,8 +6731,8 @@
       html += '        <input type="text" class="form-control" id="prof-bank-name" value="' + SchoolApp.escapeHTML(prof.bankName || '') + '" placeholder="e.g. SBI / HDFC" />';
       html += '      </div>';
       html += '      <div class="form-group">';
-      html += '        <label class="form-label" style="font-size:11.5px; font-weight:600;">Account Number</label>';
-      html += '        <input type="text" class="form-control" id="prof-acc-no" value="' + SchoolApp.escapeHTML(prof.accountNumber || '') + '" placeholder="Account No" />';
+      html += '        <label class="form-label" style="font-size:11.5px; font-weight:600;">Bank Account (Last 4 Digits)</label>';
+      html += '        <input type="text" class="form-control" id="prof-last4" value="' + SchoolApp.escapeHTML(prof.last4 || '') + '" placeholder="e.g. 5678" maxlength="4" />';
       html += '      </div>';
       html += '      <div class="form-group">';
       html += '        <label class="form-label" style="font-size:11.5px; font-weight:600;">IFSC Code</label>';
@@ -6527,7 +6791,7 @@
       var pt = document.getElementById('prof-pt').checked;
 
       var bankName = document.getElementById('prof-bank-name').value.trim();
-      var accNo = document.getElementById('prof-acc-no').value.trim();
+      var last4 = (document.getElementById('prof-last4').value.trim()).slice(-4);
       var ifsc = document.getElementById('prof-ifsc').value.trim().toUpperCase();
 
       var payload = {
@@ -6542,7 +6806,7 @@
         esicEnabled: esic,
         ptEnabled: pt,
         bankName: bankName,
-        accountNumber: accNo,
+        last4: last4,
         ifscCode: ifsc,
         updatedAt: new Date().toISOString()
       };
@@ -7132,6 +7396,25 @@
       html += '      </div>';
       html += '    </div>';
 
+      // Biometric / GPS Attendance LOP Integration (C2)
+      var holidaysStr = Array.isArray(s.holidays) ? s.holidays.join('\n') : '';
+      html += '    <div class="card" style="padding:18px; border-radius:10px; margin-bottom:18px;">';
+      html += '      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">';
+      html += '        <div>';
+      html += '          <h5 style="margin:0; font-size:14px; font-weight:700;">Biometric / GPS Attendance LOP Integration</h5>';
+      html += '          <p style="margin:2px 0 0 0; font-size:12px; color:var(--text-secondary);">When enabled, unexcused absent working days are automatically counted as Loss of Pay (LOP).</p>';
+      html += '        </div>';
+      html += '        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+      html += '          <input type="checkbox" id="pset-lop-att" ' + (s.lopFromAttendance ? 'checked' : '') + ' /> Enable Attendance LOP';
+      html += '        </label>';
+      html += '      </div>';
+      html += '      <div class="form-group" style="margin-top:12px;">';
+      html += '        <label class="form-label" style="font-size:12px; font-weight:600;">School Holidays List (YYYY-MM-DD, one per line)</label>';
+      html += '        <textarea class="form-control" id="pset-holidays" rows="3" placeholder="e.g.\n2026-04-14\n2026-05-01">' + SchoolApp.escapeHTML(holidaysStr) + '</textarea>';
+      html += '        <small style="color:var(--text-muted); font-size:11px; margin-top:4px; display:block;">Dates listed here are excluded from working days and will not incur attendance LOP.</small>';
+      html += '      </div>';
+      html += '    </div>';
+
       // EPF Settings
       html += '    <div class="card" style="padding:18px; border-radius:10px; margin-bottom:18px;">';
       html += '      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
@@ -7259,6 +7542,9 @@
       var db = window.db;
 
       var daysBasis = document.getElementById('pset-days-basis').value;
+      var lopAtt = document.getElementById('pset-lop-att').checked;
+      var holidaysRaw = document.getElementById('pset-holidays').value || '';
+      var holidaysList = holidaysRaw.split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(x); });
       var epfEnabled = document.getElementById('pset-epf-enabled').checked;
       var epfEeRate = parseFloat(document.getElementById('pset-epf-ee-rate').value) || 12.0;
       var epfErRate = parseFloat(document.getElementById('pset-epf-er-rate').value) || 12.0;
@@ -7274,6 +7560,8 @@
 
       var payload = {
         workingDaysBasis: daysBasis,
+        lopFromAttendance: lopAtt,
+        holidays: holidaysList,
         epf: {
           enabled: epfEnabled,
           employeeRate: epfEeRate,

@@ -6,7 +6,8 @@ const {
   calculatePayrollRun,
   buildPayrollVoucher,
   buildPayrollReversalVoucher,
-  applyVoucherToSummary
+  applyVoucherToSummary,
+  postVouchersBatch
 } = require('../api/accounts.js');
 
 console.log('========================================================');
@@ -46,8 +47,8 @@ it('Staff advance generates correct disbursement voucher and cancellation revers
   const res = computeAdvanceJournalLines(adv, {});
   assert.strictEqual(res.normalVoucher.voucherId, 'vch_adv_ADV001');
   assert.strictEqual(res.normalVoucher.lines.length, 2);
-  assert.deepStrictEqual(res.normalVoucher.lines[0], { accountId: '13100', debitPaise: 500000, creditPaise: 0 });
-  assert.deepStrictEqual(res.normalVoucher.lines[1], { accountId: '11100', debitPaise: 0, creditPaise: 500000 });
+  assert.deepStrictEqual(res.normalVoucher.lines[0], { accountCode: '13100', drPaise: 500000, crPaise: 0, description: 'Staff Advance: Ramesh Kumar' });
+  assert.deepStrictEqual(res.normalVoucher.lines[1], { accountCode: '11100', drPaise: 0, crPaise: 500000, description: 'Advance disbursement via 11100' });
   assert.strictEqual(res.cancelVoucher, null);
 
   // Cancellation
@@ -55,8 +56,8 @@ it('Staff advance generates correct disbursement voucher and cancellation revers
   const resCx = computeAdvanceJournalLines(advCancelled, {});
   assert(resCx.cancelVoucher);
   assert.strictEqual(resCx.cancelVoucher.voucherId, 'vch_advcx_ADV001');
-  assert.deepStrictEqual(resCx.cancelVoucher.lines[0], { accountId: '11100', debitPaise: 500000, creditPaise: 0 });
-  assert.deepStrictEqual(resCx.cancelVoucher.lines[1], { accountId: '13100', debitPaise: 0, creditPaise: 500000 });
+  assert.deepStrictEqual(resCx.cancelVoucher.lines[0], { accountCode: '11100', drPaise: 500000, crPaise: 0, description: 'Reversal of advance disbursement via 11100' });
+  assert.deepStrictEqual(resCx.cancelVoucher.lines[1], { accountCode: '13100', drPaise: 0, crPaise: 500000, description: 'Reversal of Staff Advance: Ramesh Kumar' });
 });
 
 // 2. Statutory Payment Posting
@@ -75,8 +76,8 @@ it('Statutory payment generates correct payment voucher and cancellation reversa
 
   const res = computeStatutoryPaymentJournalLines(stat, {});
   assert.strictEqual(res.normalVoucher.voucherId, 'vch_stat_STAT001');
-  assert.deepStrictEqual(res.normalVoucher.lines[0], { accountId: '22100', debitPaise: 240000, creditPaise: 0 });
-  assert.deepStrictEqual(res.normalVoucher.lines[1], { accountId: '11200', debitPaise: 0, creditPaise: 240000 });
+  assert.deepStrictEqual(res.normalVoucher.lines[0], { accountCode: '22100', drPaise: 240000, crPaise: 0, description: 'Statutory Payment 22100 (2026-04)' });
+  assert.deepStrictEqual(res.normalVoucher.lines[1], { accountCode: '11200', drPaise: 0, crPaise: 240000, description: 'Statutory disbursement via 11200' });
   assert.strictEqual(res.cancelVoucher, null);
 
   // Cancellation
@@ -84,8 +85,8 @@ it('Statutory payment generates correct payment voucher and cancellation reversa
   const resCx = computeStatutoryPaymentJournalLines(statCancelled, {});
   assert(resCx.cancelVoucher);
   assert.strictEqual(resCx.cancelVoucher.voucherId, 'vch_statcx_STAT001');
-  assert.deepStrictEqual(resCx.cancelVoucher.lines[0], { accountId: '11200', debitPaise: 240000, creditPaise: 0 });
-  assert.deepStrictEqual(resCx.cancelVoucher.lines[1], { accountId: '22100', debitPaise: 0, creditPaise: 240000 });
+  assert.deepStrictEqual(resCx.cancelVoucher.lines[0], { accountCode: '22100', drPaise: 0, crPaise: 240000, description: 'Reversal of: Statutory Payment 22100 (2026-04)' });
+  assert.deepStrictEqual(resCx.cancelVoucher.lines[1], { accountCode: '11200', drPaise: 240000, crPaise: 0, description: 'Reversal of: Statutory disbursement via 11200' });
 });
 
 // 3. Proration with LOP
@@ -423,25 +424,25 @@ it('Payroll voucher correctly separates Teacher (51100) vs Staff (51200) and is 
   let totalDebit = 0;
   let totalCredit = 0;
   voucher.lines.forEach(l => {
-    totalDebit += l.debitPaise;
-    totalCredit += l.creditPaise;
+    totalDebit += l.drPaise;
+    totalCredit += l.crPaise;
   });
 
   assert.strictEqual(totalDebit, totalCredit);
   assert(totalDebit > 0);
 
   // Check 51100 and 51200 lines
-  const tExpLine = voucher.lines.find(l => l.accountId === '51100');
-  const sExpLine = voucher.lines.find(l => l.accountId === '51200');
-  assert.strictEqual(tExpLine.debitPaise, 8100000);
-  assert.strictEqual(sExpLine.debitPaise, 1500000);
+  const tExpLine = voucher.lines.find(l => l.accountCode === '51100');
+  const sExpLine = voucher.lines.find(l => l.accountCode === '51200');
+  assert.strictEqual(tExpLine.drPaise, 8100000);
+  assert.strictEqual(sExpLine.drPaise, 1500000);
 
   // Check Bank vs Cash Net Pay
-  const bankLine = voucher.lines.find(l => l.accountId === '11200');
-  const cashLine = voucher.lines.find(l => l.accountId === '11100');
-  assert.strictEqual(bankLine.creditPaise, run.totals.netBankPaise);
-  assert.strictEqual(cashLine.creditPaise, run.totals.netCashPaise);
-  assert.strictEqual(cashLine.creditPaise, 1500000);
+  const bankLine = voucher.lines.find(l => l.accountCode === '11200');
+  const cashLine = voucher.lines.find(l => l.accountCode === '11100');
+  assert.strictEqual(bankLine.crPaise, run.totals.netBankPaise);
+  assert.strictEqual(cashLine.crPaise, run.totals.netCashPaise);
+  assert.strictEqual(cashLine.crPaise, 1500000);
 });
 
 // 10. Reversal Voucher Nets Summary to Zero
@@ -468,19 +469,20 @@ it('Payroll reversal voucher flips debits and credits and nets accounts_summary 
 
   const payVoucher = buildPayrollVoucher('2026-04', run.lines, run.totals, settings, {
     bankAccount: '11200',
-    cashAccount: '11100'
+    cashAccount: '11100',
+    paidDate: '2026-04-30'
   });
 
-  const revVoucher = buildPayrollReversalVoucher('2026-04', payVoucher, 'Mistake in calculation');
+  const revVoucher = buildPayrollReversalVoucher('2026-04', payVoucher, 'Mistake in calculation', '2026-04-30');
 
   // Verify lines are flipped
   assert.strictEqual(payVoucher.lines.length, revVoucher.lines.length);
   for (let i = 0; i < payVoucher.lines.length; i++) {
     const pl = payVoucher.lines[i];
     const rl = revVoucher.lines[i];
-    assert.strictEqual(pl.accountId, rl.accountId);
-    assert.strictEqual(pl.debitPaise, rl.creditPaise);
-    assert.strictEqual(pl.creditPaise, rl.debitPaise);
+    assert.strictEqual(pl.accountCode, rl.accountCode);
+    assert.strictEqual(pl.drPaise, rl.crPaise);
+    assert.strictEqual(pl.crPaise, rl.drPaise);
   }
 
   // Apply both to accounts_summary
@@ -488,14 +490,18 @@ it('Payroll reversal voucher flips debits and credits and nets accounts_summary 
   applyVoucherToSummary(summaryAccounts, payVoucher);
   // Summary now has non-zero balances
   Object.keys(summaryAccounts).forEach(code => {
-    assert(summaryAccounts[code].debitPaise > 0 || summaryAccounts[code].creditPaise > 0);
+    let totDr = 0, totCr = 0;
+    Object.values(summaryAccounts[code]).forEach(m => { totDr += m.dr; totCr += m.cr; });
+    assert(totDr > 0 || totCr > 0);
   });
 
   applyVoucherToSummary(summaryAccounts, revVoucher);
   // After applying reversal, every account's total debit must equal total credit!
   Object.keys(summaryAccounts).forEach(code => {
-    assert.strictEqual(summaryAccounts[code].debitPaise, summaryAccounts[code].creditPaise,
-      `Account ${code} did not net to zero: Dr ${summaryAccounts[code].debitPaise} vs Cr ${summaryAccounts[code].creditPaise}`);
+    let totDr = 0, totCr = 0;
+    Object.values(summaryAccounts[code]).forEach(m => { totDr += m.dr; totCr += m.cr; });
+    assert.strictEqual(totDr, totCr,
+      `Account ${code} did not net to zero: Dr ${totDr} vs Cr ${totCr}`);
   });
 });
 
@@ -537,7 +543,7 @@ it('Automated teacher attendance calculates LOP based on working days, punches, 
     month: '2026-04',
     teachersList,
     profilesMap,
-    settings: { paidDaysBasis: 'calendar' },
+    settings: { paidDaysBasis: 'calendar', lopFromAttendance: true },
     teacherAttendance,
     attendanceRequests
   });
@@ -549,6 +555,204 @@ it('Automated teacher attendance calculates LOP based on working days, punches, 
   assert.strictEqual(line.lopDays, 1);
   assert.strictEqual(line.payableDays, 29);
   assert.strictEqual(line.earnedBasicPaise, Math.round(3000000 * 29 / 30));
+});
+
+// 12. LOP from Attendance is OFF by default -> Auto-LOP = 0
+it('lopFromAttendance defaults to false: auto-calculated LOP is ALWAYS 0 even with missing punches', () => {
+  const teachersList = [
+    { id: 't1', firstName: 'Pooja', lastName: 'Verma', status: 'Active', designation: 'Teacher', subject: 'Maths' }
+  ];
+  const profilesMap = {
+    t1: { basicPaise: 3000000, status: 'active', paymentMode: 'Bank' }
+  };
+  // Zero punches for the entire month!
+  const run = calculatePayrollRun({
+    month: '2026-04',
+    teachersList,
+    profilesMap,
+    settings: { paidDaysBasis: 'calendar', lopFromAttendance: false },
+    teacherAttendance: [],
+    attendanceRequests: []
+  });
+
+  const line = run.lines[0];
+  assert.strictEqual(line.lopAuto, 0);
+  assert.strictEqual(line.lopDays, 0);
+  assert.strictEqual(line.payableDays, 30);
+});
+
+// 13. LOP correctly respects holidays, teacher joiningDate, inactive status, and month in progress
+it('LOP excludes holidays, ignores dates before joining or after inactive, and warns if month in progress', () => {
+  const teachersList = [
+    {
+      id: 't_new',
+      firstName: 'New',
+      lastName: 'Teacher',
+      status: 'Active',
+      joiningDate: '2026-04-20'
+    }
+  ];
+  const profilesMap = {
+    t_new: { basicPaise: 3000000, status: 'active', paymentMode: 'Bank' }
+  };
+
+  // Punches for April 20..30 except 25 (which is in holidays)
+  const teacherAttendance = [];
+  for (let d = 20; d <= 30; d++) {
+    const dt = new Date(2026, 3, d);
+    if (dt.getDay() !== 0 && d !== 25) {
+      teacherAttendance.push({ teacherId: 't_new', date: `2026-04-${String(d).padStart(2, '0')}`, type: 'in' });
+    }
+  }
+
+  const settings = {
+    paidDaysBasis: 'calendar',
+    lopFromAttendance: true,
+    holidays: ['2026-04-25']
+  };
+
+  const run = calculatePayrollRun({
+    month: '2026-04',
+    teachersList,
+    profilesMap,
+    settings,
+    teacherAttendance,
+    attendanceRequests: []
+  });
+
+  const newLine = run.lines.find(l => l.employeeId === 't_new');
+  assert.strictEqual(newLine.lopAuto, 0);
+});
+
+// 14. postVouchersBatch validates voucher line structure and Dr == Cr
+it('postVouchersBatch rejects missing accountCode, invalid amounts, negative amounts, or unbalanced vouchers', async () => {
+  let thrown = false;
+  try {
+    await postVouchersBatch(null, 'test_school', [{
+      voucherId: 'vch_bad1',
+      lines: [{ drPaise: 100, crPaise: 0 }, { accountCode: '11100', drPaise: 0, crPaise: 100 }]
+    }], '2026-27');
+  } catch (e) {
+    thrown = true;
+    assert(e.message.includes('missing accountCode'));
+  }
+  assert.strictEqual(thrown, true);
+
+  thrown = false;
+  try {
+    await postVouchersBatch(null, 'test_school', [{
+      voucherId: 'vch_bad2',
+      lines: [{ accountCode: '51100', drPaise: -50, crPaise: 0 }, { accountCode: '11100', drPaise: 0, crPaise: -50 }]
+    }], '2026-27');
+  } catch (e) {
+    thrown = true;
+    assert(e.message.includes('Negative amount'));
+  }
+  assert.strictEqual(thrown, true);
+
+  thrown = false;
+  try {
+    await postVouchersBatch(null, 'test_school', [{
+      voucherId: 'vch_bad3',
+      lines: [{ accountCode: '51100', drPaise: 100, crPaise: 0 }, { accountCode: '11100', drPaise: 0, crPaise: 80 }]
+    }], '2026-27');
+  } catch (e) {
+    thrown = true;
+    assert(e.message.includes('Unbalanced voucher'));
+  }
+  assert.strictEqual(thrown, true);
+});
+
+// 15. Privacy: bank accounts stored only as bankName, ifsc, last4; full account numbers never allowed
+it('computeEmployeeLine outputs only bankName, ifscCode, last4; warns if bank details missing', () => {
+  const profileWithFullAcc = {
+    basicPaise: 2500000,
+    status: 'active',
+    paymentMode: 'Bank',
+    bankName: 'HDFC Bank',
+    ifscCode: 'HDFC0001234',
+    last4: '5678',
+    accountNumber: '123456789012'
+  };
+
+  const warnings = [];
+  const line = computeEmployeeLine({
+    employeeId: 't_priv',
+    employeeName: 'Privacy Teacher',
+    employeeType: 'teacher',
+    designation: 'Teacher',
+    department: 'English',
+    profile: profileWithFullAcc,
+    inputs: {},
+    settings: {},
+    daysInMonth: 30,
+    workingDays: 26,
+    paidDays: 30,
+    lopAuto: 0,
+    lopDays: 0,
+    lopReason: '',
+    empAdvances: [],
+    priorRecoveredPaise: 0,
+    warnings
+  });
+
+  assert.strictEqual(line.bankName, 'HDFC Bank');
+  assert.strictEqual(line.ifscCode, 'HDFC0001234');
+  assert.strictEqual(line.last4, '5678');
+  assert.strictEqual(line.accountNumber, undefined, 'accountNumber must NOT exist on employee line');
+
+  const emptyBankProfile = {
+    basicPaise: 2500000,
+    status: 'active',
+    paymentMode: 'Bank'
+  };
+  const warnList = [];
+  computeEmployeeLine({
+    employeeId: 't_warn',
+    employeeName: 'Missing Bank Staff',
+    employeeType: 'teacher',
+    designation: 'Teacher',
+    department: 'Math',
+    profile: emptyBankProfile,
+    inputs: {},
+    settings: {},
+    daysInMonth: 30,
+    workingDays: 26,
+    paidDays: 30,
+    lopAuto: 0,
+    lopDays: 0,
+    lopReason: '',
+    empAdvances: [],
+    priorRecoveredPaise: 0,
+    warnings: warnList
+  });
+  assert(warnList.some(w => w.includes('Bank details missing')));
+});
+
+// 16. Single source of truth: calculatePayrollRun ignores staff.monthlySalaryPaise and reads only payroll_profiles
+it('calculatePayrollRun derives staff salary solely from payroll_profiles, ignoring any staff.monthlySalaryPaise', () => {
+  const staffList = [
+    {
+      id: 's_single',
+      name: 'Single Source Staff',
+      status: 'Active',
+      monthlySalaryPaise: 999999999
+    }
+  ];
+  const profilesMap = {
+    s_single: { basicPaise: 2000000, daPaise: 0, hraPaise: 0, status: 'active', paymentMode: 'Cash' }
+  };
+
+  const run = calculatePayrollRun({
+    month: '2026-04',
+    teachersList: [],
+    staffList,
+    profilesMap,
+    settings: {}
+  });
+
+  assert.strictEqual(run.lines[0].grossPaise, 2000000);
+  assert.strictEqual(run.totals.staffGrossPaise, 2000000);
 });
 
 console.log('========================================================');

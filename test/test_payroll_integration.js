@@ -48,6 +48,15 @@ async function run() {
   console.log('--- Emulator Integration Test: Payroll & Statutory Actions ---');
   console.log('========================================================');
 
+  console.log('0. Cleaning up prior test state...');
+  await db.doc(`tenant_data/${schoolId}/accounts_summary/2026-27`).delete().catch(() => {});
+  await db.doc(`tenant_data/${schoolId}/accounts_sync_state/main`).delete().catch(() => {});
+  const cleanupCols = ['accounts_journal', 'payroll_runs', 'payroll_payslips', 'accounts_advances', 'accounts_statutory_payments'];
+  for (const col of cleanupCols) {
+    const snaps = await db.collection(`tenant_data/${schoolId}/${col}`).get();
+    for (const d of snaps.docs) await d.ref.delete();
+  }
+
   // 1. Setup school access and accounts allowed_features
   console.log('1. Setting up school & admin access...');
   await db.doc(`schools/${schoolId}`).set({
@@ -72,6 +81,7 @@ async function run() {
   });
 
   await db.doc(`tenant_data/${schoolId}/payroll_settings/main`).set({
+    lopFromAttendance: true,
     pfEnabled: true,
     pfEmployeePct: 12,
     pfEmployerPct: 12,
@@ -286,12 +296,34 @@ async function run() {
   const summaryAccounts = summarySnap.data().accounts;
   let totDr = 0;
   let totCr = 0;
-  Object.values(summaryAccounts).forEach(a => {
-    totDr += a.debitPaise;
-    totCr += a.creditPaise;
+  const getAccBalance = (code) => {
+    let d = 0, c = 0;
+    if (summaryAccounts[code]) {
+      Object.values(summaryAccounts[code]).forEach(m => {
+        d += (m.dr || 0);
+        c += (m.cr || 0);
+      });
+    }
+    return { dr: d, cr: c };
+  };
+
+  Object.keys(summaryAccounts).forEach(code => {
+    const bal = getAccBalance(code);
+    totDr += bal.dr;
+    totCr += bal.cr;
   });
+  assert(totDr > 0, 'Total debits must be > 0');
   assert.strictEqual(totDr, totCr, `Summary must be balanced: Dr ${totDr} vs Cr ${totCr}`);
-  console.log('✔ PASS: Summary trial balance is balanced after payroll payment!');
+
+  // Assert exact accounts_summary numbers (51100, 51200, 22100, 11200, 11100, 13100, 22300)
+  assert.strictEqual(getAccBalance('51100').dr, 9908333, 'Teacher salary gross debit mismatch');
+  assert.strictEqual(getAccBalance('51200').dr, 2000000, 'Staff salary gross debit mismatch');
+  assert.strictEqual(getAccBalance('22100').cr, 540000, 'Employee PF credit mismatch');
+  assert.strictEqual(getAccBalance('11200').cr, 9523333, 'Bank net payout credit mismatch');
+  assert.strictEqual(getAccBalance('11100').cr, 1705000, 'Cash net payout credit mismatch');
+  assert.strictEqual(getAccBalance('13100').cr, 100000, 'Advance recovery credit mismatch');
+  assert.strictEqual(getAccBalance('22300').cr, 25000, 'PT liability credit mismatch');
+  console.log('✔ PASS: Summary trial balance is balanced and exact accounts verified after payroll payment!');
 
   // 11. Action: payroll-reverse
   console.log('11. Calling action: payroll-reverse with confirmText: REVERSE...');
@@ -319,8 +351,13 @@ async function run() {
   const afterRevSummarySnap = await db.doc(`tenant_data/${schoolId}/accounts_summary/2026-27`).get();
   const afterAccounts = afterRevSummarySnap.data().accounts;
   Object.keys(afterAccounts).forEach(code => {
-    assert.strictEqual(afterAccounts[code].debitPaise, afterAccounts[code].creditPaise,
-      `Account ${code} net balance must be zero after reversal!`);
+    let d = 0, c = 0;
+    Object.values(afterAccounts[code]).forEach(m => {
+      d += (m.dr || 0);
+      c += (m.cr || 0);
+    });
+    assert.strictEqual(d, c,
+      `Account ${code} net balance must be zero after reversal! Dr ${d} vs Cr ${c}`);
   });
   console.log('✔ PASS: Payroll reversal mirrors voucher, voids payslips, and nets summary to zero!');
 
@@ -353,7 +390,33 @@ async function run() {
 
   const statVchSnap = await db.doc(`tenant_data/${schoolId}/accounts_journal/vch_stat_STAT001`).get();
   assert(statVchSnap.exists, 'Statutory payment voucher vch_stat_STAT001 must exist');
-  console.log('✔ PASS: Sync successfully posted staff advances and statutory payments!');
+
+  // Verify accounts_summary numbers after sync
+  const postSyncSummarySnap = await db.doc(`tenant_data/${schoolId}/accounts_summary/2026-27`).get();
+  const postSyncAccounts = postSyncSummarySnap.data().accounts;
+  const getPostSyncBal = (code) => {
+    let d = 0, c = 0;
+    if (postSyncAccounts[code]) {
+      Object.values(postSyncAccounts[code]).forEach(m => {
+        d += (m.dr || 0);
+        c += (m.cr || 0);
+      });
+    }
+    return { dr: d, cr: c };
+  };
+  let syncTotDr = 0, syncTotCr = 0;
+  Object.keys(postSyncAccounts).forEach(code => {
+    const bal = getPostSyncBal(code);
+    syncTotDr += bal.dr;
+    syncTotCr += bal.cr;
+  });
+  assert(syncTotDr > 0);
+  assert.strictEqual(syncTotDr, syncTotCr, 'Summary trial balance must be balanced after advance & statutory sync');
+  const net13100 = getPostSyncBal('13100').dr - getPostSyncBal('13100').cr;
+  assert.strictEqual(net13100, 200000, 'Net Dr for 13100 after advance sync should be 200000');
+  const net22300 = getPostSyncBal('22300').dr - getPostSyncBal('22300').cr;
+  assert.strictEqual(net22300, 40800, 'Net Dr for 22300 after statutory sync should be 40800');
+  console.log('✔ PASS: Sync successfully posted staff advances and statutory payments and summary verified!');
 
   console.log('\n========================================');
   console.log('ALL PAYROLL & STATUTORY INTEGRATION TESTS PASSED!');
