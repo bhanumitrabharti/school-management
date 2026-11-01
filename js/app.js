@@ -1287,12 +1287,46 @@ window.SchoolApp = {
     if (!currentSchoolId || !this.isRestructured(currentSchoolId)) return;
     if (this._attendanceListeners[yearMonth]) return;
 
+    var self = this;
+    self._attendanceRetryCounts = self._attendanceRetryCounts || {};
+    // F1: Hard cap: at most 3 retries per listener per page session
+    if ((self._attendanceRetryCounts[yearMonth] || 0) >= 3) {
+      console.warn('[Attendance Listener] Hard cap reached (3 retries) for ' + yearMonth + ' in this session; skipping listener attach.');
+      return;
+    }
+
     if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
-      var self = this;
-      self._attendanceRetryCounts = self._attendanceRetryCounts || {};
       var classesColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'attendance_months', yearMonth, 'classes');
-      var unsub = window.firestore.onSnapshot(classesColl, function(snap) {
-        self._attendanceRetryCounts[yearMonth] = 0;
+
+      function _scheduleAttendanceRetry() {
+        self._attendanceRetryCounts[yearMonth] = (self._attendanceRetryCounts[yearMonth] || 0) + 1;
+        var attempt = self._attendanceRetryCounts[yearMonth];
+        if (attempt > 3) {
+          console.warn('[Attendance Listener] Hard cap reached (3/3 retries) for ' + yearMonth + '; stopping retries.');
+          return;
+        }
+        var delay = [1000, 2000, 4000][attempt - 1] || 1000;
+        console.warn('[Attendance Listener] Retrying for ' + yearMonth + ' (attempt ' + attempt + '/3) in ' + delay + 'ms...');
+        setTimeout(async function() {
+          try {
+            if (window.auth && window.auth.currentUser) {
+              await window.auth.currentUser.getIdToken(true);
+            }
+            self.listenToAttendanceMonth(yearMonth);
+          } catch (retryErr) {
+            console.warn('[Attendance Listener] Retry error for ' + yearMonth + ' (attempt ' + attempt + '/3):', retryErr && retryErr.message);
+            if ((self._attendanceRetryCounts[yearMonth] || 0) < 3) {
+              _scheduleAttendanceRetry();
+            }
+          }
+        }, delay);
+      }
+
+      var unsub = window.firestore.onSnapshot(classesColl, { includeMetadataChanges: true }, function(snap) {
+        // F1: Reset retry counter ONLY on server-confirmed snapshots
+        if (snap && snap.metadata && snap.metadata.fromCache === false) {
+          self._attendanceRetryCounts[yearMonth] = 0;
+        }
         if (snap && !snap.empty) {
           var records = [];
           snap.forEach(function(docSnap) {
@@ -1315,21 +1349,7 @@ window.SchoolApp = {
           try { self._attendanceListeners[yearMonth](); } catch (_) {}
           delete self._attendanceListeners[yearMonth];
         }
-        self._attendanceRetryCounts[yearMonth] = (self._attendanceRetryCounts[yearMonth] || 0) + 1;
-        if (self._attendanceRetryCounts[yearMonth] <= 3) {
-          var delay = [1000, 2000, 4000][self._attendanceRetryCounts[yearMonth] - 1] || 1000;
-          console.warn('[Attendance Listener] Retrying for ' + yearMonth + ' (attempt ' + self._attendanceRetryCounts[yearMonth] + '/3) in ' + delay + 'ms...');
-          setTimeout(async function() {
-            try {
-              if (window.auth && window.auth.currentUser) {
-                await window.auth.currentUser.getIdToken(true);
-              }
-              self.listenToAttendanceMonth(yearMonth);
-            } catch (retryErr) {
-              console.warn('[Attendance Listener] Retry error for ' + yearMonth + ':', retryErr && retryErr.message);
-            }
-          }, delay);
-        }
+        _scheduleAttendanceRetry();
       });
       this._attendanceListeners[yearMonth] = unsub;
     }
@@ -1562,19 +1582,56 @@ window.SchoolApp = {
   },
 
   listenToFeesYear: function(year) {
-    if (this.isTeacher()) return;
+    if (this.isTeacher()) {
+      console.warn('[Fees Listener] Blocked: Teacher role cannot attach fees listener.');
+      return;
+    }
     if (!year) year = String(new Date().getFullYear());
     year = String(year);
     var currentSchoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
     if (!currentSchoolId || !this.isRestructured(currentSchoolId)) return;
     if (this._feesListeners[year]) return;
 
+    var self = this;
+    self._feesRetryCounts = self._feesRetryCounts || {};
+    // F1: Hard cap: at most 3 retries per listener per page session
+    if ((self._feesRetryCounts[year] || 0) >= 3) {
+      console.warn('[Fees Listener] Hard cap reached (3 retries) for ' + year + ' in this session; skipping listener attach.');
+      return;
+    }
+
     if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
-      var self = this;
-      self._feesRetryCounts = self._feesRetryCounts || {};
       var monthsColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'fees_years', year, 'months');
-      var unsub = window.firestore.onSnapshot(monthsColl, function(snap) {
-        self._feesRetryCounts[year] = 0;
+
+      function _scheduleFeesRetry() {
+        self._feesRetryCounts[year] = (self._feesRetryCounts[year] || 0) + 1;
+        var attempt = self._feesRetryCounts[year];
+        if (attempt > 3) {
+          console.warn('[Fees Listener] Hard cap reached (3/3 retries) for ' + year + '; stopping retries.');
+          return;
+        }
+        var delay = [1000, 2000, 4000][attempt - 1] || 1000;
+        console.warn('[Fees Listener] Retrying for ' + year + ' (attempt ' + attempt + '/3) in ' + delay + 'ms...');
+        setTimeout(async function() {
+          try {
+            if (window.auth && window.auth.currentUser) {
+              await window.auth.currentUser.getIdToken(true);
+            }
+            self.listenToFeesYear(year);
+          } catch (retryErr) {
+            console.warn('[Fees Listener] Retry error for ' + year + ' (attempt ' + attempt + '/3):', retryErr && retryErr.message);
+            if ((self._feesRetryCounts[year] || 0) < 3) {
+              _scheduleFeesRetry();
+            }
+          }
+        }, delay);
+      }
+
+      var unsub = window.firestore.onSnapshot(monthsColl, { includeMetadataChanges: true }, function(snap) {
+        // F1: Reset retry counter ONLY on server-confirmed snapshots
+        if (snap && snap.metadata && snap.metadata.fromCache === false) {
+          self._feesRetryCounts[year] = 0;
+        }
         if (snap && !snap.empty) {
           var transactions = [];
           snap.forEach(function(docSnap) {
@@ -1596,21 +1653,15 @@ window.SchoolApp = {
           try { self._feesListeners[year](); } catch (_) {}
           delete self._feesListeners[year];
         }
-        self._feesRetryCounts[year] = (self._feesRetryCounts[year] || 0) + 1;
-        if (self._feesRetryCounts[year] <= 3) {
-          var delay = [1000, 2000, 4000][self._feesRetryCounts[year] - 1] || 1000;
-          console.warn('[Fees Listener] Retrying for ' + year + ' (attempt ' + self._feesRetryCounts[year] + '/3) in ' + delay + 'ms...');
-          setTimeout(async function() {
-            try {
-              if (window.auth && window.auth.currentUser) {
-                await window.auth.currentUser.getIdToken(true);
-              }
-              self.listenToFeesYear(year);
-            } catch (retryErr) {
-              console.warn('[Fees Listener] Retry error for ' + year + ':', retryErr && retryErr.message);
-            }
-          }, delay);
+
+        // F1: Never retry when error is permission-denied AND user is a teacher
+        var isPermDenied = (err && err.code === 'permission-denied');
+        if (isPermDenied && self.isTeacher()) {
+          console.warn('[Fees Listener] Permission-denied for teacher user; fees listener attachment prohibited.');
+          return;
         }
+
+        _scheduleFeesRetry();
       });
       this._feesListeners[year] = unsub;
     }
@@ -2484,6 +2535,63 @@ window.SchoolApp = {
         }, 90000);
       }
 
+      function _failTenantSession(msg) {
+        console.warn('[Tenant Access] ' + (msg || 'Session expired or access unauthorized.'));
+        self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
+        self.showLoginPage();
+        if (!firstResolveCalled) {
+          firstResolveCalled = true;
+          if (!bypassLoader) self.hideLoader();
+          resolve(false);
+        }
+      }
+
+      function _scheduleTenantRetry() {
+        self._tenantRetryCount = (self._tenantRetryCount || 0) + 1;
+        var attempt = self._tenantRetryCount;
+        var delay = [1000, 2000, 4000][attempt - 1] || 1000;
+        console.warn('[Tenant Access] Permission-denied within auth window (attempt ' + attempt + '/3). Retrying in ' + delay + 'ms...');
+
+        if (self.tenantListenerUnsubscribe) {
+          try { self.tenantListenerUnsubscribe(); } catch (_) {}
+          self.tenantListenerUnsubscribe = null;
+        }
+
+        setTimeout(async function() {
+          try {
+            var fbUser = window.auth && window.auth.currentUser;
+            if (!fbUser) {
+              _failTenantSession('No authenticated user during retry; showing login.');
+              return;
+            }
+
+            // Force-refresh the ID token
+            await fbUser.getIdToken(true);
+
+            // Re-read school_access/{uid}
+            if (window.firestore && window.db) {
+              var saRef = window.firestore.doc(window.db, 'school_access', fbUser.uid);
+              var saSnap = await window.firestore.getDoc(saRef);
+              if (!saSnap || !saSnap.exists() || saSnap.data().schoolId !== schoolId) {
+                _failTenantSession('school_access record missing or mismatched on retry; showing login.');
+                return;
+              }
+            }
+
+            _attachTenantListener();
+          } catch (retryErr) {
+            console.warn('[Tenant Access] Retry error during token refresh/access check (attempt ' + attempt + '/3):', retryErr && retryErr.message);
+            var now = Date.now();
+            var stillInAuthWindow = (self._lastAuthSuccessTimestamp && (now - self._lastAuthSuccessTimestamp < 20000));
+            if (stillInAuthWindow && self._tenantRetryCount < 3) {
+              _scheduleTenantRetry();
+            } else {
+              _failTenantSession('All retries exhausted after token refresh failure.');
+            }
+          }
+        }, delay);
+      }
+
       function _attachTenantListener() {
         if (self.tenantListenerUnsubscribe) {
           try { self.tenantListenerUnsubscribe(); } catch (_) {}
@@ -2493,7 +2601,10 @@ window.SchoolApp = {
         _startWatchdogTimers();
 
         self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
-          self._tenantRetryCount = 0;
+          // F1: Reset retry counter ONLY on server-confirmed snapshots
+          if (docSnap && docSnap.metadata && docSnap.metadata.fromCache === false) {
+            self._tenantRetryCount = 0;
+          }
         self.updateConnectionIndicator(docSnap.metadata.fromCache);
 
         var parsed = null;
@@ -2744,70 +2855,12 @@ window.SchoolApp = {
         var isRecentAuth = (self._lastAuthSuccessTimestamp && (now - self._lastAuthSuccessTimestamp < 20000));
 
         if (errCode === 'permission-denied') {
-          self._tenantRetryCount = (self._tenantRetryCount || 0) + 1;
-          if (isRecentAuth && self._tenantRetryCount <= 3) {
-            var delay = [1000, 2000, 4000][self._tenantRetryCount - 1] || 1000;
-            console.warn('[Tenant Access] Permission-denied within auth window (attempt ' + self._tenantRetryCount + '/3). Retrying in ' + delay + 'ms...');
-            
-            if (self.tenantListenerUnsubscribe) {
-              try { self.tenantListenerUnsubscribe(); } catch (_) {}
-              self.tenantListenerUnsubscribe = null;
-            }
-
-            setTimeout(async function() {
-              try {
-                var fbUser = window.auth && window.auth.currentUser;
-                if (!fbUser) {
-                  console.warn('[Tenant Access] No authenticated user during retry; showing login.');
-                  self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
-                  self.showLoginPage();
-                  if (!firstResolveCalled) {
-                    firstResolveCalled = true;
-                    if (!bypassLoader) self.hideLoader();
-                    resolve(false);
-                  }
-                  return;
-                }
-
-                // Force-refresh the ID token
-                await fbUser.getIdToken(true);
-
-                // Re-read school_access/{uid}
-                if (window.firestore && window.db) {
-                  var saRef = window.firestore.doc(window.db, 'school_access', fbUser.uid);
-                  var saSnap = await window.firestore.getDoc(saRef);
-                  if (!saSnap || !saSnap.exists() || saSnap.data().schoolId !== schoolId) {
-                    console.warn('[Tenant Access] school_access record missing or mismatched on retry; showing login.');
-                    self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
-                    self.showLoginPage();
-                    if (!firstResolveCalled) {
-                      firstResolveCalled = true;
-                      if (!bypassLoader) self.hideLoader();
-                      resolve(false);
-                    }
-                    return;
-                  }
-                }
-
-                _attachTenantListener();
-              } catch (retryErr) {
-                console.warn('[Tenant Access] Retry error during token refresh/access check:', retryErr && retryErr.message);
-                if (self._tenantRetryCount >= 3) {
-                  self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
-                  self.showLoginPage();
-                  if (!firstResolveCalled) {
-                    firstResolveCalled = true;
-                    if (!bypassLoader) self.hideLoader();
-                    resolve(false);
-                  }
-                }
-              }
-            }, delay);
+          if (isRecentAuth && (self._tenantRetryCount || 0) < 3) {
+            _scheduleTenantRetry();
             return;
           } else {
-            console.warn('[Tenant Access] Permission denied for ' + schoolId + ' — session expired or unauthorized.');
-            self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
-            self.showLoginPage();
+            _failTenantSession('Permission denied for ' + schoolId + ' (retries exhausted or outside auth window).');
+            return;
           }
         }
 
