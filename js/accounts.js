@@ -5927,7 +5927,7 @@
         html += '        <option value="11200">11200 - Primary Bank Account</option>';
       } else {
         bankAccounts.forEach(function (b) {
-          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (' + SchoolApp.escapeHTML(b.accountNumber || '') + ')</option>';
+          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (••' + SchoolApp.escapeHTML(b.last4 || (b.accountNumber ? String(b.accountNumber).slice(-4) : '')) + ')</option>';
         });
       }
       html += '      </optgroup>';
@@ -7044,7 +7044,7 @@
         html += '        <option value="11200">11200 - Primary Bank Account</option>';
       } else {
         bankAccounts.forEach(function (b) {
-          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (' + SchoolApp.escapeHTML(b.accountNumber || '') + ')</option>';
+          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (••' + SchoolApp.escapeHTML(b.last4 || (b.accountNumber ? String(b.accountNumber).slice(-4) : '')) + ')</option>';
         });
       }
       html += '      </optgroup>';
@@ -7227,7 +7227,7 @@
         html += '        <option value="11200">11200 - Primary Bank Account</option>';
       } else {
         bankAccounts.forEach(function (b) {
-          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (' + SchoolApp.escapeHTML(b.accountNumber || '') + ')</option>';
+          html += '        <option value="' + b.code + '">' + b.code + ' - ' + SchoolApp.escapeHTML(b.bankName || 'Bank') + ' (••' + SchoolApp.escapeHTML(b.last4 || (b.accountNumber ? String(b.accountNumber).slice(-4) : '')) + ')</option>';
         });
       }
       html += '      </optgroup>';
