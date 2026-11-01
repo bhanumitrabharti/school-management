@@ -1,5 +1,5 @@
 /**
- * Playwright Mobile Responsiveness & Overflow Test for Accounts Module (v68)
+ * Playwright Mobile Responsiveness & Overflow Test for Accounts Module (v69)
  * Verifies document.documentElement.scrollWidth === window.innerWidth across
  * [320, 360, 390, 414, 768, 1280] widths for all Accounts tabs, setup view, and modals.
  */
@@ -180,6 +180,32 @@ async function run() {
           }
         ];
 
+        acc.receipts = [
+          {
+            id: 'rcp_1',
+            receiptNo: 'RCP-2026-0001',
+            date: '2026-10-25',
+            financialYear: '2026-27',
+            payerName: 'State Bank of India',
+            categoryAccountId: '43100',
+            receivedInAccountId: '11200',
+            amountPaise: 85000,
+            status: 'active'
+          }
+        ];
+        acc.transfers = [
+          {
+            id: 'trf_1',
+            transferNo: 'TRF-2026-0001',
+            date: '2026-10-26',
+            financialYear: '2026-27',
+            fromAccountId: '11100',
+            toAccountId: '11200',
+            amountPaise: 2500000,
+            status: 'active'
+          }
+        ];
+
         acc.renderWorkspace(document.getElementById('page-accounts'));
       });
 
@@ -226,9 +252,21 @@ async function run() {
       await page.evaluate(() => window.SchoolApp.modules.accounts.switchTab('overview'));
       await checkOverflow('Overview Tab', path.join(ARTIFACTS_DIR, `accounts_overview_${width}px.png`));
 
-      // 2. Expenses Tab
+      // 2. Income Tab
+      await page.evaluate(() => window.SchoolApp.modules.accounts.switchTab('income'));
+      await checkOverflow('Income Tab', path.join(ARTIFACTS_DIR, `accounts_income_${width}px.png`));
+
+      // 3. Expenses Tab
       await page.evaluate(() => window.SchoolApp.modules.accounts.switchTab('expenses'));
       await checkOverflow('Expenses Tab', path.join(ARTIFACTS_DIR, `accounts_expenses_${width}px.png`));
+
+      // 4. Transfers Tab
+      await page.evaluate(() => window.SchoolApp.modules.accounts.switchTab('transfers'));
+      await checkOverflow('Transfers Tab', path.join(ARTIFACTS_DIR, `accounts_transfers_${width}px.png`));
+
+      // 5. Reports Tab
+      await page.evaluate(() => window.SchoolApp.modules.accounts.switchTab('reports'));
+      await checkOverflow('Reports Tab', path.join(ARTIFACTS_DIR, `accounts_reports_${width}px.png`));
 
       // 3. Chart of Accounts Tab
       await page.evaluate(() => window.SchoolApp.modules.accounts.switchTab('chart'));
@@ -248,6 +286,16 @@ async function run() {
       // 6. Record New Expense Modal
       await page.evaluate(() => window.SchoolApp.modules.accounts.openAddExpenseModal());
       await checkOverflow('Record New Expense Modal', path.join(ARTIFACTS_DIR, `accounts_modal_add_expense_${width}px.png`));
+      await page.evaluate(() => window.SchoolApp.closeModal());
+
+      // Record New Receipt Modal
+      await page.evaluate(() => window.SchoolApp.modules.accounts.openAddReceiptModal());
+      await checkOverflow('Record New Receipt Modal', path.join(ARTIFACTS_DIR, `accounts_modal_add_rcp_${width}px.png`));
+      await page.evaluate(() => window.SchoolApp.closeModal());
+
+      // Record New Transfer Modal
+      await page.evaluate(() => window.SchoolApp.modules.accounts.openAddTransferModal());
+      await checkOverflow('Record New Transfer Modal', path.join(ARTIFACTS_DIR, `accounts_modal_add_trf_${width}px.png`));
       await page.evaluate(() => window.SchoolApp.closeModal());
 
       // 7. Expense Details Modal

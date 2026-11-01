@@ -46,6 +46,57 @@ async function runAccountsRulesTests() {
     await db.doc('school_access/admin_school_2').set({ schoolId: 'school_2', role: 'admin' });
     await db.doc('school_access/teacher_school_2').set({ schoolId: 'school_2', role: 'teacher', teacherId: 'T2' });
 
+    // Slice 2 Seed fixtures:
+    await db.doc('tenant_data/school_1/accounts_receipts/RCP_001').set({
+      receiptNo: 'RCP-2026-27-0001',
+      date: '2026-10-29',
+      financialYear: '2026-27',
+      payerName: 'State Bank of India',
+      categoryAccountId: '43100',
+      amountPaise: 50000,
+      paymentMode: 'Bank Transfer',
+      receivedInAccountId: '11120',
+      attachments: [],
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: '2026-10-29T10:00:00.000Z'
+    });
+
+    await db.doc('tenant_data/school_1/accounts_transfers/TRF_001').set({
+      transferNo: 'TRF-2026-27-0001',
+      date: '2026-10-29',
+      financialYear: '2026-27',
+      fromAccountId: '11100',
+      toAccountId: '11120',
+      amountPaise: 100000,
+      paymentMode: 'Cash',
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: '2026-10-29T10:00:00.000Z'
+    });
+
+    await db.doc('tenant_data/school_1/accounts_journal/vch_test_001').set({
+      voucherId: 'vch_test_001',
+      voucherNo: 'VCH-2026-0001',
+      type: 'payment',
+      date: '2026-10-29',
+      fy: '2026-27',
+      lines: [
+        { accountCode: '52100', drPaise: 10000, crPaise: 0 },
+        { accountCode: '11100', drPaise: 0, crPaise: 10000 }
+      ]
+    });
+
+    await db.doc('tenant_data/school_1/accounts_summary/2026-27').set({
+      fy: '2026-27',
+      accounts: {}
+    });
+
+    await db.doc('tenant_data/school_1/accounts_sync_state/2026-27').set({
+      fy: '2026-27',
+      counts: {}
+    });
+
     // Existing active expense for update/delete tests
     await db.doc('tenant_data/school_1/accounts_expenses/EXP_001').set({
       expenseNo: 'EXP-2026-27-0001',
@@ -463,6 +514,182 @@ async function runAccountsRulesTests() {
   });
   await recordTest('ANON2', 'Anonymous WRITE to accounts_expenses is DENIED', async () => {
     await assertFails(anonDb.doc('tenant_data/school_1/accounts_expenses/EXP_ANON').set({ amountPaise: 100 }));
+  });
+
+  console.log('\n=== Category 8: Accounts Slice 2 Rules (Receipts, Transfers, Opening, Journal & Summary) ===');
+  await recordTest('S2_1', 'Admin can CREATE valid accounts_receipts (other income)', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_receipts/RCP_002').set({
+      receiptNo: 'RCP-2026-27-0002',
+      date: '2026-10-30',
+      financialYear: '2026-27',
+      payerName: 'Alumni Association',
+      categoryAccountId: '43200',
+      amountPaise: 250000,
+      paymentMode: 'UPI',
+      receivedInAccountId: '11120',
+      attachments: [],
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: new Date().toISOString()
+    }));
+  });
+
+  await recordTest('S2_2', 'Admin CANNOT create receipt with reserved fee category (41100) -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_receipts/RCP_003').set({
+      receiptNo: 'RCP-2026-27-0003',
+      date: '2026-10-30',
+      financialYear: '2026-27',
+      payerName: 'Student Parent',
+      categoryAccountId: '41100', // reserved for student fees
+      amountPaise: 500000,
+      paymentMode: 'Cash',
+      receivedInAccountId: '11100',
+      attachments: [],
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: new Date().toISOString()
+    }));
+  });
+
+  await recordTest('S2_3', 'Admin can CANCEL active receipt with valid reason', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_receipts/RCP_001').update({
+      status: 'cancelled',
+      cancelReason: 'Wrong interest entry credited by bank',
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: 'Admin'
+    }));
+  });
+
+  await recordTest('S2_4', 'Admin CANNOT delete accounts_receipts -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_receipts/RCP_001').delete());
+  });
+
+  await recordTest('S2_5', 'Admin can CREATE valid accounts_transfers (contra between cash & bank)', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_transfers/TRF_002').set({
+      transferNo: 'TRF-2026-27-0002',
+      date: '2026-10-30',
+      financialYear: '2026-27',
+      fromAccountId: '11100',
+      toAccountId: '11120',
+      amountPaise: 1500000,
+      paymentMode: 'Cash',
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: new Date().toISOString()
+    }));
+  });
+
+  await recordTest('S2_6', 'Admin CANNOT create transfer with same from and to account -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_transfers/TRF_003').set({
+      transferNo: 'TRF-2026-27-0003',
+      date: '2026-10-30',
+      financialYear: '2026-27',
+      fromAccountId: '11100',
+      toAccountId: '11100', // same
+      amountPaise: 100000,
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: new Date().toISOString()
+    }));
+  });
+
+  await recordTest('S2_7', 'Admin CANNOT create transfer with non-cash/bank account -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_transfers/TRF_004').set({
+      transferNo: 'TRF-2026-27-0004',
+      date: '2026-10-30',
+      financialYear: '2026-27',
+      fromAccountId: '11100',
+      toAccountId: '52100', // expense account, not cash/bank
+      amountPaise: 100000,
+      status: 'active',
+      createdBy: 'Admin',
+      createdAt: new Date().toISOString()
+    }));
+  });
+
+  await recordTest('S2_8', 'Admin can CANCEL active transfer with valid reason', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_transfers/TRF_001').update({
+      status: 'cancelled',
+      cancelReason: 'Cash deposit slip cancelled at counter',
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: 'Admin'
+    }));
+  });
+
+  await recordTest('S2_9', 'Admin CANNOT delete accounts_transfers -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_transfers/TRF_001').delete());
+  });
+
+  await recordTest('S2_10', 'Admin can CREATE opening balances in draft', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/opening').set({
+      fy: '2026-27',
+      status: 'draft',
+      lines: [
+        { accountCode: '11100', debitPaise: 500000, creditPaise: 0 },
+        { accountCode: '31100', debitPaise: 0, creditPaise: 500000 }
+      ]
+    }));
+  });
+
+  await recordTest('S2_11', 'Admin can UPDATE opening balances while in draft', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/opening').update({
+      lines: [
+        { accountCode: '11100', debitPaise: 600000, creditPaise: 0 },
+        { accountCode: '31100', debitPaise: 0, creditPaise: 600000 }
+      ]
+    }));
+  });
+
+  await recordTest('S2_12', 'Admin can transition opening balances from draft to locked', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/opening').update({
+      status: 'locked',
+      lockedAt: new Date().toISOString(),
+      lockedBy: 'Admin'
+    }));
+  });
+
+  await recordTest('S2_13', 'Admin CANNOT update opening balances once locked -> DENY', async () => {
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/opening').update({
+      lines: [
+        { accountCode: '11100', debitPaise: 900000, creditPaise: 0 }
+      ]
+    }));
+  });
+
+  await recordTest('S2_14', 'Admin can READ accounts_journal, but client WRITE is DENIED', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_journal/vch_test_001').get());
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_journal/vch_test_002').set({
+      voucherId: 'vch_test_002',
+      amountPaise: 1000
+    }));
+  });
+
+  await recordTest('S2_15', 'Admin can READ accounts_summary, but client WRITE is DENIED', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_summary/2026-27').get());
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_summary/2026-27').set({
+      fy: '2026-27',
+      accounts: { '11100': { '2026-10': { dr: 100, cr: 0 } } }
+    }));
+  });
+
+  await recordTest('S2_16', 'Admin can READ accounts_sync_state, but client WRITE is DENIED', async () => {
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_sync_state/2026-27').get());
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_sync_state/2026-27').set({
+      fy: '2026-27',
+      counts: { vouchersTotal: 999 }
+    }));
+  });
+
+  await recordTest('S2_17', 'Teacher access to Slice 2 collections (receipts, transfers, journal) is DENIED', async () => {
+    await assertFails(teacher1Db.doc('tenant_data/school_1/accounts_receipts/RCP_001').get());
+    await assertFails(teacher1Db.doc('tenant_data/school_1/accounts_transfers/TRF_001').get());
+    await assertFails(teacher1Db.doc('tenant_data/school_1/accounts_journal/vch_test_001').get());
+  });
+
+  await recordTest('S2_18', 'Super Admin access to Slice 2 collections (receipts, transfers, journal) is DENIED', async () => {
+    await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_receipts/RCP_001').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_transfers/TRF_001').get());
+    await assertFails(superAdminDb.doc('tenant_data/school_1/accounts_journal/vch_test_001').get());
   });
 
   console.log('\n========================================');
