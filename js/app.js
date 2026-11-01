@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v67';
+window.APP_VERSION = window.APP_VERSION || 'v68';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
@@ -1289,8 +1289,10 @@ window.SchoolApp = {
 
     if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
       var self = this;
+      self._attendanceRetryCounts = self._attendanceRetryCounts || {};
       var classesColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'attendance_months', yearMonth, 'classes');
       var unsub = window.firestore.onSnapshot(classesColl, function(snap) {
+        self._attendanceRetryCounts[yearMonth] = 0;
         if (snap && !snap.empty) {
           var records = [];
           snap.forEach(function(docSnap) {
@@ -1308,7 +1310,26 @@ window.SchoolApp = {
           }
         }
       }, function(err) {
-        console.warn('[Attendance Listener] error on ' + yearMonth + ':', err);
+        console.warn('[Attendance Listener] error on ' + yearMonth + ':', err && err.message ? err.message : err);
+        if (self._attendanceListeners[yearMonth]) {
+          try { self._attendanceListeners[yearMonth](); } catch (_) {}
+          delete self._attendanceListeners[yearMonth];
+        }
+        self._attendanceRetryCounts[yearMonth] = (self._attendanceRetryCounts[yearMonth] || 0) + 1;
+        if (self._attendanceRetryCounts[yearMonth] <= 3) {
+          var delay = [1000, 2000, 4000][self._attendanceRetryCounts[yearMonth] - 1] || 1000;
+          console.warn('[Attendance Listener] Retrying for ' + yearMonth + ' (attempt ' + self._attendanceRetryCounts[yearMonth] + '/3) in ' + delay + 'ms...');
+          setTimeout(async function() {
+            try {
+              if (window.auth && window.auth.currentUser) {
+                await window.auth.currentUser.getIdToken(true);
+              }
+              self.listenToAttendanceMonth(yearMonth);
+            } catch (retryErr) {
+              console.warn('[Attendance Listener] Retry error for ' + yearMonth + ':', retryErr && retryErr.message);
+            }
+          }, delay);
+        }
       });
       this._attendanceListeners[yearMonth] = unsub;
     }
@@ -1550,8 +1571,10 @@ window.SchoolApp = {
 
     if (window.firestore && window.db && window.firestore.onSnapshot && window.firestore.collection) {
       var self = this;
+      self._feesRetryCounts = self._feesRetryCounts || {};
       var monthsColl = window.firestore.collection(window.db, 'tenant_data', currentSchoolId, 'fees_years', year, 'months');
       var unsub = window.firestore.onSnapshot(monthsColl, function(snap) {
+        self._feesRetryCounts[year] = 0;
         if (snap && !snap.empty) {
           var transactions = [];
           snap.forEach(function(docSnap) {
@@ -1568,7 +1591,26 @@ window.SchoolApp = {
           }
         }
       }, function(err) {
-        console.warn('[Fees Listener] error on ' + year + ':', err);
+        console.warn('[Fees Listener] error on ' + year + ':', err && err.message ? err.message : err);
+        if (self._feesListeners[year]) {
+          try { self._feesListeners[year](); } catch (_) {}
+          delete self._feesListeners[year];
+        }
+        self._feesRetryCounts[year] = (self._feesRetryCounts[year] || 0) + 1;
+        if (self._feesRetryCounts[year] <= 3) {
+          var delay = [1000, 2000, 4000][self._feesRetryCounts[year] - 1] || 1000;
+          console.warn('[Fees Listener] Retrying for ' + year + ' (attempt ' + self._feesRetryCounts[year] + '/3) in ' + delay + 'ms...');
+          setTimeout(async function() {
+            try {
+              if (window.auth && window.auth.currentUser) {
+                await window.auth.currentUser.getIdToken(true);
+              }
+              self.listenToFeesYear(year);
+            } catch (retryErr) {
+              console.warn('[Fees Listener] Retry error for ' + year + ':', retryErr && retryErr.message);
+            }
+          }, delay);
+        }
       });
       this._feesListeners[year] = unsub;
     }
@@ -2241,7 +2283,10 @@ window.SchoolApp = {
           });
           if (matchedSchool) {
             activeSchoolId = matchedSchool.school_id;
-            console.log('Detected school context from subdomain: ' + sub + ' -> ' + activeSchoolId);
+            if (self._lastLoggedSchoolContext !== (sub + ' -> ' + activeSchoolId)) {
+              self._lastLoggedSchoolContext = sub + ' -> ' + activeSchoolId;
+              console.log('Detected school context from subdomain: ' + sub + ' -> ' + activeSchoolId);
+            }
           } else {
             console.warn('Subdomain context detected but no matching school found in Firestore: ' + sub);
           }
@@ -2350,6 +2395,16 @@ window.SchoolApp = {
     var self = this;
     if (!schoolId) return Promise.resolve(false);
     
+    // Ensure only ONE tenant root listener exists at a time
+    if (this.tenantListenerUnsubscribe) {
+      try {
+        this.tenantListenerUnsubscribe();
+      } catch (e) {
+        console.warn('[initTenantStore] Error unsubscribing previous tenant listener:', e);
+      }
+      this.tenantListenerUnsubscribe = null;
+    }
+
     // Clean teardown if switching to a different school
     if (this.store && this.store.currentSchoolId && this.store.currentSchoolId !== schoolId) {
       this.resetTenantSession(schoolId);
@@ -2389,44 +2444,56 @@ window.SchoolApp = {
         }
       }
 
-      // Stage 1 Watchdog (45s): Friendly notice, keep waiting, do NOT show reload button
-      _watchdogNoticeTimer = setTimeout(function() {
-        if (!self.tenantInitialized && !firstResolveCalled) {
-          console.warn('[Watchdog] 45s elapsed with no usable tenant snapshot for ' + schoolId);
-          var loaderTextEl = document.querySelector('#app-loading-overlay .app-loader-text');
-          if (loaderTextEl) {
-            loaderTextEl.textContent = 'Loading is taking longer than usual on a slow connection — please wait…';
-          }
-          var errEl = document.getElementById('login-error-msg');
-          if (errEl) {
-            errEl.textContent = 'Loading is taking longer than usual on a slow connection — please wait…';
-            errEl.style.display = 'block';
-          }
-        }
-      }, 45000);
-
-      // Stage 2 Watchdog (90s): Show Retry button only after 90 seconds. Never reload automatically.
-      _watchdogRetryTimer = setTimeout(function() {
-        if (!self.tenantInitialized && !firstResolveCalled) {
-          console.warn('[Watchdog] 90s elapsed with no usable tenant snapshot for ' + schoolId);
-          if (!bypassLoader) self.hideLoader();
-          var errEl = document.getElementById('login-error-msg');
-          if (errEl) {
-            errEl.innerHTML = 'Loading is taking longer than usual. <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
-            errEl.style.display = 'block';
-            var retryBtn = document.getElementById('btn-retry-connection');
-            if (retryBtn) {
-              retryBtn.onclick = function() {
-                errEl.style.display = 'none';
-                errEl.textContent = '';
-                window.location.reload();
-              };
+      function _startWatchdogTimers() {
+        _clearWatchdogTimers();
+        // Stage 1 Watchdog (45s): Friendly notice, keep waiting, do NOT show reload button
+        _watchdogNoticeTimer = setTimeout(function() {
+          if (!self.tenantInitialized && !firstResolveCalled) {
+            console.warn('[Watchdog] 45s elapsed with no usable tenant snapshot for ' + schoolId);
+            var loaderTextEl = document.querySelector('#app-loading-overlay .app-loader-text');
+            if (loaderTextEl) {
+              loaderTextEl.textContent = 'Loading is taking longer than usual on a slow connection — please wait…';
+            }
+            var errEl = document.getElementById('login-error-msg');
+            if (errEl) {
+              errEl.textContent = 'Loading is taking longer than usual on a slow connection — please wait…';
+              errEl.style.display = 'block';
             }
           }
-        }
-      }, 90000);
+        }, 45000);
 
-      self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
+        // Stage 2 Watchdog (90s): Show Retry button only after 90 seconds. Never reload automatically.
+        _watchdogRetryTimer = setTimeout(function() {
+          if (!self.tenantInitialized && !firstResolveCalled) {
+            console.warn('[Watchdog] 90s elapsed with no usable tenant snapshot for ' + schoolId);
+            if (!bypassLoader) self.hideLoader();
+            var errEl = document.getElementById('login-error-msg');
+            if (errEl) {
+              errEl.innerHTML = 'Loading is taking longer than usual. <button type="button" id="btn-retry-connection" style="background:none;border:none;color:#3b82f6;text-decoration:underline;cursor:pointer;font-weight:600;font-size:inherit;padding:0;">Retry</button>';
+              errEl.style.display = 'block';
+              var retryBtn = document.getElementById('btn-retry-connection');
+              if (retryBtn) {
+                retryBtn.onclick = function() {
+                  errEl.style.display = 'none';
+                  errEl.textContent = '';
+                  window.location.reload();
+                };
+              }
+            }
+          }
+        }, 90000);
+      }
+
+      function _attachTenantListener() {
+        if (self.tenantListenerUnsubscribe) {
+          try { self.tenantListenerUnsubscribe(); } catch (_) {}
+          self.tenantListenerUnsubscribe = null;
+        }
+
+        _startWatchdogTimers();
+
+        self.tenantListenerUnsubscribe = window.firestore.onSnapshot(docRef, { includeMetadataChanges: true }, async (docSnap) => {
+          self._tenantRetryCount = 0;
         self.updateConnectionIndicator(docSnap.metadata.fromCache);
 
         var parsed = null;
@@ -2673,10 +2740,75 @@ window.SchoolApp = {
 
         // Security / session expired error handling
         var errCode = error && error.code ? error.code : '';
+        var now = Date.now();
+        var isRecentAuth = (self._lastAuthSuccessTimestamp && (now - self._lastAuthSuccessTimestamp < 20000));
+
         if (errCode === 'permission-denied') {
-          console.warn('[Tenant Access] Permission denied for ' + schoolId + ' — session expired or unauthorized.');
-          self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
-          self.showLoginPage();
+          self._tenantRetryCount = (self._tenantRetryCount || 0) + 1;
+          if (isRecentAuth && self._tenantRetryCount <= 3) {
+            var delay = [1000, 2000, 4000][self._tenantRetryCount - 1] || 1000;
+            console.warn('[Tenant Access] Permission-denied within auth window (attempt ' + self._tenantRetryCount + '/3). Retrying in ' + delay + 'ms...');
+            
+            if (self.tenantListenerUnsubscribe) {
+              try { self.tenantListenerUnsubscribe(); } catch (_) {}
+              self.tenantListenerUnsubscribe = null;
+            }
+
+            setTimeout(async function() {
+              try {
+                var fbUser = window.auth && window.auth.currentUser;
+                if (!fbUser) {
+                  console.warn('[Tenant Access] No authenticated user during retry; showing login.');
+                  self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
+                  self.showLoginPage();
+                  if (!firstResolveCalled) {
+                    firstResolveCalled = true;
+                    if (!bypassLoader) self.hideLoader();
+                    resolve(false);
+                  }
+                  return;
+                }
+
+                // Force-refresh the ID token
+                await fbUser.getIdToken(true);
+
+                // Re-read school_access/{uid}
+                if (window.firestore && window.db) {
+                  var saRef = window.firestore.doc(window.db, 'school_access', fbUser.uid);
+                  var saSnap = await window.firestore.getDoc(saRef);
+                  if (!saSnap || !saSnap.exists() || saSnap.data().schoolId !== schoolId) {
+                    console.warn('[Tenant Access] school_access record missing or mismatched on retry; showing login.');
+                    self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
+                    self.showLoginPage();
+                    if (!firstResolveCalled) {
+                      firstResolveCalled = true;
+                      if (!bypassLoader) self.hideLoader();
+                      resolve(false);
+                    }
+                    return;
+                  }
+                }
+
+                _attachTenantListener();
+              } catch (retryErr) {
+                console.warn('[Tenant Access] Retry error during token refresh/access check:', retryErr && retryErr.message);
+                if (self._tenantRetryCount >= 3) {
+                  self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
+                  self.showLoginPage();
+                  if (!firstResolveCalled) {
+                    firstResolveCalled = true;
+                    if (!bypassLoader) self.hideLoader();
+                    resolve(false);
+                  }
+                }
+              }
+            }, delay);
+            return;
+          } else {
+            console.warn('[Tenant Access] Permission denied for ' + schoolId + ' — session expired or unauthorized.');
+            self.showToast('Session expired or access unauthorized. Please sign in again.', 'warning');
+            self.showLoginPage();
+          }
         }
 
         if (!firstResolveCalled) {
@@ -2685,6 +2817,9 @@ window.SchoolApp = {
           resolve(false);
         }
       });
+      }
+
+      _attachTenantListener();
     });
   },
 
@@ -3677,6 +3812,7 @@ window.SchoolApp = {
     }
 
     if (apiResult && apiResult.success) {
+      this._lastAuthSuccessTimestamp = Date.now();
       // SEC-16: Set tab-scoped session anchors in sessionStorage
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem('erp_active_session_uid', fbUser.uid);
@@ -4478,7 +4614,11 @@ window.SchoolApp = {
   },
 
   closeModal: function() {
-    document.getElementById('modal-overlay').classList.remove('active');
+    var overlay = document.getElementById('modal-overlay');
+    if (overlay) {
+      overlay.classList.remove('active');
+      overlay.classList.remove('acc-modal-active');
+    }
     document.body.style.overflow = '';
     var container = document.getElementById('modal-container');
     if (container) {
@@ -6915,6 +7055,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       SchoolApp.updateBrandUI();
 
+      SchoolApp._lastAuthSuccessTimestamp = Date.now();
       // Attach tenant store for impersonated school
       await SchoolApp.initTenantStore(impSchoolId, true);
 
@@ -7049,6 +7190,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (saSnap && saSnap.exists() && saSnap.data().schoolId === currentSchoolId) {
         const saData = saSnap.data();
         const role = saData.role || 'admin';
+        SchoolApp._lastAuthSuccessTimestamp = Date.now();
         console.log('[Auth] Active verified session restored for school: ' + currentSchoolId + ' role: ' + role);
         SchoolApp.showLoader('Restoring session...');
         const tenantOk = await SchoolApp.initTenantStore(currentSchoolId, false);

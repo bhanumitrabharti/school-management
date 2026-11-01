@@ -4,7 +4,7 @@
  * ===================================================
  */
 
-const BUILD_VERSION = 'v67';
+const BUILD_VERSION = 'v68';
 const CACHE_NAME = `erp-cache-${BUILD_VERSION}`;
 
 // Assets to pre-cache on service worker install

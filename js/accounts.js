@@ -87,6 +87,191 @@
       status: 'all'
     },
 
+    // ── Scoped Styles & Responsive Modal Helper ──────────────────────────────
+    ensureScopedStyles: function () {
+      if (typeof document === 'undefined' || document.getElementById('accounts-module-styles')) return;
+      var style = document.createElement('style');
+      style.id = 'accounts-module-styles';
+      style.textContent = [
+        '/* Scoped styles for Accounts & Expenses module */',
+        '#page-accounts { width: 100%; max-width: 100%; box-sizing: border-box; }',
+        '.acc-tab-bar {',
+        '  display: flex !important;',
+        '  flex-wrap: nowrap !important;',
+        '  overflow-x: auto !important;',
+        '  -webkit-overflow-scrolling: touch !important;',
+        '  scrollbar-width: none !important;',
+        '  -ms-overflow-style: none !important;',
+        '  border-bottom: 1px solid var(--border-color);',
+        '  margin-bottom: 24px;',
+        '  gap: 8px;',
+        '  width: 100%;',
+        '}',
+        '.acc-tab-bar::-webkit-scrollbar { display: none !important; }',
+        '.acc-tab-bar .tab-btn {',
+        '  flex-shrink: 0 !important;',
+        '  white-space: nowrap !important;',
+        '  min-height: 40px !important;',
+        '  display: inline-flex !important;',
+        '  align-items: center !important;',
+        '  gap: 6px !important;',
+        '  padding: 10px 16px !important;',
+        '  font-size: 13.5px !important;',
+        '  font-weight: 600 !important;',
+        '  border: none !important;',
+        '  background: none !important;',
+        '  cursor: pointer !important;',
+        '  border-bottom: 2px solid transparent !important;',
+        '  color: var(--text-secondary);',
+        '}',
+        '.acc-tab-bar .tab-btn.active {',
+        '  border-bottom-color: var(--accent-primary) !important;',
+        '  color: var(--accent-primary) !important;',
+        '}',
+        '.acc-table-container {',
+        '  width: 100% !important;',
+        '  max-width: 100% !important;',
+        '  overflow-x: auto !important;',
+        '  -webkit-overflow-scrolling: touch !important;',
+        '}',
+        '.acc-table-container > table, table.acc-table {',
+        '  min-width: 680px !important;',
+        '  width: 100% !important;',
+        '  margin: 0 !important;',
+        '  border-collapse: collapse !important;',
+        '}',
+        '.acc-setup-card {',
+        '  padding: 32px;',
+        '  border-radius: 12px;',
+        '  box-shadow: var(--shadow-md);',
+        '}',
+        '.acc-setup-bank-row {',
+        '  display: grid;',
+        '  grid-template-columns: 1fr 1fr 110px;',
+        '  gap: 10px;',
+        '  margin-top: 8px;',
+        '}',
+        '.acc-vendor-row {',
+        '  display: grid;',
+        '  grid-template-columns: 2fr 1fr 1fr;',
+        '  gap: 12px;',
+        '  margin-bottom: 14px;',
+        '}',
+        '.acc-detail-grid {',
+        '  display: grid;',
+        '  grid-template-columns: 1fr 1fr;',
+        '  gap: 12px;',
+        '  font-size: 13px;',
+        '  margin-bottom: 16px;',
+        '}',
+        '.acc-bank-row {',
+        '  display: grid;',
+        '  grid-template-columns: 1fr 1fr 85px 85px 85px;',
+        '  gap: 8px;',
+        '  margin-bottom: 8px;',
+        '  align-items: center;',
+        '}',
+        '@media (max-width: 768px) {',
+        '  #page-accounts input,',
+        '  #page-accounts select,',
+        '  #page-accounts textarea,',
+        '  #modal-overlay.acc-modal-active input,',
+        '  #modal-overlay.acc-modal-active select,',
+        '  #modal-overlay.acc-modal-active textarea {',
+        '    font-size: 16px !important;',
+        '    min-height: 40px !important;',
+        '    box-sizing: border-box !important;',
+        '  }',
+        '  #page-accounts button,',
+        '  #page-accounts .btn,',
+        '  #modal-overlay.acc-modal-active button,',
+        '  #modal-overlay.acc-modal-active .btn {',
+        '    min-height: 40px !important;',
+        '  }',
+        '}',
+        '@media (max-width: 640px) {',
+        '  .acc-setup-card {',
+        '    padding: 20px 14px !important;',
+        '  }',
+        '  .acc-setup-bank-row {',
+        '    grid-template-columns: 1fr !important;',
+        '    gap: 8px !important;',
+        '  }',
+        '  .acc-vendor-row {',
+        '    grid-template-columns: 1fr !important;',
+        '  }',
+        '  .acc-bank-row {',
+        '    display: flex !important;',
+        '    flex-direction: column !important;',
+        '    align-items: stretch !important;',
+        '    gap: 8px !important;',
+        '    padding: 12px !important;',
+        '    background: var(--bg-secondary, #f9fafb) !important;',
+        '    border: 1px solid var(--border-color, #e5e7eb) !important;',
+        '    border-radius: 8px !important;',
+        '    margin-bottom: 12px !important;',
+        '  }',
+        '  .acc-bank-row .acc-bank-actions {',
+        '    display: flex !important;',
+        '    flex-wrap: wrap !important;',
+        '    align-items: center !important;',
+        '    justify-content: flex-end !important;',
+        '    gap: 8px !important;',
+        '    margin-top: 4px !important;',
+        '  }',
+        '  #modal-overlay.acc-modal-active {',
+        '    padding: 12px !important;',
+        '    box-sizing: border-box !important;',
+        '  }',
+        '  #modal-overlay.acc-modal-active .modal-container {',
+        '    width: 100% !important;',
+        '    max-width: 100% !important;',
+        '    margin: 0 !important;',
+        '    max-height: calc(100vh - 24px) !important;',
+        '    box-sizing: border-box !important;',
+        '    display: flex !important;',
+        '    flex-direction: column !important;',
+        '  }',
+        '  #modal-overlay.acc-modal-active .modal-body {',
+        '    overflow-y: auto !important;',
+        '    padding: 16px 14px !important;',
+        '    flex: 1 1 auto !important;',
+        '    box-sizing: border-box !important;',
+        '  }',
+        '  #modal-overlay.acc-modal-active .modal-footer {',
+        '    display: flex !important;',
+        '    flex-wrap: wrap !important;',
+        '    gap: 8px !important;',
+        '    padding: 12px 14px !important;',
+        '    box-sizing: border-box !important;',
+        '  }',
+        '  #modal-overlay.acc-modal-active .modal-footer > button,',
+        '  #modal-overlay.acc-modal-active .modal-footer > .btn {',
+        '    flex: 1 1 auto !important;',
+        '    min-height: 40px !important;',
+        '    margin-left: 0 !important;',
+        '  }',
+        '}',
+        '@media (max-width: 480px) {',
+        '  .acc-detail-grid {',
+        '    grid-template-columns: 1fr !important;',
+        '  }',
+        '}'
+      ].join('\n');
+      document.head.appendChild(style);
+    },
+
+    openModal: function (title, bodyHTML, footerHTML) {
+      this.ensureScopedStyles();
+      var overlay = document.getElementById('modal-overlay');
+      if (overlay) overlay.classList.add('acc-modal-active');
+      SchoolApp.showModal(title, bodyHTML, footerHTML);
+    },
+
+    init: function () {
+      this.ensureScopedStyles();
+    },
+
     // ── Formatting Helpers ───────────────────────────────────────────────────
     formatINR: function (paise) {
       if (paise === null || paise === undefined || isNaN(paise)) return '₹0.00';
@@ -126,6 +311,8 @@
     render: async function () {
       var container = document.getElementById('page-accounts');
       if (!container) return;
+
+      this.ensureScopedStyles();
 
       // Role & Feature check
       if (!SchoolApp.isAdmin() || !SchoolApp.checkFeatureAccess('accounts')) {
@@ -209,8 +396,8 @@
     // ── First-Run Setup Wizard ───────────────────────────────────────────────
     renderSetupWizard: function (container) {
       var html = '';
-      html += '<div style="max-width: 680px; margin: 32px auto; padding: 0 16px;">';
-      html += '  <div class="card" style="padding: 32px; border-radius: 12px; box-shadow: var(--shadow-md);">';
+      html += '<div style="max-width: 680px; margin: 32px auto; padding: 0 16px; box-sizing: border-box; width: 100%;">';
+      html += '  <div class="card acc-setup-card">';
       html += '    <div style="text-align:center; margin-bottom: 24px;">';
       html += '      <div style="width:56px; height:56px; border-radius:50%; background:rgba(37, 99, 235, 0.12); color:var(--accent-primary); display:grid; place-items:center; margin:0 auto 12px auto;">';
       html += '        <span class="material-icons-round" style="font-size:32px;">account_balance</span>';
@@ -248,7 +435,7 @@
       html += '          <span>Primary Bank Account</span>';
       html += '          <span style="font-size:11.5px; color:var(--text-muted); font-weight:400;">Optional — can also be added later</span>';
       html += '        </label>';
-      html += '        <div style="display:grid; grid-template-columns: 1fr 1fr 110px; gap: 10px; margin-top:8px;">';
+      html += '        <div class="acc-setup-bank-row">';
       html += '          <input type="text" class="form-control" id="setup-bank-label" placeholder="Label (e.g. Main Operations)" value="Main Operations A/c" />';
       html += '          <input type="text" class="form-control" id="setup-bank-name" placeholder="Bank Name (e.g. SBI)" value="State Bank of India" />';
       html += '          <input type="text" class="form-control" id="setup-bank-last4" placeholder="Last 4 (e.g. 4821)" maxlength="4" pattern="\\d{4}" title="Exactly 4 digits" />';
@@ -412,7 +599,7 @@
       html += '</div>';
 
       // Tab Navigation Bar
-      html += '<div class="tabs" style="display:flex; border-bottom:1px solid var(--border-color); margin-bottom:24px; gap:8px;">';
+      html += '<div class="tabs acc-tab-bar">';
       var tabs = [
         { id: 'overview', label: 'Overview', icon: 'dashboard' },
         { id: 'expenses', label: 'Expenses (' + this.expenses.filter(function (e) { return e.status !== 'cancelled'; }).length + ')', icon: 'receipt_long' },
@@ -421,7 +608,7 @@
       ];
       tabs.forEach(function (t) {
         var activeClass = (this.activeTab === t.id) ? 'active' : '';
-        html += '<button class="tab-btn ' + activeClass + '" onclick="SchoolApp.modules.accounts.switchTab(\'' + t.id + '\')" style="display:inline-flex; align-items:center; gap:6px; padding:10px 16px; font-size:13.5px; font-weight:600; border:none; background:none; cursor:pointer; border-bottom:2px solid transparent; color:var(--text-secondary);">';
+        html += '<button class="tab-btn ' + activeClass + '" onclick="SchoolApp.modules.accounts.switchTab(\'' + t.id + '\')">';
         html += '  <span class="material-icons-round" style="font-size:18px;">' + t.icon + '</span> ' + t.label;
         html += '</button>';
       }.bind(this));
@@ -448,6 +635,11 @@
         activeBtn.classList.add('active');
         activeBtn.style.borderBottomColor = 'var(--accent-primary)';
         activeBtn.style.color = 'var(--accent-primary)';
+        if (typeof activeBtn.scrollIntoView === 'function') {
+          try {
+            activeBtn.scrollIntoView({ inline: 'nearest', behavior: 'smooth', block: 'nearest' });
+          } catch (_) {}
+        }
       }
       this.renderCurrentTab();
     },
@@ -520,7 +712,7 @@
       html += '</div>';
 
       // KPI Metric Cards
-      html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:24px;">';
+      html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap:16px; margin-bottom:24px;">';
 
       // Card 1: Month Total
       html += '  <div class="card" style="padding:20px; border-radius:10px; border-left:4px solid #3b82f6;">';
@@ -546,7 +738,7 @@
       html += '</div>';
 
       // Two-column layout: Top Categories + Recent Expenses
-      html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">';
+      html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap:20px;">';
 
       // Top Categories Card
       html += '  <div class="card" style="padding:20px; border-radius:10px;">';
@@ -616,7 +808,7 @@
 
       // Toolbar / Filters
       html += '<div class="card" style="padding:16px; border-radius:10px; margin-bottom:20px;">';
-      html += '  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:flex-end;">';
+      html += '  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap:12px; align-items:flex-end;">';
 
       // Search
       html += '    <div>';
@@ -670,8 +862,8 @@
 
       // Table View
       html += '<div class="card" style="padding:0; border-radius:10px; overflow:hidden;">';
-      html += '  <div class="table-responsive">';
-      html += '    <table class="table" style="width:100%; margin:0; border-collapse:collapse;">';
+      html += '  <div class="table-responsive acc-table-container">';
+      html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse;">';
       html += '      <thead>';
       html += '        <tr style="background:var(--bg-secondary); border-bottom:1px solid var(--border-color); text-align:left; font-size:12px; color:var(--text-secondary);">';
       html += '          <th style="padding:12px 16px;">VOUCHER #</th>';
@@ -807,7 +999,7 @@
 
       var html = '';
       html += '<form id="form-record-expense" onsubmit="SchoolApp.modules.accounts.saveExpense(event)">';
-      html += '  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">';
+      html += '  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:12px; margin-bottom:14px;">';
 
       // Date
       html += '    <div class="form-group">';
@@ -823,7 +1015,7 @@
 
       html += '  </div>';
 
-      html += '  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">';
+      html += '  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:12px; margin-bottom:14px;">';
 
       // Category
       html += '    <div class="form-group">';
@@ -869,7 +1061,7 @@
       html += '  </div>';
 
       // Vendor Info
-      html += '  <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; margin-bottom:14px;">';
+      html += '  <div class="acc-vendor-row">';
       html += '    <div class="form-group">';
       html += '      <label class="form-label" style="font-weight:600;">Vendor / Payee Name *</label>';
       html += '      <input type="text" class="form-control" id="exp-vendor" placeholder="e.g. Shyam Book Depot" required />';
@@ -910,7 +1102,7 @@
       footerHTML += '  <span class="material-icons-round">save</span> Save Expense';
       footerHTML += '</button>';
 
-      SchoolApp.showModal('Record New Expense', html, footerHTML);
+      this.openModal('Record New Expense', html, footerHTML);
     },
 
     handleModeChange: function (mode) {
@@ -1212,7 +1404,7 @@
       }
 
       // Metadata Grid
-      html += '<div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px; margin-bottom:16px;">';
+      html += '<div class="acc-detail-grid">';
       html += '  <div><span style="color:var(--text-muted); display:block; font-size:11.5px;">Date</span><strong>' + (exp.date || '—') + '</strong></div>';
       html += '  <div><span style="color:var(--text-muted); display:block; font-size:11.5px;">Financial Year</span><strong>FY ' + (exp.financialYear || '—') + '</strong></div>';
       html += '  <div><span style="color:var(--text-muted); display:block; font-size:11.5px;">Vendor / Payee</span><strong>' + SchoolApp.escapeHTML(exp.vendorName || '—') + '</strong></div>';
@@ -1261,7 +1453,7 @@
         footerHTML += '<button class="btn btn-danger" style="margin-left:8px;" onclick="SchoolApp.closeModal(); setTimeout(function() { SchoolApp.modules.accounts.promptCancelExpense(\'' + exp.id + '\'); }, 150);">Cancel Expense</button>';
       }
 
-      SchoolApp.showModal('Expense Details — ' + (exp.expenseNo || ''), html, footerHTML);
+      this.openModal('Expense Details — ' + (exp.expenseNo || ''), html, footerHTML);
     },
 
     // ── Prompt Cancel Expense Modal ──────────────────────────────────────────
@@ -1287,7 +1479,7 @@
       footerHTML += '  <span class="material-icons-round">block</span> Confirm Cancellation';
       footerHTML += '</button>';
 
-      SchoolApp.showModal('Cancel Expense', html, footerHTML);
+      this.openModal('Cancel Expense', html, footerHTML);
     },
 
     executeCancelExpense: async function (expenseId) {
@@ -1441,8 +1633,8 @@
         html += '    <span class="badge badge-info" style="font-size:11px;">' + accounts.length + ' accounts</span>';
         html += '  </div>';
 
-        html += '  <div class="table-responsive">';
-        html += '    <table class="table" style="width:100%; margin:0; border-collapse:collapse;">';
+        html += '  <div class="table-responsive acc-table-container">';
+        html += '    <table class="table acc-table" style="width:100%; margin:0; border-collapse:collapse;">';
         html += '      <thead>';
         html += '        <tr style="text-align:left; font-size:11.5px; color:var(--text-secondary); border-bottom:1px solid var(--border-color);">';
         html += '          <th style="padding:10px 16px;">CODE</th>';
@@ -1532,7 +1724,7 @@
       footerHTML += '  <span class="material-icons-round">add</span> Add Account';
       footerHTML += '</button>';
 
-      SchoolApp.showModal('Add Custom Ledger Account', html, footerHTML);
+      this.openModal('Add Custom Ledger Account', html, footerHTML);
       this.suggestCodeForType('expense');
     },
 
@@ -1680,12 +1872,12 @@
             ? '<button type="button" class="btn btn-sm btn-secondary b-toggle-btn" data-action="deactivate" style="font-size:11px; padding:4px 8px;" onclick="SchoolApp.modules.accounts.toggleBankStatus(this)">Deactivate</button>'
             : '<button type="button" class="btn btn-sm btn-secondary b-toggle-btn" data-action="activate" style="font-size:11px; padding:4px 8px;" onclick="SchoolApp.modules.accounts.toggleBankStatus(this)">Activate</button>';
 
-          html += '          <div class="bank-row bank-row-existing" data-id="' + SchoolApp.escapeHTML(b.id || ('bank_' + (b.ledgerAccountId || idx))) + '" data-ledger-code="' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '" data-is-active="' + (isAct ? 'true' : 'false') + '" style="display:grid; grid-template-columns: 1fr 1fr 85px 85px 85px; gap:8px; margin-bottom:8px; align-items:center;">';
+          html += '          <div class="bank-row bank-row-existing acc-bank-row" data-id="' + SchoolApp.escapeHTML(b.id || ('bank_' + (b.ledgerAccountId || idx))) + '" data-ledger-code="' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '" data-is-active="' + (isAct ? 'true' : 'false') + '" >';
           html += '            <input type="text" class="form-control b-label" placeholder="Label" value="' + SchoolApp.escapeHTML(b.label || '') + '" required />';
           html += '            <input type="text" class="form-control b-name" placeholder="Bank Name" value="' + SchoolApp.escapeHTML(b.bankName || '') + '" required />';
           html += '            <input type="text" class="form-control b-last4" placeholder="Last 4" maxlength="4" pattern="\\d{4}" value="' + SchoolApp.escapeHTML(b.last4 || '') + '" required />';
           html += '            <div style="font-size:11.5px; color:var(--text-secondary); text-align:center;">Code: <strong>' + SchoolApp.escapeHTML(b.ledgerAccountId || '11200') + '</strong></div>';
-          html += '            <div style="display:flex; align-items:center; gap:4px;">' + statusBadge + ' ' + toggleBtn + '</div>';
+          html += '            <div class="acc-bank-actions">' + statusBadge + ' ' + toggleBtn + '</div>';
           html += '          </div>';
         });
       }
@@ -1710,14 +1902,13 @@
       var container = document.getElementById('settings-bank-accounts-list');
       if (!container) return;
       var row = document.createElement('div');
-      row.className = 'bank-row bank-row-new';
-      row.style.cssText = 'display:grid; grid-template-columns: 1fr 1fr 85px 85px 85px; gap:8px; margin-bottom:8px; align-items:center;';
+      row.className = 'bank-row bank-row-new acc-bank-row';
       row.innerHTML =
         '<input type="text" class="form-control b-label" placeholder="Label (e.g. HDFC General)" required />' +
         '<input type="text" class="form-control b-name" placeholder="Bank Name" required />' +
         '<input type="text" class="form-control b-last4" placeholder="Last 4" maxlength="4" pattern="\\d{4}" required />' +
         '<div style="font-size:11.5px; color:var(--text-muted); text-align:center;"><em>(Auto-assigned)</em></div>' +
-        '<button type="button" class="btn-icon" style="color:var(--danger);" title="Discard un-saved row" onclick="this.closest(\'.bank-row-new\').remove()"><span class="material-icons-round">close</span></button>';
+        '<div class="acc-bank-actions"><button type="button" class="btn-icon" style="color:var(--danger);" title="Discard un-saved row" onclick="this.closest(\'.bank-row-new\').remove()"><span class="material-icons-round">close</span></button></div>';
       container.appendChild(row);
     },
 
@@ -1883,5 +2074,8 @@
     SchoolApp.registerModule('accounts', AccountsModule);
   }
   window.AccountsModule = AccountsModule;
+  if (typeof document !== 'undefined') {
+    AccountsModule.ensureScopedStyles();
+  }
 
 })();
