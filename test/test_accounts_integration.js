@@ -57,8 +57,11 @@ async function runAccountsIntegrationTest() {
   console.log('--- Emulator Integration Test: Accounts Slice 2 Sync ---');
   console.log('========================================================\n');
 
-  // 1. Seed School Admin Access
+  // 1. Seed School Record & Admin Access
   console.log('1. Seeding school access & settings...');
+  await db.collection('schools').doc(schoolId).set({
+    allowed_features: ['dashboard', 'students', 'fees', 'accounts']
+  });
   await db.collection('school_access').doc(testUid).set({
     schoolId,
     role: 'admin',
@@ -365,6 +368,9 @@ async function runAccountsIntegrationTest() {
   // 11. Digital Account Validation & Unsynced Month (F4, F1)
   console.log('\n11. Testing Digital Account Validation & Unsynced Month (F4, F1)...');
   const f4SchoolId = 'fake_school_f4_f1_' + runId;
+  await db.collection('schools').doc(f4SchoolId).set({
+    allowed_features: ['dashboard', 'fees', 'accounts']
+  });
   await db.collection('school_access').doc('admin_f4').set({
     schoolId: f4SchoolId,
     role: 'admin',
@@ -463,6 +469,9 @@ async function runAccountsIntegrationTest() {
   // 13. Noise-Free Skipped List (F5)
   console.log('\n13. Testing Noise-Free Skipped List (F5)...');
   const f5SchoolId = 'fake_school_f5_' + runId;
+  await db.collection('schools').doc(f5SchoolId).set({
+    allowed_features: ['dashboard', 'fees', 'accounts']
+  });
   await db.collection('school_access').doc('admin_f5').set({
     schoolId: f5SchoolId,
     role: 'admin',
@@ -500,6 +509,9 @@ async function runAccountsIntegrationTest() {
   // 14. Performance Benchmark: 3,000 Synthetic Fee Payments (F2)
   console.log('\n14. Running Performance Benchmark: 3,000 Synthetic Fee Transactions (F2)...');
   const benchSchoolId = 'perf_school_3000_' + runId;
+  await db.collection('schools').doc(benchSchoolId).set({
+    allowed_features: ['dashboard', 'fees', 'accounts']
+  });
   await db.collection('school_access').doc('admin_bench').set({
     schoolId: benchSchoolId,
     role: 'admin',
@@ -576,6 +588,9 @@ async function runAccountsIntegrationTest() {
   // 15. Transaction Error Leaves Month Unsynced & Records Skipped (F1, F8)
   console.log('\n15. Testing Transaction Error Leaves Month Unsynced & Records Skipped (F1, F8)...');
   const errSchoolId = 'fake_school_err_' + runId;
+  await db.collection('schools').doc(errSchoolId).set({
+    allowed_features: ['dashboard', 'fees', 'accounts']
+  });
   await db.collection('school_access').doc('admin_err').set({
     schoolId: errSchoolId,
     role: 'admin',
@@ -631,6 +646,42 @@ async function runAccountsIntegrationTest() {
   const errSyncSnap = await db.doc(`tenant_data/${errSchoolId}/accounts_sync_state/${targetFY}`).get();
   assert.strictEqual(errSyncSnap.data().monthDocUpdateTimes['2026-04'], undefined, 'Month must NOT be marked synced when a transaction has data problem (F1)');
   console.log('✔ PASS: Data problem records in skipped list and leaves month unsynced (F1, F8)!');
+
+  // 16. Feature-Flag Guard Test (School without 'accounts')
+  console.log('\n16. Testing Feature-Flag Guard (School without accounts feature)...');
+  const noAccSchoolId = 'fake_school_no_acc_' + runId;
+  await db.collection('schools').doc(noAccSchoolId).set({
+    allowed_features: ['dashboard', 'students', 'fees'] // missing 'accounts'!
+  });
+  await db.collection('school_access').doc('admin_no_acc').set({
+    schoolId: noAccSchoolId,
+    role: 'admin',
+    updatedAt: new Date().toISOString()
+  });
+
+  const noAccMock = createMockReqRes({
+    idToken: 'mock_test_token_admin_no_acc',
+    schoolId: noAccSchoolId,
+    action: 'sync',
+    fy: targetFY
+  });
+  await accountsHandler(noAccMock.req, noAccMock.res);
+  const noAccRes = noAccMock.getResult();
+
+  assert.strictEqual(noAccRes.status, 403, 'Must return 403 when accounts feature is not enabled');
+  assert.strictEqual(noAccRes.data.error, 'Accounts is not enabled for this school.', 'Must return exact error message');
+
+  // Verify no accounts_* documents were created
+  const stateDocSnap = await db.doc(`tenant_data/${noAccSchoolId}/accounts_sync_state/${targetFY}`).get();
+  assert.strictEqual(stateDocSnap.exists, false, 'accounts_sync_state must not exist');
+
+  const journalSnaps = await db.collection(`tenant_data/${noAccSchoolId}/accounts_journal`).get();
+  assert.strictEqual(journalSnaps.size, 0, 'accounts_journal must have 0 documents');
+
+  const sumDocSnap = await db.doc(`tenant_data/${noAccSchoolId}/accounts_summary/${targetFY}`).get();
+  assert.strictEqual(sumDocSnap.exists, false, 'accounts_summary must not exist');
+
+  console.log('✔ PASS: Feature-flag guard returned 403 and zero accounts_* documents created!');
 
   console.log('\n========================================');
   console.log('ACCOUNTS INTEGRATION TESTS: ALL PASS');

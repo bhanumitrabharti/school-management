@@ -699,6 +699,14 @@ async function handler(req, res) {
     return res.status(403).json({ error: 'Access denied: Only verified school admins may access the accounts API.' });
   }
 
+  // 4. Feature Flag Check: School must have 'accounts' enabled in schools/{schoolId}.allowed_features
+  const schoolSnap = await db.collection('schools').doc(schoolId).get();
+  const schoolData = schoolSnap.exists ? (schoolSnap.data() || {}) : {};
+  const allowedFeatures = Array.isArray(schoolData.allowed_features) ? schoolData.allowed_features : [];
+  if (!allowedFeatures.includes('accounts')) {
+    return res.status(403).json({ error: 'Accounts is not enabled for this school.' });
+  }
+
   const targetFY = fy || getFinancialYear();
 
   // ── Action: status ─────────────────────────────────────────────────────────
