@@ -723,6 +723,137 @@
       }
     },
 
+    // ── Setup Checklist Helper (F4) ─────────────────────────────────────────
+    renderChecklistHTML: function () {
+      var s = this.settings || {};
+      var bankAccounts = (s.bankAccounts && Array.isArray(s.bankAccounts)) ? s.bankAccounts : [];
+      var storeHeads = (SchoolApp.store && (SchoolApp.store.feeHeads || (SchoolApp.store.settings && SchoolApp.store.settings.feeHeads))) || [];
+      var feeHeadMap = s.feeHeadMapping || {};
+      var unmappedHeads = storeHeads.filter(function (h) { return !feeHeadMap[h.id]; });
+
+      var item1Done = !!(s.setupCompletedAt);
+      var item2Done = (bankAccounts.length > 0);
+      var item3Done = !!(s.feeDigitalAccount);
+      var item4Done = (unmappedHeads.length === 0);
+      var syncRan = !!(this.syncState && this.syncState.lastSyncAt);
+      var warnCount = (this.syncState && this.syncState.warnings) ? this.syncState.warnings.length : 0;
+      var item5Done = (syncRan && warnCount === 0);
+
+      var allDone = (item1Done && item2Done && item3Done && item4Done && item5Done);
+      var completedCount = [item1Done, item2Done, item3Done, item4Done, item5Done].filter(Boolean).length;
+
+      // Hide card when all are done unless user explicitly clicked to re-open from Settings
+      if (allDone && !this._forceShowChecklist) {
+        return '';
+      }
+
+      var html = '';
+      html += '<div class="card" style="margin-bottom:20px; padding:18px 20px; border-radius:10px; border-left:4px solid ' + (allDone ? 'var(--success)' : 'var(--accent-primary)') + '; background:var(--bg-primary); box-shadow:0 1px 3px rgba(0,0,0,0.05);">';
+      html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">';
+      html += '    <div>';
+      html += '      <h3 style="font-size:15px; font-weight:700; margin:0; color:var(--text-primary); display:flex; align-items:center; gap:8px;">';
+      html += '        <span class="material-icons-round" style="color:' + (allDone ? 'var(--success)' : 'var(--accent-primary)') + '; font-size:20px;">' + (allDone ? 'check_circle' : 'checklist') + '</span>';
+      html += '        Accounts Setup Checklist (' + completedCount + '/5 Complete)';
+      html += '      </h3>';
+      html += '      <p style="font-size:12px; color:var(--text-secondary); margin:2px 0 0 0;">Complete these initial configuration steps to enable automated ledger sync and reconciliation.</p>';
+      html += '    </div>';
+      if (allDone) {
+        html += '    <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.toggleChecklist(false)" style="font-size:11.5px; padding:4px 10px;">Dismiss</button>';
+      }
+      html += '  </div>';
+
+      html += '  <div style="display:flex; flex-direction:column; gap:10px;">';
+
+      // Item 1: Accounts set up
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:8px; gap:12px;">';
+      html += '      <div style="display:flex; align-items:center; gap:10px;">';
+      html += '        <span class="material-icons-round" style="color:' + (item1Done ? 'var(--success)' : 'var(--warning)') + '; font-size:20px;">' + (item1Done ? 'check_circle' : 'radio_button_unchecked') + '</span>';
+      html += '        <div>';
+      html += '          <div style="font-size:13px; font-weight:600; color:var(--text-primary);">1. Accounts set up</div>';
+      html += '          <div style="font-size:11.5px; color:var(--text-secondary);">Chart of Accounts seeded and basic financial parameters initialized.</div>';
+      html += '        </div>';
+      html += '      </div>';
+      if (!item1Done) {
+        html += '      <button class="btn btn-primary btn-sm" onclick="SchoolApp.modules.accounts.renderSetupWizard(document.getElementById(\'page-accounts\'))" style="font-size:11.5px; padding:4px 12px;">Fix</button>';
+      }
+      html += '    </div>';
+
+      // Item 2: Bank account added
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:8px; gap:12px;">';
+      html += '      <div style="display:flex; align-items:center; gap:10px;">';
+      html += '        <span class="material-icons-round" style="color:' + (item2Done ? 'var(--success)' : 'var(--warning)') + '; font-size:20px;">' + (item2Done ? 'check_circle' : 'radio_button_unchecked') + '</span>';
+      html += '        <div>';
+      html += '          <div style="font-size:13px; font-weight:600; color:var(--text-primary);">2. Bank account added (label, bank, last 4)</div>';
+      html += '          <div style="font-size:11.5px; color:var(--text-secondary);">' + (item2Done ? ('Configured: ' + SchoolApp.escapeHTML(bankAccounts[0].label || bankAccounts[0].bankName) + ' (**' + (bankAccounts[0].last4 || '') + ')') : 'At least one active bank ledger added with label, bank name, and last 4 digits.') + '</div>';
+      html += '        </div>';
+      html += '      </div>';
+      if (!item2Done) {
+        html += '      <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.switchTab(\'settings\')" style="font-size:11.5px; padding:4px 12px;">Fix</button>';
+      }
+      html += '    </div>';
+
+      // Item 3: Bank for UPI/Bank fee receipts chosen
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:8px; gap:12px;">';
+      html += '      <div style="display:flex; align-items:center; gap:10px;">';
+      html += '        <span class="material-icons-round" style="color:' + (item3Done ? 'var(--success)' : 'var(--warning)') + '; font-size:20px;">' + (item3Done ? 'check_circle' : 'radio_button_unchecked') + '</span>';
+      html += '        <div>';
+      html += '          <div style="font-size:13px; font-weight:600; color:var(--text-primary);">3. Bank for UPI/Bank fee receipts chosen</div>';
+      html += '          <div style="font-size:11.5px; color:var(--text-secondary);">' + (item3Done ? ('Target ledger: ' + s.feeDigitalAccount) : 'Digital fee collection ledger assigned for UPI, Net Banking, and Cheque fee receipts.') + '</div>';
+      html += '        </div>';
+      html += '      </div>';
+      if (!item3Done) {
+        html += '      <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.switchTab(\'settings\')" style="font-size:11.5px; padding:4px 12px;">Fix</button>';
+      }
+      html += '    </div>';
+
+      // Item 4: Fee heads mapped to income accounts
+      var unmappedNames = unmappedHeads.map(function (h) { return h.name || h.id; }).join(', ');
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:8px; gap:12px;">';
+      html += '      <div style="display:flex; align-items:center; gap:10px;">';
+      html += '        <span class="material-icons-round" style="color:' + (item4Done ? 'var(--success)' : 'var(--warning)') + '; font-size:20px;">' + (item4Done ? 'check_circle' : 'radio_button_unchecked') + '</span>';
+      html += '        <div>';
+      html += '          <div style="font-size:13px; font-weight:600; color:var(--text-primary);">4. Fee heads mapped to income accounts</div>';
+      html += '          <div style="font-size:11.5px; color:var(--text-secondary);">' + (item4Done ? 'All school fee heads are mapped to general ledger revenue accounts.' : ('Unmapped: <span class="badge badge-warning" style="font-size:11px;">' + SchoolApp.escapeHTML(unmappedNames) + '</span> (defaulting to Tuition Fees 41100).')) + '</div>';
+      html += '        </div>';
+      html += '      </div>';
+      if (!item4Done) {
+        html += '      <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.switchTab(\'settings\')" style="font-size:11.5px; padding:4px 12px;">Fix</button>';
+      }
+      html += '    </div>';
+
+      // Item 5: First sync done with 0 warnings
+      html += '    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:var(--bg-secondary); border-radius:8px; gap:12px;">';
+      html += '      <div style="display:flex; align-items:center; gap:10px;">';
+      html += '        <span class="material-icons-round" style="color:' + (item5Done ? 'var(--success)' : 'var(--warning)') + '; font-size:20px;">' + (item5Done ? 'check_circle' : 'radio_button_unchecked') + '</span>';
+      html += '        <div>';
+      html += '          <div style="font-size:13px; font-weight:600; color:var(--text-primary);">5. First sync done with 0 warnings</div>';
+      html += '          <div style="font-size:11.5px; color:var(--text-secondary);">' + (item5Done ? 'General ledger is fully up-to-date with 0 sync warnings.' : (!syncRan ? 'Sync has not been run yet.' : ('Sync completed with ' + warnCount + ' active warning(s).'))) + '</div>';
+      html += '        </div>';
+      html += '      </div>';
+      if (!item5Done) {
+        html += '      <button class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.sync(false)" style="font-size:11.5px; padding:4px 12px;">Sync now</button>';
+      }
+      html += '    </div>';
+
+      html += '  </div>';
+      html += '</div>';
+
+      return html;
+    },
+
+    toggleChecklist: function (force) {
+      if (typeof force === 'boolean') {
+        this._forceShowChecklist = force;
+      } else {
+        this._forceShowChecklist = !this._forceShowChecklist;
+      }
+      if (this._forceShowChecklist) {
+        this.switchTab('overview');
+      } else {
+        this.render();
+      }
+    },
+
     // ── Main Workspace Renderer ──────────────────────────────────────────────
     renderWorkspace: function (container) {
       var html = '';
@@ -754,6 +885,9 @@
       html += '    </button>';
       html += '  </div>';
       html += '</div>';
+
+      // F4: Setup checklist card at top of Accounts
+      html += this.renderChecklistHTML();
 
       // Skipped records or warnings alert banner (if any)
       var hasSkipped = (this.syncState && this.syncState.skipped && this.syncState.skipped.length > 0);
@@ -899,18 +1033,29 @@
       var netFeeCollectedPaise = 0;
       var feePaymentsCount = 0;
       var feeReversalsCount = 0;
+      var unpostedDigitalPaise = 0;
+      var hasDigitalFeeAcc = !!(this.settings && this.settings.feeDigitalAccount);
 
       feesList.forEach(function (f) {
         if (f.type !== 'payment') return;
         if (!f.date || f.date < effectiveStart || f.date > fyEnd) return;
         var amt = Number(f.amount || 0);
-        netFeeCollectedPaise += Math.round(amt * 100);
+        var pAmt = Math.round(amt * 100);
+        netFeeCollectedPaise += pAmt;
         if (amt >= 0 && !f.isReversal) {
           feePaymentsCount++;
         } else {
           feeReversalsCount++;
         }
-      });
+
+        var mode = (f.mode || 'Cash').trim().toLowerCase();
+        if (mode !== 'cash') {
+          // If digital account missing or digital vouchers not posted, track unposted digital receipts
+          if (!hasDigitalFeeAcc || (this.settings && !this.settings.hasDigitalFeeVouchers)) {
+            unpostedDigitalPaise += pAmt;
+          }
+        }
+      }.bind(this));
 
       // 2. Ledger Fee Income from accounts_summary
       var summaryData = (this.summary && this.summary.accounts) ? this.summary.accounts : {};
@@ -946,6 +1091,7 @@
         ledgerDiscountPaise: ledgerDiscountPaise,
         netLedgerPaise: netLedgerPaise,
         diffPaise: diffPaise,
+        unpostedDigitalPaise: unpostedDigitalPaise,
         isMatched: isMatched,
         feePaymentsCount: feePaymentsCount,
         feeReversalsCount: feeReversalsCount
@@ -984,7 +1130,8 @@
           label: 'Primary Bank A/c',
           code: '11200',
           balancePaise: primBal,
-          last4: '—'
+          last4: '—',
+          isFallback: true
         });
       }
 
@@ -1037,7 +1184,11 @@
         html += '    <div class="card" style="padding:16px; border-radius:10px; border-left:4px solid #8b5cf6;">';
         html += '      <span style="font-size:11.5px; color:var(--text-secondary); text-transform:uppercase; font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + SchoolApp.escapeHTML(bb.label) + ' (' + bb.code + ')</span>';
         html += '      <div style="font-size:20px; font-weight:800; color:var(--text-primary); margin:6px 0 2px 0;">' + this.formatINR(bb.balancePaise) + '</div>';
-        html += '      <span style="font-size:11px; color:var(--text-muted);">A/c **' + SchoolApp.escapeHTML(bb.last4) + '</span>';
+        if (bb.isFallback) {
+          html += '      <span style="font-size:11px;"><a href="javascript:void(0)" onclick="SchoolApp.modules.accounts.switchTab(\'settings\')" style="color:var(--accent-primary); text-decoration:underline; font-weight:500;">Add bank in Settings</a></span>';
+        } else {
+          html += '      <span style="font-size:11px; color:var(--text-muted);">A/c **' + SchoolApp.escapeHTML(bb.last4) + '</span>';
+        }
         html += '    </div>';
       }.bind(this));
       html += '  </div>';
@@ -1103,8 +1254,12 @@
       html += '      </div>';
 
       if (!recon.isMatched) {
+        var unpostedDigitalNote = '';
+        if (recon.unpostedDigitalPaise > 0) {
+          unpostedDigitalNote = ' — includes ' + this.formatINR(recon.unpostedDigitalPaise) + ' in unposted digital (UPI/Bank) fee receipts' + (!this.settings.feeDigitalAccount ? ' because no bank account is configured in Settings' : '') + '.';
+        }
         html += '      <div style="margin-top:8px; padding:8px 10px; background:rgba(239, 68, 68, 0.1); border-radius:6px; color:var(--danger); font-size:12px; font-weight:600;">';
-        html += '        ⚠️ Variance of ' + this.formatINR(recon.diffPaise) + ' detected. Click "Sync now" above to post pending fee transactions to the ledger.';
+        html += '        ⚠️ Variance of ' + this.formatINR(recon.diffPaise) + ' detected' + unpostedDigitalNote + ' ' + (!this.settings.feeDigitalAccount ? 'Set the digital fee bank account in Settings, then click' : 'Click') + ' "Sync now" above to post pending fee transactions to the ledger.';
         html += '      </div>';
       } else {
         html += '      <div style="margin-top:8px; font-size:12px; color:var(--success); font-weight:500;">';
@@ -2912,11 +3067,14 @@
     renderReportsHTML: function () {
       var currentFY = this.getFinancialYear();
       var now = new Date();
-      var today = now.toISOString().split('T')[0];
-      var monthStart = today.slice(0, 7) + '-01';
+      var y = now.getFullYear();
+      var m = now.getMonth();
+      var lastDay = new Date(y, m + 1, 0).getDate();
+      var monthStart = now.toISOString().slice(0, 7) + '-01';
+      var monthEnd = now.toISOString().slice(0, 7) + '-' + (lastDay < 10 ? '0' : '') + lastDay;
 
       if (!this.reportParams.startDate) this.reportParams.startDate = monthStart;
-      if (!this.reportParams.endDate) this.reportParams.endDate = today;
+      if (!this.reportParams.endDate) this.reportParams.endDate = monthEnd;
       if (!this.reportParams.fy) this.reportParams.fy = currentFY;
 
       var html = '';
@@ -3915,6 +4073,32 @@
       var html = '';
       html += '<div style="max-width:840px; margin:0 auto;">';
 
+      // Checklist Status Bar & Reopen Button (F4)
+      var checkBankAccounts = (s.bankAccounts && Array.isArray(s.bankAccounts)) ? s.bankAccounts : [];
+      var checkUnmapped = storeHeads.filter(function (h) { return !feeHeadMap[h.id]; });
+      var checkItem1 = !!s.setupCompletedAt;
+      var checkItem2 = (checkBankAccounts.length > 0);
+      var checkItem3 = !!s.feeDigitalAccount;
+      var checkItem4 = (checkUnmapped.length === 0);
+      var checkSyncRan = !!(this.syncState && this.syncState.lastSyncAt);
+      var checkWarnCount = (this.syncState && this.syncState.warnings) ? this.syncState.warnings.length : 0;
+      var checkItem5 = (checkSyncRan && checkWarnCount === 0);
+      var checkAllDone = (checkItem1 && checkItem2 && checkItem3 && checkItem4 && checkItem5);
+      var checkCompletedCount = [checkItem1, checkItem2, checkItem3, checkItem4, checkItem5].filter(Boolean).length;
+
+      html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding:12px 16px; background:var(--bg-secondary); border-radius:8px; border:1px solid var(--border-color); flex-wrap:wrap; gap:8px;">';
+      html += '    <div>';
+      html += '      <strong style="font-size:13px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">';
+      html += '        <span class="material-icons-round" style="color:' + (checkAllDone ? 'var(--success)' : 'var(--accent-primary)') + '; font-size:18px;">' + (checkAllDone ? 'task_alt' : 'checklist') + '</span>';
+      html += '        Setup Checklist (' + (checkAllDone ? '5/5 Complete' : (checkCompletedCount + '/5 Complete')) + ')';
+      html += '      </strong>';
+      html += '      <div style="color:var(--text-secondary); font-size:11.5px; margin-top:2px;">Review setup status or reopen the checklist card at the top of Accounts.</div>';
+      html += '    </div>';
+      html += '    <button type="button" class="btn btn-secondary btn-sm" onclick="SchoolApp.modules.accounts.toggleChecklist(' + (this._forceShowChecklist ? 'false' : 'true') + ')" style="display:inline-flex; align-items:center; gap:4px; font-size:12px;">';
+      html += '      <span class="material-icons-round" style="font-size:16px;">checklist</span> ' + (this._forceShowChecklist ? 'Hide Checklist Card' : 'View Setup Checklist') + '';
+      html += '    </button>';
+      html += '  </div>';
+
       html += '  <form id="form-accounts-settings" onsubmit="SchoolApp.modules.accounts.saveSettings(event)">';
 
       // ── Card 1: Core Configuration ──
@@ -3951,48 +4135,95 @@
       html += '      </select>';
       html += '    </div>';
 
-      // Go-Live Date & Fee Voucher Lock
+      // Go-Live Date & Fee Voucher Lock (F2/F3)
       var hasFeeVouchers = !!(s.hasFeeVouchers || (this.syncState && this.syncState.counts && this.syncState.counts.feesPosted > 0));
-      var curGoLive = s.goLiveDate || (currentFY.split('-')[0] + '-04-01');
+      var hasDigitalFeeVouchers = !!(s.hasDigitalFeeVouchers);
+
+      var isGoLiveSaved = !!s.goLiveDate;
+      var isGoLiveLocked = isGoLiveSaved && hasFeeVouchers;
+      var suggestedGoLive = currentFY.split('-')[0] + '-04-01';
+      var curGoLive = s.goLiveDate || suggestedGoLive;
+
       html += '    <div class="form-group" style="margin-bottom:16px;">';
-      html += '      <label class="form-label" style="font-weight:600; display:block; margin-bottom:4px;">Accounting Go-Live Date * ' + (hasFeeVouchers ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : '') + '</label>';
-      if (hasFeeVouchers) {
+      html += '      <label class="form-label" style="font-weight:600; display:block; margin-bottom:4px;">Accounting Go-Live Date * ' +
+        (isGoLiveLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (!isGoLiveSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : '')) +
+        '</label>';
+
+      if (isGoLiveLocked) {
         html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" disabled style="width:100%; background:var(--bg-secondary); cursor:not-allowed;" />';
         html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">🔒 <strong>Locked:</strong> Fee vouchers have already been posted to the general ledger. Accounting go-live date cannot be changed.</small>';
       } else {
         html += '      <input type="date" class="form-control" id="settings-golive-date" value="' + curGoLive + '" required style="width:100%;" />';
-        html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">Transactions dated before this date are treated as historical and NOT posted to the general ledger.</small>';
+        if (!isGoLiveSaved) {
+          html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;"><strong>Not set:</strong> Suggested default: ' + suggestedGoLive + ' (financial year start date). Transactions dated before this date are treated as historical and NOT posted to the general ledger.</small>';
+        } else {
+          html += '      <small class="form-text text-muted" style="font-size:11.5px; display:block; margin-top:4px;">Transactions dated before this date are treated as historical and NOT posted to the general ledger.</small>';
+        }
       }
       html += '    </div>';
       html += '  </div>';
 
-      // ── Card 2: Fee Accounting Integration ──
+      // ── Card 2: Fee Accounting Integration (F2/F3) ──
       html += '  <div class="card" style="padding:24px; border-radius:10px; margin-bottom:20px;">';
       html += '    <h3 style="font-size:16px; font-weight:700; margin-bottom:6px; color:var(--text-primary);">Fees Module Integration</h3>';
       html += '    <p style="font-size:12.5px; color:var(--text-secondary); margin:0 0 16px 0;">Configure which general ledger accounts receive fee payments and how student fee heads map to revenue accounts.</p>';
 
+      var isCashSaved = !!s.feeCashAccount;
+      var isCashLocked = isCashSaved && hasFeeVouchers;
+      var curCash = s.feeCashAccount || '11100';
+
+      var isDigitalSaved = !!s.feeDigitalAccount;
+      var isDigitalLocked = isDigitalSaved && hasDigitalFeeVouchers;
+
       html += '    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">';
       html += '      <div class="form-group">';
-      html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Cash Fee Collection Ledger</label>';
-      html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + (s.feeCashAccount || '11100') + '" ' + (hasFeeVouchers ? 'disabled ' : 'readonly ') + 'style="background:var(--bg-secondary);' + (hasFeeVouchers ? ' cursor:not-allowed;' : '') + '" />';
-      html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand</small>';
+      html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Cash Fee Collection Ledger ' +
+        (isCashLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (!isCashSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : '')) +
+        '</label>';
+      html += '        <input type="text" class="form-control" id="settings-fee-cash-acc" value="' + curCash + '" ' + (isCashLocked ? 'disabled ' : 'readonly ') + 'style="background:var(--bg-secondary);' + (isCashLocked ? ' cursor:not-allowed;' : '') + '" />';
+      if (!isCashSaved) {
+        html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand (suggested default)</small>';
+      } else if (isCashLocked) {
+        html += '        <small class="form-text text-muted" style="font-size:11px;">🔒 <strong>Locked:</strong> Cash fee vouchers have already been posted to the general ledger.</small>';
+      } else {
+        html += '        <small class="form-text text-muted" style="font-size:11px;">11100 - Cash in Hand</small>';
+      }
       html += '      </div>';
+
       html += '      <div class="form-group">';
-      html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Digital Fee Collection Bank Ledger * ' + (hasFeeVouchers ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : '') + '</label>';
-      html += '        <select class="form-control form-select" id="settings-fee-digital-acc" ' + (hasFeeVouchers ? 'disabled style="background:var(--bg-secondary); cursor:not-allowed;"' : 'required') + '>';
-      bankAccounts.forEach(function (b) {
-        var bCode = b.ledgerAccountId || '11200';
-        var sel = (s.feeDigitalAccount === bCode) ? 'selected' : '';
-        html += '          <option value="' + bCode + '" ' + sel + '>' + bCode + ' - ' + SchoolApp.escapeHTML(b.label || b.bankName) + ' (**' + (b.last4 || '') + ')</option>';
-      });
-      if (bankAccounts.length === 0) {
-        html += '          <option value="11200" selected>11200 - Primary Bank Account</option>';
+      html += '        <label class="form-label" style="font-weight:600; font-size:12.5px; display:block; margin-bottom:4px;">Digital Fee Collection Bank Ledger * ' +
+        (isDigitalLocked ? '<span class="badge badge-info" style="font-size:11px; margin-left:6px;">🔒 Locked</span>' : (!isDigitalSaved ? '<span class="badge badge-warning" style="font-size:11px; margin-left:6px;">Not set</span>' : '')) +
+        '</label>';
+      html += '        <select class="form-control form-select" id="settings-fee-digital-acc" ' + (isDigitalLocked ? 'disabled style="background:var(--bg-secondary); cursor:not-allowed;"' : 'required') + '>';
+
+      if (!isDigitalSaved) {
+        var suggestedCode = (bankAccounts.length > 0) ? (bankAccounts[0].ledgerAccountId || '11200') : '11200';
+        bankAccounts.forEach(function (b) {
+          var bCode = b.ledgerAccountId || '11200';
+          var isSugg = (bCode === suggestedCode);
+          html += '          <option value="' + bCode + '" ' + (isSugg ? 'selected' : '') + '>' + bCode + ' - ' + SchoolApp.escapeHTML(b.label || b.bankName) + ' (**' + (b.last4 || '') + ')' + (isSugg ? ' (suggested)' : '') + '</option>';
+        });
+        if (bankAccounts.length === 0) {
+          html += '          <option value="11200" selected>11200 - Primary Bank Account (suggested)</option>';
+        }
+      } else {
+        bankAccounts.forEach(function (b) {
+          var bCode = b.ledgerAccountId || '11200';
+          var sel = (s.feeDigitalAccount === bCode) ? 'selected' : '';
+          html += '          <option value="' + bCode + '" ' + sel + '>' + bCode + ' - ' + SchoolApp.escapeHTML(b.label || b.bankName) + ' (**' + (b.last4 || '') + ')</option>';
+        });
+        if (bankAccounts.length === 0) {
+          html += '          <option value="11200" selected>11200 - Primary Bank Account</option>';
+        }
       }
       html += '        </select>';
-      if (hasFeeVouchers) {
-        html += '        <small class="form-text text-muted" style="font-size:11px;">🔒 <strong>Locked:</strong> Digital fee collection bank account cannot be changed after fee vouchers are posted.</small>';
+
+      if (isDigitalLocked) {
+        html += '        <small class="form-text text-muted" style="font-size:11px;">🔒 <strong>Locked:</strong> Digital fee vouchers have already been posted to the general ledger. Target bank ledger cannot be changed.</small>';
+      } else if (!isDigitalSaved) {
+        html += '        <small class="form-text text-muted" style="font-size:11px;"><strong>Not set:</strong> Suggested default is preselected. Choose the target bank ledger for UPI, Net Banking, and Cheque fee receipts.</small>';
       } else {
-        html += '        <small class="form-text text-muted" style="font-size:11px;">Target bank ledger for UPI, Net Banking, and Cheque fee receipts.</small>';
+        html += '        <small class="form-text text-muted" style="font-size:11px;">Target bank ledger for UPI, Net Banking, and Cheque fee receipts. Can be updated until first digital fee voucher is posted.</small>';
       }
       html += '      </div>';
       html += '    </div>';
@@ -4392,13 +4623,22 @@
         var fyMonthInput = document.getElementById('settings-fy-month');
         var fyMonth = fyMonthInput && !fyMonthInput.disabled ? parseInt(fyMonthInput.value, 10) : (s.financialYearStartMonth || 4);
         
-        var goLiveInput = document.getElementById('settings-golive-date');
-        var newGoLive = (goLiveInput && !goLiveInput.disabled) ? goLiveInput.value : (s.goLiveDate || '');
-        var curGoLive = s.goLiveDate || '';
+        var isGoLiveSaved = !!s.goLiveDate;
+        var isGoLiveLocked = isGoLiveSaved && hasFeeVouchers;
 
+        var curGoLive = s.goLiveDate || '';
+        var goLiveInput = document.getElementById('settings-golive-date');
+        var newGoLive = (goLiveInput && !goLiveInput.disabled) ? goLiveInput.value : (curGoLive || (currentFY.split('-')[0] + '-04-01'));
+
+        var isDigitalSaved = !!s.feeDigitalAccount;
+        var isDigitalLocked = isDigitalSaved && !!s.hasDigitalFeeVouchers;
         var digitalAccInput = document.getElementById('settings-fee-digital-acc');
-        var feeDigitalAccount = (digitalAccInput && !digitalAccInput.disabled) ? digitalAccInput.value : (s.feeDigitalAccount || '11200');
-        var feeCashAccount = s.feeCashAccount || '11100';
+        var feeDigitalAccount = (digitalAccInput && !digitalAccInput.disabled) ? digitalAccInput.value : (s.feeDigitalAccount || '');
+
+        var isCashSaved = !!s.feeCashAccount;
+        var isCashLocked = isCashSaved && hasFeeVouchers;
+        var cashAccInput = document.getElementById('settings-fee-cash-acc');
+        var feeCashAccount = (cashAccInput && !cashAccInput.disabled) ? cashAccInput.value : (s.feeCashAccount || '11100');
 
         var shouldClearMonthDocUpdateTimes = (!hasFeeVouchers && newGoLive && curGoLive && newGoLive !== curGoLive);
 

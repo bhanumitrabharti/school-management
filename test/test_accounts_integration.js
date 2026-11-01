@@ -683,6 +683,107 @@ async function runAccountsIntegrationTest() {
 
   console.log('✔ PASS: Feature-flag guard returned 403 and zero accounts_* documents created!');
 
+  // 17. Settings Backfill & Aggregated Unmapped Heads (F1, F5.2)
+  console.log('\n17. Testing Settings Backfill & Aggregated Unmapped Heads (F1, F5.2)...');
+  const gwSchoolId = 'fake_school_greenwood_' + runId;
+  await db.collection('schools').doc(gwSchoolId).set({
+    allowed_features: ['accounts', 'dashboard', 'fees']
+  });
+  await db.collection('school_access').doc('admin_gw').set({
+    schoolId: gwSchoolId,
+    role: 'admin',
+    updatedAt: new Date().toISOString()
+  });
+
+  // Seed Greenwood-like state: hasFeeVouchers is true, but goLiveDate and feeCashAccount are missing
+  await db.doc(`tenant_data/${gwSchoolId}/accounts_settings/main`).set({
+    hasFeeVouchers: true
+    // no goLiveDate, no feeCashAccount, no feeDigitalAccount
+  });
+
+  // Seed fee month with 2 unmapped heads
+  await db.doc(`tenant_data/${gwSchoolId}/fees_years/2026/months/04`).set({
+    transactions: [
+      {
+        id: 'txn_unmapped_1',
+        date: '2026-04-10',
+        type: 'payment',
+        mode: 'Cash',
+        amount: 500,
+        grossAmount: 500,
+        allocations: [{ feeHeadId: 'fh_exam', feeHeadName: 'Exam Fee', amount: 500 }]
+      },
+      {
+        id: 'txn_unmapped_2',
+        date: '2026-04-11',
+        type: 'payment',
+        mode: 'Cash',
+        amount: 300,
+        grossAmount: 300,
+        allocations: [{ feeHeadId: 'fh_sports', feeHeadName: 'Sports Fee', amount: 300 }]
+      }
+    ]
+  });
+
+  const gwMock = createMockReqRes({
+    idToken: 'mock_test_token_admin_gw',
+    schoolId: gwSchoolId,
+    action: 'sync',
+    fy: targetFY
+  });
+  await accountsHandler(gwMock.req, gwMock.res);
+  const gwRes = gwMock.getResult();
+
+  assert.strictEqual(gwRes.status, 200);
+
+  // Check F1 backfill in Firestore
+  const backfilledSettings = (await db.doc(`tenant_data/${gwSchoolId}/accounts_settings/main`).get()).data();
+  assert.strictEqual(backfilledSettings.goLiveDate, '2026-04-01', 'goLiveDate must be backfilled to FY start date');
+  assert.strictEqual(backfilledSettings.feeCashAccount, '11100', 'feeCashAccount must be backfilled to 11100');
+  assert.strictEqual(backfilledSettings.hasFeeVouchers, true, 'hasFeeVouchers must remain true');
+  console.log('✔ PASS: F1 backfilled goLiveDate and feeCashAccount for Greenwood-like state!');
+
+  // Check F5.2 aggregated warning
+  const gwSyncState = (await db.doc(`tenant_data/${gwSchoolId}/accounts_sync_state/${targetFY}`).get()).data();
+  const unmappedWarning = gwSyncState.warnings.find(w => w.message && w.message.includes('not mapped'));
+  assert.ok(unmappedWarning, 'Must have aggregated unmapped fee heads warning');
+  assert.strictEqual(unmappedWarning.message, '2 fee heads not mapped: Exam Fee, Sports Fee');
+  console.log('✔ PASS: F5.2 aggregated warning correctly reports "2 fee heads not mapped: Exam Fee, Sports Fee"!');
+
+  // Check digital fee voucher setting hasDigitalFeeVouchers: true
+  // Set feeDigitalAccount so digital vouchers can post
+  await db.doc(`tenant_data/${gwSchoolId}/accounts_settings/main`).set({
+    feeDigitalAccount: '11200'
+  }, { merge: true });
+
+  await db.doc(`tenant_data/${gwSchoolId}/fees_years/2026/months/05`).set({
+    transactions: [
+      {
+        id: 'txn_digital_1',
+        date: '2026-05-15',
+        type: 'payment',
+        mode: 'UPI',
+        amount: 1000,
+        grossAmount: 1000,
+        allocations: [{ feeHeadId: 'fh_exam', feeHeadName: 'Exam Fee', amount: 1000 }]
+      }
+    ]
+  });
+
+  const gwDigitalMock = createMockReqRes({
+    idToken: 'mock_test_token_admin_gw',
+    schoolId: gwSchoolId,
+    action: 'sync',
+    fy: targetFY
+  });
+  await accountsHandler(gwDigitalMock.req, gwDigitalMock.res);
+  const gwDigitalRes = gwDigitalMock.getResult();
+  assert.strictEqual(gwDigitalRes.status, 200);
+
+  const updatedSettings = (await db.doc(`tenant_data/${gwSchoolId}/accounts_settings/main`).get()).data();
+  assert.strictEqual(updatedSettings.hasDigitalFeeVouchers, true, 'hasDigitalFeeVouchers must be set to true after digital voucher posts');
+  console.log('✔ PASS: F1 set hasDigitalFeeVouchers: true after digital fee voucher posted!');
+
   console.log('\n========================================');
   console.log('ACCOUNTS INTEGRATION TESTS: ALL PASS');
   console.log('========================================');

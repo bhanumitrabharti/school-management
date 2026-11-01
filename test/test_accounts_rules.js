@@ -708,25 +708,64 @@ async function runAccountsRulesTests() {
     }));
   });
 
-  await recordTest('S2_20', 'Admin CANNOT change goLiveDate or feeDigitalAccount when hasFeeVouchers is true (F6)', async () => {
-    // First set hasFeeVouchers: true
-    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+  await recordTest('S2_20', 'Clients CANNOT set or change hasFeeVouchers or hasDigitalFeeVouchers (server only)', async () => {
+    // Attempt by client to set hasFeeVouchers: true -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
       hasFeeVouchers: true
     }));
-
-    // Attempt to change goLiveDate -> DENY
+    // Attempt by client to set hasDigitalFeeVouchers: true -> DENY
     await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
-      goLiveDate: '2026-05-01'
+      hasDigitalFeeVouchers: true
     }));
+  });
 
-    // Attempt to change feeDigitalAccount -> DENY
-    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+  await recordTest('S2_20b', 'Greenwood-like state: hasFeeVouchers true but fields missing -> admin CAN set feeDigitalAccount (F2)', async () => {
+    // Simulate server setting hasFeeVouchers: true with empty fields (like Greenwood)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('tenant_data/school_1/accounts_settings/main').set({
+        hasFeeVouchers: true,
+        hasDigitalFeeVouchers: false,
+        feeCashAccount: '',
+        feeDigitalAccount: '',
+        goLiveDate: '',
+        feeHeadMapping: { 'tuition': '41100' }
+      }, { merge: true });
+    });
+
+    // Admin sets feeDigitalAccount from empty -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
       feeDigitalAccount: '11200'
     }));
 
-    // Attempt to unlock hasFeeVouchers -> DENY
+    // Admin sets goLiveDate from empty -> ALLOW
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      goLiveDate: '2026-04-01'
+    }));
+  });
+
+  await recordTest('S2_20c', 'After goLiveDate is non-empty and hasFeeVouchers true -> change goLiveDate -> DENY (F2)', async () => {
+    // Attempt to change goLiveDate after it is non-empty -> DENY
     await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
-      hasFeeVouchers: false
+      goLiveDate: '2026-05-01'
+    }));
+  });
+
+  await recordTest('S2_20d', 'Admin CAN update feeDigitalAccount when hasDigitalFeeVouchers is false, but DENIED after hasDigitalFeeVouchers is true (F2)', async () => {
+    // feeDigitalAccount is '11200' and hasDigitalFeeVouchers is false -> admin can change it
+    await assertSucceeds(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      feeDigitalAccount: '11210'
+    }));
+
+    // Server marks hasDigitalFeeVouchers: true once first digital voucher posts
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('tenant_data/school_1/accounts_settings/main').update({
+        hasDigitalFeeVouchers: true
+      });
+    });
+
+    // Now attempt to change feeDigitalAccount -> DENY
+    await assertFails(admin1Db.doc('tenant_data/school_1/accounts_settings/main').update({
+      feeDigitalAccount: '11200'
     }));
   });
 

@@ -188,6 +188,7 @@ function computeFeeJournalLines(txn, settings, chartMap) {
   const isReversal = !!txn.isReversal || (amountPaise < 0);
   const lines = [];
   const warnings = [];
+  const unmappedHeads = [];
 
   const fy = getFinancialYear(txn.date);
 
@@ -218,7 +219,7 @@ function computeFeeJournalLines(txn, settings, chartMap) {
             warnings.push(`Mapped income account '${incomeAcc}' for head '${alloc.feeHeadName || headId}' is invalid; defaulted to ${defaultIncomeAccount}`);
             incomeAcc = defaultIncomeAccount;
           } else if (!feeHeadMapping[headId]) {
-            warnings.push(`Fee head '${alloc.feeHeadName || headId}' not mapped; defaulted to ${defaultIncomeAccount}`);
+            unmappedHeads.push({ id: headId, name: alloc.feeHeadName || headId || 'Unknown Fee Head' });
           }
           lines.push({ accountCode: incomeAcc, drPaise: 0, crPaise: hAmt });
         }
@@ -246,6 +247,9 @@ function computeFeeJournalLines(txn, settings, chartMap) {
       const incObj = chartMap[incomeAcc];
       if (!incObj || incObj.type !== 'income' || incObj.isActive === false) {
         incomeAcc = defaultIncomeAccount;
+      }
+      if (!feeHeadMapping[headId]) {
+        unmappedHeads.push({ id: headId, name: txn.feeHeadName || headId || 'Unknown Fee Head' });
       }
       lines.push({ accountCode: incomeAcc, drPaise: 0, crPaise: grossPaise });
     }
@@ -298,6 +302,9 @@ function computeFeeJournalLines(txn, settings, chartMap) {
     } else {
       const headId = txn.feeHeadId || '';
       let incomeAcc = feeHeadMapping[headId] || defaultIncomeAccount;
+      if (!feeHeadMapping[headId]) {
+        unmappedHeads.push({ id: headId, name: txn.feeHeadName || headId || 'Unknown Fee Head' });
+      }
       lines.push({ accountCode: incomeAcc, drPaise: absGross, crPaise: 0 });
     }
   }
@@ -317,11 +324,13 @@ function computeFeeJournalLines(txn, settings, chartMap) {
     fy,
     source: 'fee',
     sourceId: txn.id,
+    isDigital: !isCash,
     narration: isReversal
       ? `Reversal: Fee Payment for Student ${txn.studentId || ''}`
       : `Fee Payment: Student ${txn.studentId || ''} (${txn.mode || 'Cash'})`,
     lines,
-    warnings
+    warnings,
+    unmappedHeads
   };
 }
 
@@ -813,11 +822,56 @@ async function handler(req, res) {
 
       // Map to aggregate warnings without row spam
       const aggregatedWarnings = new Map();
+      const unmappedFeeHeadsMap = new Map();
 
       // Step A: Process Fee Months
       const [startYearStr] = targetFY.split('-');
       const startYear = parseInt(startYearStr, 10);
       const endYear = startYear + 1;
+
+      // F1: Helper to persist used settings and lock flags
+      const ensureFeeSettingsPersisted = async (batch) => {
+        const updates = {};
+        const fyStart = `${startYear}-04-01`;
+
+        if (!settings.goLiveDate) {
+          settings.goLiveDate = fyStart;
+          updates.goLiveDate = fyStart;
+        }
+        if (!settings.feeCashAccount) {
+          settings.feeCashAccount = '11100';
+          updates.feeCashAccount = '11100';
+        }
+        if (!settings.hasFeeVouchers) {
+          settings.hasFeeVouchers = true;
+          updates.hasFeeVouchers = true;
+        }
+
+        const hasDigitalInBatch = Array.isArray(batch) && batch.some(v => v.isDigital);
+        if (hasDigitalInBatch && !settings.hasDigitalFeeVouchers) {
+          settings.hasDigitalFeeVouchers = true;
+          updates.hasDigitalFeeVouchers = true;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await settingsDoc.ref.set(updates, { merge: true });
+        }
+      };
+
+      // F1: Backfill missing settings if fee vouchers were already posted in a prior sync
+      if ((settings.hasFeeVouchers || (syncState.counts && syncState.counts.feesPosted > 0)) && (!settings.goLiveDate || !settings.feeCashAccount)) {
+        const backfill = {};
+        const fyStart = `${startYear}-04-01`;
+        if (!settings.goLiveDate) {
+          settings.goLiveDate = fyStart;
+          backfill.goLiveDate = fyStart;
+        }
+        if (!settings.feeCashAccount) {
+          settings.feeCashAccount = '11100';
+          backfill.feeCashAccount = '11100';
+        }
+        await settingsDoc.ref.set(backfill, { merge: true });
+      }
 
       const feeMonthTargets = [
         { yr: String(startYear), mo: '04' },
@@ -900,9 +954,15 @@ async function handler(req, res) {
                   aggregatedWarnings.set(w, { type: 'fee', id: txn.id, message: w });
                 });
               }
+              if (res.unmappedHeads && res.unmappedHeads.length > 0) {
+                res.unmappedHeads.forEach(h => {
+                  unmappedFeeHeadsMap.set(h.id, h.name);
+                });
+              }
               candidateBatch.push(res);
 
               if (candidateBatch.length >= 100) {
+                await ensureFeeSettingsPersisted(candidateBatch);
                 const { newlyPosted } = await postVouchersBatch(db, schoolId, candidateBatch, targetFY);
                 newFeesPosted += newlyPosted;
                 syncState.counts.feesPosted = (syncState.counts.feesPosted || 0) + newlyPosted;
@@ -918,6 +978,7 @@ async function handler(req, res) {
 
         // Post remaining candidate vouchers for this month doc
         if (candidateBatch.length > 0) {
+          await ensureFeeSettingsPersisted(candidateBatch);
           const { newlyPosted } = await postVouchersBatch(db, schoolId, candidateBatch, targetFY);
           newFeesPosted += newlyPosted;
           syncState.counts.feesPosted = (syncState.counts.feesPosted || 0) + newlyPosted;
@@ -929,6 +990,14 @@ async function handler(req, res) {
         if (monthAllProcessed && docUpdateMs) {
           syncState.monthDocUpdateTimes[mKey] = docUpdateMs;
         }
+      }
+
+      // F5: Show aggregated unmapped fee heads warning
+      if (unmappedFeeHeadsMap.size > 0) {
+        const names = Array.from(unmappedFeeHeadsMap.values());
+        const count = names.length;
+        const msg = `${count} fee head${count > 1 ? 's' : ''} not mapped: ${names.join(', ')}`;
+        aggregatedWarnings.set('UNMAPPED_FEE_HEADS', { type: 'fee', message: msg });
       }
 
       // Step B: Expenses (Batching with F2)
@@ -1050,9 +1119,9 @@ async function handler(req, res) {
         }
       }
 
-      // F6: Lock settings once any fee voucher exists
+      // F1: Lock settings once any fee voucher exists
       if (syncState.counts.feesPosted > 0 && !settings.hasFeeVouchers) {
-        await settingsDoc.ref.set({ hasFeeVouchers: true }, { merge: true });
+        await ensureFeeSettingsPersisted();
       }
 
       const isComplete = (Date.now() - startTime < TIME_LIMIT_MS);

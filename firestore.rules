@@ -273,14 +273,35 @@ service cloud.firestore {
              d.get('status', '') in ['draft', 'locked'];
     }
 
+    function validMainSettingsCreate() {
+      let d = request.resource.data;
+      return d.get('hasFeeVouchers', false) == false &&
+             d.get('hasDigitalFeeVouchers', false) == false;
+    }
+
     function validMainSettingsUpdate() {
-      let hasVch = resource.data.get('hasFeeVouchers', false) == true;
-      return !hasVch || (
-        request.resource.data.get('goLiveDate', '') == resource.data.get('goLiveDate', '') &&
-        request.resource.data.get('feeDigitalAccount', '') == resource.data.get('feeDigitalAccount', '') &&
-        request.resource.data.get('feeCashAccount', '') == resource.data.get('feeCashAccount', '') &&
-        request.resource.data.get('hasFeeVouchers', false) == true
-      );
+      let req = request.resource.data;
+      let res = resource.data;
+      let hasVch = res.get('hasFeeVouchers', false) == true;
+      let hasDigVch = res.get('hasDigitalFeeVouchers', false) == true;
+      let resGoLive = res.get('goLiveDate', '');
+      let resCash = res.get('feeCashAccount', '');
+      let resDigital = res.get('feeDigitalAccount', '');
+
+      // Server-only flags: client cannot change hasFeeVouchers or hasDigitalFeeVouchers
+      let flagsUnchanged = req.get('hasFeeVouchers', false) == res.get('hasFeeVouchers', false) &&
+                           req.get('hasDigitalFeeVouchers', false) == res.get('hasDigitalFeeVouchers', false);
+
+      // goLiveDate immutable once hasFeeVouchers is true AND non-empty
+      let goLiveOk = (!hasVch || resGoLive == '') || (req.get('goLiveDate', '') == resGoLive);
+
+      // feeCashAccount immutable once hasFeeVouchers is true AND non-empty
+      let feeCashOk = (!hasVch || resCash == '') || (req.get('feeCashAccount', '') == resCash);
+
+      // feeDigitalAccount immutable once hasDigitalFeeVouchers is true AND non-empty
+      let feeDigitalOk = (!hasDigVch || resDigital == '') || (req.get('feeDigitalAccount', '') == resDigital);
+
+      return flagsUnchanged && goLiveOk && feeCashOk && feeDigitalOk;
     }
 
     function validExpenseCreate() {
@@ -359,7 +380,9 @@ service cloud.firestore {
     match /tenant_data/{schoolId}/accounts_settings/{docId} {
       allow read:  if isSchoolAdmin(schoolId);
       allow create: if isSchoolAdmin(schoolId) &&
-                       (docId != 'opening' || validOpeningCreate());
+                       (docId == 'main' ? validMainSettingsCreate() :
+                        docId == 'opening' ? validOpeningCreate() :
+                        true);
       allow update: if isSchoolAdmin(schoolId) &&
                        (docId == 'counters' ? validCountersUpdate() :
                         docId == 'opening' ? validOpeningUpdate() :
