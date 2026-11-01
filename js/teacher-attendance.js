@@ -65,6 +65,28 @@
 
     return R * c; // In meters
   }
+  // On-demand multi-month attendance loading for v2 subcollections
+  async function ensureMonthsLoaded(startStr, endStr) {
+    if (!SchoolApp.currentSchoolId || !SchoolApp.loadTeacherAttendanceMonth) return;
+    if (!startStr && !endStr) return;
+    try {
+      var s = (startStr || endStr).slice(0, 7);
+      var e = (endStr || startStr).slice(0, 7);
+      if (s > e) { var tmp = s; s = e; e = tmp; }
+      var sParts = s.split('-').map(Number);
+      var eParts = e.split('-').map(Number);
+      var curY = sParts[0], curM = sParts[1];
+      var ey = eParts[0], em = eParts[1];
+      while (curY < ey || (curY === ey && curM <= em)) {
+        var mStr = curY + '-' + String(curM).padStart(2, '0');
+        await SchoolApp.loadTeacherAttendanceMonth(SchoolApp.currentSchoolId, mStr);
+        curM++;
+        if (curM > 12) { curM = 1; curY++; }
+      }
+    } catch(err) {
+      console.warn('[TeacherAttendance] Error ensuring months loaded:', err);
+    }
+  }
 
   function getTodayPunchStatus(teacherId) {
     var curToday = new Date().toISOString().split('T')[0];
@@ -1232,9 +1254,12 @@
 
     var btnApplyFilter = document.getElementById('btn-apply-teacher-filter');
     if (btnApplyFilter) {
-      btnApplyFilter.addEventListener('click', function() {
+      btnApplyFilter.addEventListener('click', async function() {
         state.teacherStartDate = document.getElementById('teacher-filter-start').value;
         state.teacherEndDate = document.getElementById('teacher-filter-end').value;
+        if (state.teacherStartDate || state.teacherEndDate) {
+          await ensureMonthsLoaded(state.teacherStartDate, state.teacherEndDate);
+        }
         render();
       });
     }
@@ -1250,11 +1275,12 @@
 
     var btn30d = document.getElementById('quick-filter-30d');
     if (btn30d) {
-      btn30d.addEventListener('click', function() {
+      btn30d.addEventListener('click', async function() {
         var d = new Date();
         d.setDate(d.getDate() - 30);
         state.teacherStartDate = d.toISOString().split('T')[0];
         state.teacherEndDate = todayStr;
+        await ensureMonthsLoaded(state.teacherStartDate, state.teacherEndDate);
         render();
       });
     }
@@ -1612,8 +1638,11 @@
     } else if (state.activeTab === 'logs') {
       var datePicker = document.getElementById('admin-log-date-picker');
       if (datePicker) {
-        datePicker.addEventListener('change', function() {
+        datePicker.addEventListener('change', async function() {
           state.selectedDate = this.value;
+          if (state.selectedDate) {
+            await ensureMonthsLoaded(state.selectedDate, state.selectedDate);
+          }
           render();
         });
       }
@@ -1643,9 +1672,12 @@
     } else if (state.activeTab === 'summary') {
       var btnApplySummary = document.getElementById('btn-apply-admin-summary');
       if (btnApplySummary) {
-        btnApplySummary.addEventListener('click', function() {
+        btnApplySummary.addEventListener('click', async function() {
           state.adminStartDate = document.getElementById('admin-summary-start').value;
           state.adminEndDate = document.getElementById('admin-summary-end').value;
+          if (state.adminStartDate || state.adminEndDate) {
+            await ensureMonthsLoaded(state.adminStartDate, state.adminEndDate);
+          }
           render();
         });
       }
