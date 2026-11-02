@@ -1,3 +1,9 @@
+
+if (!process.env.FIRESTORE_EMULATOR_HOST) {
+  console.error('\n❌ FATAL: Refusing to run scripts/test-super-admin-uid-strict.js against production!');
+  console.error('FIRESTORE_EMULATOR_HOST must be set (e.g. 127.0.0.1:8085) to prevent modifying production.\n');
+  process.exit(1);
+}
 const admin = require('firebase-admin');
 const path = require('path');
 

@@ -2,8 +2,15 @@ const admin = require('firebase-admin');
 const path = require('path');
 const fs = require('fs');
 
-const saPath = path.resolve(__dirname, '..', 'service-account-key.json');
-if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(require(saPath)) });
+if (!process.env.FIRESTORE_EMULATOR_HOST) {
+  console.error('\n❌ FATAL: Refusing to run scripts/test-part-a-onboarding.js against production!');
+  console.error('FIRESTORE_EMULATOR_HOST must be set (e.g. 127.0.0.1:8085) to prevent modifying production Firestore.\n');
+  process.exit(1);
+}
+
+if (!admin.apps.length) {
+  admin.initializeApp({ projectId: 'ctrl-shift-solutions' });
+}
 const db = admin.firestore();
 
 function countBcryptHashes(obj) {
@@ -225,6 +232,16 @@ async function runPartATest() {
     await verifyAccessHandler(req, res);
     console.log(`Login response with NEW password: HTTP ${res._statusCode}, success = ${res._data?.success}`);
     if (res._statusCode !== 200 || !res._data?.success) throw new Error(`Expected 200 on new password, got ${res._statusCode}`);
+  }
+
+  // Cleanup synthetic documents in emulator
+  try {
+    await db.collection('schools').doc(newSchoolId).delete();
+    await db.collection('tenant_data').doc(newSchoolId).collection('private').doc('credentials').delete();
+    await db.collection('tenant_data').doc(newSchoolId).delete();
+    console.log(`Cleaned up synthetic test documents for ${newSchoolId} in emulator.`);
+  } catch (cleanErr) {
+    console.warn('Cleanup warning:', cleanErr.message);
   }
 
   console.log('\n================================================================');

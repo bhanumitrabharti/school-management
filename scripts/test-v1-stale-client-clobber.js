@@ -15,7 +15,9 @@ const DUMMY_SCHOOL = 'dummy_test_school_isolated';
 const PROJECT_ID = 'ctrl-shift-solutions';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
-  process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
+  console.error('\n❌ FATAL: Refusing to run scripts/test-v1-stale-client-clobber.js against production!');
+  console.error('FIRESTORE_EMULATOR_HOST must be set (e.g. 127.0.0.1:8085).\n');
+  process.exit(1);
 }
 
 if (!admin.apps.length) {
