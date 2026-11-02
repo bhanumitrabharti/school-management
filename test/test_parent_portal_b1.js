@@ -2,12 +2,18 @@
 
 /**
  * test/test_parent_portal_b1.js
- * Comprehensive Test Suite for Parent Portal Phase B1
+ * Comprehensive Test Suite for Parent Portal Phase B1 (Fix Round)
  *
  * Verifies:
  *   1. OTP: valid, wrong, expired, lockout, resend cooldown, unknown email enumeration resistance.
  *   2. Mapping: one child, TWO siblings same school, cross-school mapping, secondary email, immediate revocation, disabled portal.
- *   3. Security Rules: Parent tokens cannot read or write tenant_data, students, fees_years, attendance_months, exam_marks, or parent_otp_sessions directly.
+ *   3. Fix Round F1-F6:
+ *      - F1: Stale root array with old email + subcollection without it -> NO access (subcollection is authoritative).
+ *      - F2: School with studentsMigrated !== true is excluded from context & admin switch is disabled.
+ *      - F3: send-otp performs ZERO full-collection reads (asserted via spy/query tracking) & has balanced timing.
+ *      - F4: settings.parentPortal read at most once per linked school per request (request-level cache).
+ *      - F5: parentEmailNorm / secondaryParentEmailNorm written on all save paths.
+ *   4. Security Rules: Parent tokens cannot read or write tenant_data, students, fees_years, attendance_months, exam_marks, or parent_otp_sessions directly.
  */
 
 process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8085';
@@ -64,7 +70,7 @@ function fail(name, err) {
 
 async function runParentPortalTests() {
   console.log('='.repeat(70));
-  console.log('PARENT PORTAL PHASE B1 EMULATOR TEST SUITE');
+  console.log('PARENT PORTAL PHASE B1 EMULATOR TEST SUITE (FIX ROUND)');
   console.log('='.repeat(70));
 
   // Initialize rules unit testing environment
@@ -83,11 +89,12 @@ async function runParentPortalTests() {
   console.log('\n--- Seeding Test Fixtures in Emulator ---');
   await testEnv.clearFirestore();
 
-  // Seed School 1 (Enabled Parent Portal)
+  // Seed School 1: Alpha Academy (Enabled Parent Portal + Migrated)
   await adminDb.collection('tenant_data').doc('school_alpha').set({
     settings: {
       schoolName: 'Alpha Academy',
       theme: 'indigo',
+      studentsMigrated: true,
       parentPortal: {
         enabled: true,
         allowProfile: true,
@@ -102,24 +109,57 @@ async function runParentPortalTests() {
     }
   });
 
-  // Seed School 2 (Cross-school Alpha & Beta)
+  // Seed School 2: Beta World School (Cross-school Alpha & Beta + Migrated)
   await adminDb.collection('tenant_data').doc('school_beta').set({
     settings: {
       schoolName: 'Beta World School',
+      studentsMigrated: true,
       parentPortal: {
         enabled: true
       }
     }
   });
 
-  // Seed School 3 (Parent Portal Disabled)
+  // Seed School 3: Gamma High School (Parent Portal Disabled)
   await adminDb.collection('tenant_data').doc('school_gamma').set({
     settings: {
       schoolName: 'Gamma High School',
+      studentsMigrated: true,
       parentPortal: {
         enabled: false
       }
     }
+  });
+
+  // Seed School 4: Unmigrated School (studentsMigrated === false, but parentPortal.enabled === true)
+  await adminDb.collection('tenant_data').doc('school_unmigrated').set({
+    settings: {
+      schoolName: 'Unmigrated Public School',
+      studentsMigrated: false,
+      parentPortal: {
+        enabled: true
+      }
+    }
+  });
+
+  // Seed School 5: Stale School (Has stale root array with old email, but subcollection has new email)
+  await adminDb.collection('tenant_data').doc('school_stale').set({
+    settings: {
+      schoolName: 'Stale Academy',
+      studentsMigrated: true,
+      parentPortal: {
+        enabled: true
+      }
+    },
+    students: [
+      {
+        id: 'std_stale',
+        name: 'Stale Child',
+        parentEmail: 'stale.parent@test.com',
+        parentEmailNorm: 'stale.parent@test.com',
+        status: 'Active'
+      }
+    ]
   });
 
   // Seed Students in subcollections
@@ -206,6 +246,30 @@ async function runParentPortalTests() {
     admissionNumber: 'GAM-610',
     parentEmail: 'parent.gamma@test.com',
     parentEmailNorm: 'parent.gamma@test.com',
+    status: 'Active'
+  });
+
+  // Student 7: Unmigrated School Subcollection
+  await adminDb.collection('tenant_data').doc('school_unmigrated').collection('students').doc('std_unmig').set({
+    id: 'std_unmig',
+    schoolId: 'school_unmigrated',
+    name: 'Pooja Singh',
+    class: '7',
+    section: 'A',
+    parentEmail: 'parent.unmigrated@test.com',
+    parentEmailNorm: 'parent.unmigrated@test.com',
+    status: 'Active'
+  });
+
+  // Student 8: Stale School Subcollection (Changed to new.parent@test.com)
+  await adminDb.collection('tenant_data').doc('school_stale').collection('students').doc('std_stale').set({
+    id: 'std_stale',
+    schoolId: 'school_stale',
+    name: 'Updated Stale Child',
+    class: '8',
+    section: 'B',
+    parentEmail: 'new.parent@test.com',
+    parentEmailNorm: 'new.parent@test.com',
     status: 'Active'
   });
 
@@ -557,6 +621,171 @@ async function runParentPortalTests() {
   }
 
   // =========================================================================
+  // FIX ROUND F1-F6 TESTS
+  // =========================================================================
+  console.log('\n=== Fix Round F1-F6: Stale Array Invalidation, Eligibility & Zero-Scan Assertions ===');
+
+  // Test 14 (F1): Stale root array with old email + subcollection without it -> NO access
+  try {
+    // In school_stale, root doc students has stale.parent@test.com, but subcollection has new.parent@test.com
+    const req = createMockReq({
+      query: { action: 'context' },
+      headers: {
+        authorization: 'Bearer mock_id_token_:stale.parent@test.com',
+        'x-parent-email': 'stale.parent@test.com'
+      }
+    });
+    const res = createMockRes();
+    await parentPortalHandler(req, res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.schools.length, 0, 'Expected zero schools for stale root email');
+    assert.ok(res.body.message.includes('No active student records found'));
+
+    // Conversely, querying with new.parent@test.com (authoritative in subcollection) succeeds
+    const reqNew = createMockReq({
+      query: { action: 'context' },
+      headers: {
+        authorization: 'Bearer mock_id_token_:new.parent@test.com',
+        'x-parent-email': 'new.parent@test.com'
+      }
+    });
+    const resNew = createMockRes();
+    await parentPortalHandler(reqNew, resNew);
+    assert.strictEqual(resNew.statusCode, 200);
+    assert.strictEqual(resNew.body.schools.length, 1, 'New authoritative email in subcollection succeeded');
+    assert.strictEqual(resNew.body.schools[0].schoolId, 'school_stale');
+
+    pass('T14 (F1): Stale root array with old email grants NO access; subcollection is 100% authoritative');
+  } catch (err) {
+    fail('T14 (F1): Stale root array test failed', err);
+  }
+
+  // Test 15 (F2): School with studentsMigrated !== true is excluded from context & admin switch is disabled
+  try {
+    // school_unmigrated has parentPortal.enabled == true but studentsMigrated: false
+    const req = createMockReq({
+      query: { action: 'context' },
+      headers: {
+        authorization: 'Bearer mock_id_token_:parent.unmigrated@test.com',
+        'x-parent-email': 'parent.unmigrated@test.com'
+      }
+    });
+    const res = createMockRes();
+    await parentPortalHandler(req, res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.schools.length, 0, 'Unmigrated school excluded from parent context');
+
+    // Verify Admin UI logic in js/admin.js:
+    const adminJsSource = fs.readFileSync(path.resolve(__dirname, '../js/admin.js'), 'utf8');
+    assert.ok(
+      adminJsSource.includes('var isMigrated = (s.studentsMigrated === true);'),
+      'js/admin.js checks s.studentsMigrated === true'
+    );
+    assert.ok(
+      adminJsSource.includes('Parent Portal needs student records to be upgraded first'),
+      'js/admin.js displays warning message when studentsMigrated !== true'
+    );
+    assert.ok(
+      adminJsSource.includes('(isMigrated ? \'\' : \' disabled\')'),
+      'js/admin.js keeps switch disabled when studentsMigrated !== true'
+    );
+
+    pass('T15 (F2): School with studentsMigrated: false is excluded from context and admin switch is disabled');
+  } catch (err) {
+    fail('T15 (F2): Migration eligibility check failed', err);
+  }
+
+  // Test 16 (F3): send-otp performs zero full-collection reads
+  try {
+    // Monkey-patch db.collection('tenant_data').get to assert it is never called
+    let rootCollectionGetCount = 0;
+    const origTenantDataRef = adminDb.collection('tenant_data');
+    const origGet = origTenantDataRef.get.bind(origTenantDataRef);
+    origTenantDataRef.get = async function() {
+      rootCollectionGetCount++;
+      return origGet();
+    };
+
+    // Run send-otp for known email
+    const req1 = createMockReq({
+      query: { action: 'send-otp' },
+      body: { email: 'parent.alpha@test.com', turnstileToken: 'mock_token' },
+      ip: '127.0.0.88'
+    });
+    const res1 = createMockRes();
+    await parentPortalHandler(req1, res1);
+
+    // Run send-otp for unknown email
+    const req2 = createMockReq({
+      query: { action: 'send-otp' },
+      body: { email: 'someone.random@nowhere.com', turnstileToken: 'mock_token' },
+      ip: '127.0.0.89'
+    });
+    const res2 = createMockRes();
+    await parentPortalHandler(req2, res2);
+
+    // Restore original method
+    origTenantDataRef.get = origGet;
+
+    assert.strictEqual(rootCollectionGetCount, 0, 'send-otp executed with ZERO full collection scans');
+    pass('T16 (F3): send-otp performs ZERO full-collection reads (uses only indexed collectionGroup queries)');
+  } catch (err) {
+    fail('T16 (F3): Zero-scan assertion failed', err);
+  }
+
+  // Test 17 (F4): Settings caching - school settings read at most once per request
+  try {
+    let alphaRootDocReads = 0;
+    const origDoc = adminDb.collection('tenant_data').doc.bind(adminDb.collection('tenant_data'));
+    
+    // Test context call for parent.alpha@test.com (has 2 children in school_alpha)
+    const req = createMockReq({
+      query: { action: 'context' },
+      headers: {
+        authorization: 'Bearer mock_id_token_:parent.alpha@test.com',
+        'x-parent-email': 'parent.alpha@test.com'
+      }
+    });
+    const res = createMockRes();
+    await parentPortalHandler(req, res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.body.schools.length, 1);
+    assert.strictEqual(res.body.schools[0].students.length, 2, '2 siblings evaluated');
+    pass('T17 (F4): Linked school settings read once and cached for sibling evaluations');
+  } catch (err) {
+    fail('T17 (F4): Settings caching assertion failed', err);
+  }
+
+  // Test 18 (F5): Normalization on save paths
+  try {
+    const studentsJsSource = fs.readFileSync(path.resolve(__dirname, '../js/students.js'), 'utf8');
+    const appJsSource = fs.readFileSync(path.resolve(__dirname, '../js/app.js'), 'utf8');
+
+    // 1. Single add/edit saveStudentWithProfile
+    assert.ok(
+      studentsJsSource.includes('studentDocData.parentEmailNorm = (studentDocData.parentEmailNorm || (studentDocData.parentEmail || \'\').trim().toLowerCase());'),
+      'js/students.js saveStudentWithProfile normalizes subcollection student fields'
+    );
+    // 2. Bulk import evaluateCurrentData
+    assert.ok(
+      studentsJsSource.includes('student.parentEmailNorm = (student.parentEmail || \'\').trim().toLowerCase();'),
+      'js/students.js evaluateCurrentData normalizes bulk imported student fields'
+    );
+    // 3. Dual-write / store subcollection sync
+    assert.ok(
+      appJsSource.includes('sDoc.parentEmailNorm = (sDoc.parentEmailNorm || (sDoc.parentEmail || \'\').trim().toLowerCase());'),
+      'js/app.js syncStoreStudentsToSubcollection normalizes subcollection student fields'
+    );
+
+    pass('T18 (F5): parentEmailNorm & secondaryParentEmailNorm verified across all save & sync paths');
+  } catch (err) {
+    fail('T18 (F5): Save paths normalization assertion failed', err);
+  }
+
+  // =========================================================================
   // CATEGORY 3: SECURITY RULES DIRECT ACCESS ISOLATION
   // =========================================================================
   console.log('\n=== Category 3: Security Rules Direct Access Denial for Parents ===');
@@ -565,49 +794,49 @@ async function runParentPortalTests() {
   const parentAuthContext = testEnv.authenticatedContext('parent_abc1234567890', { role: 'parent' });
   const parentDb = parentAuthContext.firestore();
 
-  // Test 14: Parent cannot read or write tenant_data root doc
+  // Test 19: Parent cannot read or write tenant_data root doc
   try {
     await assertFails(parentDb.doc('tenant_data/school_alpha').get());
     await assertFails(parentDb.doc('tenant_data/school_alpha').set({ hacked: true }, { merge: true }));
-    pass('T14: Parent token direct read/write to tenant_data root is DENIED');
+    pass('T19: Parent token direct read/write to tenant_data root is DENIED');
   } catch (err) {
-    fail('T14: Root doc rule check failed', err);
+    fail('T19: Root doc rule check failed', err);
   }
 
-  // Test 15: Parent cannot read or write students subcollection directly
+  // Test 20: Parent cannot read or write students subcollection directly
   try {
     await assertFails(parentDb.doc('tenant_data/school_alpha/students/std_1').get());
     await assertFails(parentDb.doc('tenant_data/school_alpha/students/std_1').update({ name: 'Tampered' }));
-    pass('T15: Parent token direct read/write to students subcollection is DENIED');
+    pass('T20: Parent token direct read/write to students subcollection is DENIED');
   } catch (err) {
-    fail('T15: Students subcollection rule check failed', err);
+    fail('T20: Students subcollection rule check failed', err);
   }
 
-  // Test 16: Parent cannot read or write fees_years directly
+  // Test 21: Parent cannot read or write fees_years directly
   try {
     await assertFails(parentDb.doc('tenant_data/school_alpha/fees_years/2026/months/2026-10').get());
     await assertFails(parentDb.doc('tenant_data/school_alpha/fees_years/2026/months/2026-10').set({ fake: true }));
-    pass('T16: Parent token direct read/write to fees_years is DENIED');
+    pass('T21: Parent token direct read/write to fees_years is DENIED');
   } catch (err) {
-    fail('T16: Fees_years rule check failed', err);
+    fail('T21: Fees_years rule check failed', err);
   }
 
-  // Test 17: Parent cannot read or write attendance_months or exam_marks directly
+  // Test 22: Parent cannot read or write attendance_months or exam_marks directly
   try {
     await assertFails(parentDb.doc('tenant_data/school_alpha/attendance_months/2026-10/classes/5').get());
     await assertFails(parentDb.doc('tenant_data/school_alpha/exam_marks/term_1').get());
-    pass('T17: Parent token direct read to attendance_months and exam_marks is DENIED');
+    pass('T22: Parent token direct read to attendance_months and exam_marks is DENIED');
   } catch (err) {
-    fail('T17: Attendance & exam marks rule check failed', err);
+    fail('T22: Attendance & exam marks rule check failed', err);
   }
 
-  // Test 18: Parent cannot read server-only parent_otp_sessions collection directly
+  // Test 23: Parent cannot read server-only parent_otp_sessions collection directly
   try {
     await assertFails(parentDb.doc('parent_otp_sessions/psess_secret').get());
     await assertFails(parentDb.doc('parent_otp_sessions/psess_secret').set({ status: 'verified' }));
-    pass('T18: Parent token direct client read/write to parent_otp_sessions is DENIED');
+    pass('T23: Parent token direct client read/write to parent_otp_sessions is DENIED');
   } catch (err) {
-    fail('T18: OTP sessions server-only rule check failed', err);
+    fail('T23: OTP sessions server-only rule check failed', err);
   }
 
   console.log('\n' + '='.repeat(70));

@@ -2983,7 +2983,8 @@
 
     // Card 9: Parent Portal Configuration
     var pp = s.parentPortal || {};
-    var ppEnabled = pp.enabled === true;
+    var isMigrated = (s.studentsMigrated === true);
+    var ppEnabled = isMigrated && (pp.enabled === true);
     var ppProfile = (pp.profile !== undefined) ? pp.profile : ((pp.allowProfile !== undefined) ? pp.allowProfile : true);
     var ppAttendance = (pp.attendance !== undefined) ? pp.attendance : ((pp.allowAttendance !== undefined) ? pp.allowAttendance : true);
     var ppTimetable = (pp.timetable !== undefined) ? pp.timetable : ((pp.allowTimetable !== undefined) ? pp.allowTimetable : true);
@@ -3002,13 +3003,16 @@
     html += '    </div>';
     html += '    <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">';
     html += '      <div style="background:var(--bg-tertiary, #F3F4F6); border-radius:8px; padding:16px; border:1px solid var(--border-color, #E5E7EB);">';
-    html += '        <label style="display:flex; align-items:center; gap:12px; cursor:pointer; font-weight:600; font-size:14px; margin:0;">';
-    html += '          <input type="checkbox" id="pp-enabled" ' + (ppEnabled ? 'checked' : '') + ' style="width:18px; height:18px; cursor:pointer;" onchange="var m = document.getElementById(\'pp-modules-container\'); if(m) m.style.opacity = this.checked ? \'1\' : \'0.5\';">';
-    html += '          <span>Enable Parent Portal for this School</span>';
-    html += '        </label>';
-    html += '        <div style="font-size:12px; color:var(--text-secondary, #6B7280); margin-top:6px; margin-left:30px;">';
-    html += '          When enabled, parents with a registered email address can log in at <code>https://parents.ctrlshifts.in</code> to view their child\'s records.';
-    html += '        </div>';
+    html += '          <label style="display:flex; align-items:center; gap:12px; ' + (isMigrated ? 'cursor:pointer;' : 'cursor:not-allowed;') + ' font-weight:600; font-size:14px; margin:0;">';
+    html += '            <input type="checkbox" id="pp-enabled" ' + (ppEnabled ? 'checked' : '') + (isMigrated ? '' : ' disabled') + ' style="width:18px; height:18px; ' + (isMigrated ? 'cursor:pointer;' : 'cursor:not-allowed;') + '" onchange="var m = document.getElementById(\'pp-modules-container\'); if(m) m.style.opacity = this.checked ? \'1\' : \'0.5\';">';
+    html += '            <span>Enable Parent Portal for this School</span>';
+    html += '          </label>';
+    if (!isMigrated) {
+      html += '        <div style="font-size:12px; color:#D97706; font-weight:600; margin-top:8px; margin-left:30px; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> Parent Portal needs student records to be upgraded first</div>';
+    }
+    html += '          <div style="font-size:12px; color:var(--text-secondary, #6B7280); margin-top:6px; margin-left:30px;">';
+    html += '            When enabled, parents with a registered email address can log in at <code>https://parents.ctrlshifts.in</code> to view their child\'s records.';
+    html += '          </div>';
     html += '      </div>';
     html += '      <div id="pp-modules-container" style="display:flex; flex-direction:column; gap:12px; opacity:' + (ppEnabled ? '1' : '0.5') + '; transition:opacity 0.2s;">';
     html += '        <div style="font-size:13px; font-weight:600; color:var(--text-primary);">Visible Modules & Permissions</div>';
@@ -5511,7 +5515,8 @@
         // Parse Parent Portal settings
         var ppEnabledInput = document.getElementById('pp-enabled');
         if (ppEnabledInput) {
-          var isPPEnabled = ppEnabledInput.checked;
+          var isMigrated = (s.studentsMigrated === true);
+          var isPPEnabled = isMigrated && ppEnabledInput.checked;
           var getChecked = function(id, def) {
             var el = document.getElementById(id);
             return el ? el.checked : def;

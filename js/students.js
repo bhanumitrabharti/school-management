@@ -651,6 +651,8 @@
       if (SchoolApp.isStudentsMigrated && SchoolApp.isStudentsMigrated(schoolId)) {
         var studentSubDocRef = fs.doc(db, 'tenant_data', schoolId, 'students', studentId);
         var studentDocData = Object.assign({}, coreStudentData, { schoolId: schoolId });
+        studentDocData.parentEmailNorm = (studentDocData.parentEmailNorm || (studentDocData.parentEmail || '').trim().toLowerCase());
+        studentDocData.secondaryParentEmailNorm = (studentDocData.secondaryParentEmailNorm || (studentDocData.secondaryParentEmail || '').trim().toLowerCase());
         batch.set(studentSubDocRef, studentDocData);
 
         if (SchoolApp.isStudentsDualWrite && SchoolApp.isStudentsDualWrite(schoolId)) {
@@ -2056,6 +2058,8 @@
           });
         }
 
+        student.parentEmailNorm = (student.parentEmail || '').trim().toLowerCase();
+        student.secondaryParentEmailNorm = (student.secondaryParentEmail || '').trim().toLowerCase();
         readyStudents.push(student);
       });
 

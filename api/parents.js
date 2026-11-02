@@ -67,12 +67,12 @@ function ensureResponseHelpers(res) {
 /**
  * Live lookup of active students linked to an email in schools where parentPortal.enabled == true.
  */
-async function findActiveLinkedStudents(db, emailNorm) {
+async function findActiveLinkedStudents(db, emailNorm, externalSchoolCache = null) {
   if (!emailNorm) return [];
 
   const studentMap = new Map(); // key -> { student, schoolId }
 
-  // 1. Query CollectionGroup 'students' for subcollection-restructured schools
+  // 1. Query CollectionGroup 'students' on normalized fields only (no full collection scans)
   try {
     const [pSnap, sSnap] = await Promise.all([
       db.collectionGroup('students')
@@ -101,32 +101,17 @@ async function findActiveLinkedStudents(db, emailNorm) {
     console.warn('[api/parents] CollectionGroup query warning (indexes may be building):', cgErr.message);
   }
 
-  // 2. Query legacy v1 tenant_data root documents as fallback
-  try {
-    const tenantsSnap = await db.collection('tenant_data').get();
-    for (const doc of tenantsSnap.docs) {
-      const schoolId = doc.id;
-      const tData = doc.data();
-      const rootStudents = Array.isArray(tData.students) ? tData.students : [];
-      for (const s of rootStudents) {
-        if (s.status === 'Active') {
-          const sPNorm = (s.parentEmailNorm || (s.parentEmail || '').trim().toLowerCase());
-          const sSNorm = (s.secondaryParentEmailNorm || (s.secondaryParentEmail || '').trim().toLowerCase());
-          if (sPNorm === emailNorm || sSNorm === emailNorm) {
-            if (!studentMap.has(`${schoolId}_${s.id}`)) {
-              studentMap.set(`${schoolId}_${s.id}`, { student: s, schoolId });
-            }
-          }
-        }
-      }
-    }
-  } catch (v1Err) {
-    console.warn('[api/parents] V1 root check warning:', v1Err.message);
+  // F3: If no active student records linked, return immediately without reading any school root doc
+  if (studentMap.size === 0) {
+    return [];
   }
 
-  // 3. Filter by school settings.parentPortal.enabled === true
+  // 2. Filter by school eligibility:
+  // F2: Eligible ONLY if settings.parentPortal.enabled === true AND settings.studentsMigrated === true
+  // (studentsDualWrite !== true is NOT required per F2)
+  // F4: Cache school doc per request to read settings once
   const verifiedStudents = [];
-  const schoolCache = new Map();
+  const schoolCache = externalSchoolCache || new Map();
 
   for (const item of studentMap.values()) {
     const sId = item.schoolId;
@@ -142,8 +127,8 @@ async function findActiveLinkedStudents(db, emailNorm) {
     if (schoolData) {
       const settings = schoolData.settings || {};
       const portalSettings = settings.parentPortal || {};
-      // Must be explicitly enabled
-      if (portalSettings.enabled === true) {
+      // F2: Explicitly enabled AND students migrated to subcollection
+      if (portalSettings.enabled === true && settings.studentsMigrated === true) {
         verifiedStudents.push({
           student: item.student,
           schoolId: sId,
@@ -309,7 +294,7 @@ module.exports = async function handler(req, res) {
       ]);
     }
 
-    // 8. Dispatch Email ONLY if linked, but ALWAYS return identical response
+    // 8. Dispatch Email ONLY if linked, but ALWAYS return identical response with balanced timing (F3)
     if (hasLinkedStudents) {
       try {
         await sendOtpEmail({
@@ -321,6 +306,10 @@ module.exports = async function handler(req, res) {
         console.error('[api/parents] Failed to dispatch OTP email:', mErr);
         return res.status(503).json({ error: 'Failed to dispatch verification code. Please try again later.' });
       }
+    } else {
+      // F3: Balanced timing delay (~150-250ms) to match SMTP dispatch latency and prevent timing attacks
+      const timingJitterMs = 150 + Math.floor(Math.random() * 100);
+      await new Promise(resolve => setTimeout(resolve, timingJitterMs));
     }
 
     return res.status(200).json({

@@ -1430,7 +1430,10 @@ window.SchoolApp = {
             var op = chunk[c];
             var ref = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'students', op.student.id);
             if (op.type === 'set') {
-              batch.set(ref, JSON.parse(JSON.stringify(op.student)));
+              var sDoc = JSON.parse(JSON.stringify(op.student));
+              sDoc.parentEmailNorm = (sDoc.parentEmailNorm || (sDoc.parentEmail || '').trim().toLowerCase());
+              sDoc.secondaryParentEmailNorm = (sDoc.secondaryParentEmailNorm || (sDoc.secondaryParentEmail || '').trim().toLowerCase());
+              batch.set(ref, sDoc);
             } else if (op.type === 'softDelete') {
               var origStatus = op.student.statusBeforeDelete || op.student.status || 'Active';
               batch.update(ref, {
