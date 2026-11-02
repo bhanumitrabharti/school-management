@@ -18,6 +18,7 @@ const files = [
 
 let hasError = false;
 
+console.log('--- Validating JavaScript Syntax ---');
 files.forEach(f => {
   try {
     const code = fs.readFileSync(path.join(__dirname, f), 'utf-8');
@@ -32,6 +33,76 @@ files.forEach(f => {
     hasError = true;
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cache-Busting & Version Integrity Check
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n--- Checking Version and Cache-Busting Tags ---');
+const versionJsonPath = path.join(__dirname, 'version.json');
+if (!fs.existsSync(versionJsonPath)) {
+  console.error('❌ version.json missing!');
+  hasError = true;
+} else {
+  let expectedVersion;
+  try {
+    const vData = JSON.parse(fs.readFileSync(versionJsonPath, 'utf-8'));
+    expectedVersion = vData.version;
+    if (!expectedVersion) throw new Error('Missing "version" field');
+    console.log(`✅ version.json specifies: ${expectedVersion}`);
+  } catch (err) {
+    console.error('❌ Failed parsing version.json:', err.message);
+    hasError = true;
+  }
+
+  if (expectedVersion) {
+    // 1. Check all HTML files for ?v= tags
+    const htmlFiles = fs.readdirSync(__dirname).filter(f => f.endsWith('.html'));
+    htmlFiles.forEach(file => {
+      const fullPath = path.join(__dirname, file);
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      const regex = /\?+v=([^"'\s>&]+)/g;
+      let match;
+      let fileMatchCount = 0;
+      while ((match = regex.exec(content)) !== null) {
+        fileMatchCount++;
+        const foundVersion = match[1];
+        if (foundVersion !== expectedVersion) {
+          console.error(`❌ ${file}: Stale cache-busting tag "?v=${foundVersion}" found (expected "?v=${expectedVersion}")`);
+          hasError = true;
+        }
+      }
+      if (fileMatchCount > 0) {
+        console.log(`✅ ${file}: Checked ${fileMatchCount} cache-busting tags (all match ${expectedVersion})`);
+      }
+    });
+
+    // 2. Check sw.js BUILD_VERSION
+    const swPath = path.join(__dirname, 'sw.js');
+    if (fs.existsSync(swPath)) {
+      const swContent = fs.readFileSync(swPath, 'utf-8');
+      const swMatch = swContent.match(/const\s+BUILD_VERSION\s*=\s*['"]([^'"]+)['"]/);
+      if (!swMatch || swMatch[1] !== expectedVersion) {
+        console.error(`❌ sw.js BUILD_VERSION is "${swMatch ? swMatch[1] : 'NOT FOUND'}" (expected "${expectedVersion}")`);
+        hasError = true;
+      } else {
+        console.log(`✅ sw.js: BUILD_VERSION matches ${expectedVersion}`);
+      }
+    }
+
+    // 3. Check js/app.js APP_VERSION fallback
+    const appJsPath = path.join(__dirname, 'js/app.js');
+    if (fs.existsSync(appJsPath)) {
+      const appJsContent = fs.readFileSync(appJsPath, 'utf-8');
+      const appMatch = appJsContent.match(/window\.APP_VERSION\s*=\s*window\.APP_VERSION\s*\|\|\s*['"]([^'"]+)['"]/);
+      if (!appMatch || appMatch[1] !== expectedVersion) {
+        console.error(`❌ js/app.js APP_VERSION fallback is "${appMatch ? appMatch[1] : 'NOT FOUND'}" (expected "${expectedVersion}")`);
+        hasError = true;
+      } else {
+        console.log(`✅ js/app.js: window.APP_VERSION fallback matches ${expectedVersion}`);
+      }
+    }
+  }
+}
 
 if (hasError) {
   process.exit(1);

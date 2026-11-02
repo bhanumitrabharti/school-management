@@ -2981,55 +2981,6 @@
     html += '    </div>';
     html += '  </div>'; // End Right Column
 
-    // Card 9: Parent Portal Configuration
-    var pp = s.parentPortal || {};
-    var isMigrated = (s.studentsMigrated === true);
-    var ppEnabled = isMigrated && (pp.enabled === true);
-    var ppProfile = (pp.profile !== undefined) ? pp.profile : ((pp.allowProfile !== undefined) ? pp.allowProfile : true);
-    var ppAttendance = (pp.attendance !== undefined) ? pp.attendance : ((pp.allowAttendance !== undefined) ? pp.allowAttendance : true);
-    var ppTimetable = (pp.timetable !== undefined) ? pp.timetable : ((pp.allowTimetable !== undefined) ? pp.allowTimetable : true);
-    var ppExams = (pp.exams !== undefined) ? pp.exams : ((pp.allowExams !== undefined) ? pp.allowExams : false);
-    var ppReportCards = (pp.reportCards !== undefined) ? pp.reportCards : ((pp.allowReportCards !== undefined) ? pp.allowReportCards : false);
-    var ppNotices = (pp.notices !== undefined) ? pp.notices : ((pp.allowNotices !== undefined) ? pp.allowNotices : true);
-    var ppFees = (pp.fees !== undefined) ? pp.fees : ((pp.allowFees !== undefined) ? pp.allowFees : true);
-    var ppFeePayment = (pp.feePayment !== undefined) ? pp.feePayment : ((pp.allowUpiPayment !== undefined) ? pp.allowUpiPayment : true);
-
-    html += '  <div class="card" id="settings-parent-portal-card">';
-    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">';
-    html += '      <div>';
-    html += '        <h3><span class="material-icons-round">family_restroom</span> Parent Portal</h3>';
-    html += '        <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">Control parent access via parents.ctrlshifts.in and toggle visible modules for students\' families.</p>';
-    html += '      </div>';
-    html += '    </div>';
-    html += '    <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">';
-    html += '      <div style="background:var(--bg-tertiary, #F3F4F6); border-radius:8px; padding:16px; border:1px solid var(--border-color, #E5E7EB);">';
-    html += '          <label style="display:flex; align-items:center; gap:12px; ' + (isMigrated ? 'cursor:pointer;' : 'cursor:not-allowed;') + ' font-weight:600; font-size:14px; margin:0;">';
-    html += '            <input type="checkbox" id="pp-enabled" ' + (ppEnabled ? 'checked' : '') + (isMigrated ? '' : ' disabled') + ' style="width:18px; height:18px; ' + (isMigrated ? 'cursor:pointer;' : 'cursor:not-allowed;') + '" onchange="var m = document.getElementById(\'pp-modules-container\'); if(m) m.style.opacity = this.checked ? \'1\' : \'0.5\';">';
-    html += '            <span>Enable Parent Portal for this School</span>';
-    html += '          </label>';
-    if (!isMigrated) {
-      html += '        <div style="font-size:12px; color:#D97706; font-weight:600; margin-top:8px; margin-left:30px; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> Parent Portal needs student records to be upgraded first</div>';
-    }
-    html += '          <div style="font-size:12px; color:var(--text-secondary, #6B7280); margin-top:6px; margin-left:30px;">';
-    html += '            When enabled, parents with a registered email address can log in at <code>https://parents.ctrlshifts.in</code> to view their child\'s records.';
-    html += '          </div>';
-    html += '      </div>';
-    html += '      <div id="pp-modules-container" style="display:flex; flex-direction:column; gap:12px; opacity:' + (ppEnabled ? '1' : '0.5') + '; transition:opacity 0.2s;">';
-    html += '        <div style="font-size:13px; font-weight:600; color:var(--text-primary);">Visible Modules & Permissions</div>';
-    html += '        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px;">';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-profile" ' + (ppProfile ? 'checked' : '') + '> Student Profile</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-attendance" ' + (ppAttendance ? 'checked' : '') + '> Attendance</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-timetable" ' + (ppTimetable ? 'checked' : '') + '> Class Timetable</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-exams" ' + (ppExams ? 'checked' : '') + '> Exams & Marks</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-reportCards" ' + (ppReportCards ? 'checked' : '') + '> Report Cards Download</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-notices" ' + (ppNotices ? 'checked' : '') + '> Notices & Circulars</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-fees" ' + (ppFees ? 'checked' : '') + '> Fee Details & Receipts</label>';
-    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-feePayment" ' + (ppFeePayment ? 'checked' : '') + '> Fee Payment (UPI QR)</label>';
-    html += '        </div>';
-    html += '      </div>';
-    html += '    </div>';
-    html += '  </div>';
-
     html += '</form>'; // End Form
 
     html += '</div>';
@@ -3224,7 +3175,7 @@
 
     // Card 8: Teacher Custom Fields Configuration
     html += '  <div class="card" id="settings-teacher-custom-fields-card">';
-    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:gap; gap:12px;">';
     html += '      <div>';
     html += '        <h3><span class="material-icons-round">badge</span> Teacher Custom Fields</h3>';
     html += '        <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">Manage custom teacher profile fields. Values are stored in isolated teacher profiles with self-service view access.</p>';
@@ -3232,6 +3183,55 @@
     html += '      <button type="button" class="btn btn-primary btn-sm" id="settings-add-teacher-cf-btn" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">add</span> Add Teacher Field</button>';
     html += '    </div>';
     html += '    <div class="card-body" id="settings-teacher-custom-fields-container" style="display:flex; flex-direction:column; gap:16px;">';
+    html += '    </div>';
+    html += '  </div>';
+
+    // Card 9: Parent Portal Configuration
+    var pp = s.parentPortal || {};
+    var isMigrated = (s.studentsMigrated === true);
+    var ppEnabled = isMigrated && (pp.enabled === true);
+    var ppProfile = (pp.profile !== undefined) ? pp.profile : ((pp.allowProfile !== undefined) ? pp.allowProfile : true);
+    var ppAttendance = (pp.attendance !== undefined) ? pp.attendance : ((pp.allowAttendance !== undefined) ? pp.allowAttendance : true);
+    var ppTimetable = (pp.timetable !== undefined) ? pp.timetable : ((pp.allowTimetable !== undefined) ? pp.allowTimetable : true);
+    var ppExams = (pp.exams !== undefined) ? pp.exams : ((pp.allowExams !== undefined) ? pp.allowExams : false);
+    var ppReportCards = (pp.reportCards !== undefined) ? pp.reportCards : ((pp.allowReportCards !== undefined) ? pp.allowReportCards : false);
+    var ppNotices = (pp.notices !== undefined) ? pp.notices : ((pp.allowNotices !== undefined) ? pp.allowNotices : true);
+    var ppFees = (pp.fees !== undefined) ? pp.fees : ((pp.allowFees !== undefined) ? pp.allowFees : true);
+    var ppFeePayment = (pp.feePayment !== undefined) ? pp.feePayment : ((pp.allowUpiPayment !== undefined) ? pp.allowUpiPayment : true);
+
+    html += '  <div class="card" id="settings-parent-portal-card">';
+    html += '    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '      <div>';
+    html += '        <h3><span class="material-icons-round">family_restroom</span> Parent Portal</h3>';
+    html += '        <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0;">Control parent access via parents.ctrlshifts.in and toggle visible modules for students\' families.</p>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '    <div class="card-body" style="display:flex; flex-direction:column; gap:16px;">';
+    html += '      <div style="background:var(--bg-tertiary, #F3F4F6); border-radius:8px; padding:16px; border:1px solid var(--border-color, #E5E7EB);">';
+    html += '          <label style="display:flex; align-items:center; gap:12px; ' + (isMigrated ? 'cursor:pointer;' : 'cursor:not-allowed;') + ' font-weight:600; font-size:14px; margin:0;">';
+    html += '            <input type="checkbox" id="pp-enabled" ' + (ppEnabled ? 'checked' : '') + (isMigrated ? '' : ' disabled') + ' style="width:18px; height:18px; ' + (isMigrated ? 'cursor:pointer;' : 'cursor:not-allowed;') + '" onchange="var m = document.getElementById(\'pp-modules-container\'); if(m) m.style.opacity = this.checked ? \'1\' : \'0.5\';">';
+    html += '            <span>Enable Parent Portal for this School</span>';
+    html += '          </label>';
+    if (!isMigrated) {
+      html += '        <div style="font-size:12px; color:#D97706; font-weight:600; margin-top:8px; margin-left:30px; display:flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">warning</span> Parent Portal needs student records to be upgraded first</div>';
+    }
+    html += '          <div style="font-size:12px; color:var(--text-secondary, #6B7280); margin-top:6px; margin-left:30px;">';
+    html += '            When enabled, parents with a registered email address can log in at <code>https://parents.ctrlshifts.in</code> to view their child\'s records.';
+    html += '          </div>';
+    html += '      </div>';
+    html += '      <div id="pp-modules-container" style="display:flex; flex-direction:column; gap:12px; opacity:' + (ppEnabled ? '1' : '0.5') + '; transition:opacity 0.2s;">';
+    html += '        <div style="font-size:13px; font-weight:600; color:var(--text-primary);">Visible Modules & Permissions</div>';
+    html += '        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px;">';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-profile" ' + (ppProfile ? 'checked' : '') + '> Student Profile</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-attendance" ' + (ppAttendance ? 'checked' : '') + '> Attendance</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-timetable" ' + (ppTimetable ? 'checked' : '') + '> Class Timetable</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-exams" ' + (ppExams ? 'checked' : '') + '> Exams & Marks</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-reportCards" ' + (ppReportCards ? 'checked' : '') + '> Report Cards Download</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-notices" ' + (ppNotices ? 'checked' : '') + '> Notices & Circulars</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-fees" ' + (ppFees ? 'checked' : '') + '> Fee Details & Receipts</label>';
+    html += '          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;"><input type="checkbox" id="pp-toggle-feePayment" ' + (ppFeePayment ? 'checked' : '') + '> Fee Payment (UPI QR)</label>';
+    html += '        </div>';
+    html += '      </div>';
     html += '    </div>';
     html += '  </div>';
 
