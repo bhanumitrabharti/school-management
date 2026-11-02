@@ -5,8 +5,8 @@
  * Checks if a requested subdomain is available for registration,
  * OR generates up to 4 smart available subdomain suggestions when ?suggest=<schoolName> is provided.
  */
-const { validateSubdomain, generateSubdomainCandidates } = require('./_lib/validation');
-const { getDb } = require('./_lib/firebase-admin');
+const { validateSubdomain, generateSubdomainCandidates } = require('../validation');
+const { getDb } = require('../firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [

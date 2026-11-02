@@ -5,9 +5,9 @@
  * Verifies the 6-digit OTP code against the hashed registration record,
  * enforces 5-attempt limit and 10-minute expiry, and handles 60s cooldown resends.
  */
-const { hashOtp, generateOtp } = require('./_lib/validation');
-const { sendOtpEmail } = require('./_lib/email');
-const { getDb } = require('./_lib/firebase-admin');
+const { hashOtp, generateOtp } = require('../validation');
+const { sendOtpEmail } = require('../email');
+const { getDb } = require('../firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [

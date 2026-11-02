@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Paathshala — Parent Portal</title>
+  <meta name="description" content="Centralized access for parents to view student profiles, attendance, timetable, notices, and fee receipts.">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+
+  <!-- Google Fonts & Material Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons+Round">
+
+  <!-- Cloudflare Turnstile -->
+  <script>window.TURNSTILE_SITE_KEY = '0x4AAAAAAFlTl6sGRSOx0A_L';</script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+
+  <style>
+    :root {
+      --bg: #F4F7FD;
+      --surface: #FFFFFF;
+      --surface-subtle: #F8FAFC;
+      --ink: #0A1638;
+      --ink-secondary: #475569;
+      --muted: #64748B;
+      --border: #E2E8F0;
+      --primary: #4F46E5;
+      --primary-hover: #4338CA;
+      --primary-light: #EEF2FF;
+      --accent: #0EA5E9;
+      --green: #10B981;
+      --green-light: #ECFDF5;
+      --amber: #F59E0B;
+      --amber-light: #FFFBEB;
+      --red: #EF4444;
+      --red-light: #FEF2F2;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-full: 9999px;
+      --font-main: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0F172A;
+      --surface: #1E293B;
+      --surface-subtle: #334155;
+      --ink: #F8FAFC;
+      --ink-secondary: #CBD5E1;
+      --muted: #94A3B8;
+      --border: #334155;
+      --primary: #6366F1;
+      --primary-hover: #4F46E5;
+      --primary-light: #1E1B4B;
+      --green-light: #064E3B;
+      --amber-light: #78350F;
+      --red-light: #7F1D1D;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-main);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .header-content {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-icon {
+      background: var(--primary);
+      color: white;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .brand-text h1 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text span {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      color: var(--ink-secondary);
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-full);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .icon-btn:hover {
+      background: var(--primary-light);
+      color: var(--primary);
+      border-color: var(--primary);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1000px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .auth-container {
+      max-width: 440px;
+      margin: 32px auto 0;
+      padding: 32px 24px;
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .auth-header h2 {
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    .auth-header p {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--ink-secondary);
+      margin-bottom: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface-subtle);
+      color: var(--ink);
+      font-size: 0.95rem;
+      transition: all 0.15s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: var(--surface);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+
+    .otp-input {
+      font-family: var(--font-mono);
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.35em;
+      text-align: center;
+      padding: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: 1px solid transparent;
+      text-decoration: none;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--surface-subtle);
+      border-color: var(--border);
+      color: var(--ink-secondary);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--border);
+      color: var(--ink);
+    }
+
+    .alert {
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .alert-danger {
+      background: var(--red-light);
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .alert-success {
+      background: var(--green-light);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .alert-info {
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 1px solid rgba(79, 70, 229, 0.2);
+    }
+
+    /* Switcher Controls */
+    .selector-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding: 14px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .selector-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .child-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      font-size: 0.86rem;
+      font-weight: 600;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      color: var(--ink-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .child-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* Student Profile Hero Card */
+    .student-hero {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .student-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: var(--radius-full);
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      font-weight: 700;
+      overflow: hidden;
+      flex-shrink: 0;
+      border: 2px solid var(--primary);
+    }
+
+    .student-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .student-meta {
+      flex: 1;
+    }
+
+    .student-meta h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .student-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.76rem;
+      font-weight: 600;
+      background: var(--surface-subtle);
+      border: 1px solid var(--border);
+      color: var(--ink-secondary);
+    }
+
+    .tag-primary {
+      background: var(--primary-light);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Modules Grid */
+    .modules-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .module-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+
+    .module-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .module-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .module-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius-sm);
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .module-info h3 {
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .module-info p {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .badge-disabled {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      margin-left: auto;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 640px) {
+      .auth-container {
+        padding: 24px 16px;
+        margin-top: 12px;
+      }
+      .student-hero {
+        flex-direction: column;
+        text-align: center;
+        padding: 20px 16px;
+      }
+      .student-tags {
+        justify-content: center;
+      }
+      .selector-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Global Header -->
+  <header>
+    <div class="header-content">
+      <a href="#" class="brand" id="brand-link">
+        <div class="brand-icon">
+          <span class="material-icons-round">school</span>
+        </div>
+        <div class="brand-text">
+          <h1 id="header-portal-title">Paathshala</h1>
+          <span>Parent Portal</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <button type="button" class="icon-btn" id="btn-theme-toggle" title="Toggle Light/Dark Theme">
+          <span class="material-icons-round" id="theme-icon">dark_mode</span>
+        </button>
+        <button type="button" class="icon-btn hidden" id="btn-logout" title="Sign Out">
+          <span class="material-icons-round">logout</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View Container -->
+  <main>
+    <!-- Screen 1: Email Form -->
+    <div id="view-email" class="card auth-container">
+      <div class="auth-header">
+        <div style="width:54px;height:54px;margin:0 auto 12px;border-radius:50%;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;">
+          <span class="material-icons-round" style="font-size:28px;">family_restroom</span>
+        </div>
+        <h2>Parent Login</h2>
+        <p>Enter the email address registered with your school to access your child's updates.</p>
+      </div>
+
+      <div id="email-alert" class="alert hidden"></div>
+
+      <form id="form-email">
+        <div class="form-group">
+          <label class="form-label" for="input-email">Registered Parent Email</label>
+          <input type="email" id="input-email" class="form-input" placeholder="parent@example.com" required autocomplete="email">
+        </div>
+
+        <!-- Cloudflare Turnstile Container -->
+        <div class="form-group" style="display:flex;justify-content:center;">
+          <div id="turnstile-widget"></div>
+        </div>
+
+        <button type="submit" id="btn-send-otp" class="btn btn-primary btn-block">
+          <span>Send Verification Code</span>
+          <span class="material-icons-round" style="font-size:18px;">arrow_forward</span>
+        </button>
+      </form>
+    </div>
+
+    <!-- Screen 2: OTP Verification Form -->
+    <div id="view-otp" class="card auth-container hidden">
+      <div class="auth-header">
+        <div style="width:54px;height:54px;margin:0 auto 12px;border-radius:50%;background:var(--green-light);color:var(--green);display:flex;align-items:center;justify-content:center;">
+          <span class="material-icons-round" style="font-size:28px;">mark_email_read</span>
+        </div>
+        <h2>Check Your Inbox</h2>
+        <p>We've sent a 6-digit verification code to <b id="otp-sent-email" style="color:var(--ink);"></b>.</p>
+      </div>
+
+      <div id="otp-alert" class="alert hidden"></div>
+
+      <form id="form-otp">
+        <div class="form-group">
+          <label class="form-label" for="input-otp" style="text-align:center;">6-Digit Verification Code</label>
+          <input type="text" id="input-otp" class="form-input otp-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="••••••" required autocomplete="one-time-code">
+        </div>
+
+        <button type="submit" id="btn-verify-otp" class="btn btn-primary btn-block" style="margin-bottom:12px;">
+          <span>Verify & Log In</span>
+          <span class="material-icons-round" style="font-size:18px;">check</span>
+        </button>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:0.84rem;">
+          <button type="button" id="btn-resend-otp" class="btn btn-secondary" style="padding:8px 12px;" disabled>
+            <span>Resend Code</span>
+            <span id="resend-countdown" style="font-weight:700;">(60s)</span>
+          </button>
+          <a href="#" id="link-change-email" style="color:var(--muted);text-decoration:none;font-weight:600;">Change Email</a>
+        </div>
+      </form>
+    </div>
+
+    <!-- Screen 3: School Selector (if multiple schools) -->
+    <div id="view-school-select" class="hidden">
+      <div style="margin-bottom:20px;">
+        <h2 style="font-size:1.35rem;font-weight:800;">Select School</h2>
+        <p style="color:var(--muted);font-size:0.9rem;">Your email is registered with multiple educational institutions.</p>
+      </div>
+      <div id="schools-list" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:16px;">
+        <!-- Injected dynamically -->
+      </div>
+    </div>
+
+    <!-- Screen 4: Child Dashboard Shell -->
+    <div id="view-dashboard" class="hidden">
+      <!-- Top Switcher Bar -->
+      <div class="selector-bar">
+        <div class="selector-group">
+          <span style="font-size:0.84rem;font-weight:600;color:var(--muted);">School:</span>
+          <span id="active-school-name" style="font-size:0.9rem;font-weight:700;color:var(--ink);">—</span>
+          <button type="button" id="btn-switch-school" class="btn btn-secondary hidden" style="padding:4px 10px;font-size:0.78rem;">Switch School</button>
+        </div>
+
+        <div class="selector-group" id="child-switcher-container">
+          <span style="font-size:0.84rem;font-weight:600;color:var(--muted);">Child:</span>
+          <div id="child-pills" style="display:flex;gap:6px;flex-wrap:wrap;">
+            <!-- Child pills dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Student Profile Hero Card -->
+      <div class="student-hero">
+        <div class="student-avatar" id="student-avatar-box">
+          <span class="material-icons-round" id="student-avatar-fallback">person</span>
+          <img id="student-avatar-img" src="" alt="Student Photo" class="hidden">
+        </div>
+        <div class="student-meta">
+          <h2 id="student-name">—</h2>
+          <div style="color:var(--muted);font-size:0.9rem;" id="student-school-display">—</div>
+          <div class="student-tags">
+            <span class="tag tag-primary" id="tag-class-sec"><span class="material-icons-round" style="font-size:14px;">class</span> Class —</span>
+            <span class="tag" id="tag-roll"><span class="material-icons-round" style="font-size:14px;">numbers</span> Roll —</span>
+            <span class="tag" id="tag-adm"><span class="material-icons-round" style="font-size:14px;">badge</span> Adm —</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modules Grid -->
+      <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="font-size:1.1rem;font-weight:700;">Student Modules</h3>
+        <span style="font-size:0.78rem;color:var(--muted);background:var(--surface-subtle);padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--border);">Phase B1 Foundation</span>
+      </div>
+
+      <div class="modules-grid" id="modules-container">
+        <!-- Dynamically rendered based on school permissions -->
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div>Paathshala School Management ERP &copy; 2026. Secure Parent Access Layer.</div>
+    <div style="margin-top:4px;font-size:0.75rem;color:var(--muted);">Single Source of Truth &bull; Zero Duplicate Storage &bull; End-to-End Encrypted OTP</div>
+  </footer>
+
+  <!-- Firebase Auth SDK v10 Modular -->
+  <script type="module" src="js/parents.js?v=v75"></script>
+</body>
+</html>

@@ -885,6 +885,7 @@
     bodyHTML += '<div class="form-group"><label class="form-label">Parent Phone (Primary) *</label><input type="text" class="form-input" name="parentPhone" value="' + (student && student.parentPhone ? student.parentPhone : '') + '" required><span class="form-error">Required</span></div>';
 
     bodyHTML += '<div class="form-group"><label class="form-label">Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="parentEmail" value="' + (student && student.parentEmail ? student.parentEmail : '') + '"><span class="form-error">Invalid email</span></div>';
+    bodyHTML += '<div class="form-group"><label class="form-label">Secondary Parent Email <span style="color:#9CA3AF;font-weight:400;font-size:12px;">(Optional)</span></label><input type="email" class="form-input" name="secondaryParentEmail" value="' + (student && student.secondaryParentEmail ? student.secondaryParentEmail : '') + '"><span class="form-error">Invalid email format</span></div>';
 
     // Repeatable Additional Parent Contacts
     bodyHTML += '<div class="form-group full-width" style="grid-column: span 2; margin-top: 6px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color);">';
@@ -1098,6 +1099,34 @@
     }
 
     // Process optional additional fields
+    // Validate parentEmail and secondaryParentEmail formats if provided
+    var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    coreFields.parentEmail = (coreFields.parentEmail || '').trim();
+    if (coreFields.parentEmail) {
+      if (!emailRegex.test(coreFields.parentEmail)) {
+        var pEmailGroup = form.querySelector('[name="parentEmail"]') ? form.querySelector('[name="parentEmail"]').closest('.form-group') : null;
+        if (pEmailGroup) pEmailGroup.classList.add('error');
+        valid = false;
+      } else {
+        coreFields.parentEmailNorm = coreFields.parentEmail.toLowerCase();
+      }
+    } else {
+      coreFields.parentEmailNorm = '';
+    }
+
+    coreFields.secondaryParentEmail = (coreFields.secondaryParentEmail || '').trim();
+    if (coreFields.secondaryParentEmail) {
+      if (!emailRegex.test(coreFields.secondaryParentEmail)) {
+        var sEmailGroup = form.querySelector('[name="secondaryParentEmail"]') ? form.querySelector('[name="secondaryParentEmail"]').closest('.form-group') : null;
+        if (sEmailGroup) sEmailGroup.classList.add('error');
+        valid = false;
+      } else {
+        coreFields.secondaryParentEmailNorm = coreFields.secondaryParentEmail.toLowerCase();
+      }
+    } else {
+      coreFields.secondaryParentEmailNorm = '';
+    }
+
     coreFields.transportFee = parseFloat(coreFields.transportFee) || 0;
     coreFields.transport_fee = coreFields.transportFee;
     coreFields.motherName = (coreFields.motherName || '').trim();
@@ -1507,6 +1536,7 @@
     { header: 'Mother\'s Name (Optional)', key: 'motherName' },
     { header: 'Parent Phone *', key: 'parentPhone' },
     { header: 'Parent Email (Optional)', key: 'parentEmail' },
+    { header: 'Secondary Parent Email (Optional)', key: 'secondaryParentEmail' },
     { header: 'Monthly Transport Fee (Optional)', key: 'transportFee', transform: function(v, row) { return row.transportFee || row.transport_fee || 0; } },
     { header: 'Aadhaar Number (Optional)', key: 'aadhaarNumber' },
     { header: 'Address (Optional)', key: 'address' },
@@ -1596,7 +1626,8 @@
     'gender': ['gender', 'sex'],
     'parentName': ['parent name', 'parent/guardian name', 'parent guardian name', 'father name', "father's name", 'guardian', 'guardian name'],
     'parentPhone': ['parent phone', 'mobile', 'phone', 'contact', 'contact no', 'whatsapp', 'ph no', 'parent mobile'],
-    'parentEmail': ['parent email', 'email', 'email id'],
+    'parentEmail': ['parent email', 'email', 'email id', 'primary email', 'father email'],
+    'secondaryParentEmail': ['secondary parent email', 'secondary email', 'mother email', 'alternate email', 'alt email'],
     'aadhaarNumber': ['aadhaar', 'aadhaar number', 'adhar'],
     'address': ['address'],
     'admissionDate': ['admission date', 'adm date', 'doa'],

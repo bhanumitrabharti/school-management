@@ -30,9 +30,10 @@ const {
 import emailPkg from '../api/_lib/email.js';
 const { getLastOtpFor } = emailPkg;
 
-import handlerSubdomainCheck from '../api/subdomain-check.js';
-import handlerRegistrationStart from '../api/registration-start.js';
-import handlerRegistrationVerifyOtp from '../api/registration-verify-otp.js';
+import handlerRegistration from '../api/registration.js';
+import handlerSubdomainCheck from '../api/_lib/registration/subdomain.js';
+import handlerRegistrationStart from '../api/_lib/registration/start.js';
+import handlerRegistrationVerifyOtp from '../api/_lib/registration/verifyOtp.js';
 import handlerRegistrationProvision from '../api/registration-provision.js';
 import handlerReferralManager from '../api/referral-manager.js';
 import handlerRegistrationAdmin from '../api/registration-admin.js';
@@ -693,6 +694,68 @@ async function runTests() {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  
+  // ──────────────────────────────────────────────────────────────────────────
+  // 7b. CONSOLIDATED ROUTER PARITY TESTS (Phase B1)
+  // ──────────────────────────────────────────────────────────────────────────
+  console.log('\n--- PHASE B1: CONSOLIDATED /api/registration ROUTER PARITY ---');
+
+  await testAsync('Router.1: /api/registration router parity with subdomain-check', async () => {
+    const { req: directReq, res: directRes } = createMockReqRes({ method: 'GET', query: { subdomain: 'admin' } });
+    await handlerSubdomainCheck(directReq, directRes);
+
+    const { req: routerReq, res: routerRes } = createMockReqRes({
+      method: 'GET',
+      url: '/api/subdomain-check?subdomain=admin',
+      query: { action: 'subdomain', subdomain: 'admin' }
+    });
+    await handlerRegistration(routerReq, routerRes);
+
+    assert.equal(routerRes.statusCode, directRes.statusCode);
+    assert.deepEqual(routerRes.bodyData, directRes.bodyData);
+  });
+
+  await testAsync('Router.2: /api/registration router parity with registration-start', async () => {
+    const invalidBody = { schoolName: 'A' }; // will fail validation
+    const { req: directReq, res: directRes } = createMockReqRes({ method: 'POST', body: invalidBody });
+    await handlerRegistrationStart(directReq, directRes);
+
+    const { req: routerReq, res: routerRes } = createMockReqRes({
+      method: 'POST',
+      url: '/api/registration-start',
+      query: { action: 'start' },
+      body: invalidBody
+    });
+    await handlerRegistration(routerReq, routerRes);
+
+    assert.equal(routerRes.statusCode, directRes.statusCode);
+    assert.deepEqual(routerRes.bodyData, directRes.bodyData);
+  });
+
+  await testAsync('Router.3: /api/registration router parity with registration-verify-otp', async () => {
+    const invalidBody = {}; // missing regId
+    const { req: directReq, res: directRes } = createMockReqRes({ method: 'POST', body: invalidBody });
+    await handlerRegistrationVerifyOtp(directReq, directRes);
+
+    const { req: routerReq, res: routerRes } = createMockReqRes({
+      method: 'POST',
+      url: '/api/registration-verify-otp',
+      query: { action: 'verify-otp' },
+      body: invalidBody
+    });
+    await handlerRegistration(routerReq, routerRes);
+
+    assert.equal(routerRes.statusCode, directRes.statusCode);
+    assert.deepEqual(routerRes.bodyData, directRes.bodyData);
+  });
+
+  await testAsync('Router.4: /api/registration router error on missing/invalid action', async () => {
+    const { req, res } = createMockReqRes({ method: 'POST', body: { action: 'unknown_action' } });
+    await handlerRegistration(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.bodyData.error, /Invalid or missing action/i);
+  });
+
   // 8. CLEANUP
   // ──────────────────────────────────────────────────────────────────────────
   console.log('\n--- CLEANUP OF SYNTHETIC TEST DOCUMENTS ---');

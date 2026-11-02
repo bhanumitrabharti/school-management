@@ -27,7 +27,7 @@ function isProductionEnv() {
 
 function isMockMode() {
   if (isProductionEnv()) return false;
-  return process.env.MOCK_ONBOARDING_MODE === 'true';
+  return process.env.MOCK_ONBOARDING_MODE === 'true' || process.env.MOCK_PARENT_MODE === 'true';
 }
 
 // In-memory capture for test verification when MOCK_ONBOARDING_MODE === 'true'

@@ -16,6 +16,14 @@ app.use(express.static(__dirname));
 // Mount serverless endpoints for local testing
 app.post('/api/verify-school-access', require('./api/verify-school-access.js'));
 app.post('/api/manage-credentials', require('./api/manage-credentials.js'));
+const registrationHandler = require('./api/registration.js');
+app.all('/api/registration', registrationHandler);
+app.all('/api/parents', require('./api/parents.js'));
+app.all('/api/registration-start', (req, res) => { req.query = req.query || {}; req.query.action = 'start'; return registrationHandler(req, res); });
+app.all('/api/registration-verify-otp', (req, res) => { req.query = req.query || {}; req.query.action = 'verify-otp'; return registrationHandler(req, res); });
+app.all('/api/subdomain-check', (req, res) => { req.query = req.query || {}; req.query.action = 'subdomain'; return registrationHandler(req, res); });
+app.all('/api/registration-provision', require('./api/registration-provision.js'));
+app.all('/api/registration-admin', require('./api/registration-admin.js'));
 
 // Proxy endpoint for Gemini Chat
 app.post('/api/chat', async (req, res) => {

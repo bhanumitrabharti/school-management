@@ -6,36 +6,69 @@
     {
       "source": "/sw.js",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Service-Worker-Allowed", "value": "/" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Service-Worker-Allowed",
+          "value": "/"
+        }
       ]
     },
     {
       "source": "/version.json",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/manifest.json",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/(.*)\\.html",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     },
     {
       "source": "/js/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
       ]
     }
   ],
   "routes": [
+    {
+      "src": "/api/registration-start(?:\\?.*)?",
+      "dest": "/api/registration.js?action=start",
+      "continue": false
+    },
+    {
+      "src": "/api/registration-verify-otp(?:\\?.*)?",
+      "dest": "/api/registration.js?action=verify-otp",
+      "continue": false
+    },
+    {
+      "src": "/api/subdomain-check(?:\\?.*)?",
+      "dest": "/api/registration.js?action=subdomain",
+      "continue": false
+    },
     {
       "src": "/assets/(.*)",
       "dest": "/assets/$1",
@@ -59,6 +92,16 @@
     {
       "src": "/landing",
       "dest": "/landing.html",
+      "continue": false
+    },
+    {
+      "src": "/parents\\.html",
+      "dest": "/parents.html",
+      "continue": false
+    },
+    {
+      "src": "/parents",
+      "dest": "/parents.html",
       "continue": false
     },
     {
@@ -89,6 +132,17 @@
     {
       "src": "/terms",
       "dest": "/terms.html",
+      "continue": false
+    },
+    {
+      "src": "/(?:(?!api/).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "^parents\\.ctrlshifts\\.in$"
+        }
+      ],
+      "dest": "/parents.html",
       "continue": false
     },
     {

@@ -39,6 +39,8 @@ const RESERVED_SUBDOMAINS = new Set([
   'onboarding',
   'payment',
   'payments',
+  'parent',
+  'parents',
   'portal',
   'privacy',
   'prod',

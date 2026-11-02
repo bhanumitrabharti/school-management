@@ -21,10 +21,10 @@ const {
   hashIp,
   maskEmail,
   normalizeSchoolName
-} = require('./_lib/validation');
-const { sendOtpEmail } = require('./_lib/email');
-const { sendTelegramAlert } = require('./_lib/telegram');
-const { getFirebaseAdmin, getDb } = require('./_lib/firebase-admin');
+} = require('../validation');
+const { sendOtpEmail } = require('../email');
+const { sendTelegramAlert } = require('../telegram');
+const { getFirebaseAdmin, getDb } = require('../firebase-admin');
 
 function applyCors(req, res) {
   const allowed = [
