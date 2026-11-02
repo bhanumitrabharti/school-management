@@ -323,7 +323,7 @@ async function runRootDocScalingTestSuite() {
     assert.strictEqual(p.fees, undefined, 'fees must be pruned');
     assert.strictEqual(p.attendance, undefined, 'attendance must be pruned');
     assert.strictEqual(p.schools, undefined, 'schools must be pruned');
-    assert.strictEqual(p.settings.principalSignatureUrl, undefined, 'base64 signature must be pruned');
+    assert.strictEqual(p.settings.principalSignatureUrl, 'data:image/png;base64,AAAA', 'v74: base64 signature must remain preserved (not pruned) until explicit cleanup');
 
     // Assert core roster and settings preserved
     assert.strictEqual(p.settings.schoolName, 'Test School');

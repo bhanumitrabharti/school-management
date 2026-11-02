@@ -295,4 +295,37 @@
         }
     };
 
+    /**
+     * Uploads principal signature to Firebase Storage.
+     * Allowed filename: schools/{schoolId}/signature.<ext>
+     * @param {File} file
+     * @param {string} schoolId
+     * @param {string} progressElementId - optional DOM id for progress text
+     * @returns {Promise<string|null>}
+     */
+    StorageUtils.uploadPrincipalSignature = async function (file, schoolId, progressElementId) {
+        if (!window.storage || !window.storageSDK) {
+            console.error('[StorageUtils] Firebase Storage not initialized.');
+            return null;
+        }
+        var progressEl = progressElementId ? document.getElementById(progressElementId) : null;
+        try {
+            if (progressEl) progressEl.textContent = 'Uploading signature...';
+            var ext = (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')) ? 'png' : 'jpg';
+            // Compress signature image to reasonable dimensions for web rendering
+            var compressedFile = await StorageUtils.compressImage(file, 400, 0.85);
+            var storagePath = 'schools/' + schoolId + '/signature.' + ext;
+            var storageRef = window.storageSDK.ref(window.storage, storagePath);
+            var snapshot = await window.storageSDK.uploadBytes(storageRef, compressedFile);
+            var downloadURL = await window.storageSDK.getDownloadURL(snapshot.ref);
+            if (progressEl) progressEl.style.display = 'none';
+            console.log('[StorageUtils] Signature uploaded for', schoolId, '→', downloadURL);
+            return downloadURL;
+        } catch (e) {
+            console.error('[StorageUtils] uploadPrincipalSignature failed:', e);
+            if (progressEl) { progressEl.textContent = 'Signature upload failed.'; }
+            return null;
+        }
+    };
+
 })();

@@ -87,7 +87,7 @@
     SchoolApp.showToast('Logo removed', 'info');
   };
 
-  window.handleLogoSelect = function(input) {
+  window.handleLogoSelect = async function(input) {
     var file = input.files && input.files[0];
     if (!file) return;
 
@@ -104,6 +104,35 @@
     }
 
     showLogoStatus('processing', 'Uploading...');
+
+    var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
+    var isV2 = SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId);
+
+    if (isV2 && window.StorageUtils && window.StorageUtils.uploadSchoolLogo) {
+      try {
+        var downloadUrl = await StorageUtils.uploadSchoolLogo(file, currentSchoolId);
+        if (downloadUrl) {
+          if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+          SchoolApp.store.settings.logoStorageUrl = downloadUrl;
+          if (SchoolApp.store.settings.schoolInfo) {
+            SchoolApp.store.settings.schoolInfo.logoStorageUrl = downloadUrl;
+          }
+          // Non-destructive: base64 fields (logoUrl, schoolLogo) left untouched until cleanup
+          await SchoolApp.save(true);
+          showLogoPreview(downloadUrl);
+          showLogoStatus('success', '✅ School Logo uploaded successfully!');
+          SchoolApp.showToast('School Logo uploaded successfully!', 'success');
+          return;
+        } else {
+          throw new Error('Upload returned empty download URL');
+        }
+      } catch (uploadErr) {
+        console.error('V2 Logo upload error:', uploadErr);
+        showLogoStatus('error', '❌ Upload failed: ' + uploadErr.message);
+        SchoolApp.showToast('Upload failed: ' + uploadErr.message, 'error');
+        return;
+      }
+    }
 
     var reader = new FileReader();
     reader.onload = async function(ev) {
@@ -175,7 +204,7 @@
     SchoolApp.showToast('Signature removed', 'info');
   };
 
-  window.handleSignatureSelect = function(input) {
+  window.handleSignatureSelect = async function(input) {
     var file = input.files && input.files[0];
     if (!file) return;
 
@@ -194,6 +223,36 @@
     }
 
     showSignatureStatus('processing', 'Uploading signature...');
+
+    var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
+    var isV2 = SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId);
+
+    if (isV2 && window.StorageUtils && window.StorageUtils.uploadPrincipalSignature) {
+      try {
+        var downloadUrl = await StorageUtils.uploadPrincipalSignature(file, currentSchoolId);
+        if (downloadUrl) {
+          if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+          SchoolApp.store.settings.principalSignatureStorageUrl = downloadUrl;
+          if (SchoolApp.store.settings.schoolInfo) {
+            SchoolApp.store.settings.schoolInfo.principalSignatureStorageUrl = downloadUrl;
+          }
+          // Non-destructive: base64 fields (principalSignatureUrl) left untouched until cleanup
+          await SchoolApp.save(true);
+          showSignaturePreview(downloadUrl);
+          showSignatureStatus('success', '✅ Digital signature uploaded successfully!');
+          SchoolApp.showToast('Digital signature uploaded successfully!', 'success');
+          console.log('[AdminSettings] V2 Digital signature saved successfully via StorageUtils.');
+          return;
+        } else {
+          throw new Error('Upload returned empty download URL');
+        }
+      } catch (uploadErr) {
+        console.error('V2 Signature upload error:', uploadErr);
+        showSignatureStatus('error', '❌ Upload failed: ' + uploadErr.message);
+        SchoolApp.showToast('Upload failed: ' + uploadErr.message, 'error');
+        return;
+      }
+    }
 
     var reader = new FileReader();
     reader.onload = async function(ev) {
@@ -5304,23 +5363,34 @@
           try {
             const uploadedLogo = await StorageUtils.uploadSchoolLogo(logoFile, SchoolApp.store.currentSchoolId, "logo-progress");
             if (uploadedLogo) {
-              SchoolApp.store.settings.logoUrl = uploadedLogo;
-              SchoolApp.store.settings.schoolLogo = uploadedLogo;
+              if (SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(SchoolApp.store.currentSchoolId)) {
+                SchoolApp.store.settings.logoStorageUrl = uploadedLogo;
+                if (SchoolApp.store.settings.schoolInfo) {
+                  SchoolApp.store.settings.schoolInfo.logoStorageUrl = uploadedLogo;
+                }
+              } else {
+                SchoolApp.store.settings.logoUrl = uploadedLogo;
+                SchoolApp.store.settings.schoolLogo = uploadedLogo;
+              }
             } else {
-              // Fallback to base64 preview data URL
+              // Fallback to base64 preview data URL for v1 only
               const logoPreview = document.getElementById("logo-preview");
               if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
-                SchoolApp.store.settings.logoUrl = logoPreview.src;
-                SchoolApp.store.settings.schoolLogo = logoPreview.src;
+                if (!(SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(SchoolApp.store.currentSchoolId))) {
+                  SchoolApp.store.settings.logoUrl = logoPreview.src;
+                  SchoolApp.store.settings.schoolLogo = logoPreview.src;
+                }
               }
             }
           } catch (err) {
             console.warn("Logo upload failed:", err.message);
-            // Fallback to base64 preview data URL
+            // Fallback to base64 preview data URL for v1 only
             const logoPreview = document.getElementById("logo-preview");
             if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
-              SchoolApp.store.settings.logoUrl = logoPreview.src;
-              SchoolApp.store.settings.schoolLogo = logoPreview.src;
+              if (!(SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(SchoolApp.store.currentSchoolId))) {
+                SchoolApp.store.settings.logoUrl = logoPreview.src;
+                SchoolApp.store.settings.schoolLogo = logoPreview.src;
+              }
             }
           }
         }
@@ -5341,10 +5411,9 @@
           SchoolApp.store.settings[input.name] = input.value.trim();
         });
 
-        // Sync settings to settings.schoolInfo
+        // Sync settings to settings.schoolInfo (NON-DESTRUCTIVE: do NOT delete schoolLogo or schoolInfo keys)
         var s = SchoolApp.store.settings;
         if (s.schoolLogo && !s.logoUrl) s.logoUrl = s.schoolLogo;
-        delete s.schoolLogo;
 
         var currentSchoolId = SchoolApp.store.currentSchoolId;
         var ms = (SchoolApp.store.schools || []).find(function(sch) { return sch.school_id === currentSchoolId; }) || SchoolApp.matchedSchool;
@@ -5371,8 +5440,6 @@
         s.schoolInfo.tagline = s.tagline || '';
         s.schoolInfo.phone = s.phone || '';
         s.schoolInfo.email = s.email || '';
-        delete s.schoolInfo.logoUrl;
-        delete s.schoolInfo.schoolLogo;
         s.schoolInfo.affiliation = s.affiliation || '';
         s.schoolInfo.address = s.address || '';
         s.schoolInfo.udiseCode = s.udiseCode || '';

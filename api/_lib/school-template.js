@@ -94,6 +94,9 @@ function buildSchoolRecord(options = {}) {
       academicYear: academicYear,
       credentialsIsolated: true,
       restructured: true,
+      storageVersion: 2,
+      studentsMigrated: true,
+      studentsDualWrite: false,
       setupCompletedBySuperAdmin: options.setupCompletedBySuperAdmin !== false,
       clientCanEdit: true
     },
@@ -107,6 +110,9 @@ function buildSchoolRecord(options = {}) {
 
 /**
  * Builds root tenant_data/{schoolId} document
+ * New schools born on v2 (storageVersion: 2, studentsMigrated: true, studentsDualWrite: false).
+ * No growing arrays seeded in root (teacherAttendance, attendanceRequests, absenceIntimationLog,
+ * notices, notifications, examAuditLog, trash, feeActivityLog).
  */
 function buildTenantRecord(options = {}, publicSchoolRecord = null) {
   const academicYear = options.academicYear || getCurrentAcademicYear();
@@ -148,7 +154,9 @@ function buildTenantRecord(options = {}, publicSchoolRecord = null) {
       academicYear: academicYear,
       credentialsIsolated: true,
       restructured: true,
+      storageVersion: 2,
       studentsMigrated: true,
+      studentsDualWrite: false,
       trialStartDate: trialStart,
       trialEndDate: trialEndDate
     },
@@ -159,23 +167,9 @@ function buildTenantRecord(options = {}, publicSchoolRecord = null) {
     fees: [],
     feeHeads: STANDARD_FEE_HEADS.slice(),
     feeStructures: {},
-    feeActivityLog: [],
     exams: [],
     marks: [],
-    timetable: {},
-    notices: [],
-    trash: [],
-    schools: [
-      {
-        school_id: schoolRecord.school_id,
-        school_name: schoolRecord.school_name,
-        subdomain: schoolRecord.subdomain,
-        logo_url: schoolRecord.logo_url,
-        plan: schoolRecord.plan,
-        status: schoolRecord.status,
-        allowed_features: schoolRecord.allowed_features
-      }
-    ]
+    timetable: {}
   };
 }
 

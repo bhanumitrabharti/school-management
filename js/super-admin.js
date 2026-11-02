@@ -3028,16 +3028,22 @@ window.saAuth = auth;
 
                 // Merge schoolInfo fields into existing schoolInfo so nested properties survive
                 var existingSchoolInfo = (existingTenantData.settings && existingTenantData.settings.schoolInfo) || {};
+                var isV2School = existingTenantData.settings && existingTenantData.settings.storageVersion >= 2;
+                var existingBase64Logo = existingTenantData.settings && typeof existingTenantData.settings.logoUrl === 'string' && existingTenantData.settings.logoUrl.startsWith('data:');
+
                 var mergedSchoolInfo = Object.assign({}, existingSchoolInfo, {
                     name: name,
                     tagline: tagline,
-                    logoUrl: logoUrl,
+                    logoUrl: (isV2School && existingBase64Logo && logoUrl.startsWith('http')) ? existingTenantData.settings.logoUrl : logoUrl,
                     phone: phone,
                     email: email,
                     address: address,
                     affiliation: affiliation,
                     udiseCode: udiseCode
                 });
+                if (isV2School && logoUrl.startsWith('http')) {
+                    mergedSchoolInfo.logoStorageUrl = logoUrl;
+                }
 
                 // Update settings using DOT-PATH updates — NEVER replace the settings map,
                 // so all other settings keys survive untouched (credentialsIsolated, geofence,
@@ -3150,7 +3156,10 @@ window.saAuth = auth;
                     attendanceTime: '09:00',
                     academicYear: getCurrentAcademicYear(),
                     credentialsIsolated: true,
-                    restructured: true
+                    restructured: true,
+                    storageVersion: 2,
+                    studentsMigrated: true,
+                    studentsDualWrite: false
                 },
                 restructured: true
             };
@@ -3199,7 +3208,10 @@ window.saAuth = auth;
                     attendanceTime: '09:00',
                     academicYear: getCurrentAcademicYear(),
                     credentialsIsolated: true,
-                    restructured: true
+                    restructured: true,
+                    storageVersion: 2,
+                    studentsMigrated: true,
+                    studentsDualWrite: false
                 },
                 restructured: true,
                 students: [],
@@ -3216,11 +3228,8 @@ window.saAuth = auth;
                 feeStructures: legacyFeeStructures,
                 exams: [],
                 marks: [],
-                notices: [],
                 timetable: {},
                 subjectMapping: {},
-                notifications: [],
-                trash: [],
                 lastAutomatedFeeRun: ""
             };
 

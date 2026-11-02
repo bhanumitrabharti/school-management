@@ -478,29 +478,9 @@ window.SchoolApp = {
       }
     }
     
-    // Canonicalize logo to payload.settings.logoUrl and prune duplicate base64 keys
-    var canonicalLogo = payload.settings.logoStorageUrl || payload.settings.logoUrl || payload.settings.schoolLogo || (payload.settings.schoolInfo && (payload.settings.schoolInfo.logoStorageUrl || payload.settings.schoolInfo.logoUrl)) || '';
-    if (!canonicalLogo) {
-      try {
-        var cachedRaw = localStorage.getItem('cached_tenant_data_' + currentSchoolId);
-        if (cachedRaw) {
-          var cached = JSON.parse(cachedRaw);
-          if (cached && cached.settings) {
-            canonicalLogo = cached.settings.logoUrl || cached.settings.schoolLogo || (cached.settings.schoolInfo && cached.settings.schoolInfo.logoUrl) || '';
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to preserve logo from cache:', err);
-      }
-    }
-    if (canonicalLogo) {
-      payload.settings.logoUrl = canonicalLogo;
-    }
-    delete payload.settings.schoolLogo;
-    if (payload.settings.schoolInfo) {
-      delete payload.settings.schoolInfo.schoolLogo;
-      delete payload.settings.schoolInfo.logoUrl;
-    }
+    // NON-DESTRUCTIVE SAVE: Never overwrite or delete existing settings fields (logoUrl,
+    // schoolLogo, principalSignatureUrl, etc.) as a side effect. Only explicit admin actions
+    // (upload / removal) may modify them.
 
     // RESTORE ARCHITECTURE: If tenant is restructured, prune unbounded fields
     // from main tenant doc payload so they are NEVER re-written or merged into
@@ -515,7 +495,8 @@ window.SchoolApp = {
     }
 
     // SCALED ARCHITECTURE (storageVersion >= 2):
-    // Prune all migrated keys, legacy arrays, and base64 signature/logo bloat
+    // Prune unbounded subcollection data from root payload so root doc does not grow.
+    // Existing base64 branding and root keys remain frozen and intact until explicit cleanup.
     if (this.isStorageVersion2(currentSchoolId)) {
       delete payload.teacherAttendance;
       delete payload.attendanceRequests;
@@ -532,15 +513,6 @@ window.SchoolApp = {
       delete payload.attendance;
       delete payload.examMarks;
       delete payload.marks;
-
-      if (payload.settings) {
-        if (typeof payload.settings.principalSignatureUrl === 'string' && payload.settings.principalSignatureUrl.startsWith('data:')) {
-          delete payload.settings.principalSignatureUrl;
-        }
-        if (payload.settings.schoolInfo && typeof payload.settings.schoolInfo.principalSignatureUrl === 'string') {
-          delete payload.settings.schoolInfo.principalSignatureUrl;
-        }
-      }
     }
 
     // Safety guard against accidental erasure of examTerms / examSubjects
