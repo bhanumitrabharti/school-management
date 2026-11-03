@@ -20,12 +20,16 @@ async function handleAttendance(req, res) {
   const query = req.query || {};
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   
-  // Default to current year-month (YYYY-MM) if not provided
+  // Default to current year-month (YYYY-MM) in Asia/Kolkata timezone if not provided
   let targetMonth = String(body.month || query.month || '').trim();
   if (!targetMonth || !/^\d{4}-\d{2}$/.test(targetMonth)) {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit'
+    }).formatToParts(new Date());
+    const y = parts.find(p => p.type === 'year').value;
+    const m = parts.find(p => p.type === 'month').value;
     targetMonth = `${y}-${m}`;
   }
 
@@ -76,39 +80,7 @@ async function handleAttendance(req, res) {
     }
   }
 
-  // 2. Legacy / Root Attendance Fallback (if subcollection has no records)
-  if (daily.length === 0) {
-    try {
-      const rootDocRef = db.collection('tenant_data').doc(schoolId);
-      const rootSnap = await rootDocRef.get();
-      if (rootSnap.exists) {
-        const rootData = rootSnap.data() || {};
-        const legacyRecords = Array.isArray(rootData.attendance) ? rootData.attendance : [];
-        legacyRecords.forEach(session => {
-          if (!session || !session.date) return;
-          if (!session.date.startsWith(targetMonth)) return;
-          if (studentClass && session.class && session.class !== studentClass) return;
-          if (studentSection && session.section && session.section !== studentSection) return;
 
-          const studentEntries = Array.isArray(session.records) ? session.records : [];
-          const match = studentEntries.find(r => r && String(r.studentId) === String(studentId));
-          if (match) {
-            const st = String(match.status || 'absent').toLowerCase();
-            if (st === 'present') presentDays++;
-            else if (st === 'late') lateDays++;
-            else absentDays++;
-
-            daily.push({
-              date: session.date,
-              status: st
-            });
-          }
-        });
-      }
-    } catch (legErr) {
-      console.warn('[api/parents/attendance] Error querying legacy attendance:', legErr.message);
-    }
-  }
 
   // Sort ascending by date
   daily.sort((a, b) => (a.date > b.date ? 1 : -1));

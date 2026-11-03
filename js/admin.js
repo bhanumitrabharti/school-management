@@ -5664,6 +5664,7 @@
             var el = document.getElementById(id);
             return el ? el.checked : def;
           };
+          var previousParentPortal = JSON.parse(JSON.stringify(s.parentPortal || {}));
           var portalCfg = {
             enabled: isPPEnabled,
             profile: getChecked('pp-toggle-profile', true),
@@ -5691,6 +5692,7 @@
             try {
               var lightPortalConfig = {
                 enabled: isPPEnabled,
+                studentsMigrated: isMigrated,
                 modules: {
                   profile: portalCfg.profile,
                   attendance: portalCfg.attendance,
@@ -5726,7 +5728,26 @@
                 console.log('[ParentPortalSettings] Direct write to settings.parentPortal and portal/config succeeded for ' + currentSchoolId);
               }
             } catch (ppErr) {
-              console.warn('[ParentPortalSettings] Portal config write warning, will rely on SchoolApp.save:', ppErr.message);
+              console.error('[ParentPortalSettings] Portal config batch write failed:', ppErr);
+              s.parentPortal = previousParentPortal;
+              if (ppEnabledInput) ppEnabledInput.checked = (previousParentPortal.enabled === true);
+              var setChecked = function(id, val) {
+                var el = document.getElementById(id);
+                if (el) el.checked = !!val;
+              };
+              setChecked('pp-toggle-profile', previousParentPortal.profile !== false);
+              setChecked('pp-toggle-attendance', previousParentPortal.attendance !== false);
+              setChecked('pp-toggle-timetable', previousParentPortal.timetable !== false);
+              setChecked('pp-toggle-exams', previousParentPortal.exams === true);
+              setChecked('pp-toggle-reportCards', previousParentPortal.reportCards === true);
+              setChecked('pp-toggle-notices', previousParentPortal.notices !== false);
+              setChecked('pp-toggle-fees', previousParentPortal.fees !== false);
+              setChecked('pp-toggle-feePayment', previousParentPortal.feePayment !== false);
+              SchoolApp.showToast('Failed to save Parent Portal: ' + (ppErr && ppErr.message || 'error'), 'error');
+              saveBtn.disabled = false;
+              saveBtn.innerHTML = originalBtnHTML;
+              SchoolApp.hideLoader();
+              return;
             }
           }
         }

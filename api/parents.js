@@ -155,7 +155,8 @@ module.exports = async function handler(req, res) {
   }
 
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-  const isMock = !isProduction && (process.env.MOCK_ONBOARDING_MODE === 'true' || process.env.MOCK_PARENT_MODE === 'true');
+  const isEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+  const isMock = !isProduction && isEmulator && (process.env.MOCK_ONBOARDING_MODE === 'true' || process.env.MOCK_PARENT_MODE === 'true');
 
   const action = (req.query && req.query.action) || (req.body && req.body.action) || '';
   const adminSdk = getFirebaseAdmin();
@@ -461,7 +462,7 @@ module.exports = async function handler(req, res) {
         parentEmail = uRec.email || '';
       } catch (_) {}
     }
-    if (!parentEmail && req.headers['x-parent-email']) {
+    if (!parentEmail && isEmulator && req.headers['x-parent-email']) {
       const candidate = normalizeEmail(req.headers['x-parent-email']);
       if ('parent_' + hashString(candidate).slice(0, 24) === decoded.uid) {
         parentEmail = candidate;

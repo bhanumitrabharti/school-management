@@ -37,7 +37,8 @@ function normalizeEmail(email) {
  */
 async function authenticateParentRequest(req, res, moduleKey) {
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-  const isMock = !isProduction && (process.env.MOCK_ONBOARDING_MODE === 'true' || process.env.MOCK_PARENT_MODE === 'true');
+  const isEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+  const isMock = !isProduction && isEmulator && (process.env.MOCK_ONBOARDING_MODE === 'true' || process.env.MOCK_PARENT_MODE === 'true');
 
   const authHeader = req.headers && req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -80,7 +81,7 @@ async function authenticateParentRequest(req, res, moduleKey) {
       parentEmail = uRec.email || '';
     } catch (_) {}
   }
-  if (!parentEmail && req.headers['x-parent-email']) {
+  if (!parentEmail && isEmulator && req.headers['x-parent-email']) {
     const candidate = normalizeEmail(req.headers['x-parent-email']);
     if ('parent_' + hashString(candidate).slice(0, 24) === decoded.uid) {
       parentEmail = candidate;
@@ -126,6 +127,7 @@ async function authenticateParentRequest(req, res, moduleKey) {
     const pp = settings.parentPortal || {};
     portalConfig = {
       enabled: isMigrated && pp.enabled === true,
+      studentsMigrated: isMigrated,
       modules: {
         profile: pp.profile !== undefined ? pp.profile : (pp.allowProfile !== undefined ? pp.allowProfile : true),
         attendance: pp.attendance !== undefined ? pp.attendance : (pp.allowAttendance !== undefined ? pp.allowAttendance : true),
@@ -142,8 +144,8 @@ async function authenticateParentRequest(req, res, moduleKey) {
     };
   }
 
-  // 2. Assert Portal is Enabled
-  if (!portalConfig || portalConfig.enabled !== true) {
+  // 2. Assert Portal is Enabled and Students Migrated
+  if (!portalConfig || portalConfig.enabled !== true || portalConfig.studentsMigrated !== true) {
     res.status(403).json({ error: 'Parent Portal is not currently enabled for this school.' });
     return { authorized: false };
   }
@@ -189,8 +191,8 @@ async function authenticateParentRequest(req, res, moduleKey) {
     return { authorized: false };
   }
 
-  const sParentEmailNorm = normalizeEmail(student.parentEmailNorm || student.parentEmail || student.fatherEmail || student.motherEmail);
-  const sSecParentEmailNorm = normalizeEmail(student.secondaryParentEmailNorm || student.secondaryParentEmail || student.guardianEmail);
+  const sParentEmailNorm = normalizeEmail(student.parentEmailNorm);
+  const sSecParentEmailNorm = normalizeEmail(student.secondaryParentEmailNorm);
 
   if (sParentEmailNorm !== emailNorm && sSecParentEmailNorm !== emailNorm) {
     res.status(403).json({ error: 'Forbidden: You do not have permission to access records for this student.' });

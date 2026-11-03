@@ -16,7 +16,7 @@ function ensureSubjectsArray(subjects) {
 
 const ExamCalculationEngine = {
   calculateGrade: function(percentage, customScale) {
-    const scale = customScale || [
+    const scale = (Array.isArray(customScale) && customScale.length > 0) ? customScale : [
       { min: 91, max: 100, grade: 'A+', label: 'Outstanding' },
       { min: 81, max: 90,  grade: 'A',  label: 'Excellent' },
       { min: 71, max: 80,  grade: 'B+', label: 'Very Good' },

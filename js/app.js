@@ -1213,6 +1213,52 @@ window.SchoolApp = {
     } catch (syncErr) {
       console.warn('[V2 Subcollection Sync] Warning syncing subcollections:', syncErr);
     }
+
+    // 6. Sync Portal Config (School Admin ONLY, separate try/catch to protect other syncs)
+    if (this.isAdmin() && this.store.settings && this.store.settings.parentPortal) {
+      try {
+        var pp = this.store.settings.parentPortal;
+        var isMigrated = (this.store.settings.studentsMigrated === true);
+        var portalLight = {
+          enabled: (pp.enabled === true && isMigrated),
+          studentsMigrated: isMigrated,
+          modules: {
+            profile: pp.profile !== false,
+            attendance: pp.attendance !== false,
+            timetable: pp.timetable !== false,
+            exams: pp.exams === true,
+            reportCards: pp.reportCards === true,
+            notices: pp.notices !== false,
+            fees: pp.fees !== false,
+            feePayment: pp.feePayment !== false
+          },
+          schoolName: (typeof this.getSchoolName === 'function' ? this.getSchoolName() : (this.store.settings.schoolName || '')),
+          logoUrl: (typeof this.getLogoUrl === 'function' ? this.getLogoUrl() : (this.store.settings.logoUrl || '')),
+          updatedAt: pp.updatedAt || new Date().toISOString()
+        };
+
+        var serverPortalConfig = this._serverPortalConfigMap || new Map();
+        var cachedPortalConfig = serverPortalConfig.get(schoolId);
+        // Compare structural fields excluding updatedAt to avoid spurious writes
+        var isChanged = true;
+        if (cachedPortalConfig) {
+          var curComp = Object.assign({}, portalLight, { updatedAt: null });
+          var cachedComp = Object.assign({}, cachedPortalConfig, { updatedAt: null });
+          if (JSON.stringify(curComp) === JSON.stringify(cachedComp)) {
+            isChanged = false;
+          }
+        }
+
+        if (isChanged) {
+          var pConfRef = fs.doc(db, 'tenant_data', schoolId, 'portal', 'config');
+          await fs.setDoc(pConfRef, portalLight, { merge: true });
+          serverPortalConfig.set(schoolId, JSON.parse(JSON.stringify(portalLight)));
+          this._serverPortalConfigMap = serverPortalConfig;
+        }
+      } catch (portalSyncErr) {
+        console.warn('[V2 Subcollection Sync] Portal config sync warning:', portalSyncErr.message);
+      }
+    }
   },
 
   getLocalMonthString: function(dateObj) {

@@ -937,7 +937,7 @@ async function loadExamsView(forceReload = false) {
     }
 
     elements.examTermSelect.innerHTML = terms.map(t => {
-      return `<option value="${t.id}" ${t.id === state.examTermId ? 'selected' : ''}>${escapeHTML(t.name)}${t.isFinal ? ' (Final)' : ''}</option>`;
+      return `<option value="${escapeHTML(t.id)}" ${t.id === state.examTermId ? 'selected' : ''}>${escapeHTML(t.name)}${t.isFinal ? ' (Final)' : ''}</option>`;
     }).join('');
 
     if (!state.examTermId || !terms.some(t => t.id === state.examTermId)) {

@@ -23,7 +23,7 @@ async function handleNotices(req, res) {
   // 1. Fetch from Subcollection: tenant_data/{schoolId}/notices
   try {
     const subcolRef = db.collection('tenant_data').doc(schoolId).collection('notices');
-    const snap = await subcolRef.where('status', '==', 'published').get();
+    const snap = await subcolRef.get();
     if (!snap.empty) {
       snap.forEach(doc => {
         rawNotices.push(doc.data());
@@ -33,28 +33,13 @@ async function handleNotices(req, res) {
     console.warn('[api/parents/notices] Error fetching notices subcollection:', err.message);
   }
 
-  // 2. Legacy root fallback if subcollection is empty
-  if (rawNotices.length === 0) {
-    try {
-      const rootDocRef = db.collection('tenant_data').doc(schoolId);
-      const rootSnap = await rootDocRef.get();
-      if (rootSnap.exists) {
-        const rootData = rootSnap.data() || {};
-        const legacyNotices = Array.isArray(rootData.notices) ? rootData.notices : [];
-        legacyNotices.forEach(n => {
-          if (n && n.status === 'published') {
-            rawNotices.push(n);
-          }
-        });
-      }
-    } catch (legErr) {
-      console.warn('[api/parents/notices] Error fetching legacy notices:', legErr.message);
-    }
-  }
 
-  // 3. Filter for Parent Audience Target
+
+  // 2. Filter for Published Status and Parent Audience Target
   const visibleNotices = rawNotices.filter(notice => {
-    if (!notice || notice.status !== 'published') return false;
+    if (!notice) return false;
+    const st = String(notice.status || 'published').toLowerCase().trim();
+    if (st === 'draft' || st === 'archived' || st !== 'published') return false;
 
     let aud = notice.audience || ['everyone'];
     if (!Array.isArray(aud)) aud = [aud];

@@ -31,6 +31,8 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
 process.env.MOCK_PARENT_MODE = 'true';
 process.env.NODE_ENV = 'test';
 
+const fs = require('fs');
+const path = require('path');
 const admin = require('firebase-admin');
 const http = require('http');
 const ExamCalculationEngine = require('../api/_lib/exam-engine');
@@ -185,6 +187,7 @@ async function seedTestData() {
   // 2. Portal Config Subcollection
   await db.collection('tenant_data').doc(schoolId).collection('portal').doc('config').set({
     enabled: true,
+    studentsMigrated: true,
     modules: {
       profile: true,
       attendance: true,
@@ -349,6 +352,126 @@ async function seedTestData() {
     status: 'draft'
   });
 
+  // Notice without explicit status field (FIX 5c: should default to 'published')
+  await db.collection('tenant_data').doc(schoolId).collection('notices').doc('notif_no_status').set({
+    id: 'notif_no_status',
+    title: 'Notice without Status Field',
+    message: 'Notice missing explicit status property.',
+    date: '2026-11-04',
+    priority: 'Normal',
+    audience: ['everyone']
+  });
+
+  // Notice with status='archived' (FIX 5c: must be excluded)
+  await db.collection('tenant_data').doc(schoolId).collection('notices').doc('notif_archived').set({
+    id: 'notif_archived',
+    title: 'Old Archived Circular',
+    message: 'Archived circular notice.',
+    date: '2026-10-01',
+    priority: 'Normal',
+    audience: ['parents'],
+    status: 'archived'
+  });
+
+  // Student with legacy parentEmail but missing parentEmailNorm (FIX 4: must be rejected 403)
+  await db.collection('tenant_data').doc(schoolId).collection('students').doc('stu_unmigrated_linking').set({
+    id: 'stu_unmigrated_linking',
+    firstName: 'Rohit',
+    lastName: 'Sharma',
+    name: 'Rohit Sharma',
+    class: '5',
+    section: 'A',
+    rollNumber: '103',
+    parentEmail: parentEmail,
+    // parentEmailNorm intentionally omitted
+    status: 'Active'
+  });
+
+  // School with custom examConfig.gradingScale and reportCardConfig without gradingScale (FIX 1)
+  const customScaleSchoolId = 'test_school_custom_grading';
+  await db.collection('tenant_data').doc(customScaleSchoolId).set({
+    school_name: 'Custom Scale Academy',
+    settings: {
+      schoolName: 'Custom Scale Academy',
+      studentsMigrated: true,
+      storageVersion: 2,
+      parentPortal: { enabled: true, exams: true }
+    },
+    examConfig: {
+      gradingScale: [
+        { min: 80, max: 100, grade: 'DISTINCTION', label: 'Distinction' },
+        { min: 33, max: 79,  grade: 'PASS',        label: 'Pass' },
+        { min: 0,  max: 32,  grade: 'FAIL',        label: 'Fail' }
+      ]
+    },
+    reportCardConfig: {
+      headerTitle: 'Report Card with No Internal Scale'
+    },
+    examTerms: {
+      term_custom: {
+        id: 'term_custom',
+        name: 'Custom Scale Term',
+        showResultsToParents: true,
+        status: 'published'
+      }
+    },
+    examSubjects: {
+      term_custom: {
+        '5': {
+          subjects: [
+            { id: 'sub_math', name: 'Mathematics', fullMarks: 100, passMarks: 33 }
+          ]
+        }
+      }
+    }
+  });
+
+  await db.collection('tenant_data').doc(customScaleSchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    studentsMigrated: true,
+    modules: { exams: true },
+    schoolName: 'Custom Scale Academy'
+  });
+
+  await db.collection('tenant_data').doc(customScaleSchoolId).collection('students').doc('stu_custom').set({
+    id: 'stu_custom',
+    firstName: 'Dev',
+    lastName: 'Sharma',
+    name: 'Dev Sharma',
+    class: '5',
+    section: 'A',
+    parentEmailNorm: parentEmail,
+    status: 'Active'
+  });
+
+  await db.collection('tenant_data').doc(customScaleSchoolId).collection('exam_marks').doc('term_custom').set({
+    '5': {
+      'A': {
+        'stu_custom': {
+          marks: {
+            'sub_math': { obtained: 85 } // 85% -> DISTINCTION in custom scale, 'A' in default scale
+          }
+        }
+      }
+    }
+  });
+
+  // School with portal/config studentsMigrated === false (FIX 2c)
+  const unmigratedPortalSchoolId = 'test_school_unmigrated_pp';
+  await db.collection('tenant_data').doc(unmigratedPortalSchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    studentsMigrated: false, // Explicitly false
+    modules: { profile: true }
+  });
+
+  // School with portal/config missing studentsMigrated field (FIX 2c)
+  const missingMigratedPortalSchoolId = 'test_school_missing_migrated_pp';
+  await db.collection('tenant_data').doc(missingMigratedPortalSchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    // studentsMigrated missing
+    modules: { profile: true }
+  });
+
   console.log('✅ Test data successfully seeded in emulator.\n');
 }
 
@@ -502,6 +625,142 @@ async function runTests() {
       timetable: true
     }
   }, { merge: true });
+
+  // --- TEST 10 (Updated for FIX 5c): Notices Missing Status & Archived Filtering ---
+  assert(noticeIds.includes('notif_no_status'), 'FIX 5c: Notice without status field IS returned as published');
+  assert(!noticeIds.includes('notif_archived'), 'FIX 5c: Notice with status="archived" is NOT returned to parent');
+
+  // --- TEST 18: FIX 1 - Grade Parity with custom examConfig.gradingScale ---
+  const t18 = await invokeHandler('POST', 'exam-result', {
+    schoolId: 'test_school_custom_grading',
+    studentId: 'stu_custom',
+    termId: 'term_custom'
+  }, authHeaders);
+  assert(t18.status === 200, 'FIX 1: Exam result with custom gradingScale returns HTTP 200');
+  assert(t18.body.summary.percentage === 85, 'FIX 1: Percentage = 85%');
+  assert(t18.body.summary.grade === 'DISTINCTION', 'FIX 1: Overall Grade matches custom scale ("DISTINCTION" vs default "A")');
+  assert(t18.body.subjects[0].grade === 'DISTINCTION', 'FIX 1: Subject Grade matches custom scale ("DISTINCTION")');
+
+  // --- TEST 19: FIX 2c - School with studentsMigrated: false or missing in portal/config Denied ---
+  const t19a = await invokeHandler('POST', 'profile', {
+    schoolId: 'test_school_unmigrated_pp',
+    studentId: 'stu_child1'
+  }, authHeaders);
+  assert(t19a.status === 403, 'FIX 2c: portal/config with studentsMigrated: false returns HTTP 403');
+  assert(t19a.body && t19a.body.error && t19a.body.error.includes('not currently enabled'), 'FIX 2c: Error message matches disabled portal');
+
+  const t19b = await invokeHandler('POST', 'profile', {
+    schoolId: 'test_school_missing_migrated_pp',
+    studentId: 'stu_child1'
+  }, authHeaders);
+  assert(t19b.status === 403, 'FIX 2c: portal/config with missing studentsMigrated field returns HTTP 403');
+
+  // --- TEST 20: FIX 3 - Mock Token Guard: Rejection when FIRESTORE_EMULATOR_HOST is unset ---
+  const savedEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+  try {
+    delete process.env.FIRESTORE_EMULATOR_HOST;
+    const t20Auth = await invokeHandler('POST', 'profile', {
+      schoolId: schoolId,
+      studentId: 'stu_child1'
+    }, authHeaders);
+    assert(t20Auth.status === 401, 'FIX 3: Mock token rejected with HTTP 401 when FIRESTORE_EMULATOR_HOST is unset in auth.js');
+
+    const t20Context = await invokeHandler('POST', 'context', {}, authHeaders);
+    assert(t20Context.status === 401, 'FIX 3: Mock token rejected with HTTP 401 when FIRESTORE_EMULATOR_HOST is unset in parents.js router');
+  } finally {
+    process.env.FIRESTORE_EMULATOR_HOST = savedEmulatorHost;
+  }
+
+  // --- TEST 21: FIX 4 - Student missing parentEmailNorm is DENIED ---
+  const t21 = await invokeHandler('POST', 'profile', {
+    schoolId: schoolId,
+    studentId: 'stu_unmigrated_linking'
+  }, authHeaders);
+  assert(t21.status === 403, 'FIX 4: Student with legacy parentEmail but missing parentEmailNorm is DENIED with HTTP 403');
+
+  // --- TEST 22: syncStoreV2Subcollections Hardening (Teacher vs Admin Role) ---
+  console.log('\n--- Checking syncStoreV2Subcollections Hardening ---');
+  const appJsCode = fs.readFileSync(path.resolve(__dirname, '../js/app.js'), 'utf8');
+  const syncMatch = appJsCode.match(/syncStoreV2Subcollections:\s*async\s*function\s*\(([^)]*)\)\s*\{([\s\S]*?)\n\s*getLocalMonthString:/);
+  assert(!!syncMatch, 'T22: syncStoreV2Subcollections successfully parsed from js/app.js');
+
+  const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+  const syncBody = syncMatch[2].replace(/\}\s*,?\s*$/, '');
+  const syncFn = new AsyncFunction('schoolId', syncBody);
+  
+  let activeUserRole = 'teacher';
+  const clientWrites = [];
+  const mockFs = {
+    doc: (database, col, sId, subCol, docId) => ({
+      path: `${col}/${sId}/${subCol}/${docId}`,
+      col, sId, subCol, docId
+    }),
+    setDoc: async (ref, data, opts) => {
+      if (ref.path.includes('/portal/config') && activeUserRole === 'teacher') {
+        throw new Error('PERMISSION_DENIED: False for create/update @ portal/config for teacher');
+      }
+      clientWrites.push({ path: ref.path, data, opts });
+    }
+  };
+
+  const mockTeacherApp = {
+    isAdmin: function() { return this.currentUser && this.currentUser.role === 'admin'; },
+    currentUser: { id: 'teacher_1', role: 'teacher' },
+    store: {
+      attendanceRequests: [
+        { id: 'req_subcollection_sync_1', studentId: 'stu_1', status: 'pending', date: '2026-11-03' }
+      ],
+      settings: {
+        parentPortal: { enabled: true, profile: true },
+        studentsMigrated: true
+      }
+    },
+    getSchoolName: () => 'Test Academy',
+    getLogoUrl: () => 'https://test.logo'
+  };
+
+  const origWindow = global.window;
+  try {
+    global.window = { firestore: mockFs, db: {} };
+
+    // 1. Teacher save: must sync attendance_requests and NEVER attempt portal/config
+    clientWrites.length = 0;
+    await syncFn.call(mockTeacherApp, 'test_school_subcol_sync');
+
+    const teacherAttReqWrite = clientWrites.find(w => w.path.includes('attendance_requests/req_subcollection_sync_1'));
+    assert(!!teacherAttReqWrite, 'T22: Teacher save successfully synced attendance_requests');
+    const teacherPortalWrite = clientWrites.find(w => w.path.includes('portal/config'));
+    assert(!teacherPortalWrite, 'T22: Teacher save did NOT attempt or write portal/config');
+
+    // 2. Admin save: must sync portal/config and cache in memory
+    activeUserRole = 'admin';
+    const mockAdminApp = {
+      isAdmin: function() { return this.currentUser && this.currentUser.role === 'admin'; },
+      currentUser: { id: 'admin', role: 'admin' },
+      store: {
+        attendanceRequests: [],
+        settings: {
+          parentPortal: { enabled: true, profile: true },
+          studentsMigrated: true
+        }
+      },
+      getSchoolName: () => 'Test Academy',
+      getLogoUrl: () => 'https://test.logo'
+    };
+
+    clientWrites.length = 0;
+    await syncFn.call(mockAdminApp, 'test_school_subcol_sync');
+    const adminPortalWrite = clientWrites.find(w => w.path.includes('portal/config'));
+    assert(!!adminPortalWrite, 'T22: Admin save successfully synced portal/config');
+    assert(adminPortalWrite.data.studentsMigrated === true, 'T22: portal/config contains studentsMigrated: true');
+
+    // 3. Repeated Admin save with unchanged portal config: write skipped due to cache
+    clientWrites.length = 0;
+    await syncFn.call(mockAdminApp, 'test_school_subcol_sync');
+    assert(clientWrites.length === 0, 'T22: Unchanged portal/config avoided duplicate Firestore write (in-memory cache verified)');
+  } finally {
+    global.window = origWindow;
+  }
 
   // --- TEST 17: Direct Client Firestore Read/Write Denied for Parent Token ---
   console.log('\n--- Checking Direct Client Firestore Rules for Parent Account ---');

@@ -137,7 +137,19 @@ async function handleExamResult(req, res) {
   }
 
   // 4. Calculate Results using Pure ExamCalculationEngine
-  const schoolConfig = rootData.reportCardConfig || rootData.examConfig || (rootData.settings && rootData.settings.examConfig) || {};
+  const schoolConfig = Object.assign({}, rootData.reportCardConfig || {});
+  const effectiveGradingScale = (Array.isArray(schoolConfig.gradingScale) && schoolConfig.gradingScale.length > 0)
+    ? schoolConfig.gradingScale
+    : ((rootData.examConfig && Array.isArray(rootData.examConfig.gradingScale) && rootData.examConfig.gradingScale.length > 0)
+      ? rootData.examConfig.gradingScale
+      : ((rootData.settings && rootData.settings.examConfig && Array.isArray(rootData.settings.examConfig.gradingScale) && rootData.settings.examConfig.gradingScale.length > 0)
+        ? rootData.settings.examConfig.gradingScale
+        : null));
+
+  if (effectiveGradingScale) {
+    schoolConfig.gradingScale = effectiveGradingScale;
+  }
+
   const calcResult = ExamCalculationEngine.calculateStudentResult({
     marks: markEntry.marks || {},
     subjects: subjects,

@@ -4001,6 +4001,16 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
       toggle.addEventListener('change', async function() {
         var tId = this.getAttribute('data-id');
         var checked = this.checked;
+        var term = (SchoolApp.store && SchoolApp.store.examTerms && SchoolApp.store.examTerms[tId]) || {};
+
+        if (checked && term.status !== 'published' && term.status !== 'locked') {
+          var confirmed = window.confirm('Marks for this term are not finalized yet (' + (term.status || 'draft') + '). Show results to parents anyway?');
+          if (!confirmed) {
+            this.checked = false;
+            return;
+          }
+        }
+
         var labelSpan = this.parentElement.querySelector('span');
         if (labelSpan) {
           labelSpan.textContent = checked ? 'Visible' : 'Hidden';
@@ -4105,7 +4115,14 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
             term.weightage = weight;
             term.examType = (document.getElementById('admin-examterm-type') && document.getElementById('admin-examterm-type').value) || 'main';
             term.isFinal = isFinal;
-            term.showResultsToParents = !!(document.getElementById('admin-examterm-parents-visibility') && document.getElementById('admin-examterm-parents-visibility').checked);
+            var newShowToParents = !!(document.getElementById('admin-examterm-parents-visibility') && document.getElementById('admin-examterm-parents-visibility').checked);
+            if (newShowToParents && !term.showResultsToParents && term.status !== 'published' && term.status !== 'locked') {
+              var confirmed = window.confirm('Marks for this term are not finalized yet (' + (term.status || 'draft') + '). Show results to parents anyway?');
+              if (!confirmed) {
+                return;
+              }
+            }
+            term.showResultsToParents = newShowToParents;
 
             var success = await SchoolApp.save();
             if (success) {
