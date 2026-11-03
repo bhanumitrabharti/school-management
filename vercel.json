@@ -135,7 +135,7 @@
       "continue": false
     },
     {
-      "src": "/(?:(?!api/).*)",
+      "src": "/",
       "has": [
         {
           "type": "host",
@@ -166,6 +166,16 @@
     },
     {
       "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "^parents\\.ctrlshifts\\.in$"
+        }
+      ],
+      "dest": "/parents.html"
     },
     {
       "src": "/(.*)",
