@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Paathshala — Parent Portal</title>
-  <meta name="description" content="Centralized access for parents to view student profiles, attendance, timetable, notices, and fee receipts.">
+  <meta name="description" content="Centralized access for parents to view student profiles, attendance, timetable, notices, and exam results.">
   <link rel="icon" type="image/png" href="assets/favicon.png">
 
   <!-- Google Fonts & Material Icons -->
@@ -166,7 +166,7 @@
       max-width: 1000px;
       width: 100%;
       margin: 0 auto;
-      padding: 24px 16px 48px;
+      padding: 20px 16px 48px;
     }
 
     .card {
@@ -213,18 +213,18 @@
       margin-bottom: 6px;
     }
 
-    .form-input {
+    .form-input, .form-select {
       width: 100%;
-      padding: 12px 14px;
+      padding: 10px 14px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface-subtle);
       color: var(--ink);
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       transition: all 0.15s;
     }
 
-    .form-input:focus {
+    .form-input:focus, .form-select:focus {
       outline: none;
       border-color: var(--primary);
       background: var(--surface);
@@ -245,14 +245,19 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 12px 20px;
+      padding: 10px 18px;
       border-radius: var(--radius-sm);
-      font-size: 0.92rem;
+      font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.15s;
       border: 1px solid transparent;
       text-decoration: none;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 0.82rem;
     }
 
     .btn-block {
@@ -312,7 +317,7 @@
       border: 1px solid rgba(79, 70, 229, 0.2);
     }
 
-    /* Switcher Controls */
+    /* Selector Controls Bar */
     .selector-bar {
       display: flex;
       flex-wrap: wrap;
@@ -320,26 +325,27 @@
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 20px;
-      padding: 14px 18px;
+      padding: 12px 16px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
     }
 
     .selector-group {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
     .child-pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
+      gap: 6px;
+      padding: 6px 12px;
       border-radius: var(--radius-full);
-      font-size: 0.86rem;
+      font-size: 0.84rem;
       font-weight: 600;
       background: var(--surface-subtle);
       border: 1px solid var(--border);
@@ -359,24 +365,24 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 24px;
+      padding: 20px;
       display: flex;
-      gap: 20px;
+      gap: 18px;
       align-items: center;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       box-shadow: var(--shadow-sm);
     }
 
     .student-avatar {
-      width: 80px;
-      height: 80px;
+      width: 72px;
+      height: 72px;
       border-radius: var(--radius-full);
       background: var(--primary-light);
       color: var(--primary);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 36px;
+      font-size: 32px;
       font-weight: 700;
       overflow: hidden;
       flex-shrink: 0;
@@ -394,7 +400,7 @@
     }
 
     .student-meta h2 {
-      font-size: 1.35rem;
+      font-size: 1.3rem;
       font-weight: 800;
       letter-spacing: -0.02em;
       margin-bottom: 4px;
@@ -404,7 +410,7 @@
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
     .tag {
@@ -426,10 +432,10 @@
       color: var(--primary);
     }
 
-    /* Modules Grid */
+    /* Modules Grid on Home Dashboard */
     .modules-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
       gap: 16px;
     }
 
@@ -437,56 +443,327 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 20px;
+      padding: 18px;
       box-shadow: var(--shadow-sm);
       display: flex;
       flex-direction: column;
       gap: 12px;
-      transition: transform 0.15s, border-color 0.15s;
+      cursor: pointer;
+      transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
     }
 
     .module-card:hover {
       border-color: var(--primary);
       transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
     }
 
     .module-header {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 12px;
     }
 
     .module-icon {
-      width: 42px;
-      height: 42px;
+      width: 40px;
+      height: 40px;
       border-radius: var(--radius-sm);
       background: var(--primary-light);
       color: var(--primary);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .module-info {
+      flex: 1;
     }
 
     .module-info h3 {
-      font-size: 1rem;
+      font-size: 0.98rem;
       font-weight: 700;
+      margin-bottom: 2px;
     }
 
     .module-info p {
       font-size: 0.8rem;
       color: var(--muted);
+      line-height: 1.35;
     }
 
-    .badge-disabled {
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--surface-subtle);
-      color: var(--muted);
+    .module-summary-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Sub-view Container & Navigation */
+    .subview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .subview-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .subview-title h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+
+    /* Stats Grid for Attendance / KPI */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--surface);
       border: 1px solid var(--border);
-      margin-left: auto;
+      border-radius: var(--radius);
+      padding: 14px;
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-top: 2px;
+    }
+
+    .stat-label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Tables & Lists */
+    .data-table-container {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      text-align: left;
+    }
+
+    .data-table th {
+      background: var(--surface-subtle);
+      padding: 12px 14px;
+      font-weight: 700;
+      color: var(--ink-secondary);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .data-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--ink);
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .data-table tr:hover td {
+      background: var(--surface-subtle);
+    }
+
+    .center {
+      text-align: center;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .badge-success { background: var(--green-light); color: var(--green); }
+    .badge-danger { background: var(--red-light); color: var(--red); }
+    .badge-warning { background: var(--amber-light); color: var(--amber); }
+    .badge-info { background: var(--primary-light); color: var(--primary); }
+    .badge-secondary { background: var(--surface-subtle); color: var(--muted); border: 1px solid var(--border); }
+
+    /* Day pills for Timetable */
+    .day-pills {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      margin-bottom: 16px;
+    }
+
+    .day-pill {
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--ink-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .day-pill.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* Notice Cards */
+    .notices-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .notice-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .notice-item:hover {
+      border-color: var(--primary);
+    }
+
+    .notice-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .notice-item-title {
+      font-size: 0.96rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .notice-item-date {
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .notice-item-body {
+      font-size: 0.86rem;
+      color: var(--ink-secondary);
+      line-height: 1.45;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    /* Notice Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(10, 22, 56, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+
+    .modal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      max-width: 580px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 24px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-header h3 {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+
+    /* Loading Spinner & Empty State */
+    .state-container {
+      text-align: center;
+      padding: 36px 16px;
+      color: var(--muted);
+    }
+
+    .state-container .material-icons-round {
+      font-size: 40px;
+      margin-bottom: 8px;
+    }
+
+    .state-container h4 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+
+    .state-container p {
+      font-size: 0.86rem;
+      max-width: 400px;
+      margin: 0 auto;
     }
 
     .footer {
@@ -510,7 +787,7 @@
       .student-hero {
         flex-direction: column;
         text-align: center;
-        padding: 20px 16px;
+        padding: 18px 14px;
       }
       .student-tags {
         justify-content: center;
@@ -518,6 +795,9 @@
       .selector-bar {
         flex-direction: column;
         align-items: stretch;
+      }
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
       }
     }
   </style>
@@ -624,9 +904,9 @@
       </div>
     </div>
 
-    <!-- Screen 4: Child Dashboard Shell -->
-    <div id="view-dashboard" class="hidden">
-      <!-- Top Switcher Bar -->
+    <!-- Parent Authenticated Experience (Selector Bar + Views) -->
+    <div id="view-parent-app" class="hidden">
+      <!-- Universal Top Switcher Bar (Child & School Switcher) -->
       <div class="selector-bar">
         <div class="selector-group">
           <span style="font-size:0.84rem;font-weight:600;color:var(--muted);">School:</span>
@@ -642,34 +922,151 @@
         </div>
       </div>
 
-      <!-- Student Profile Hero Card -->
-      <div class="student-hero">
-        <div class="student-avatar" id="student-avatar-box">
-          <span class="material-icons-round" id="student-avatar-fallback">person</span>
-          <img id="student-avatar-img" src="" alt="Student Photo" class="hidden">
+      <!-- VIEW A: Home Dashboard -->
+      <div id="section-home-dashboard">
+        <!-- Student Profile Hero Card -->
+        <div class="student-hero">
+          <div class="student-avatar" id="student-avatar-box">
+            <span class="material-icons-round" id="student-avatar-fallback">person</span>
+            <img id="student-avatar-img" src="" alt="Student Photo" class="hidden">
+          </div>
+          <div class="student-meta">
+            <h2 id="student-name">—</h2>
+            <div style="color:var(--muted);font-size:0.9rem;" id="student-school-display">—</div>
+            <div class="student-tags">
+              <span class="tag tag-primary" id="tag-class-sec"><span class="material-icons-round" style="font-size:14px;">class</span> Class —</span>
+              <span class="tag" id="tag-roll"><span class="material-icons-round" style="font-size:14px;">numbers</span> Roll —</span>
+              <span class="tag" id="tag-adm"><span class="material-icons-round" style="font-size:14px;">badge</span> Adm —</span>
+            </div>
+          </div>
         </div>
-        <div class="student-meta">
-          <h2 id="student-name">—</h2>
-          <div style="color:var(--muted);font-size:0.9rem;" id="student-school-display">—</div>
-          <div class="student-tags">
-            <span class="tag tag-primary" id="tag-class-sec"><span class="material-icons-round" style="font-size:14px;">class</span> Class —</span>
-            <span class="tag" id="tag-roll"><span class="material-icons-round" style="font-size:14px;">numbers</span> Roll —</span>
-            <span class="tag" id="tag-adm"><span class="material-icons-round" style="font-size:14px;">badge</span> Adm —</span>
+
+        <!-- Section Title -->
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="font-size:1.05rem;font-weight:700;">Academic Modules</h3>
+          <span style="font-size:0.78rem;color:var(--muted);background:var(--surface-subtle);padding:3px 8px;border-radius:var(--radius-full);border:1px solid var(--border);">Active View</span>
+        </div>
+
+        <!-- Dynamic Enabled Module Cards Grid -->
+        <div class="modules-grid" id="modules-container">
+          <!-- Dynamically populated with summary cards for enabled modules only -->
+        </div>
+      </div>
+
+      <!-- VIEW B: Subview Shell (Attendance, Timetable, Notices, Exams) -->
+      <div id="section-module-subview" class="hidden">
+        <div class="subview-header">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-back-dashboard">
+            <span class="material-icons-round" style="font-size:18px;">arrow_back</span>
+            <span>Dashboard</span>
+          </button>
+          <div id="subview-header-title" style="font-size:1.15rem;font-weight:800;color:var(--ink);">—</div>
+        </div>
+
+        <!-- SUBVIEW 1: Attendance -->
+        <div id="subview-attendance" class="hidden">
+          <!-- Month Switcher -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="material-icons-round" style="color:var(--primary);">event</span>
+              <span style="font-size:0.9rem;font-weight:700;">Select Month:</span>
+              <select id="attendance-month-select" class="form-select" style="width:auto;padding:6px 12px;font-size:0.88rem;">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div id="attendance-status-badge"></div>
+          </div>
+
+          <!-- Attendance KPI Cards -->
+          <div class="stats-grid" id="attendance-kpi-grid">
+            <div class="stat-card">
+              <div class="stat-label">Percentage</div>
+              <div class="stat-value" id="att-kpi-pct" style="color:var(--primary);">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Total Days</div>
+              <div class="stat-value" id="att-kpi-total">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Present</div>
+              <div class="stat-value" id="att-kpi-present" style="color:var(--green);">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Absent</div>
+              <div class="stat-value" id="att-kpi-absent" style="color:var(--red);">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Late</div>
+              <div class="stat-value" id="att-kpi-late" style="color:var(--amber);">—</div>
+            </div>
+          </div>
+
+          <!-- Daily Attendance Records -->
+          <div id="attendance-content-container">
+            <!-- Table or list injected here -->
+          </div>
+        </div>
+
+        <!-- SUBVIEW 2: Timetable -->
+        <div id="subview-timetable" class="hidden">
+          <!-- Day of week pills -->
+          <div class="day-pills" id="timetable-day-pills">
+            <!-- Dynamically populated: Today + Mon-Sat -->
+          </div>
+
+          <!-- Schedule content -->
+          <div id="timetable-content-container">
+            <!-- Period list / table injected here -->
+          </div>
+        </div>
+
+        <!-- SUBVIEW 3: Notices -->
+        <div id="subview-notices" class="hidden">
+          <div id="notices-content-container" class="notices-list">
+            <!-- Notices injected here -->
+          </div>
+        </div>
+
+        <!-- SUBVIEW 4: Exams & Results -->
+        <div id="subview-exams" class="hidden">
+          <!-- Term picker -->
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+            <label class="form-label" style="margin:0;font-size:0.9rem;font-weight:700;">Examination Term:</label>
+            <select id="exam-term-select" class="form-select" style="max-width:320px;">
+              <!-- Term options injected here -->
+            </select>
+          </div>
+
+          <!-- Term Results Container -->
+          <div id="exam-results-container">
+            <!-- Result summary + Marks table injected here -->
           </div>
         </div>
       </div>
-
-      <!-- Modules Grid -->
-      <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
-        <h3 style="font-size:1.1rem;font-weight:700;">Student Modules</h3>
-        <span style="font-size:0.78rem;color:var(--muted);background:var(--surface-subtle);padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--border);">Phase B1 Foundation</span>
-      </div>
-
-      <div class="modules-grid" id="modules-container">
-        <!-- Dynamically rendered based on school permissions -->
-      </div>
     </div>
   </main>
+
+  <!-- Notice Detail Modal -->
+  <div id="modal-notice-overlay" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <span class="badge" id="modal-notice-priority">Normal</span>
+          <h3 id="modal-notice-title" style="margin-top:6px;">Announcement Title</h3>
+          <div id="modal-notice-date" style="font-size:0.78rem;color:var(--muted);margin-top:2px;">—</div>
+        </div>
+        <button type="button" class="icon-btn" id="btn-close-notice-modal">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div id="modal-notice-message" style="font-size:0.92rem;color:var(--ink);line-height:1.6;white-space:pre-wrap;">
+        Announcement description...
+      </div>
+      <div style="margin-top:20px;text-align:right;">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-close-notice-modal-2">Close</button>
+      </div>
+    </div>
+  </div>
 
   <footer class="footer">
     <div>Paathshala School Management ERP &copy; 2026. Secure Parent Access Layer.</div>
@@ -677,6 +1074,6 @@
   </footer>
 
   <!-- Firebase Auth SDK v10 Modular -->
-  <script type="module" src="js/parents.js?v=v77"></script>
+  <script type="module" src="js/parents.js?v=v78"></script>
 </body>
 </html>

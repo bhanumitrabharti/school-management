@@ -13,6 +13,11 @@
 const crypto = require('crypto');
 const { getFirebaseAdmin, getDb } = require('./_lib/firebase-admin');
 const { sendOtpEmail } = require('./_lib/email');
+const { handleProfile } = require('./_lib/parents/profile');
+const { handleAttendance } = require('./_lib/parents/attendance');
+const { handleTimetable } = require('./_lib/parents/timetable');
+const { handleNotices } = require('./_lib/parents/notices');
+const { handleExamsList, handleExamResult } = require('./_lib/parents/exams');
 
 function applyCors(req, res) {
   const allowed = [
@@ -530,5 +535,32 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  return res.status(400).json({ error: 'Invalid action. Supported actions: send-otp, verify-otp, context.' });
+  // ──────────────────────────────────────────────────────────────────────────
+  // PHASE B2 ACTIONS: ACADEMIC MODULES
+  // ──────────────────────────────────────────────────────────────────────────
+  if (action === 'profile') {
+    return handleProfile(req, res);
+  }
+
+  if (action === 'attendance') {
+    return handleAttendance(req, res);
+  }
+
+  if (action === 'timetable') {
+    return handleTimetable(req, res);
+  }
+
+  if (action === 'notices') {
+    return handleNotices(req, res);
+  }
+
+  if (action === 'exams') {
+    return handleExamsList(req, res);
+  }
+
+  if (action === 'exam-result') {
+    return handleExamResult(req, res);
+  }
+
+  return res.status(400).json({ error: 'Invalid action. Supported actions: send-otp, verify-otp, context, profile, attendance, timetable, notices, exams, exam-result.' });
 };

@@ -1,7 +1,7 @@
 /**
  * js/parents.js
  * Paathshala Parent Portal — Lightweight Client Controller
- * Version: v75
+ * Version: v78
  *
  * Handles:
  *   - Turnstile verification
@@ -9,7 +9,8 @@
  *   - Firebase custom token authentication
  *   - Real-time parent context loading
  *   - Multi-school & multi-child navigation (sibling switcher)
- *   - Dynamic school feature module toggles
+ *   - Dynamic school feature module toggles (cards only for enabled modules)
+ *   - Lazy module views: Attendance, Timetable, Notices, Exams & Results
  */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js';
@@ -37,8 +38,12 @@ const state = {
   schools: [],
   activeSchoolId: null,
   activeStudentId: null,
+  activeModule: null, // null = home, 'attendance' | 'timetable' | 'notices' | 'exams'
   turnstileWidgetId: null,
-  turnstileToken: ''
+  turnstileToken: '',
+  attendanceMonth: null,
+  timetableDay: null,
+  examTermId: null
 };
 
 // DOM Elements
@@ -46,7 +51,9 @@ const elements = {
   viewEmail: document.getElementById('view-email'),
   viewOtp: document.getElementById('view-otp'),
   viewSchoolSelect: document.getElementById('view-school-select'),
-  viewDashboard: document.getElementById('view-dashboard'),
+  viewParentApp: document.getElementById('view-parent-app'),
+  sectionHomeDashboard: document.getElementById('section-home-dashboard'),
+  sectionModuleSubview: document.getElementById('section-module-subview'),
   
   formEmail: document.getElementById('form-email'),
   inputEmail: document.getElementById('input-email'),
@@ -76,6 +83,37 @@ const elements = {
   avatarFallback: document.getElementById('student-avatar-fallback'),
   avatarImg: document.getElementById('student-avatar-img'),
   modulesContainer: document.getElementById('modules-container'),
+
+  btnBackDashboard: document.getElementById('btn-back-dashboard'),
+  subviewHeaderTitle: document.getElementById('subview-header-title'),
+  
+  subviewAttendance: document.getElementById('subview-attendance'),
+  attendanceMonthSelect: document.getElementById('attendance-month-select'),
+  attendanceStatusBadge: document.getElementById('attendance-status-badge'),
+  attKpiPct: document.getElementById('att-kpi-pct'),
+  attKpiTotal: document.getElementById('att-kpi-total'),
+  attKpiPresent: document.getElementById('att-kpi-present'),
+  attKpiAbsent: document.getElementById('att-kpi-absent'),
+  attKpiLate: document.getElementById('att-kpi-late'),
+  attendanceContentContainer: document.getElementById('attendance-content-container'),
+  
+  subviewTimetable: document.getElementById('subview-timetable'),
+  timetableDayPills: document.getElementById('timetable-day-pills'),
+  timetableContentContainer: document.getElementById('timetable-content-container'),
+  
+  subviewNotices: document.getElementById('subview-notices'),
+  noticesContentContainer: document.getElementById('notices-content-container'),
+  modalNoticeOverlay: document.getElementById('modal-notice-overlay'),
+  modalNoticeTitle: document.getElementById('modal-notice-title'),
+  modalNoticeDate: document.getElementById('modal-notice-date'),
+  modalNoticePriority: document.getElementById('modal-notice-priority'),
+  modalNoticeMessage: document.getElementById('modal-notice-message'),
+  btnCloseNoticeModal: document.getElementById('btn-close-notice-modal'),
+  btnCloseNoticeModal2: document.getElementById('btn-close-notice-modal-2'),
+
+  subviewExams: document.getElementById('subview-exams'),
+  examTermSelect: document.getElementById('exam-term-select'),
+  examResultsContainer: document.getElementById('exam-results-container'),
   
   btnThemeToggle: document.getElementById('btn-theme-toggle'),
   themeIcon: document.getElementById('theme-icon'),
@@ -108,16 +146,15 @@ function updateThemeIcon(theme) {
 
 // --- Navigation / Views ---
 function showView(viewName) {
-  [elements.viewEmail, elements.viewOtp, elements.viewSchoolSelect, elements.viewDashboard].forEach(el => {
+  [elements.viewEmail, elements.viewOtp, elements.viewSchoolSelect, elements.viewParentApp].forEach(el => {
     if (el) el.classList.add('hidden');
   });
 
   if (viewName === 'email') elements.viewEmail.classList.remove('hidden');
   if (viewName === 'otp') elements.viewOtp.classList.remove('hidden');
   if (viewName === 'school-select') elements.viewSchoolSelect.classList.remove('hidden');
-  if (viewName === 'dashboard') elements.viewDashboard.classList.remove('hidden');
-
-  if (viewName === 'dashboard') {
+  if (viewName === 'dashboard' || viewName === 'parent-app') {
+    elements.viewParentApp.classList.remove('hidden');
     elements.btnLogout.classList.remove('hidden');
   } else {
     elements.btnLogout.classList.add('hidden');
@@ -213,7 +250,40 @@ function startResendCountdown(seconds) {
   }, 1000);
 }
 
-// --- API Calls ---
+// --- API Helpers ---
+async function callParentApi(action, params = {}) {
+  const user = auth.currentUser;
+  let idToken = '';
+  if (user) {
+    try {
+      idToken = await user.getIdToken();
+    } catch (_) {}
+  }
+
+  const payload = {
+    schoolId: state.activeSchoolId,
+    studentId: state.activeStudentId,
+    ...params
+  };
+
+  const resp = await fetch(`/api/parents?action=${encodeURIComponent(action)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+      'x-parent-email': state.email || (user ? user.email : '')
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data.error || `Request failed (${resp.status})`);
+  }
+  return data;
+}
+
+// --- Auth Handlers ---
 async function handleSendOtp(e) {
   if (e) e.preventDefault();
   hideAlert(elements.emailAlert);
@@ -321,8 +391,6 @@ async function handleVerifyOtp(e) {
 
     // Sign in to Firebase Auth with custom token
     await signInWithCustomToken(auth, data.customToken);
-    
-    // Auth state observer will automatically trigger fetchContextAndLoad()
   } catch (err) {
     showAlert(elements.otpAlert, err.message || 'Verification failed. Please try again.');
   } finally {
@@ -424,8 +492,12 @@ function selectSchool(schoolId) {
   }
 
   renderChildSwitcher(school);
-  renderStudentDashboard(school);
-  showView('dashboard');
+  if (state.activeModule) {
+    openModuleView(state.activeModule, true);
+  } else {
+    renderStudentDashboard(school);
+  }
+  showView('parent-app');
 }
 
 function renderChildSwitcher(school) {
@@ -447,13 +519,22 @@ function renderChildSwitcher(school) {
     pill.addEventListener('click', () => {
       state.activeStudentId = student.id;
       renderChildSwitcher(school);
-      renderStudentDashboard(school);
+      if (state.activeModule) {
+        openModuleView(state.activeModule, true);
+      } else {
+        renderStudentDashboard(school);
+      }
     });
     elements.childPills.appendChild(pill);
   });
 }
 
+// --- Home Dashboard Rendering ---
 function renderStudentDashboard(school) {
+  state.activeModule = null;
+  elements.sectionHomeDashboard.classList.remove('hidden');
+  elements.sectionModuleSubview.classList.add('hidden');
+
   const student = school.students.find(s => s.id === state.activeStudentId) || school.students[0];
   if (!student) return;
 
@@ -472,49 +553,517 @@ function renderStudentDashboard(school) {
     elements.avatarFallback.classList.remove('hidden');
   }
 
-  // Render Module Cards based on school permissions
+  // Render ONLY Enabled Module Cards (per Step 5 requirement)
   const toggles = school.toggles || {};
-  const modules = [
-    { key: 'profile', name: 'Student Profile', icon: 'person', desc: 'Personal details, emergency contacts, and blood group', active: toggles.profile !== false },
-    { key: 'attendance', name: 'Attendance Record', icon: 'event_available', desc: 'Daily punch logs, monthly calendar, and percentage', active: toggles.attendance !== false },
-    { key: 'timetable', name: 'Class Timetable', icon: 'calendar_month', desc: 'Weekly schedule of lectures and teachers', active: toggles.timetable !== false },
-    { key: 'exams', name: 'Exams & Marks', icon: 'fact_check', desc: 'Subject marks, rank, and grading overview', active: toggles.exams === true },
-    { key: 'reportCards', name: 'Report Cards', icon: 'workspace_premium', desc: 'Official signed term progress reports for download', active: toggles.reportCards === true },
-    { key: 'notices', name: 'Notices & Circulars', icon: 'campaign', desc: 'School announcements, holidays, and circulars', active: toggles.notices !== false },
-    { key: 'fees', name: 'Fee Ledger', icon: 'account_balance_wallet', desc: 'Installment breakdown, fee receipts, and dues status', active: toggles.fees !== false },
-    { key: 'feePayment', name: 'Pay Online (UPI)', icon: 'qr_code_scanner', desc: 'Instant UPI QR code payment and UTR submission', active: toggles.feePayment !== false }
+  const modulesDef = [
+    {
+      key: 'attendance',
+      name: 'Attendance Record',
+      icon: 'event_available',
+      desc: 'View monthly attendance percentage, daily punch logs, and present/absent summary.',
+      active: toggles.attendance !== false
+    },
+    {
+      key: 'timetable',
+      name: 'Class Timetable',
+      icon: 'calendar_month',
+      desc: 'Weekly lecture schedule with period timings and assigned subject teachers.',
+      active: toggles.timetable !== false
+    },
+    {
+      key: 'notices',
+      name: 'Notices & Circulars',
+      icon: 'campaign',
+      desc: 'Official school circulars, holiday announcements, and event updates.',
+      active: toggles.notices !== false
+    },
+    {
+      key: 'exams',
+      name: 'Exams & Results',
+      icon: 'fact_check',
+      desc: 'Subject marks, overall percentage, grades, division, and class ranking.',
+      active: toggles.exams === true
+    }
   ];
 
   elements.modulesContainer.innerHTML = '';
-  modules.forEach(mod => {
+  const enabledModules = modulesDef.filter(m => m.active);
+
+  if (enabledModules.length === 0) {
+    elements.modulesContainer.innerHTML = `
+      <div class="state-container" style="grid-column: 1 / -1;">
+        <span class="material-icons-round">lock</span>
+        <h4>No Academic Modules Enabled</h4>
+        <p>The school administration has not enabled any modules for the parent portal yet.</p>
+      </div>
+    `;
+    return;
+  }
+
+  enabledModules.forEach(mod => {
     const card = document.createElement('div');
     card.className = 'module-card';
-    if (!mod.active) {
-      card.style.opacity = '0.6';
-    }
-
     card.innerHTML = `
       <div class="module-header">
-        <div class="module-icon" style="${!mod.active ? 'background:var(--surface-subtle);color:var(--muted);' : ''}">
+        <div class="module-icon">
           <span class="material-icons-round">${mod.icon}</span>
         </div>
         <div class="module-info">
           <h3>${escapeHTML(mod.name)}</h3>
           <p>${escapeHTML(mod.desc)}</p>
         </div>
-        ${!mod.active ? `<span class="badge-disabled">Disabled</span>` : ''}
       </div>
-      <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-size:0.78rem;font-weight:600;color:${mod.active ? 'var(--primary)' : 'var(--muted)'};">
-          ${mod.active ? 'Available in Phase B2 &rarr;' : 'Module Inactive'}
+      <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--border);">
+        <span style="font-size:0.8rem;font-weight:700;color:var(--primary);display:inline-flex;align-items:center;gap:4px;">
+          <span>View Details</span>
+          <span class="material-icons-round" style="font-size:16px;">arrow_forward</span>
         </span>
       </div>
     `;
+
+    card.addEventListener('click', () => openModuleView(mod.key));
     elements.modulesContainer.appendChild(card);
   });
 }
 
-// --- Event Listeners ---
+// --- Subview Navigation ---
+function openModuleView(moduleKey, forceReload = false) {
+  state.activeModule = moduleKey;
+  elements.sectionHomeDashboard.classList.add('hidden');
+  elements.sectionModuleSubview.classList.remove('hidden');
+
+  // Hide all subview content containers
+  [
+    elements.subviewAttendance,
+    elements.subviewTimetable,
+    elements.subviewNotices,
+    elements.subviewExams
+  ].forEach(el => el.classList.add('hidden'));
+
+  const titles = {
+    attendance: '📅 Attendance Record',
+    timetable: '🗓️ Class Timetable',
+    notices: '📢 Notices & Circulars',
+    exams: '📊 Examination Results'
+  };
+  elements.subviewHeaderTitle.textContent = titles[moduleKey] || 'Module Details';
+
+  if (moduleKey === 'attendance') {
+    elements.subviewAttendance.classList.remove('hidden');
+    loadAttendanceView(forceReload);
+  } else if (moduleKey === 'timetable') {
+    elements.subviewTimetable.classList.remove('hidden');
+    loadTimetableView(forceReload);
+  } else if (moduleKey === 'notices') {
+    elements.subviewNotices.classList.remove('hidden');
+    loadNoticesView(forceReload);
+  } else if (moduleKey === 'exams') {
+    elements.subviewExams.classList.remove('hidden');
+    loadExamsView(forceReload);
+  }
+}
+
+// --- SUBVIEW 1: Attendance Loader ---
+async function loadAttendanceView(forceReload = false) {
+  const container = elements.attendanceContentContainer;
+  container.innerHTML = '<div class="state-container"><span class="material-icons-round">sync</span><h4>Loading Attendance...</h4></div>';
+
+  try {
+    const data = await callParentApi('attendance', { month: state.attendanceMonth || undefined });
+    
+    // Update KPI grid
+    const pct = Number(data.percentage) || 0;
+    elements.attKpiPct.textContent = `${pct}%`;
+    elements.attKpiPct.style.color = pct >= 75 ? 'var(--green)' : (pct >= 60 ? 'var(--amber)' : 'var(--red)');
+    elements.attKpiTotal.textContent = data.totalDays || 0;
+    elements.attKpiPresent.textContent = data.presentDays || 0;
+    elements.attKpiAbsent.textContent = data.absentDays || 0;
+    elements.attKpiLate.textContent = data.lateDays || 0;
+
+    // Status badge
+    const badgeType = pct >= 75 ? 'badge-success' : 'badge-danger';
+    const badgeText = pct >= 75 ? 'Meets Requirement (≥75%)' : 'Attendance Shortage (<75%)';
+    elements.attendanceStatusBadge.innerHTML = `<span class="badge ${badgeType}">${badgeText}</span>`;
+
+    // Month Selector Options
+    const avail = data.availableMonths || [data.month];
+    elements.attendanceMonthSelect.innerHTML = avail.map(m => {
+      const [y, mm] = m.split('-');
+      const d = new Date(Number(y), Number(mm) - 1, 1);
+      const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return `<option value="${m}" ${m === data.month ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    state.attendanceMonth = data.month;
+
+    // Daily records table
+    if (!data.daily || data.daily.length === 0) {
+      container.innerHTML = `
+        <div class="state-container">
+          <span class="material-icons-round">event_busy</span>
+          <h4>No Attendance Recorded</h4>
+          <p>No daily attendance logs exist for this month.</p>
+        </div>
+      `;
+      return;
+    }
+
+    let tableHtml = `
+      <div class="data-table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Day</th>
+              <th class="center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    data.daily.forEach(d => {
+      const dt = new Date(d.date + 'T00:00:00');
+      const dayName = dt.toLocaleDateString('en-US', { weekday: 'short' });
+      const formattedDate = dt.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      
+      let badgeClass = 'badge-secondary';
+      let statusLabel = 'Absent';
+      if (d.status === 'present') {
+        badgeClass = 'badge-success';
+        statusLabel = 'Present';
+      } else if (d.status === 'late') {
+        badgeClass = 'badge-warning';
+        statusLabel = 'Late';
+      } else {
+        badgeClass = 'badge-danger';
+        statusLabel = 'Absent';
+      }
+
+      tableHtml += `
+        <tr>
+          <td><strong>${formattedDate}</strong></td>
+          <td style="color:var(--muted);">${dayName}</td>
+          <td class="center"><span class="badge ${badgeClass}">${statusLabel}</span></td>
+        </tr>
+      `;
+    });
+
+    tableHtml += `</tbody></table></div>`;
+    container.innerHTML = tableHtml;
+  } catch (err) {
+    container.innerHTML = `
+      <div class="state-container">
+        <span class="material-icons-round" style="color:var(--red);">error_outline</span>
+        <h4>Failed to Load Attendance</h4>
+        <p>${escapeHTML(err.message)}</p>
+      </div>
+    `;
+  }
+}
+
+// --- SUBVIEW 2: Timetable Loader ---
+async function loadTimetableView(forceReload = false) {
+  const container = elements.timetableContentContainer;
+  container.innerHTML = '<div class="state-container"><span class="material-icons-round">sync</span><h4>Loading Timetable...</h4></div>';
+
+  try {
+    const data = await callParentApi('timetable');
+    const schedule = data.schedule || {};
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // Determine default day (today if Mon-Sat, else Monday)
+    const todayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday
+    const todayName = (todayIndex >= 1 && todayIndex <= 6) ? days[todayIndex - 1] : 'Monday';
+    if (!state.timetableDay || !days.includes(state.timetableDay)) {
+      state.timetableDay = todayName;
+    }
+
+    // Render Day Pills
+    elements.timetableDayPills.innerHTML = '';
+    days.forEach(day => {
+      const isToday = (day === todayName);
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = `day-pill ${day === state.timetableDay ? 'active' : ''}`;
+      pill.innerHTML = `${day} ${isToday ? '<span style="font-size:10px;background:rgba(255,255,255,0.3);padding:2px 4px;border-radius:4px;margin-left:4px;">Today</span>' : ''}`;
+      pill.addEventListener('click', () => {
+        state.timetableDay = day;
+        renderDaySchedule(schedule[day] || {}, day, data.settings || {});
+        // Update active class on pills
+        document.querySelectorAll('.day-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+      });
+      elements.timetableDayPills.appendChild(pill);
+    });
+
+    renderDaySchedule(schedule[state.timetableDay] || {}, state.timetableDay, data.settings || {});
+  } catch (err) {
+    container.innerHTML = `
+      <div class="state-container">
+        <span class="material-icons-round" style="color:var(--red);">error_outline</span>
+        <h4>Failed to Load Timetable</h4>
+        <p>${escapeHTML(err.message)}</p>
+      </div>
+    `;
+  }
+}
+
+function renderDaySchedule(dayPeriods, dayName, settings) {
+  const container = elements.timetableContentContainer;
+  const periodKeys = Object.keys(dayPeriods).sort((a, b) => Number(a) - Number(b));
+
+  if (periodKeys.length === 0) {
+    container.innerHTML = `
+      <div class="state-container">
+        <span class="material-icons-round">free_breakfast</span>
+        <h4>No Classes Scheduled</h4>
+        <p>There are no timetable periods configured for ${escapeHTML(dayName)}.</p>
+      </div>
+    `;
+    return;
+  }
+
+  let tableHtml = `
+    <div class="data-table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:100px;">Period</th>
+            <th>Subject</th>
+            <th>Teacher</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  periodKeys.forEach(pNum => {
+    const p = dayPeriods[pNum];
+    const subject = (typeof p === 'object' && p ? p.subject : p) || '—';
+    const teacher = (typeof p === 'object' && p ? p.teacherName : '') || '—';
+
+    tableHtml += `
+      <tr>
+        <td><strong>Period ${escapeHTML(pNum)}</strong></td>
+        <td><strong style="color:var(--primary);">${escapeHTML(subject)}</strong></td>
+        <td style="color:var(--ink-secondary);">${escapeHTML(teacher)}</td>
+      </tr>
+    `;
+  });
+
+  tableHtml += `</tbody></table></div>`;
+  container.innerHTML = tableHtml;
+}
+
+// --- SUBVIEW 3: Notices Loader ---
+async function loadNoticesView(forceReload = false) {
+  const container = elements.noticesContentContainer;
+  container.innerHTML = '<div class="state-container"><span class="material-icons-round">sync</span><h4>Loading Notices...</h4></div>';
+
+  try {
+    const data = await callParentApi('notices');
+    const notices = data.notices || [];
+
+    if (notices.length === 0) {
+      container.innerHTML = `
+        <div class="state-container">
+          <span class="material-icons-round">campaign</span>
+          <h4>No Announcements Published</h4>
+          <p>There are no active school notices for parents at this time.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = '';
+    notices.forEach(notice => {
+      const isUrgent = (notice.priority === 'Urgent');
+      const card = document.createElement('div');
+      card.className = 'notice-item';
+      card.innerHTML = `
+        <div class="notice-item-header">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge ${isUrgent ? 'badge-danger' : 'badge-info'}">${escapeHTML(notice.priority)}</span>
+            <span class="notice-item-title">${escapeHTML(notice.title)}</span>
+          </div>
+          <span class="notice-item-date">${escapeHTML(notice.date || '')}</span>
+        </div>
+        <div class="notice-item-body">${escapeHTML(notice.message || '')}</div>
+        <div style="display:flex;justify-content:flex-end;">
+          <span style="font-size:0.78rem;font-weight:700;color:var(--primary);">Read Full Circular &rarr;</span>
+        </div>
+      `;
+
+      card.addEventListener('click', () => {
+        elements.modalNoticeTitle.textContent = notice.title;
+        elements.modalNoticeDate.textContent = notice.date ? `Published: ${notice.date}` : '';
+        elements.modalNoticePriority.textContent = notice.priority;
+        elements.modalNoticePriority.className = `badge ${isUrgent ? 'badge-danger' : 'badge-info'}`;
+        elements.modalNoticeMessage.textContent = notice.message;
+        elements.modalNoticeOverlay.classList.remove('hidden');
+      });
+
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = `
+      <div class="state-container">
+        <span class="material-icons-round" style="color:var(--red);">error_outline</span>
+        <h4>Failed to Load Notices</h4>
+        <p>${escapeHTML(err.message)}</p>
+      </div>
+    `;
+  }
+}
+
+// --- SUBVIEW 4: Exams & Results Loader ---
+async function loadExamsView(forceReload = false) {
+  const container = elements.examResultsContainer;
+  container.innerHTML = '<div class="state-container"><span class="material-icons-round">sync</span><h4>Loading Exam Terms...</h4></div>';
+
+  try {
+    const data = await callParentApi('exams');
+    const terms = data.terms || [];
+
+    if (terms.length === 0) {
+      elements.examTermSelect.innerHTML = '<option value="">No terms published</option>';
+      container.innerHTML = `
+        <div class="state-container">
+          <span class="material-icons-round">fact_check</span>
+          <h4>No Examination Results Published</h4>
+          <p>The school has not published results for any examination terms yet.</p>
+        </div>
+      `;
+      return;
+    }
+
+    elements.examTermSelect.innerHTML = terms.map(t => {
+      return `<option value="${t.id}" ${t.id === state.examTermId ? 'selected' : ''}>${escapeHTML(t.name)}${t.isFinal ? ' (Final)' : ''}</option>`;
+    }).join('');
+
+    if (!state.examTermId || !terms.some(t => t.id === state.examTermId)) {
+      state.examTermId = terms[0].id;
+    }
+
+    loadTermResult(state.examTermId);
+  } catch (err) {
+    container.innerHTML = `
+      <div class="state-container">
+        <span class="material-icons-round" style="color:var(--red);">error_outline</span>
+        <h4>Failed to Load Examination Terms</h4>
+        <p>${escapeHTML(err.message)}</p>
+      </div>
+    `;
+  }
+}
+
+async function loadTermResult(termId) {
+  const container = elements.examResultsContainer;
+  container.innerHTML = '<div class="state-container"><span class="material-icons-round">sync</span><h4>Calculating Results...</h4></div>';
+
+  try {
+    const data = await callParentApi('exam-result', { termId });
+
+    if (!data.hasResult) {
+      container.innerHTML = `
+        <div class="state-container">
+          <span class="material-icons-round">pending_actions</span>
+          <h4>Results Incomplete</h4>
+          <p>${escapeHTML(data.message || 'Marks for this term are still being recorded.')}</p>
+        </div>
+      `;
+      return;
+    }
+
+    const sm = data.summary || {};
+    const subjects = data.subjects || [];
+    const isPass = (sm.result === 'PASS');
+    const isFail = (sm.result === 'FAIL');
+
+    let html = `
+      <!-- Result KPI Summary -->
+      <div class="stats-grid" style="margin-bottom:20px;">
+        <div class="stat-card">
+          <div class="stat-label">Total Score</div>
+          <div class="stat-value" style="color:var(--primary);">${escapeHTML(sm.totalObtained)} / ${escapeHTML(sm.maxTotal)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Percentage</div>
+          <div class="stat-value" style="color:${isPass ? 'var(--green)' : (isFail ? 'var(--red)' : 'var(--amber)')};">${escapeHTML(sm.displayPercentage)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Grade</div>
+          <div class="stat-value">${escapeHTML(sm.grade)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Division</div>
+          <div class="stat-value" style="font-size:1.1rem;margin-top:6px;">${escapeHTML(sm.division)}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Final Result</div>
+          <div class="stat-value" style="color:${isPass ? 'var(--green)' : (isFail ? 'var(--red)' : 'var(--amber)')};font-size:1.25rem;margin-top:4px;">
+            ${escapeHTML(sm.result)}
+          </div>
+        </div>
+        ${sm.rank !== null ? `
+        <div class="stat-card">
+          <div class="stat-label">Class Rank</div>
+          <div class="stat-value" style="color:var(--accent);">#${escapeHTML(sm.rank)}</div>
+        </div>` : ''}
+      </div>
+
+      <!-- Subject Marks Table -->
+      <div class="data-table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th class="center">Full Marks</th>
+              <th class="center">Pass Marks</th>
+              <th class="center">Marks Obtained</th>
+              <th class="center">Grade</th>
+              <th class="center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    subjects.forEach(sub => {
+      let statusBadge = `<span class="badge badge-success">Pass</span>`;
+      if (!sub.isPass) {
+        statusBadge = `<span class="badge badge-danger">${sub.isAbsent ? 'Absent' : 'Fail'}</span>`;
+      } else if (sub.isExempted) {
+        statusBadge = `<span class="badge badge-info">Exempted</span>`;
+      }
+
+      html += `
+        <tr>
+          <td>
+            <strong>${escapeHTML(sub.name)}</strong>
+            ${sub.isOptional ? '<span class="tag" style="margin-left:6px;font-size:10px;">Optional</span>' : ''}
+          </td>
+          <td class="center">${escapeHTML(sub.fullMarks)}</td>
+          <td class="center">${escapeHTML(sub.passMarks)}</td>
+          <td class="center"><strong style="font-size:1rem;color:${sub.isPass ? 'var(--ink)' : 'var(--red)'};">${escapeHTML(sub.obtained)}</strong></td>
+          <td class="center"><strong>${escapeHTML(sub.grade)}</strong></td>
+          <td class="center">${statusBadge}</td>
+        </tr>
+      `;
+    });
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `
+      <div class="state-container">
+        <span class="material-icons-round" style="color:var(--red);">error_outline</span>
+        <h4>Failed to Calculate Result</h4>
+        <p>${escapeHTML(err.message)}</p>
+      </div>
+    `;
+  }
+}
+
+// --- Event Listeners Setup ---
 function setupListeners() {
   elements.btnThemeToggle.addEventListener('click', toggleTheme);
 
@@ -541,10 +1090,39 @@ function setupListeners() {
     state.schools = [];
     state.activeSchoolId = null;
     state.activeStudentId = null;
+    state.activeModule = null;
     state.email = '';
     elements.inputEmail.value = '';
     elements.inputOtp.value = '';
     showView('email');
+  });
+
+  elements.btnBackDashboard.addEventListener('click', () => {
+    const school = state.schools.find(s => s.schoolId === state.activeSchoolId);
+    if (school) renderStudentDashboard(school);
+  });
+
+  elements.attendanceMonthSelect.addEventListener('change', (e) => {
+    state.attendanceMonth = e.target.value;
+    loadAttendanceView(true);
+  });
+
+  elements.examTermSelect.addEventListener('change', (e) => {
+    state.examTermId = e.target.value;
+    loadTermResult(state.examTermId);
+  });
+
+  // Notice modal close handlers
+  elements.btnCloseNoticeModal.addEventListener('click', () => {
+    elements.modalNoticeOverlay.classList.add('hidden');
+  });
+  elements.btnCloseNoticeModal2.addEventListener('click', () => {
+    elements.modalNoticeOverlay.classList.add('hidden');
+  });
+  elements.modalNoticeOverlay.addEventListener('click', (e) => {
+    if (e.target === elements.modalNoticeOverlay) {
+      elements.modalNoticeOverlay.classList.add('hidden');
+    }
   });
 
   // Auth State Listener

@@ -3683,6 +3683,7 @@
     html += '<option value="everyone">👥 Everyone (All Users)</option>';
     html += '<option value="teachers">👨‍🏫 Teachers Only</option>';
     html += '<option value="students">🎓 Students Only</option>';
+    html += '<option value="parents">👨‍👩‍👧 Parents Only</option>';
     html += '</select></div>';
     
     html += '<div class="form-group full-width flex gap-2 notices-form-actions" style="justify-content:flex-end; margin-top: 10px;">';
@@ -3717,6 +3718,9 @@
         } else if (audArr.indexOf('students') !== -1) {
           audLabel = '🎓 Students';
           audBadge = 'badge-cyan';
+        } else if (audArr.indexOf('parents') !== -1) {
+          audLabel = '👨‍👩‍👧 Parents';
+          audBadge = 'badge-success';
         }
 
         html += '<tr>';
@@ -5682,16 +5686,47 @@
           };
           s.parentPortal = portalCfg;
 
-          // Dot-path write to settings.parentPortal in Firestore
-          if (window.firestore && window.firestore.updateDoc && currentSchoolId) {
+          // Dot-path write to settings.parentPortal AND portal/config in one batch
+          if (window.firestore && currentSchoolId) {
             try {
-              var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
-              await window.firestore.updateDoc(tenantRef, {
-                'settings.parentPortal': portalCfg
-              });
-              console.log('[ParentPortalSettings] Dot-path write to settings.parentPortal succeeded for ' + currentSchoolId);
+              var lightPortalConfig = {
+                enabled: isPPEnabled,
+                modules: {
+                  profile: portalCfg.profile,
+                  attendance: portalCfg.attendance,
+                  timetable: portalCfg.timetable,
+                  exams: portalCfg.exams,
+                  reportCards: portalCfg.reportCards,
+                  notices: portalCfg.notices,
+                  fees: portalCfg.fees,
+                  feePayment: portalCfg.feePayment
+                },
+                schoolName: (typeof SchoolApp.getSchoolName === 'function' ? SchoolApp.getSchoolName() : (s.schoolName || '')),
+                logoUrl: (typeof SchoolApp.getLogoUrl === 'function' ? SchoolApp.getLogoUrl() : (s.logoUrl || '')),
+                updatedAt: portalCfg.updatedAt
+              };
+
+              if (typeof window.firestore.writeBatch === 'function') {
+                var batch = window.firestore.writeBatch(window.db);
+                var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+                var portalConfigRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'portal', 'config');
+                batch.update(tenantRef, {
+                  'settings.parentPortal': portalCfg
+                });
+                batch.set(portalConfigRef, lightPortalConfig, { merge: true });
+                await batch.commit();
+                console.log('[ParentPortalSettings] Batch write to settings.parentPortal and portal/config succeeded for ' + currentSchoolId);
+              } else if (typeof window.firestore.updateDoc === 'function') {
+                var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+                await window.firestore.updateDoc(tenantRef, {
+                  'settings.parentPortal': portalCfg
+                });
+                var portalConfigRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'portal', 'config');
+                await window.firestore.setDoc(portalConfigRef, lightPortalConfig, { merge: true });
+                console.log('[ParentPortalSettings] Direct write to settings.parentPortal and portal/config succeeded for ' + currentSchoolId);
+              }
             } catch (ppErr) {
-              console.warn('[ParentPortalSettings] Direct dot-path write failed, will rely on SchoolApp.save:', ppErr.message);
+              console.warn('[ParentPortalSettings] Portal config write warning, will rely on SchoolApp.save:', ppErr.message);
             }
           }
         }

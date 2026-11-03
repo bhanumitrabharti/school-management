@@ -2125,7 +2125,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     var terms = Object.values(SchoolApp.store.examTerms || {}).sort(function(a, b) { return a.order - b.order; });
     if (terms.length > 0) {
-      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Term Name</th><th>Short Code</th><th>Dates</th><th>Weightage</th><th>Status</th><th>Rules</th><th>Actions</th></tr></thead><tbody>';
+      html += '<div class="table-container"><table class="data-table"><thead><tr><th>Term Name</th><th>Short Code</th><th>Dates</th><th>Weightage</th><th>Status</th><th>Show to Parents</th><th>Rules</th><th>Actions</th></tr></thead><tbody>';
       terms.forEach(function(t) {
         html += '<tr>';
         html += '<td><strong>' + escapeHTML(t.name) + '</strong></td>';
@@ -2133,6 +2133,12 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         html += '<td>' + (t.startDate ? t.startDate + ' to ' + t.endDate : '—') + '</td>';
         html += '<td>' + t.weightage + '%</td>';
         html += '<td>' + getStatusBadge(t.status) + '</td>';
+        var showParents = (t.showResultsToParents === true);
+        var parentToggle = '<label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; margin:0;" title="Toggle whether parents can see results for this term in Parent Portal">' +
+          '<input type="checkbox" class="exam-term-parents-toggle" data-id="' + t.id + '" ' + (showParents ? 'checked' : '') + ' style="cursor:pointer; width:15px; height:15px;">' +
+          '<span style="font-weight:600; color:' + (showParents ? '#16A34A' : 'var(--text-muted, #64748B)') + ';">' + (showParents ? 'Visible' : 'Hidden') + '</span>' +
+          '</label>';
+        html += '<td>' + parentToggle + '</td>';
         var rulesBadge = (t.rulesVersion === 'v2')
           ? '<span class="badge badge-success" style="font-size:11px;">Rules v2</span>'
           : '<span class="badge badge-secondary" style="font-size:11px;">Legacy (v1)</span>';
@@ -3886,6 +3892,11 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         bodyHTML += '    <input type="checkbox" id="exam-term-is-final"> Final / Annual Examination (Enables Promotion Status on Report Cards)';
         bodyHTML += '  </label>';
         bodyHTML += '</div>';
+        bodyHTML += '<div class="form-group mb-3">';
+        bodyHTML += '  <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+        bodyHTML += '    <input type="checkbox" id="admin-examterm-parents-visibility"> Show results to parents in Parent Portal';
+        bodyHTML += '  </label>';
+        bodyHTML += '</div>';
 
         var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         footerHTML += '<button class="btn btn-primary" id="admin-save-examterm-btn">Save Term</button>';
@@ -3924,6 +3935,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
               isFinal: isFinal,
               examType: examType,
               rulesVersion: 'v2', // New terms get rulesVersion v2 by default
+              showResultsToParents: !!(document.getElementById('admin-examterm-parents-visibility') && document.getElementById('admin-examterm-parents-visibility').checked),
               createdAt: new Date().toISOString(),
               createdBy: SchoolApp.currentUser ? SchoolApp.currentUser.username : 'admin',
               order: Object.keys(SchoolApp.store.examTerms).length + 1
@@ -3984,6 +3996,40 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
       });
     });
 
+    // Term Show to Parents Toggle (Targeted Write — no full-store rewrite)
+    document.querySelectorAll('.exam-term-parents-toggle').forEach(function(toggle) {
+      toggle.addEventListener('change', async function() {
+        var tId = this.getAttribute('data-id');
+        var checked = this.checked;
+        var labelSpan = this.parentElement.querySelector('span');
+        if (labelSpan) {
+          labelSpan.textContent = checked ? 'Visible' : 'Hidden';
+          labelSpan.style.color = checked ? '#16A34A' : 'var(--text-muted, #64748B)';
+        }
+
+        var currentSchoolId = (SchoolApp.store && SchoolApp.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+        if (SchoolApp.store && SchoolApp.store.examTerms && SchoolApp.store.examTerms[tId]) {
+          SchoolApp.store.examTerms[tId].showResultsToParents = checked;
+        }
+
+        if (window.firestore && window.firestore.updateDoc && currentSchoolId) {
+          try {
+            var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+            var updatePayload = {};
+            updatePayload['examTerms.' + tId + '.showResultsToParents'] = checked;
+            await window.firestore.updateDoc(tenantRef, updatePayload);
+            console.log('[Exams] Targeted write updated showResultsToParents=' + checked + ' for term ' + tId);
+            SchoolApp.showToast(checked ? 'Term results are now visible to parents' : 'Term results hidden from parents', 'info');
+          } catch (err) {
+            console.warn('[Exams] Direct targeted write failed, falling back to SchoolApp.save:', err.message);
+            await SchoolApp.save(true);
+          }
+        } else {
+          await SchoolApp.save(true);
+        }
+      });
+    });
+
     // Edit Term
     document.querySelectorAll('.exam-edit-term-btn').forEach(function(btn) {
       btn.addEventListener('click', function() {
@@ -4026,6 +4072,11 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         bodyHTML += '    <input type="checkbox" id="exam-term-is-final"' + (term.isFinal ? ' checked' : '') + '> Final / Annual Examination (Enables Promotion Status on Report Cards)';
         bodyHTML += '  </label>';
         bodyHTML += '</div>';
+        bodyHTML += '<div class="form-group mb-3">';
+        bodyHTML += '  <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; font-size:13px;">';
+        bodyHTML += '    <input type="checkbox" id="admin-examterm-parents-visibility"' + (term.showResultsToParents ? ' checked' : '') + '> Show results to parents in Parent Portal';
+        bodyHTML += '  </label>';
+        bodyHTML += '</div>';
 
         var footerHTML = '<button class="btn btn-secondary modal-close-btn">Cancel</button>';
         footerHTML += '<button class="btn btn-primary" id="admin-update-examterm-btn">Save Changes</button>';
@@ -4054,6 +4105,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
             term.weightage = weight;
             term.examType = (document.getElementById('admin-examterm-type') && document.getElementById('admin-examterm-type').value) || 'main';
             term.isFinal = isFinal;
+            term.showResultsToParents = !!(document.getElementById('admin-examterm-parents-visibility') && document.getElementById('admin-examterm-parents-visibility').checked);
 
             var success = await SchoolApp.save();
             if (success) {
