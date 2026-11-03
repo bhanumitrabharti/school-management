@@ -156,7 +156,7 @@ async function seedEmulator() {
 
 async function runSmokeTest() {
   console.log('================================================================');
-  console.log('   PLAYWRIGHT UI SMOKE TEST: ADMIN TABS & TEACHER PAGES (v76)  ');
+  console.log('   PLAYWRIGHT UI SMOKE TEST: ADMIN TABS & TEACHER PAGES (v77)  ');
   console.log('================================================================');
 
   await seedEmulator();

@@ -13,6 +13,8 @@ service-account-key.json
 backups/
 scratch/
 firestore-debug.log
+firebase-debug.log
+test/fixtures/
 firebase.json
 .firebaserc
 

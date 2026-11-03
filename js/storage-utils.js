@@ -262,6 +262,111 @@
     };
 
     /**
+     * Compresses any image file so that its output is guaranteed to be <= maxBytes (default 300 KB).
+     * Never rejects large input files (e.g. 1.2 MB or 10 MB); only rejects non-image files.
+     * Uses canvas to scale to maxDim (default 400px), then progressively lowers quality / dimensions if needed.
+     * @param {File|Blob} file 
+     * @param {number} maxDimension - maximum width/height in px (default 400)
+     * @param {number} maxBytes - maximum allowed file size in bytes (default 300 * 1024)
+     * @returns {Promise<Blob>}
+     */
+    StorageUtils.compressImageBlob = async function (file, maxDimension, maxBytes) {
+        maxDimension = maxDimension || 400;
+        maxBytes = maxBytes || (300 * 1024);
+
+        if (!file) {
+            throw new Error('No file provided for compression.');
+        }
+        if (!file.type || !file.type.startsWith('image/')) {
+            throw new Error('Please select an image file (PNG, JPEG, WebP, etc.).');
+        }
+
+        // SVG files are vector XML text. If already within maxBytes, preserve as-is.
+        if (file.type === 'image/svg+xml' || (file.name && file.name.toLowerCase().endsWith('.svg'))) {
+            if (file.size <= maxBytes) {
+                return file;
+            }
+        }
+
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = (err) => reject(new Error('Failed to read image file: ' + (err && err.message || 'unknown error')));
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onerror = () => reject(new Error('Invalid or corrupted image file.'));
+                img.onload = () => {
+                    try {
+                        const isPng = (file.type === 'image/png' || (file.name && file.name.toLowerCase().endsWith('.png')));
+                        
+                        const renderToBlob = (dim, quality, mimeType) => {
+                            return new Promise((resBlob) => {
+                                const canvas = document.createElement('canvas');
+                                let targetW = img.width;
+                                let targetH = img.height;
+                                if (targetW > dim || targetH > dim) {
+                                    if (targetW > targetH) {
+                                        targetH = Math.round(targetH * dim / targetW);
+                                        targetW = dim;
+                                    } else {
+                                        targetW = Math.round(targetW * dim / targetH);
+                                        targetH = dim;
+                                    }
+                                }
+                                canvas.width = Math.max(1, targetW);
+                                canvas.height = Math.max(1, targetH);
+                                const ctx = canvas.getContext('2d');
+                                if (mimeType === 'image/jpeg') {
+                                    ctx.fillStyle = '#FFFFFF';
+                                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                }
+                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                                canvas.toBlob((blob) => {
+                                    resBlob(blob);
+                                }, mimeType, quality);
+                            });
+                        };
+
+                        (async () => {
+                            let currentDim = maxDimension;
+                            // If original is PNG, try PNG export first to preserve transparency
+                            if (isPng) {
+                                const pngBlob = await renderToBlob(currentDim, 1.0, 'image/png');
+                                if (pngBlob && pngBlob.size <= maxBytes) {
+                                    return resolve(pngBlob);
+                                }
+                            }
+
+                            // Otherwise, compress as JPEG with progressive quality reduction
+                            let quality = 0.85;
+                            let blob = await renderToBlob(currentDim, quality, 'image/jpeg');
+                            while (blob && blob.size > maxBytes && quality > 0.40) {
+                                quality -= 0.15;
+                                blob = await renderToBlob(currentDim, quality, 'image/jpeg');
+                            }
+
+                            // If still exceeds maxBytes, downscale dimensions
+                            while (blob && blob.size > maxBytes && currentDim > 120) {
+                                currentDim = Math.round(currentDim * 0.75);
+                                blob = await renderToBlob(currentDim, 0.70, 'image/jpeg');
+                            }
+
+                            if (!blob) {
+                                return reject(new Error('Image compression produced an empty result.'));
+                            }
+
+                            resolve(blob);
+                        })().catch(reject);
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    };
+
+    /**
      * Uploads school logo to Firebase Storage.
      * @param {File} file
      * @param {string} schoolId
@@ -270,27 +375,38 @@
      */
     StorageUtils.uploadSchoolLogo = async function (file, schoolId, progressElementId) {
         if (!window.storage || !window.storageSDK) {
-            console.error('[StorageUtils] Firebase Storage not initialized.');
+            console.error('[StorageUtils] Firebase Storage not initialized (window.storage or window.storageSDK missing).');
+            return null;
+        }
+        if (!file || !file.type || !file.type.startsWith('image/')) {
+            console.error('[StorageUtils] uploadSchoolLogo failed: selected file is not an image.');
             return null;
         }
         var progressEl = progressElementId ? document.getElementById(progressElementId) : null;
         try {
-            if (progressEl) progressEl.textContent = 'Uploading logo...';
-            var compressedBase64 = await StorageUtils.compressAndResizeLogo(file);
-            // Convert base64 → Blob for Storage upload
-            var res = await fetch(compressedBase64);
-            var blob = await res.blob();
-            var ext = (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')) ? 'png' : 'jpg';
+            if (progressEl) {
+                progressEl.textContent = 'Processing & compressing logo...';
+                progressEl.style.display = 'block';
+            }
+            var compressedBlob = await StorageUtils.compressImageBlob(file, 400, 300 * 1024);
+            if (progressEl) progressEl.textContent = 'Uploading logo (' + Math.round(compressedBlob.size / 1024) + ' KB)...';
+
+            var ext = (compressedBlob.type === 'image/png' || (file.name && file.name.toLowerCase().endsWith('.png'))) ? 'png' : 'jpg';
             var storagePath = 'schools/' + schoolId + '/logo.' + ext;
             var storageRef = window.storageSDK.ref(window.storage, storagePath);
-            var snapshot = await window.storageSDK.uploadBytes(storageRef, blob);
+            var snapshot = await window.storageSDK.uploadBytes(storageRef, compressedBlob);
             var downloadURL = await window.storageSDK.getDownloadURL(snapshot.ref);
-            if (progressEl) progressEl.style.display = 'none';
+            if (progressEl) {
+                progressEl.textContent = 'Upload complete!';
+                setTimeout(function() { if (progressEl.textContent === 'Upload complete!') progressEl.style.display = 'none'; }, 2000);
+            }
             console.log('[StorageUtils] Logo uploaded for', schoolId, '→', downloadURL);
             return downloadURL;
         } catch (e) {
             console.error('[StorageUtils] uploadSchoolLogo failed:', e);
-            if (progressEl) { progressEl.textContent = 'Logo upload failed.'; }
+            if (progressEl) {
+                progressEl.textContent = 'Logo upload failed: ' + (e && e.message || 'unknown error');
+            }
             return null;
         }
     };
@@ -305,25 +421,38 @@
      */
     StorageUtils.uploadPrincipalSignature = async function (file, schoolId, progressElementId) {
         if (!window.storage || !window.storageSDK) {
-            console.error('[StorageUtils] Firebase Storage not initialized.');
+            console.error('[StorageUtils] Firebase Storage not initialized (window.storage or window.storageSDK missing).');
+            return null;
+        }
+        if (!file || !file.type || !file.type.startsWith('image/')) {
+            console.error('[StorageUtils] uploadPrincipalSignature failed: selected file is not an image.');
             return null;
         }
         var progressEl = progressElementId ? document.getElementById(progressElementId) : null;
         try {
-            if (progressEl) progressEl.textContent = 'Uploading signature...';
-            var ext = (file.type === 'image/png' || file.name.toLowerCase().endsWith('.png')) ? 'png' : 'jpg';
-            // Compress signature image to reasonable dimensions for web rendering
-            var compressedFile = await StorageUtils.compressImage(file, 400, 0.85);
+            if (progressEl) {
+                progressEl.textContent = 'Processing & compressing signature...';
+                progressEl.style.display = 'block';
+            }
+            var compressedBlob = await StorageUtils.compressImageBlob(file, 400, 300 * 1024);
+            if (progressEl) progressEl.textContent = 'Uploading signature (' + Math.round(compressedBlob.size / 1024) + ' KB)...';
+
+            var ext = (compressedBlob.type === 'image/png' || (file.name && file.name.toLowerCase().endsWith('.png'))) ? 'png' : 'jpg';
             var storagePath = 'schools/' + schoolId + '/signature.' + ext;
             var storageRef = window.storageSDK.ref(window.storage, storagePath);
-            var snapshot = await window.storageSDK.uploadBytes(storageRef, compressedFile);
+            var snapshot = await window.storageSDK.uploadBytes(storageRef, compressedBlob);
             var downloadURL = await window.storageSDK.getDownloadURL(snapshot.ref);
-            if (progressEl) progressEl.style.display = 'none';
+            if (progressEl) {
+                progressEl.textContent = 'Upload complete!';
+                setTimeout(function() { if (progressEl.textContent === 'Upload complete!') progressEl.style.display = 'none'; }, 2000);
+            }
             console.log('[StorageUtils] Signature uploaded for', schoolId, '→', downloadURL);
             return downloadURL;
         } catch (e) {
             console.error('[StorageUtils] uploadPrincipalSignature failed:', e);
-            if (progressEl) { progressEl.textContent = 'Signature upload failed.'; }
+            if (progressEl) {
+                progressEl.textContent = 'Signature upload failed: ' + (e && e.message || 'unknown error');
+            }
             return null;
         }
     };

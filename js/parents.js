@@ -150,23 +150,49 @@ function setupTurnstile() {
   const container = document.getElementById('turnstile-widget');
   if (!container) return;
 
-  if (window.turnstile && window.TURNSTILE_SITE_KEY) {
-    try {
-      state.turnstileWidgetId = window.turnstile.render('#turnstile-widget', {
-        sitekey: window.TURNSTILE_SITE_KEY,
-        theme: document.documentElement.getAttribute('data-theme') || 'auto',
-        callback: function(token) {
-          state.turnstileToken = token;
-        },
-        'expired-callback': function() {
-          state.turnstileToken = '';
-        }
-      });
-    } catch (e) {
-      console.warn('[Parents] Turnstile render warning:', e);
+  if (state.turnstileWidgetId !== null) return;
+
+  if (!window.turnstile) {
+    if (!state._turnstileRetryCount) state._turnstileRetryCount = 0;
+    if (state._turnstileRetryCount < 30) {
+      state._turnstileRetryCount++;
+      setTimeout(setupTurnstile, 200);
     }
+    return;
+  }
+
+  const isLocalhost = window.__FORCE_PROD_MODE__ ? false : (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  let sitekey = window.TURNSTILE_SITE_KEY;
+  if (isLocalhost) {
+    sitekey = '1x00000000000000000000AA';
+  }
+
+  if (!sitekey) {
+    console.warn('[Parents] Turnstile site key missing.');
+    return;
+  }
+
+  try {
+    state.turnstileWidgetId = window.turnstile.render('#turnstile-widget', {
+      sitekey: sitekey,
+      theme: document.documentElement.getAttribute('data-theme') || 'auto',
+      callback: function(token) {
+        state.turnstileToken = token;
+        hideAlert(elements.emailAlert);
+      },
+      'expired-callback': function() {
+        state.turnstileToken = '';
+      },
+      'error-callback': function() {
+        state.turnstileToken = '';
+      }
+    });
+  } catch (e) {
+    console.warn('[Parents] Turnstile render warning:', e);
   }
 }
+
+window.onloadTurnstileCallback = setupTurnstile;
 
 // --- Timer Utilities ---
 function startResendCountdown(seconds) {
@@ -198,6 +224,12 @@ async function handleSendOtp(e) {
     return;
   }
 
+  const isLocalhost = window.__FORCE_PROD_MODE__ ? false : (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  if (!state.turnstileToken && !isLocalhost) {
+    showAlert(elements.emailAlert, 'Please complete the security check.');
+    return;
+  }
+
   state.email = email;
   elements.btnSendOtp.disabled = true;
   elements.btnSendOtp.innerHTML = '<span>Sending code...</span>';
@@ -208,14 +240,19 @@ async function handleSendOtp(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: email,
-        turnstileToken: state.turnstileToken || 'mock_token'
+        turnstileToken: state.turnstileToken || (isLocalhost ? 'mock-client-token' : '')
       })
     });
 
-    const data = await resp.json();
+    let data;
+    try {
+      data = await resp.json();
+    } catch (parseErr) {
+      data = {};
+    }
 
     if (!resp.ok) {
-      throw new Error(data.error || 'Failed to send verification code.');
+      throw new Error(data.error || ('Failed to send verification code (' + resp.status + ').'));
     }
 
     state.sessionId = data.sessionId;
@@ -224,9 +261,14 @@ async function handleSendOtp(e) {
     showView('otp');
     startResendCountdown(data.resendCooldownSeconds || 60);
   } catch (err) {
-    showAlert(elements.emailAlert, err.message);
-    if (window.turnstile && state.turnstileWidgetId) {
-      window.turnstile.reset(state.turnstileWidgetId);
+    showAlert(elements.emailAlert, err.message || 'Failed to send verification code. Please try again.');
+    if (window.turnstile && state.turnstileWidgetId !== null) {
+      try {
+        window.turnstile.reset(state.turnstileWidgetId);
+        state.turnstileToken = '';
+      } catch (rstErr) {
+        // ignore
+      }
     }
   } finally {
     elements.btnSendOtp.disabled = false;
@@ -257,14 +299,19 @@ async function handleVerifyOtp(e) {
       })
     });
 
-    const data = await resp.json();
+    let data;
+    try {
+      data = await resp.json();
+    } catch (parseErr) {
+      data = {};
+    }
 
     if (!resp.ok) {
-      throw new Error(data.error || 'Verification failed. Please check your code.');
+      throw new Error(data.error || ('Verification failed. Please check your code. (' + resp.status + ')'));
     }
 
     if (data.notFound) {
-      showAlert(elements.otpAlert, data.message, 'info');
+      showAlert(elements.otpAlert, data.message || 'No student records associated with this email.', 'info');
       return;
     }
 
@@ -277,7 +324,7 @@ async function handleVerifyOtp(e) {
     
     // Auth state observer will automatically trigger fetchContextAndLoad()
   } catch (err) {
-    showAlert(elements.otpAlert, err.message);
+    showAlert(elements.otpAlert, err.message || 'Verification failed. Please try again.');
   } finally {
     elements.btnVerifyOtp.disabled = false;
     elements.btnVerifyOtp.innerHTML = '<span>Verify & Log In</span><span class="material-icons-round" style="font-size:18px;">check</span>';

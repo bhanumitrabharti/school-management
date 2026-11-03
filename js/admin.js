@@ -72,17 +72,46 @@
     if (input) input.click();
   };
 
-  window.removeLogo = function() {
+  window.removeLogo = async function() {
     if (!confirm('Remove school logo?')) return;
     if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
     SchoolApp.store.settings.schoolLogo = '';
-    SchoolApp.store.settings.logoUrl = ''; SchoolApp.store.settings.logoStorageUrl = '';
-    if (SchoolApp.store.settings.schoolInfo) {
-      SchoolApp.store.settings.schoolInfo.schoolLogo = '';
-      SchoolApp.store.settings.schoolInfo.logoUrl = '';
+    SchoolApp.store.settings.logoUrl = '';
+    SchoolApp.store.settings.logoStorageUrl = '';
+    if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+    SchoolApp.store.settings.schoolInfo.schoolLogo = '';
+    SchoolApp.store.settings.schoolInfo.logoUrl = '';
+    SchoolApp.store.settings.schoolInfo.logoStorageUrl = '';
+
+    var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
+    if (window.firestore && window.firestore.updateDoc && currentSchoolId) {
+      try {
+        var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+        await window.firestore.updateDoc(tenantRef, {
+          'settings.logoStorageUrl': '',
+          'settings.logoUrl': '',
+          'settings.schoolLogo': '',
+          'settings.schoolInfo.logoStorageUrl': '',
+          'settings.schoolInfo.logoUrl': '',
+          'settings.schoolInfo.schoolLogo': ''
+        });
+        var schoolDocRef = window.firestore.doc(window.db, 'schools', currentSchoolId);
+        await window.firestore.updateDoc(schoolDocRef, {
+          logo_url: ''
+        });
+        if (SchoolApp.matchedSchool) {
+          SchoolApp.matchedSchool.logo_url = '';
+        }
+      } catch (dotErr) {
+        console.warn('[AdminSettings] Dot-path removeLogo write error:', dotErr);
+      }
     }
-    SchoolApp.save(true);
+
+    await SchoolApp.save(true);
+    var input = document.getElementById('school-logo-input') || document.getElementById('logo-file-input');
+    if (input) input.value = '';
     showLogoPreview('');
+    SchoolApp.updateBrandUI();
     showLogoStatus('info', 'Logo removed');
     SchoolApp.showToast('Logo removed', 'info');
   };
@@ -91,35 +120,45 @@
     var file = input.files && input.files[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      SchoolApp.showToast('Please select an image file', 'error');
+    if (!file.type || !file.type.startsWith('image/')) {
+      SchoolApp.showToast('Please select a valid image file', 'error');
       showLogoStatus('error', '❌ Please select a valid image file');
       return;
     }
 
-    if (file.size > 500 * 1024) {
-      SchoolApp.showToast('Logo size should be under 500KB', 'error');
-      showLogoStatus('error', '❌ Logo size should be under 500KB');
-      return;
-    }
-
-    showLogoStatus('processing', 'Uploading...');
+    showLogoStatus('processing', 'Compressing & uploading logo...');
 
     var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
     var isV2 = SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId);
 
     if (isV2 && window.StorageUtils && window.StorageUtils.uploadSchoolLogo) {
       try {
-        var downloadUrl = await StorageUtils.uploadSchoolLogo(file, currentSchoolId);
+        var downloadUrl = await StorageUtils.uploadSchoolLogo(file, currentSchoolId, 'logo-status-container');
         if (downloadUrl) {
           if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
           SchoolApp.store.settings.logoStorageUrl = downloadUrl;
-          if (SchoolApp.store.settings.schoolInfo) {
-            SchoolApp.store.settings.schoolInfo.logoStorageUrl = downloadUrl;
+          SchoolApp.store.settings.logoUrl = downloadUrl;
+          if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+          SchoolApp.store.settings.schoolInfo.logoStorageUrl = downloadUrl;
+          SchoolApp.store.settings.schoolInfo.logoUrl = downloadUrl;
+
+          if (window.firestore && window.firestore.updateDoc && currentSchoolId) {
+            try {
+              var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+              await window.firestore.updateDoc(tenantRef, {
+                'settings.logoStorageUrl': downloadUrl,
+                'settings.logoUrl': downloadUrl,
+                'settings.schoolInfo.logoStorageUrl': downloadUrl,
+                'settings.schoolInfo.logoUrl': downloadUrl
+              });
+            } catch (dotErr) {
+              console.warn('[AdminSettings] Dot-path write for logoStorageUrl failed:', dotErr);
+            }
           }
-          // Non-destructive: base64 fields (logoUrl, schoolLogo) left untouched until cleanup
+
           await SchoolApp.save(true);
           showLogoPreview(downloadUrl);
+          SchoolApp.updateBrandUI();
           showLogoStatus('success', '✅ School Logo uploaded successfully!');
           SchoolApp.showToast('School Logo uploaded successfully!', 'success');
           return;
@@ -127,38 +166,47 @@
           throw new Error('Upload returned empty download URL');
         }
       } catch (uploadErr) {
-        console.error('V2 Logo upload error:', uploadErr);
-        showLogoStatus('error', '❌ Upload failed: ' + uploadErr.message);
-        SchoolApp.showToast('Upload failed: ' + uploadErr.message, 'error');
+        console.error('Logo upload error:', uploadErr);
+        showLogoStatus('error', '❌ Upload failed: ' + (uploadErr && uploadErr.message || 'unknown error'));
+        SchoolApp.showToast('Upload failed: ' + (uploadErr && uploadErr.message || 'unknown error'), 'error');
         return;
       }
     }
 
-    var reader = new FileReader();
-    reader.onload = async function(ev) {
-      try {
-        var rawBase64 = ev.target.result;
-        var compressed = await compressImage(rawBase64, 300, 300);
+    // Fallback for v1
+    try {
+      showLogoStatus('processing', 'Compressing logo...');
+      var compressedBlob = (window.StorageUtils && window.StorageUtils.compressImageBlob)
+        ? await StorageUtils.compressImageBlob(file, 300, 300 * 1024)
+        : file;
+      var reader = new FileReader();
+      reader.onload = async function(ev) {
+        try {
+          var compressedBase64 = ev.target.result;
+          if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+          SchoolApp.store.settings.schoolLogo = compressedBase64;
+          SchoolApp.store.settings.logoUrl = compressedBase64;
+          if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+          SchoolApp.store.settings.schoolInfo.schoolLogo = compressedBase64;
+          SchoolApp.store.settings.schoolInfo.logoUrl = compressedBase64;
 
-        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
-        SchoolApp.store.settings.schoolLogo = compressed;
-        SchoolApp.store.settings.logoUrl = compressed;
-        if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
-        SchoolApp.store.settings.schoolInfo.schoolLogo = compressed;
-        SchoolApp.store.settings.schoolInfo.logoUrl = compressed;
-
-        await SchoolApp.save(true);
-
-        showLogoPreview(compressed);
-        showLogoStatus('success', '✅ School Logo uploaded successfully!');
-        SchoolApp.showToast('School Logo uploaded successfully!', 'success');
-      } catch(err) {
-        console.error('Logo upload error:', err);
-        showLogoStatus('error', '❌ Upload failed. Try again.');
-        SchoolApp.showToast('Upload failed. Try again.', 'error');
-      }
-    };
-    reader.readAsDataURL(file);
+          await SchoolApp.save(true);
+          showLogoPreview(compressedBase64);
+          SchoolApp.updateBrandUI();
+          showLogoStatus('success', '✅ School Logo uploaded successfully!');
+          SchoolApp.showToast('School Logo uploaded successfully!', 'success');
+        } catch (saveErr) {
+          console.error('Logo save error:', saveErr);
+          showLogoStatus('error', '❌ Upload failed: ' + saveErr.message);
+          SchoolApp.showToast('Upload failed: ' + saveErr.message, 'error');
+        }
+      };
+      reader.readAsDataURL(compressedBlob);
+    } catch (compErr) {
+      console.error('Logo compression error:', compErr);
+      showLogoStatus('error', '❌ Compression failed: ' + compErr.message);
+      SchoolApp.showToast('Compression failed: ' + compErr.message, 'error');
+    }
   };
 
   function showSignatureStatus(type, msg) {
@@ -191,14 +239,33 @@
     if (input) input.click();
   };
 
-  window.removeSignature = function() {
+  window.removeSignature = async function() {
     if (!confirm('Remove digital signature?')) return;
     if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
-    SchoolApp.store.settings.principalSignatureUrl = ''; SchoolApp.store.settings.principalSignatureStorageUrl = '';
-    if (SchoolApp.store.settings.schoolInfo) {
-      SchoolApp.store.settings.schoolInfo.principalSignatureUrl = '';
+    SchoolApp.store.settings.principalSignatureUrl = '';
+    SchoolApp.store.settings.principalSignatureStorageUrl = '';
+    if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+    SchoolApp.store.settings.schoolInfo.principalSignatureUrl = '';
+    SchoolApp.store.settings.schoolInfo.principalSignatureStorageUrl = '';
+
+    var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
+    if (window.firestore && window.firestore.updateDoc && currentSchoolId) {
+      try {
+        var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+        await window.firestore.updateDoc(tenantRef, {
+          'settings.principalSignatureStorageUrl': '',
+          'settings.principalSignatureUrl': '',
+          'settings.schoolInfo.principalSignatureStorageUrl': '',
+          'settings.schoolInfo.principalSignatureUrl': ''
+        });
+      } catch (dotErr) {
+        console.warn('[AdminSettings] Dot-path removeSignature write error:', dotErr);
+      }
     }
-    SchoolApp.save(true);
+
+    await SchoolApp.save(true);
+    var input = document.getElementById('settings-signature-upload');
+    if (input) input.value = '';
     showSignaturePreview('');
     showSignatureStatus('info', 'Signature removed');
     SchoolApp.showToast('Signature removed', 'info');
@@ -208,76 +275,89 @@
     var file = input.files && input.files[0];
     if (!file) return;
 
-    console.log('[AdminSettings] handleSignatureSelect called with file:', file.name, file.size, file.type);
-
-    if (!file.type.startsWith('image/')) {
+    if (!file.type || !file.type.startsWith('image/')) {
       SchoolApp.showToast('Please select an image file (PNG or JPEG)', 'error');
       showSignatureStatus('error', '❌ Please select a valid image file');
       return;
     }
 
-    if (file.size > 500 * 1024) {
-      SchoolApp.showToast('Signature file size should be under 500KB', 'error');
-      showSignatureStatus('error', '❌ File size should be under 500KB');
-      return;
-    }
-
-    showSignatureStatus('processing', 'Uploading signature...');
+    showSignatureStatus('processing', 'Compressing & uploading signature...');
 
     var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
     var isV2 = SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId);
 
     if (isV2 && window.StorageUtils && window.StorageUtils.uploadPrincipalSignature) {
       try {
-        var downloadUrl = await StorageUtils.uploadPrincipalSignature(file, currentSchoolId);
+        var downloadUrl = await StorageUtils.uploadPrincipalSignature(file, currentSchoolId, 'signature-status-container');
         if (downloadUrl) {
           if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
           SchoolApp.store.settings.principalSignatureStorageUrl = downloadUrl;
-          if (SchoolApp.store.settings.schoolInfo) {
-            SchoolApp.store.settings.schoolInfo.principalSignatureStorageUrl = downloadUrl;
+          SchoolApp.store.settings.principalSignatureUrl = downloadUrl;
+          if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+          SchoolApp.store.settings.schoolInfo.principalSignatureStorageUrl = downloadUrl;
+          SchoolApp.store.settings.schoolInfo.principalSignatureUrl = downloadUrl;
+
+          if (window.firestore && window.firestore.updateDoc && currentSchoolId) {
+            try {
+              var tenantRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId);
+              await window.firestore.updateDoc(tenantRef, {
+                'settings.principalSignatureStorageUrl': downloadUrl,
+                'settings.principalSignatureUrl': downloadUrl,
+                'settings.schoolInfo.principalSignatureStorageUrl': downloadUrl,
+                'settings.schoolInfo.principalSignatureUrl': downloadUrl
+              });
+            } catch (dotErr) {
+              console.warn('[AdminSettings] Dot-path write for signatureStorageUrl failed:', dotErr);
+            }
           }
-          // Non-destructive: base64 fields (principalSignatureUrl) left untouched until cleanup
+
           await SchoolApp.save(true);
           showSignaturePreview(downloadUrl);
           showSignatureStatus('success', '✅ Digital signature uploaded successfully!');
           SchoolApp.showToast('Digital signature uploaded successfully!', 'success');
-          console.log('[AdminSettings] V2 Digital signature saved successfully via StorageUtils.');
           return;
         } else {
           throw new Error('Upload returned empty download URL');
         }
       } catch (uploadErr) {
-        console.error('V2 Signature upload error:', uploadErr);
-        showSignatureStatus('error', '❌ Upload failed: ' + uploadErr.message);
-        SchoolApp.showToast('Upload failed: ' + uploadErr.message, 'error');
+        console.error('Signature upload error:', uploadErr);
+        showSignatureStatus('error', '❌ Upload failed: ' + (uploadErr && uploadErr.message || 'unknown error'));
+        SchoolApp.showToast('Upload failed: ' + (uploadErr && uploadErr.message || 'unknown error'), 'error');
         return;
       }
     }
 
-    var reader = new FileReader();
-    reader.onload = async function(ev) {
-      try {
-        var rawBase64 = ev.target.result;
-        var compressed = await compressImage(rawBase64, 400, 150);
+    // Fallback for v1
+    try {
+      showSignatureStatus('processing', 'Compressing signature...');
+      var compressedBlob = (window.StorageUtils && window.StorageUtils.compressImageBlob)
+        ? await StorageUtils.compressImageBlob(file, 400, 300 * 1024)
+        : file;
+      var reader = new FileReader();
+      reader.onload = async function(ev) {
+        try {
+          var compressedBase64 = ev.target.result;
+          if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
+          SchoolApp.store.settings.principalSignatureUrl = compressedBase64;
+          if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+          SchoolApp.store.settings.schoolInfo.principalSignatureUrl = compressedBase64;
 
-        if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
-        SchoolApp.store.settings.principalSignatureUrl = compressed;
-        if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
-        SchoolApp.store.settings.schoolInfo.principalSignatureUrl = compressed;
-
-        await SchoolApp.save(true);
-
-        showSignaturePreview(compressed);
-        showSignatureStatus('success', '✅ Digital signature uploaded successfully!');
-        SchoolApp.showToast('Digital signature uploaded successfully!', 'success');
-        console.log('[AdminSettings] Digital signature saved successfully.');
-      } catch(err) {
-        console.error('Signature upload error:', err);
-        showSignatureStatus('error', '❌ Upload failed: ' + err.message);
-        SchoolApp.showToast('Upload failed: ' + err.message, 'error');
-      }
-    };
-    reader.readAsDataURL(file);
+          await SchoolApp.save(true);
+          showSignaturePreview(compressedBase64);
+          showSignatureStatus('success', '✅ Digital signature uploaded successfully!');
+          SchoolApp.showToast('Digital signature uploaded successfully!', 'success');
+        } catch (saveErr) {
+          console.error('Signature save error:', saveErr);
+          showSignatureStatus('error', '❌ Upload failed: ' + saveErr.message);
+          SchoolApp.showToast('Upload failed: ' + saveErr.message, 'error');
+        }
+      };
+      reader.readAsDataURL(compressedBlob);
+    } catch (compErr) {
+      console.error('Signature compression error:', compErr);
+      showSignatureStatus('error', '❌ Compression failed: ' + compErr.message);
+      SchoolApp.showToast('Compression failed: ' + compErr.message, 'error');
+    }
   };
 
   var state = {
@@ -3026,7 +3106,7 @@
     html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
     
     
-        var logoSrc = s.logoStorageUrl || s.schoolLogo || s.logoUrl || (s.schoolInfo && (s.schoolInfo.logoStorageUrl || s.schoolInfo.schoolLogo || s.schoolInfo.logoUrl)) || '';
+    var logoSrc = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(s) : (s.logoStorageUrl || s.logoUrl || s.schoolLogo || '');
     html += '        <div class="form-group">';
     html += '          <label class="form-label">School Logo</label>';
     html += '          <input type="file" id="school-logo-input" accept="image/*" class="form-input" onchange="window.handleLogoSelect(this)" />';
@@ -3051,7 +3131,7 @@
     html += '          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Appears on certificates, admit cards, and official documents</div>';
     html += '        </div>';
 
-    var sigSrc = s.principalSignatureStorageUrl || s.principalSignatureUrl || (s.schoolInfo && (s.schoolInfo.principalSignatureStorageUrl || s.schoolInfo.principalSignatureUrl)) || '';
+    var sigSrc = (window.SchoolApp && window.SchoolApp.getSignatureUrl) ? window.SchoolApp.getSignatureUrl(s) : (s.principalSignatureStorageUrl || s.principalSignatureUrl || '');
     html += '        <div class="form-group">';
     html += '          <label class="form-label">Digital Signature</label>';
     html += '          <input type="file" id="settings-signature-upload" accept="image/png, image/jpeg" class="form-input" onchange="window.handleSignatureSelect(this)" />';
@@ -5405,52 +5485,111 @@
 
         if (!SchoolApp.store.settings) SchoolApp.store.settings = {};
 
-        // Upload logo if selected
-        const logoFile = document.getElementById("logo-file-input")?.files[0];
+        var currentSchoolId = SchoolApp.store && SchoolApp.store.currentSchoolId;
+        var isV2 = SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(currentSchoolId);
+
+        // Upload logo if selected (Entry point 2: School Settings form save)
+        const logoInput = document.getElementById("school-logo-input") || document.getElementById("logo-file-input");
+        const logoFile = logoInput?.files && logoInput.files[0];
         if (logoFile) {
+          if (!logoFile.type || !logoFile.type.startsWith('image/')) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnHTML;
+            SchoolApp.showToast('Please select a valid image file for logo', 'error');
+            showLogoStatus('error', '❌ Please select a valid image file for logo');
+            return;
+          }
+
           SchoolApp.showLoader('Uploading logo...');
           try {
-            const uploadedLogo = await StorageUtils.uploadSchoolLogo(logoFile, SchoolApp.store.currentSchoolId, "logo-progress");
-            if (uploadedLogo) {
-              if (SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(SchoolApp.store.currentSchoolId)) {
+            if (isV2 && window.StorageUtils && window.StorageUtils.uploadSchoolLogo) {
+              const uploadedLogo = await StorageUtils.uploadSchoolLogo(logoFile, currentSchoolId, "logo-status-container");
+              if (uploadedLogo) {
                 SchoolApp.store.settings.logoStorageUrl = uploadedLogo;
-                if (SchoolApp.store.settings.schoolInfo) {
-                  SchoolApp.store.settings.schoolInfo.logoStorageUrl = uploadedLogo;
-                }
-              } else {
                 SchoolApp.store.settings.logoUrl = uploadedLogo;
-                SchoolApp.store.settings.schoolLogo = uploadedLogo;
+                if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+                SchoolApp.store.settings.schoolInfo.logoStorageUrl = uploadedLogo;
+                SchoolApp.store.settings.schoolInfo.logoUrl = uploadedLogo;
+              } else {
+                throw new Error('Logo upload returned empty download URL');
               }
             } else {
-              // Fallback to base64 preview data URL for v1 only
-              const logoPreview = document.getElementById("logo-preview");
-              if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
-                if (!(SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(SchoolApp.store.currentSchoolId))) {
-                  SchoolApp.store.settings.logoUrl = logoPreview.src;
-                  SchoolApp.store.settings.schoolLogo = logoPreview.src;
-                }
-              }
+              // Fallback for v1
+              const compressedBlob = (window.StorageUtils && window.StorageUtils.compressImageBlob)
+                ? await StorageUtils.compressImageBlob(logoFile, 300, 300 * 1024)
+                : logoFile;
+              const b64 = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = e => res(e.target.result);
+                r.onerror = rej;
+                r.readAsDataURL(compressedBlob);
+              });
+              SchoolApp.store.settings.logoUrl = b64;
+              SchoolApp.store.settings.schoolLogo = b64;
+              if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+              SchoolApp.store.settings.schoolInfo.logoUrl = b64;
+              SchoolApp.store.settings.schoolInfo.schoolLogo = b64;
             }
           } catch (err) {
-            console.warn("Logo upload failed:", err.message);
-            // Fallback to base64 preview data URL for v1 only
-            const logoPreview = document.getElementById("logo-preview");
-            if (logoPreview && logoPreview.src && logoPreview.src.startsWith("data:image/")) {
-              if (!(SchoolApp.isStorageVersion2 && SchoolApp.isStorageVersion2(SchoolApp.store.currentSchoolId))) {
-                SchoolApp.store.settings.logoUrl = logoPreview.src;
-                SchoolApp.store.settings.schoolLogo = logoPreview.src;
-              }
-            }
+            console.error('[AdminSettings] Logo upload failed in saveSettings:', err);
+            SchoolApp.hideLoader();
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnHTML;
+            SchoolApp.showToast('Logo upload failed: ' + (err && err.message || 'unknown error'), 'error');
+            showLogoStatus('error', '❌ Logo upload failed: ' + (err && err.message || 'unknown error'));
+            return;
           }
         }
 
-        // Validate logo size to prevent Firestore 1MB document limit write failure
-        if (SchoolApp.store.settings.logoUrl && SchoolApp.store.settings.logoUrl.startsWith("data:") && SchoolApp.store.settings.logoUrl.length > 500000) {
-          SchoolApp.hideLoader();
-          SchoolApp.showToast("Logo file too large even after compression. Please use a smaller/simpler image.", "error");
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = originalBtnHTML;
-          return;
+        // Upload signature if selected (Entry point 2: School Settings form save)
+        const sigInput = document.getElementById("settings-signature-upload");
+        const sigFile = sigInput?.files && sigInput.files[0];
+        if (sigFile) {
+          if (!sigFile.type || !sigFile.type.startsWith('image/')) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnHTML;
+            SchoolApp.showToast('Please select a valid image file for signature', 'error');
+            showSignatureStatus('error', '❌ Please select a valid image file for signature');
+            return;
+          }
+
+          SchoolApp.showLoader('Uploading signature...');
+          try {
+            if (isV2 && window.StorageUtils && window.StorageUtils.uploadPrincipalSignature) {
+              const uploadedSig = await StorageUtils.uploadPrincipalSignature(sigFile, currentSchoolId, "signature-status-container");
+              if (uploadedSig) {
+                SchoolApp.store.settings.principalSignatureStorageUrl = uploadedSig;
+                SchoolApp.store.settings.principalSignatureUrl = uploadedSig;
+                if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+                SchoolApp.store.settings.schoolInfo.principalSignatureStorageUrl = uploadedSig;
+                SchoolApp.store.settings.schoolInfo.principalSignatureUrl = uploadedSig;
+              } else {
+                throw new Error('Signature upload returned empty download URL');
+              }
+            } else {
+              // Fallback for v1
+              const compressedBlob = (window.StorageUtils && window.StorageUtils.compressImageBlob)
+                ? await StorageUtils.compressImageBlob(sigFile, 400, 300 * 1024)
+                : sigFile;
+              const b64 = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = e => res(e.target.result);
+                r.onerror = rej;
+                r.readAsDataURL(compressedBlob);
+              });
+              SchoolApp.store.settings.principalSignatureUrl = b64;
+              if (!SchoolApp.store.settings.schoolInfo) SchoolApp.store.settings.schoolInfo = {};
+              SchoolApp.store.settings.schoolInfo.principalSignatureUrl = b64;
+            }
+          } catch (err) {
+            console.error('[AdminSettings] Signature upload failed in saveSettings:', err);
+            SchoolApp.hideLoader();
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnHTML;
+            SchoolApp.showToast('Signature upload failed: ' + (err && err.message || 'unknown error'), 'error');
+            showSignatureStatus('error', '❌ Signature upload failed: ' + (err && err.message || 'unknown error'));
+            return;
+          }
         }
 
         SchoolApp.showLoader('Saving settings...');
@@ -5582,6 +5721,8 @@
         if (success) {
           SchoolApp.showToast('Settings saved successfully!', 'success');
           SchoolApp.updateBrandUI();
+          showLogoPreview(SchoolApp.getLogoUrl(s));
+          showSignaturePreview(SchoolApp.getSignatureUrl(s));
         }
       });
     }

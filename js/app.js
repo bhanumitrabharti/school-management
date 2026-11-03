@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore, connectFirestoreEmulator, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, serverTimestamp, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion, runTransaction } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, connectStorageEmulator } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAPKi-0EjMjsA9q60rwEHeI2T9HTWPGklo",
@@ -55,13 +55,24 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v76';
+window.APP_VERSION = window.APP_VERSION || 'v77';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
 window.auth = authInst;
 window.firestore = { doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, FieldPath, waitForPendingWrites, terminate, clearIndexedDbPersistence, createFirestoreInstance, query, where, limit, orderBy, startAfter, writeBatch, deleteField, arrayUnion, runTransaction };
 const storage = getStorage(app);
+const urlParamsStorage = (typeof window !== 'undefined' && window.location) ? new URLSearchParams(window.location.search) : null;
+const storageEmulatorPort = (urlParamsStorage && urlParamsStorage.get('storage_emulator_port')) || (typeof window !== 'undefined' && window.__STORAGE_EMULATOR_PORT__);
+if (storageEmulatorPort) {
+  if (typeof window !== 'undefined') window.__STORAGE_EMULATOR_PORT__ = storageEmulatorPort;
+  try {
+    connectStorageEmulator(storage, '127.0.0.1', parseInt(storageEmulatorPort, 10));
+    console.log('[Firebase] Connected to local Storage emulator on 127.0.0.1:' + storageEmulatorPort);
+  } catch (e) {
+    console.warn('[Firebase] Storage emulator connection warning:', e);
+  }
+}
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
 window.openStudentProfile = function(studentId) {
@@ -595,7 +606,7 @@ window.SchoolApp = {
       if (this.currentUser && this.currentUser.role === 'admin' && currentSchoolId && window.firestore && window.firestore.updateDoc) {
         try {
           var sName = (payload.settings && payload.settings.schoolName) || (payload.settings && payload.settings.schoolInfo && payload.settings.schoolInfo.name) || '';
-          var sLogo = (payload.settings && payload.settings.logoUrl) || '';
+          var sLogo = (this.getLogoUrl && payload.settings) ? this.getLogoUrl(payload.settings) : ((payload.settings && (payload.settings.logoStorageUrl || payload.settings.logoUrl)) || '');
           var sTagline = (payload.settings && payload.settings.tagline) || (payload.settings && payload.settings.schoolInfo && payload.settings.schoolInfo.tagline) || '';
 
           var schoolDocRef = window.firestore.doc(window.db, 'schools', currentSchoolId);
@@ -3189,6 +3200,76 @@ window.SchoolApp = {
 
 
 
+  /**
+   * Single authoritative reader for school logo URL with unified precedence order.
+   * Precedence order:
+   * 1. settings.logoStorageUrl
+   * 2. settings.logoUrl
+   * 3. settings.schoolLogo
+   * 4. settings.schoolInfo.logoStorageUrl
+   * 5. settings.schoolInfo.logoUrl
+   * 6. settings.schoolInfo.schoolLogo
+   * 7. matchedSchool / school.logo_url
+   */
+  getLogoUrl: function(customSettings) {
+    var s = customSettings || (this.store && this.store.settings) || {};
+    var info = s.schoolInfo || {};
+    var ms = this.matchedSchool;
+
+    if (s.logoStorageUrl && typeof s.logoStorageUrl === 'string' && s.logoStorageUrl.trim() !== '') {
+      return s.logoStorageUrl.trim();
+    }
+    if (s.logoUrl && typeof s.logoUrl === 'string' && s.logoUrl.trim() !== '') {
+      return s.logoUrl.trim();
+    }
+    if (s.schoolLogo && typeof s.schoolLogo === 'string' && s.schoolLogo.trim() !== '') {
+      return s.schoolLogo.trim();
+    }
+    if (info.logoStorageUrl && typeof info.logoStorageUrl === 'string' && info.logoStorageUrl.trim() !== '') {
+      return info.logoStorageUrl.trim();
+    }
+    if (info.logoUrl && typeof info.logoUrl === 'string' && info.logoUrl.trim() !== '') {
+      return info.logoUrl.trim();
+    }
+    if (info.schoolLogo && typeof info.schoolLogo === 'string' && info.schoolLogo.trim() !== '') {
+      return info.schoolLogo.trim();
+    }
+    if (s.logo_url && typeof s.logo_url === 'string' && s.logo_url.trim() !== '') {
+      return s.logo_url.trim();
+    }
+    if (ms && ms.logo_url && typeof ms.logo_url === 'string' && ms.logo_url.trim() !== '') {
+      return ms.logo_url.trim();
+    }
+    return '';
+  },
+
+  /**
+   * Single authoritative reader for principal signature URL with unified precedence order.
+   * Precedence order:
+   * 1. settings.principalSignatureStorageUrl
+   * 2. settings.principalSignatureUrl
+   * 3. settings.schoolInfo.principalSignatureStorageUrl
+   * 4. settings.schoolInfo.principalSignatureUrl
+   */
+  getSignatureUrl: function(customSettings) {
+    var s = customSettings || (this.store && this.store.settings) || {};
+    var info = s.schoolInfo || {};
+
+    if (s.principalSignatureStorageUrl && typeof s.principalSignatureStorageUrl === 'string' && s.principalSignatureStorageUrl.trim() !== '') {
+      return s.principalSignatureStorageUrl.trim();
+    }
+    if (s.principalSignatureUrl && typeof s.principalSignatureUrl === 'string' && s.principalSignatureUrl.trim() !== '') {
+      return s.principalSignatureUrl.trim();
+    }
+    if (info.principalSignatureStorageUrl && typeof info.principalSignatureStorageUrl === 'string' && info.principalSignatureStorageUrl.trim() !== '') {
+      return info.principalSignatureStorageUrl.trim();
+    }
+    if (info.principalSignatureUrl && typeof info.principalSignatureUrl === 'string' && info.principalSignatureUrl.trim() !== '') {
+      return info.principalSignatureUrl.trim();
+    }
+    return '';
+  },
+
   updateBrandUI: function() {
     var settings = this.store.settings || {};
     var info = settings.schoolInfo || {};
@@ -3209,10 +3290,10 @@ window.SchoolApp = {
     });
 
     // On login page & sidebar → if logoUrl exists show it, else show nothing (no placeholder, no SVM logo)
-    var logoUrl = (settings.logoStorageUrl && settings.logoStorageUrl.trim() !== "") ? settings.logoStorageUrl : ((settings.logoUrl && settings.logoUrl.trim() !== "") ? settings.logoUrl : ((info && info.logoStorageUrl && info.logoStorageUrl.trim() !== "") ? info.logoStorageUrl : ((info && info.logoUrl && info.logoUrl.trim() !== "") ? info.logoUrl : ((ms && ms.logo_url && ms.logo_url.trim() !== "") ? ms.logo_url : ""))));
-    if (logoUrl && logoUrl.trim() !== "") {
+    var logoUrl = this.getLogoUrl(settings);
+    if (logoUrl) {
       document.querySelectorAll('.login-logo-img, .logo-img').forEach(function(img) {
-        img.src = logoUrl.trim();
+        img.src = logoUrl;
         img.style.display = 'block';
       });
     } else {
@@ -7317,6 +7398,8 @@ window.SchoolApp = {
 };
 
 window.assertSchoolIsolation = window.SchoolApp.assertSchoolIsolation;
+window.getSchoolLogoUrl = function(s) { return window.SchoolApp ? window.SchoolApp.getLogoUrl(s) : ''; };
+window.getSchoolSignatureUrl = function(s) { return window.SchoolApp ? window.SchoolApp.getSignatureUrl(s) : ''; };
 
 // ---------- Initialization ----------
 document.addEventListener('DOMContentLoaded', async function() {

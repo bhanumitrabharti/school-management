@@ -809,7 +809,7 @@ calculateMultiExamResult: function(params) {
       var website = settings.website || settings.schoolWebsite || schoolInfo.website || '';
       var udise = settings.udiseCode || settings.udiseNo || schoolInfo.udiseCode || '';
       var affiliation = settings.affiliation || settings.affiliationNo || schoolInfo.affiliation || '';
-      var logo = settings.logoStorageUrl || settings.logoUrl || settings.schoolLogo || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo)) || '';
+      var logo = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || settings.schoolLogo || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo)) || '');
 
       var termName = activeTerm ? activeTerm.name : 'TERM EXAMINATION';
       // FIX 3: No invented session in v2 code (empty string if no session configured)
@@ -3182,7 +3182,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
     var email = settings.email || settings.schoolEmail || schoolInfo.email || '';
     var website = settings.website || settings.schoolWebsite || schoolInfo.website || '';
     var udise = settings.udiseCode || settings.udiseNo || settings.udise || schoolInfo.udiseCode || schoolInfo.udise || '';
-    var logo = settings.logoStorageUrl || settings.logoUrl || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl)) || '';
+    var logo = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl)) || '');
 
     var termName = activeTerm ? activeTerm.name : 'ANNUAL EXAMINATION';
     var academicSession = (settings && settings.academicYear) || '2025-26';
@@ -3524,7 +3524,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     var settings = SchoolApp.store.settings || {};
     var info = settings.schoolInfo || {};
-    var logoUrl = settings.logoStorageUrl || settings.logoUrl || (info && (info.logoStorageUrl || info.logoUrl)) || '';
+    var logoUrl = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || (info && (info.logoStorageUrl || info.logoUrl)) || '');
     if (!logoUrl) {
       logoUrl = new URL('school-logo-updated.jpg', window.location.href).href + '?t=' + new Date().getTime();
     }

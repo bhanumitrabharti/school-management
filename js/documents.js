@@ -61,11 +61,17 @@
 
   function getSchoolLogo() {
     var s = getSettings();
+    if (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') {
+      return window.SchoolApp.getLogoUrl(s);
+    }
     return s.logoStorageUrl || s.logoUrl || s.schoolLogo || (s.schoolInfo && (s.schoolInfo.logoStorageUrl || s.schoolInfo.logoUrl || s.schoolInfo.schoolLogo)) || '';
   }
 
   function getPrincipalSignature() {
     var s = getSettings();
+    if (window.SchoolApp && typeof window.SchoolApp.getSignatureUrl === 'function') {
+      return window.SchoolApp.getSignatureUrl(s);
+    }
     return s.principalSignatureStorageUrl || s.principalSignatureUrl || (s.schoolInfo && (s.schoolInfo.principalSignatureStorageUrl || s.schoolInfo.principalSignatureUrl)) || '';
   }
 
