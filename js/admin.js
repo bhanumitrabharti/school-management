@@ -5693,6 +5693,7 @@
               var lightPortalConfig = {
                 enabled: isPPEnabled,
                 studentsMigrated: isMigrated,
+                restructured: (s.restructured === true),
                 modules: {
                   profile: portalCfg.profile,
                   attendance: portalCfg.attendance,

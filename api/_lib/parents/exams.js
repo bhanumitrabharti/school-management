@@ -9,9 +9,12 @@
  *     totals, percentage, grade, division, and rank using the pure ExamCalculationEngine.
  */
 
+const admin = require('firebase-admin');
 const { authenticateParentRequest } = require('./auth');
 const { getDb } = require('../firebase-admin');
 const ExamCalculationEngine = require('../exam-engine');
+const { normalizeClassName, normalizeSectionName } = require('../class-normalizer');
+const { resolveIsRestructured } = require('./restructured-helper');
 
 async function handleExamsList(req, res) {
   const authRes = await authenticateParentRequest(req, res, 'exams');
@@ -20,14 +23,30 @@ async function handleExamsList(req, res) {
   const { schoolId } = authRes;
   const db = getDb();
 
-  const rootDocRef = db.collection('tenant_data').doc(schoolId);
-  const rootSnap = await rootDocRef.get();
-  if (!rootSnap.exists) {
-    return res.status(404).json({ error: 'School data not found.' });
-  }
+  // Field-masked projection read for examTerms to avoid downloading entire root doc
+  let examTerms = {};
+  try {
+    const termQuery = await db.collection('tenant_data')
+      .where(admin.firestore.FieldPath.documentId(), '==', schoolId)
+      .select('examTerms')
+      .get();
 
-  const rootData = rootSnap.data() || {};
-  const examTerms = rootData.examTerms || {};
+    if (!termQuery.empty) {
+      examTerms = termQuery.docs[0].data()?.examTerms || {};
+    } else {
+      const rootSnap = await db.collection('tenant_data').doc(schoolId).get();
+      if (!rootSnap.exists) {
+        return res.status(404).json({ error: 'School data not found.' });
+      }
+      examTerms = rootSnap.data()?.examTerms || {};
+    }
+  } catch (_) {
+    const rootSnap = await db.collection('tenant_data').doc(schoolId).get();
+    if (!rootSnap.exists) {
+      return res.status(404).json({ error: 'School data not found.' });
+    }
+    examTerms = rootSnap.data()?.examTerms || {};
+  }
 
   // Filter terms where showResultsToParents is explicitly true
   const visibleTerms = Object.values(examTerms)
@@ -55,7 +74,7 @@ async function handleExamResult(req, res) {
   const authRes = await authenticateParentRequest(req, res, 'exams');
   if (!authRes.authorized) return;
 
-  const { student, schoolId, studentId } = authRes;
+  const { student, schoolId, studentId, portalConfig } = authRes;
   const db = getDb();
 
   const query = req.query || {};
@@ -66,7 +85,7 @@ async function handleExamResult(req, res) {
     return res.status(400).json({ error: 'Missing termId parameter.' });
   }
 
-  // 1. Fetch Root Doc for Term Configuration and Subjects
+  // 1. Fetch Root Doc for Term Configuration, Grading Scale, and Subjects
   const rootDocRef = db.collection('tenant_data').doc(schoolId);
   const rootSnap = await rootDocRef.get();
   if (!rootSnap.exists) {
@@ -86,16 +105,45 @@ async function handleExamResult(req, res) {
     return res.status(403).json({ error: 'Results for this examination term are not published to parents.' });
   }
 
-  // 2. Resolve Mapped Subjects for Student's Class
+  // 2. Resolve Mapped Subjects for Student's Class using normalized class matching
   const studentClass = String(student.class || '').trim();
   const studentSection = String(student.section || '').trim();
+  const normClass = normalizeClassName(studentClass);
+  const normSection = normalizeSectionName(studentSection);
 
   const termSubjectsMap = (rootData.examSubjects && rootData.examSubjects[termId]) || {};
-  let subjectsObj = termSubjectsMap[studentClass];
-  if (!subjectsObj && termSubjectsMap[`Class ${studentClass}`]) {
-    subjectsObj = termSubjectsMap[`Class ${studentClass}`];
+  let subjectsObj = null;
+  for (const cKey of Object.keys(termSubjectsMap)) {
+    if (normalizeClassName(cKey) === normClass) {
+      subjectsObj = termSubjectsMap[cKey];
+      break;
+    }
   }
   const subjects = (subjectsObj && Array.isArray(subjectsObj.subjects)) ? subjectsObj.subjects : [];
+
+  // Helper: Find student mark entry by normalized class and section matching
+  function findMarkEntryInMap(marksMap) {
+    if (!marksMap || typeof marksMap !== 'object') return null;
+    let matchingClassMarks = null;
+    for (const cKey of Object.keys(marksMap)) {
+      if (normalizeClassName(cKey) === normClass) {
+        matchingClassMarks = marksMap[cKey];
+        break;
+      }
+    }
+    if (!matchingClassMarks || typeof matchingClassMarks !== 'object') return null;
+
+    let matchingSecMarks = null;
+    for (const sKey of Object.keys(matchingClassMarks)) {
+      if (normalizeSectionName(sKey) === normSection) {
+        matchingSecMarks = matchingClassMarks[sKey];
+        break;
+      }
+    }
+    if (!matchingSecMarks || typeof matchingSecMarks !== 'object') return null;
+
+    return matchingSecMarks[studentId] || null;
+  }
 
   // 3. Retrieve Student Mark Entry
   let markEntry = null;
@@ -105,21 +153,16 @@ async function handleExamResult(req, res) {
     const markDocRef = db.collection('tenant_data').doc(schoolId).collection('exam_marks').doc(termId);
     const markSnap = await markDocRef.get();
     if (markSnap.exists) {
-      const subMarks = markSnap.data() || {};
-      const classMarks = subMarks[studentClass] || subMarks[`Class ${studentClass}`] || {};
-      const secMarks = classMarks[studentSection] || {};
-      markEntry = secMarks[studentId];
+      markEntry = findMarkEntryInMap(markSnap.data());
     }
   } catch (err) {
     console.warn('[api/parents/exams] Error fetching subcollection marks:', err.message);
   }
 
-  // Legacy root fallback if markEntry not found in subcollection
-  if (!markEntry && rootData.examMarks && rootData.examMarks[termId]) {
-    const rootTermMarks = rootData.examMarks[termId];
-    const classMarks = rootTermMarks[studentClass] || rootTermMarks[`Class ${studentClass}`] || {};
-    const secMarks = classMarks[studentSection] || {};
-    markEntry = secMarks[studentId];
+  // Legacy root fallback ONLY for non-restructured schools (resolved via shared helper)
+  const isRestructured = await resolveIsRestructured(schoolId, portalConfig, db);
+  if (!markEntry && !isRestructured && rootData.examMarks && rootData.examMarks[termId]) {
+    markEntry = findMarkEntryInMap(rootData.examMarks[termId]);
   }
 
   if (!markEntry) {

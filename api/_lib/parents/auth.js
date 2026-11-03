@@ -128,6 +128,7 @@ async function authenticateParentRequest(req, res, moduleKey) {
     portalConfig = {
       enabled: isMigrated && pp.enabled === true,
       studentsMigrated: isMigrated,
+      restructured: (settings.restructured === true),
       modules: {
         profile: pp.profile !== undefined ? pp.profile : (pp.allowProfile !== undefined ? pp.allowProfile : true),
         attendance: pp.attendance !== undefined ? pp.attendance : (pp.allowAttendance !== undefined ? pp.allowAttendance : true),

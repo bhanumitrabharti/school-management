@@ -188,6 +188,7 @@ async function seedTestData() {
   await db.collection('tenant_data').doc(schoolId).collection('portal').doc('config').set({
     enabled: true,
     studentsMigrated: true,
+    restructured: true,
     modules: {
       profile: true,
       attendance: true,
@@ -470,6 +471,213 @@ async function seedTestData() {
     enabled: true,
     // studentsMigrated missing
     modules: { profile: true }
+  });
+
+  // --- v79 Seed Additions ---
+  // A. Normalized matching student in restructured school (class '2', section 'a')
+  await db.collection('tenant_data').doc(schoolId).collection('students').doc('stu_norm_child').set({
+    id: 'stu_norm_child',
+    name: 'Rohan Sharma',
+    class: '2',
+    section: 'a',
+    parentEmail: parentEmail,
+    parentEmailNorm: parentEmail,
+    status: 'Active'
+  });
+  await db.collection('tenant_data').doc(schoolId).collection('students').doc('stu_norm_classmate').set({
+    id: 'stu_norm_classmate',
+    name: 'Sneha Roy',
+    class: '2',
+    section: 'a',
+    parentEmail: otherParentEmail,
+    parentEmailNorm: otherParentEmail,
+    status: 'Active'
+  });
+
+  // Attendance subcollection with doc ID 'Class 2' (matches student class '2')
+  await db.collection('tenant_data').doc(schoolId).collection('attendance_months').doc('2026-11').collection('classes').doc('Class 2').set({
+    records: [
+      {
+        date: '2026-11-05',
+        class: 'Class 2',
+        section: 'A',
+        records: [
+          { studentId: 'stu_norm_child', status: 'present' },
+          { studentId: 'stu_norm_classmate', status: 'absent' }
+        ]
+      }
+    ]
+  });
+
+  // Term with varied class keys ('Class 2' in subjects, '2' in exam_marks subcollection)
+  await db.collection('tenant_data').doc(schoolId).update({
+    'examTerms.term_norm': {
+      id: 'term_norm',
+      name: 'Normalized Term Test',
+      shortName: 'NTT',
+      session: '2025-26',
+      showResultsToParents: true,
+      status: 'published',
+      order: 3
+    },
+    'examSubjects.term_norm': {
+      'Class 2': {
+        subjects: [
+          { id: 'sub_art', name: 'Fine Arts', fullMarks: 100, passMarks: 33 }
+        ]
+      }
+    }
+  });
+
+  await db.collection('tenant_data').doc(schoolId).collection('exam_marks').doc('term_norm').set({
+    '2': {
+      'A': {
+        'stu_norm_child': {
+          marks: { sub_art: { obtained: 92 } },
+          rank: 1
+        },
+        'stu_norm_classmate': {
+          marks: { sub_art: { obtained: 60 } },
+          rank: 2
+        }
+      }
+    }
+  });
+
+  // B. Non-restructured school setup
+  const nrSchoolId = 'test_school_non_restructured';
+  await db.collection('tenant_data').doc(nrSchoolId).set({
+    school_name: 'Legacy Non-Restructured Academy',
+    settings: {
+      schoolName: 'Legacy Non-Restructured Academy',
+      studentsMigrated: true,
+      restructured: false,
+      storageVersion: 1,
+      parentPortal: {
+        enabled: true,
+        attendance: true,
+        exams: true,
+        profile: true
+      }
+    },
+    attendance: [
+      {
+        date: '2026-11-08',
+        class: '3',
+        section: 'A',
+        records: [
+          { studentId: 'stu_nr_child', status: 'present' },
+          { studentId: 'stu_nr_classmate', status: 'absent' }
+        ]
+      }
+    ],
+    examTerms: {
+      term_nr: {
+        id: 'term_nr',
+        name: 'Legacy Term',
+        showResultsToParents: true
+      }
+    },
+    examSubjects: {
+      term_nr: {
+        '3': {
+          subjects: [
+            { id: 'sub_eng', name: 'English', fullMarks: 100, passMarks: 33 }
+          ]
+        }
+      }
+    },
+    examMarks: {
+      term_nr: {
+        '3': {
+          'A': {
+            'stu_nr_child': { marks: { sub_eng: { obtained: 85 } }, rank: 1 }
+          }
+        }
+      }
+    }
+  });
+
+  await db.collection('tenant_data').doc(nrSchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    studentsMigrated: true,
+    restructured: false,
+    modules: { attendance: true, exams: true, profile: true }
+  });
+
+  await db.collection('tenant_data').doc(nrSchoolId).collection('students').doc('stu_nr_child').set({
+    id: 'stu_nr_child',
+    name: 'Kavita Sharma',
+    class: '3',
+    section: 'A',
+    parentEmail: parentEmail,
+    parentEmailNorm: parentEmail,
+    status: 'Active'
+  });
+
+  // C. Safety Fix 2: School with portal/config lacking restructured field (v78 state)
+  const missingRestructuredSchoolId = 'test_school_missing_restructured';
+  await db.collection('tenant_data').doc(missingRestructuredSchoolId).set({
+    school_name: 'v78 Restructured Academy',
+    settings: {
+      schoolName: 'v78 Restructured Academy',
+      studentsMigrated: true,
+      restructured: true,
+      storageVersion: 2,
+      classes: ['5'],
+      parentPortal: {
+        enabled: true,
+        attendance: true,
+        exams: true,
+        profile: true
+      }
+    },
+    // Trap in root doc: if root array were erroneously read, it would have 'absent'
+    attendance: [
+      {
+        date: '2026-11-05',
+        class: '5',
+        records: [
+          { studentId: 'stu_v78_child', status: 'absent' }
+        ]
+      }
+    ]
+  });
+
+  // portal/config written by v78: does NOT have restructured field
+  await db.collection('tenant_data').doc(missingRestructuredSchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    studentsMigrated: true,
+    // restructured is intentionally omitted / undefined
+    modules: {
+      attendance: true,
+      exams: true,
+      profile: true
+    }
+  });
+
+  await db.collection('tenant_data').doc(missingRestructuredSchoolId).collection('students').doc('stu_v78_child').set({
+    id: 'stu_v78_child',
+    name: 'V78 Child',
+    class: '5',
+    section: 'A',
+    parentEmail: parentEmail,
+    parentEmailNorm: parentEmail,
+    status: 'Active'
+  });
+
+  // Authoritative subcollection attendance has 'present'
+  await db.collection('tenant_data').doc(missingRestructuredSchoolId).collection('attendance_months').doc('2026-11').collection('classes').doc('5').set({
+    records: [
+      {
+        date: '2026-11-05',
+        class: '5',
+        section: 'A',
+        records: [
+          { studentId: 'stu_v78_child', status: 'present' }
+        ]
+      }
+    ]
   });
 
   console.log('✅ Test data successfully seeded in emulator.\n');
@@ -773,6 +981,229 @@ async function runTests() {
   } catch (ruleErr) {
     console.warn('T17 warning:', ruleErr.message);
   }
+
+  // ==================================================================
+  // v79 TEST SUITE: Attendance/Exam Class Matching & UX Polish
+  // ==================================================================
+  console.log('\n--- Checking v79 Attendance & Exam Matching & UX ---');
+
+  // TEST 23: Student class "2" with subcollection doc ID "Class 2" and section "a" vs "A"
+  const t23 = await invokeHandler('POST', 'attendance', {
+    schoolId: schoolId,
+    studentId: 'stu_norm_child',
+    month: '2026-11'
+  }, authHeaders);
+  assert(t23.status === 200, 'v79 T23: Student class "2" with doc ID "Class 2" returns HTTP 200');
+  assert(t23.body && t23.body.totalDays === 1, 'v79 T23: Attendance found matching doc (totalDays === 1)');
+  assert(t23.body.presentDays === 1, 'v79 T23: Section "a" matched session section "A" (presentDays === 1)');
+  assert(t23.body.percentage === 100, 'v79 T23: Percentage computed correctly (100%)');
+  assert(!JSON.stringify(t23.body).includes('stu_norm_classmate'), 'v79 T23: Classmate data is never leaked');
+
+  // TEST 24: Non-restructured school reads root attendance array
+  const t24 = await invokeHandler('POST', 'attendance', {
+    schoolId: 'test_school_non_restructured',
+    studentId: 'stu_nr_child',
+    month: '2026-11'
+  }, authHeaders);
+  assert(t24.status === 200, 'v79 T24: Non-restructured school returns HTTP 200');
+  assert(t24.body && t24.body.totalDays === 1, 'v79 T24: Root attendance array found (totalDays === 1)');
+  assert(t24.body.presentDays === 1, 'v79 T24: Non-restructured root session matched (presentDays === 1)');
+  assert(!JSON.stringify(t24.body).includes('stu_nr_classmate'), 'v79 T24: Classmate data never returned from root attendance');
+
+  // TEST 25: Exam keys "Class 2" in examSubjects and "2" in exam_marks subcollection all resolve
+  const t25 = await invokeHandler('POST', 'exam-result', {
+    schoolId: schoolId,
+    studentId: 'stu_norm_child',
+    termId: 'term_norm'
+  }, authHeaders);
+  assert(t25.status === 200, 'v79 T25: Exam result with normalized keys returns HTTP 200');
+  assert(t25.body && t25.body.hasResult === true, 'v79 T25: Result resolved successfully');
+  assert(t25.body.summary && t25.body.summary.totalObtained === 92, 'v79 T25: Obtained marks match (92)');
+  assert(t25.body.summary.rank === 1, 'v79 T25: Stored rank matches (1)');
+  assert(!JSON.stringify(t25.body).includes('stu_norm_classmate'), 'v79 T25: Classmate marks not present in result');
+
+  // TEST 26: Non-restructured school root examMarks fallback
+  const t26 = await invokeHandler('POST', 'exam-result', {
+    schoolId: 'test_school_non_restructured',
+    studentId: 'stu_nr_child',
+    termId: 'term_nr'
+  }, authHeaders);
+  assert(t26.status === 200, 'v79 T26: Non-restructured root examMarks fallback returns HTTP 200');
+  assert(t26.body && t26.body.hasResult === true, 'v79 T26: Non-restructured result resolved');
+  assert(t26.body.summary && t26.body.summary.totalObtained === 85, 'v79 T26: Non-restructured marks match (85)');
+
+  // TEST 27: Zero days attendance response -> Neutral state (no shortage badge, no red 0%)
+  const t27 = await invokeHandler('POST', 'attendance', {
+    schoolId: schoolId,
+    studentId: 'stu_norm_child',
+    month: '2026-01'
+  }, authHeaders);
+  assert(t27.status === 200, 'v79 T27: Month with 0 records returns HTTP 200');
+  assert(t27.body && t27.body.totalDays === 0, 'v79 T27: totalDays === 0');
+  assert(t27.body.presentDays === 0 && t27.body.absentDays === 0, 'v79 T27: presentDays and absentDays are 0');
+
+  // Verify client logic for 0 days:
+  const clientZeroTotalDays = t27.body.totalDays;
+  const clientBadgeType = clientZeroTotalDays === 0 ? 'badge-secondary' : 'badge-danger';
+  const clientBadgeText = clientZeroTotalDays === 0 ? 'No attendance recorded' : 'Attendance Shortage (<75%)';
+  assert(clientBadgeType === 'badge-secondary', 'v79 T27: Zero days produces neutral badge-secondary class');
+  assert(clientBadgeText === 'No attendance recorded', 'v79 T27: Zero days produces "No attendance recorded" (NO shortage badge)');
+
+  // TEST 28: Performance Benchmark on Greenwood-sized fixture
+  console.log('\n--- Benchmarking Greenwood-sized Exams Performance ---');
+  const gwBenchSchoolId = 'test_school_gw_bench';
+  const gwTerms = {};
+  const gwSubjects = {};
+  for (let i = 1; i <= 15; i++) {
+    const tid = `term_${i}`;
+    gwTerms[tid] = {
+      id: tid,
+      name: `Academic Term ${i}`,
+      shortName: `T${i}`,
+      showResultsToParents: i <= 5,
+      order: i
+    };
+    gwSubjects[tid] = {};
+    for (let c = 1; c <= 12; c++) {
+      gwSubjects[tid][`Class ${c}`] = {
+        subjects: [
+          { id: 'sub_1', name: 'English', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_2', name: 'Hindi', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_3', name: 'Mathematics', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_4', name: 'Science', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_5', name: 'Social Science', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_6', name: 'Sanskrit', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_7', name: 'Computer', fullMarks: 100, passMarks: 33 },
+          { id: 'sub_8', name: 'Drawing', fullMarks: 100, passMarks: 33 }
+        ]
+      };
+    }
+  }
+
+  await db.collection('tenant_data').doc(gwBenchSchoolId).set({
+    school_name: 'Greenwood Bench School',
+    settings: {
+      schoolName: 'Greenwood Bench School',
+      studentsMigrated: true,
+      restructured: true,
+      classes: ['1','2','3','4','5','6','7','8','9','10','11','12'],
+      parentPortal: { enabled: true, exams: true }
+    },
+    examTerms: gwTerms,
+    examSubjects: gwSubjects,
+    reportCardConfig: {
+      gradingScale: [
+        { min: 90, grade: 'A1', label: 'Outstanding' },
+        { min: 80, grade: 'A2', label: 'Excellent' },
+        { min: 70, grade: 'B1', label: 'Very Good' },
+        { min: 0, grade: 'D', label: 'Needs Improvement' }
+      ]
+    }
+  });
+
+  await db.collection('tenant_data').doc(gwBenchSchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    studentsMigrated: true,
+    restructured: true,
+    modules: { exams: true }
+  });
+
+  await db.collection('tenant_data').doc(gwBenchSchoolId).collection('students').doc('stu_gw_bench_1').set({
+    id: 'stu_gw_bench_1',
+    name: 'Sourabh Kumar',
+    class: '2',
+    section: 'A',
+    parentEmail: parentEmail,
+    parentEmailNorm: parentEmail,
+    status: 'Active'
+  });
+
+  await db.collection('tenant_data').doc(gwBenchSchoolId).collection('exam_marks').doc('term_1').set({
+    '2': {
+      'A': {
+        'stu_gw_bench_1': {
+          marks: {
+            sub_1: { obtained: 95 },
+            sub_2: { obtained: 88 },
+            sub_3: { obtained: 92 },
+            sub_4: { obtained: 85 },
+            sub_5: { obtained: 90 },
+            sub_6: { obtained: 78 },
+            sub_7: { obtained: 94 },
+            sub_8: { obtained: 89 }
+          },
+          rank: 1
+        }
+      }
+    }
+  });
+
+  // Benchmark exams list
+  const startExams = Date.now();
+  const bExams = await invokeHandler('POST', 'exams', {
+    schoolId: gwBenchSchoolId,
+    studentId: 'stu_gw_bench_1'
+  }, authHeaders);
+  const durExams = Date.now() - startExams;
+  assert(bExams.status === 200, 'v79 T28: Benchmark handleExamsList succeeded with HTTP 200');
+  assert(bExams.body && bExams.body.terms && bExams.body.terms.length === 5, 'v79 T28: Filtered exactly 5 published terms');
+  console.log(`  ⚡ Benchmark: handleExamsList executed in ${durExams} ms (Field-masked projection read)`);
+
+  // Benchmark exam-result
+  const startResult = Date.now();
+  const bResult = await invokeHandler('POST', 'exam-result', {
+    schoolId: gwBenchSchoolId,
+    studentId: 'stu_gw_bench_1',
+    termId: 'term_1'
+  }, authHeaders);
+  const durResult = Date.now() - startResult;
+  assert(bResult.status === 200, 'v79 T28: Benchmark handleExamResult succeeded with HTTP 200');
+  assert(bResult.body && bResult.body.hasResult === true, 'v79 T28: Result computed successfully');
+  console.log(`  ⚡ Benchmark: handleExamResult executed in ${durResult} ms (Pure engine + subcollection read)`);
+
+  // TEST 29: Safety Fix 2 - portal/config without restructured field resolves as UNKNOWN -> field-masked root read -> subcollection found
+  const t29 = await invokeHandler('POST', 'attendance', {
+    schoolId: 'test_school_missing_restructured',
+    studentId: 'stu_v78_child',
+    month: '2026-11'
+  }, authHeaders);
+  assert(t29.status === 200, 'v79 T29: portal/config without restructured field returns HTTP 200');
+  assert(t29.body && t29.body.totalDays === 1, 'v79 T29: Subcollection attendance found (totalDays === 1)');
+  assert(t29.body.presentDays === 1, 'v79 T29: Status is present from subcollection (NOT absent from root array)');
+  assert(t29.body.absentDays === 0, 'v79 T29: Root attendance array was NOT read (absentDays === 0)');
+
+  // TEST 30: Safety Fix 3 - Call exams action through the real module path (api/_lib/parents/exams.js directly & via api/parents.js)
+  const realExamsModule = require('../api/_lib/parents/exams');
+  assert(typeof realExamsModule.handleExamsList === 'function', 'v79 T30: handleExamsList exported from real api/_lib/parents/exams.js');
+  assert(typeof realExamsModule.handleExamResult === 'function', 'v79 T30: handleExamResult exported from real api/_lib/parents/exams.js');
+
+  // Invoke real handler directly
+  let realExamsStatus = 0;
+  let realExamsBody = null;
+  const mockReqReal = {
+    method: 'POST',
+    query: { action: 'exams' },
+    body: { schoolId: schoolId, studentId: 'stu_child1' },
+    headers: { ...authHeaders, 'content-type': 'application/json' },
+    socket: { remoteAddress: '127.0.0.1' }
+  };
+  const mockResReal = {
+    statusCode: 200,
+    setHeader: () => {},
+    status: function(code) { this.statusCode = code; realExamsStatus = code; return this; },
+    json: function(data) { realExamsBody = data; return this; }
+  };
+  await realExamsModule.handleExamsList(mockReqReal, mockResReal);
+  assert(realExamsStatus === 200, 'v79 T30: Real handleExamsList executed through direct module path returns HTTP 200');
+  assert(realExamsBody && Array.isArray(realExamsBody.terms) && realExamsBody.terms.length > 0, 'v79 T30: Real module returns terms using admin.firestore.FieldPath');
+
+  // Also invoke through api/parents router
+  const t30Router = await invokeHandler('POST', 'exams', {
+    schoolId: schoolId,
+    studentId: 'stu_child1'
+  }, authHeaders);
+  assert(t30Router.status === 200, 'v79 T30: Exams action through api/parents router returns HTTP 200');
+  assert(t30Router.body && t30Router.body.terms.length === realExamsBody.terms.length, 'v79 T30: Router and direct module return identical terms');
 
   console.log('\n======================================================================');
   console.log(`PARENT PORTAL PHASE B2 SUMMARY: Total: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);

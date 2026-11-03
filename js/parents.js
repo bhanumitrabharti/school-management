@@ -1,7 +1,7 @@
 /**
  * js/parents.js
  * Paathshala Parent Portal — Lightweight Client Controller
- * Version: v78
+ * Version: v79
  *
  * Handles:
  *   - Turnstile verification
@@ -180,6 +180,187 @@ function escapeHTML(str) {
     "'": '&#39;',
     '"': '&quot;'
   }[tag] || tag));
+}
+
+function formatNoticeDate(rawDate) {
+  if (!rawDate) return '';
+  try {
+    const d = new Date(rawDate.includes('T') ? rawDate : rawDate + 'T00:00:00');
+    if (isNaN(d.getTime())) return rawDate;
+    return new Intl.DateTimeFormat('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    }).format(d).replace('Sept', 'Sep');
+  } catch (_) {
+    return rawDate;
+  }
+}
+
+function getPeriodTimeStr(pNum, dayName, settings = {}) {
+  const p = parseInt(pNum, 10);
+  if (isNaN(p) || p <= 0) return '';
+
+  if (settings.periodTimes && (settings.periodTimes[pNum] || settings.periodTimes[String(pNum)])) {
+    const pt = settings.periodTimes[pNum] || settings.periodTimes[String(pNum)];
+    if (typeof pt === 'string') return pt;
+    if (pt && pt.start && pt.end) return `${pt.start} - ${pt.end}`;
+  }
+
+  const isSaturday = String(dayName || '').toLowerCase().startsWith('sat');
+  const startTime = isSaturday ? (settings.satStartTime || "08:00") : (settings.startTime || (settings.startHour ? `${String(settings.startHour).padStart(2, '0')}:00` : "08:00"));
+  const endTime = isSaturday ? (settings.satEndTime || "12:30") : (settings.endTime || "14:00");
+  const totalPeriods = parseInt(isSaturday ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8), 10) || 8;
+  const lunchAfter = parseInt(isSaturday ? (settings.satLunchAfterPeriod || 0) : (settings.lunchAfterPeriod || 4), 10);
+  const lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration || 30), 10);
+
+  function timeToMin(timeStr) {
+    const parts = String(timeStr || "08:00").split(':');
+    const hours = parseInt(parts[0], 10) || 0;
+    const minutes = parseInt(parts[1], 10) || 0;
+    return hours * 60 + minutes;
+  }
+
+  const startMin = timeToMin(startTime);
+  const endMin = timeToMin(endTime);
+  const effectiveLunchDur = (lunchAfter > 0 && lunchAfter < totalPeriods && !isNaN(lunchDur)) ? lunchDur : 0;
+  const totalAvailMin = endMin - startMin;
+  const totalTeachingMin = totalAvailMin - effectiveLunchDur;
+  const periodDur = (settings.periodDuration && !settings.endTime) ? settings.periodDuration : Math.floor(totalTeachingMin / totalPeriods);
+  const remainder = totalTeachingMin % totalPeriods;
+
+  let currentMin = startMin;
+  let pStart = startMin;
+  let pEnd = startMin;
+
+  for (let i = 1; i <= totalPeriods; i++) {
+    let currentPeriodDur = periodDur;
+    if (i === totalPeriods && !settings.periodDuration) {
+      currentPeriodDur += remainder;
+    }
+    const startOfPeriod = currentMin;
+    const endOfPeriod = currentMin + currentPeriodDur;
+    if (i === p) {
+      pStart = startOfPeriod;
+      pEnd = endOfPeriod;
+      break;
+    }
+    currentMin = endOfPeriod;
+    if (lunchAfter > 0 && i === lunchAfter && !isNaN(lunchDur)) {
+      currentMin += lunchDur;
+    }
+  }
+
+  function formatTime(totalMinutes) {
+    const hours = Math.floor(totalMinutes / 60) % 24;
+    const minutes = totalMinutes % 60;
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    let dispHours = hours % 12;
+    if (dispHours === 0) dispHours = 12;
+    const dispMinStr = minutes < 10 ? '0' + minutes : minutes;
+    const dispHourStr = dispHours < 10 ? '0' + dispHours : dispHours;
+    return `${dispHourStr}:${dispMinStr} ${ampm}`;
+  }
+
+  return `${formatTime(pStart)} - ${formatTime(pEnd)}`;
+}
+
+async function loadDashboardSummaries(student, school) {
+  const toggles = school.toggles || {};
+  const studentId = student.id;
+
+  // 1. Attendance Summary
+  if (toggles.attendance !== false) {
+    (async () => {
+      const summaryEl = document.getElementById('card-summary-attendance');
+      if (!summaryEl) return;
+      try {
+        const att = await callParentApi('attendance');
+        if (state.activeStudentId !== studentId) return;
+        if (Number(att.totalDays) === 0) {
+          summaryEl.innerHTML = `<span style="color:var(--muted);"><span class="material-icons-round" style="font-size:14px;vertical-align:-2px;margin-right:2px;">info</span>No attendance recorded this month</span>`;
+        } else {
+          const color = att.percentage >= 75 ? 'var(--green)' : (att.percentage >= 60 ? 'var(--amber)' : 'var(--red)');
+          summaryEl.innerHTML = `<span>This month: <strong style="color:${color}">${att.percentage}%</strong> (${att.presentDays}/${att.totalDays} days present)</span>`;
+        }
+      } catch (_) {
+        summaryEl.innerHTML = `<span style="color:var(--muted);opacity:0.7;">Attendance summary unavailable</span>`;
+      }
+    })();
+  }
+
+  // 2. Timetable Summary (Today's 1st period)
+  if (toggles.timetable !== false) {
+    (async () => {
+      const summaryEl = document.getElementById('card-summary-timetable');
+      if (!summaryEl) return;
+      try {
+        const tt = await callParentApi('timetable');
+        if (state.activeStudentId !== studentId) return;
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const todayIndex = new Date().getDay();
+        const todayName = (todayIndex >= 1 && todayIndex <= 6) ? days[todayIndex - 1] : 'Monday';
+        const schedule = tt.schedule || {};
+        const todayPeriods = schedule[todayName] || {};
+        const pKeys = Object.keys(todayPeriods).sort((a, b) => Number(a) - Number(b));
+
+        if (todayIndex === 0) {
+          summaryEl.innerHTML = `<span style="color:var(--muted);"><span class="material-icons-round" style="font-size:14px;vertical-align:-2px;margin-right:2px;">wb_sunny</span>Sunday: School closed</span>`;
+        } else if (pKeys.length === 0) {
+          summaryEl.innerHTML = `<span style="color:var(--muted);">No classes scheduled for today (${todayName})</span>`;
+        } else {
+          const firstP = todayPeriods[pKeys[0]];
+          const sub = (typeof firstP === 'object' && firstP ? firstP.subject : firstP) || '—';
+          const timeStr = getPeriodTimeStr(pKeys[0], todayName, tt.settings || {});
+          summaryEl.innerHTML = `<span>Today's 1st period: <strong>${escapeHTML(sub)}</strong>${timeStr ? ` <span style="color:var(--muted);font-size:0.75rem;">(${escapeHTML(timeStr)})</span>` : ''}</span>`;
+        }
+      } catch (_) {
+        summaryEl.innerHTML = `<span style="color:var(--muted);opacity:0.7;">Timetable summary unavailable</span>`;
+      }
+    })();
+  }
+
+  // 3. Notices Summary (Latest notice title)
+  if (toggles.notices !== false) {
+    (async () => {
+      const summaryEl = document.getElementById('card-summary-notices');
+      if (!summaryEl) return;
+      try {
+        const res = await callParentApi('notices');
+        if (state.activeStudentId !== studentId) return;
+        const notices = res.notices || [];
+        if (notices.length === 0) {
+          summaryEl.innerHTML = `<span style="color:var(--muted);">No active circulars</span>`;
+        } else {
+          const latest = notices[0];
+          summaryEl.innerHTML = `<span>Latest: <strong>${escapeHTML(latest.title || 'Notice')}</strong></span>`;
+        }
+      } catch (_) {
+        summaryEl.innerHTML = `<span style="color:var(--muted);opacity:0.7;">Notices summary unavailable</span>`;
+      }
+    })();
+  }
+
+  // 4. Exams Summary (Latest visible term)
+  if (toggles.exams === true) {
+    (async () => {
+      const summaryEl = document.getElementById('card-summary-exams');
+      if (!summaryEl) return;
+      try {
+        const res = await callParentApi('exams');
+        if (state.activeStudentId !== studentId) return;
+        const terms = res.terms || [];
+        if (terms.length === 0) {
+          summaryEl.innerHTML = `<span style="color:var(--muted);">No terms published yet</span>`;
+        } else {
+          const latestTerm = terms[terms.length - 1];
+          summaryEl.innerHTML = `<span>Latest Term: <strong>${escapeHTML(latestTerm.name || latestTerm.shortName || 'Term')}</strong></span>`;
+        }
+      } catch (_) {
+        summaryEl.innerHTML = `<span style="color:var(--muted);opacity:0.7;">Exams summary unavailable</span>`;
+      }
+    })();
+  }
 }
 
 // --- Turnstile Setup ---
@@ -613,6 +794,9 @@ function renderStudentDashboard(school) {
           <p>${escapeHTML(mod.desc)}</p>
         </div>
       </div>
+      <div class="module-summary" id="card-summary-${mod.key}" style="margin:8px 0 10px 0;padding:6px 10px;background:var(--surface-subtle);border-radius:6px;font-size:0.82rem;color:var(--ink-secondary);min-height:28px;display:flex;align-items:center;">
+        <span class="summary-loading" style="font-size:0.75rem;color:var(--muted);opacity:0.7;">Loading summary...</span>
+      </div>
       <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--border);">
         <span style="font-size:0.8rem;font-weight:700;color:var(--primary);display:inline-flex;align-items:center;gap:4px;">
           <span>View Details</span>
@@ -624,6 +808,9 @@ function renderStudentDashboard(school) {
     card.addEventListener('click', () => openModuleView(mod.key));
     elements.modulesContainer.appendChild(card);
   });
+
+  // Load one-line summary per enabled module lazily
+  loadDashboardSummaries(student, school);
 }
 
 // --- Subview Navigation ---
@@ -672,18 +859,25 @@ async function loadAttendanceView(forceReload = false) {
     const data = await callParentApi('attendance', { month: state.attendanceMonth || undefined });
     
     // Update KPI grid
+    const totalDays = Number(data.totalDays) || 0;
     const pct = Number(data.percentage) || 0;
-    elements.attKpiPct.textContent = `${pct}%`;
-    elements.attKpiPct.style.color = pct >= 75 ? 'var(--green)' : (pct >= 60 ? 'var(--amber)' : 'var(--red)');
-    elements.attKpiTotal.textContent = data.totalDays || 0;
+
+    if (totalDays === 0) {
+      elements.attKpiPct.textContent = '—';
+      elements.attKpiPct.style.color = 'var(--muted)';
+      elements.attendanceStatusBadge.innerHTML = '<span class="badge badge-secondary">No attendance recorded</span>';
+    } else {
+      elements.attKpiPct.textContent = `${pct}%`;
+      elements.attKpiPct.style.color = pct >= 75 ? 'var(--green)' : (pct >= 60 ? 'var(--amber)' : 'var(--red)');
+      const badgeType = pct >= 75 ? 'badge-success' : 'badge-danger';
+      const badgeText = pct >= 75 ? 'Meets Requirement (≥75%)' : 'Attendance Shortage (<75%)';
+      elements.attendanceStatusBadge.innerHTML = `<span class="badge ${badgeType}">${badgeText}</span>`;
+    }
+
+    elements.attKpiTotal.textContent = totalDays;
     elements.attKpiPresent.textContent = data.presentDays || 0;
     elements.attKpiAbsent.textContent = data.absentDays || 0;
     elements.attKpiLate.textContent = data.lateDays || 0;
-
-    // Status badge
-    const badgeType = pct >= 75 ? 'badge-success' : 'badge-danger';
-    const badgeText = pct >= 75 ? 'Meets Requirement (≥75%)' : 'Attendance Shortage (<75%)';
-    elements.attendanceStatusBadge.innerHTML = `<span class="badge ${badgeType}">${badgeText}</span>`;
 
     // Month Selector Options
     const avail = data.availableMonths || [data.month];
@@ -828,7 +1022,7 @@ function renderDaySchedule(dayPeriods, dayName, settings) {
       <table class="data-table">
         <thead>
           <tr>
-            <th style="width:100px;">Period</th>
+            <th style="width:140px;">Period</th>
             <th>Subject</th>
             <th>Teacher</th>
           </tr>
@@ -841,9 +1035,13 @@ function renderDaySchedule(dayPeriods, dayName, settings) {
     const subject = (typeof p === 'object' && p ? p.subject : p) || '—';
     const teacher = (typeof p === 'object' && p ? p.teacherName : '') || '—';
 
+    const timeStr = getPeriodTimeStr(pNum, dayName, settings);
     tableHtml += `
       <tr>
-        <td><strong>Period ${escapeHTML(pNum)}</strong></td>
+        <td>
+          <strong>Period ${escapeHTML(pNum)}</strong>
+          ${timeStr ? `<div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">${escapeHTML(timeStr)}</div>` : ''}
+        </td>
         <td><strong style="color:var(--primary);">${escapeHTML(subject)}</strong></td>
         <td style="color:var(--ink-secondary);">${escapeHTML(teacher)}</td>
       </tr>
@@ -885,7 +1083,7 @@ async function loadNoticesView(forceReload = false) {
             <span class="badge ${isUrgent ? 'badge-danger' : 'badge-info'}">${escapeHTML(notice.priority)}</span>
             <span class="notice-item-title">${escapeHTML(notice.title)}</span>
           </div>
-          <span class="notice-item-date">${escapeHTML(notice.date || '')}</span>
+          <span class="notice-item-date">${escapeHTML(formatNoticeDate(notice.date))}</span>
         </div>
         <div class="notice-item-body">${escapeHTML(notice.message || '')}</div>
         <div style="display:flex;justify-content:flex-end;">
@@ -895,7 +1093,7 @@ async function loadNoticesView(forceReload = false) {
 
       card.addEventListener('click', () => {
         elements.modalNoticeTitle.textContent = notice.title;
-        elements.modalNoticeDate.textContent = notice.date ? `Published: ${notice.date}` : '';
+        elements.modalNoticeDate.textContent = notice.date ? `Published: ${formatNoticeDate(notice.date)}` : '';
         elements.modalNoticePriority.textContent = notice.priority;
         elements.modalNoticePriority.className = `badge ${isUrgent ? 'badge-danger' : 'badge-info'}`;
         elements.modalNoticeMessage.textContent = notice.message;

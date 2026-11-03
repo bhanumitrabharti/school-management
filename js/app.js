@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v78';
+window.APP_VERSION = window.APP_VERSION || 'v79';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
@@ -1222,6 +1222,7 @@ window.SchoolApp = {
         var portalLight = {
           enabled: (pp.enabled === true && isMigrated),
           studentsMigrated: isMigrated,
+          restructured: (this.store.settings.restructured === true),
           modules: {
             profile: pp.profile !== false,
             attendance: pp.attendance !== false,
