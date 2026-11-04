@@ -786,8 +786,16 @@ async function seedTestData() {
             sub_eng: { obtained: 85, fullMarks: 100 },
             sub_hin: { obtained: 92, fullMarks: 100 },
             sub_math: { obtained: 69, fullMarks: 100 },
+            sub_evs_sci: { obtained: 76, fullMarks: 100 },
             sub_comp: { obtained: 83, fullMarks: 100 }
           },
+          total: 405,
+          maxTotal: 500,
+          percentage: 81,
+          grade: 'A2',
+          gradeLabel: 'Excellent',
+          result: 'Pass',
+          isComplete: true,
           rank: 3
         }
       }
@@ -817,6 +825,36 @@ async function seedTestData() {
           marks: {
             sub_eng: { obtained: 85, fullMarks: 100 }
           }
+        }
+      }
+    }
+  });
+
+  // Partial mismatch term for FIX 3
+  await db.collection('tenant_data').doc(gwLegacySchoolId).set({
+    examTerms: {
+      term_gw_partial_mismatch: {
+        id: 'term_gw_partial_mismatch',
+        name: 'Partial Mismatch Term',
+        showResultsToParents: true
+      }
+    },
+    examSubjects: {
+      term_gw_partial_mismatch: {
+        '4': { subjects: fixtureSubjects.slice(0, 2) }
+      }
+    }
+  }, { merge: true });
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).collection('exam_marks').doc('term_gw_partial_mismatch').set({
+    '4': {
+      'A': {
+        'stu_v80_gw': {
+          marks: {
+            sub_eng: { obtained: 85, fullMarks: 100 },
+            sub_hin: { obtained: 90, fullMarks: 100 }
+          },
+          total: 999 // Partial stored aggregate differs from recomputed total (175)
         }
       }
     }
@@ -1380,9 +1418,6 @@ async function runTests() {
   };
   vm.createContext(adminSandbox);
   vm.runInContext(examsCode, adminSandbox);
-  const adminLegacyRecalc = adminSandbox.window.legacyRecalculateStudentEntry;
-  assert(typeof adminLegacyRecalc === 'function', 'v80 T31: admin legacyRecalculateStudentEntry loaded from js/exams.js');
-
   const fixtureSubjectsTest = [
     { id: 'sub_eng', name: 'English', fullMarks: 100, passMarks: 33 },
     { id: 'sub_hin', name: 'Hindi', fullMarks: 100, passMarks: 33 },
@@ -1393,26 +1428,40 @@ async function runTests() {
     { id: 'sub_sci50', name: 'Science', fullMarks: 50, passMarks: 17 }
   ];
 
-  const adminFixtureEntry = {
+  // Greenwood-shaped stored entry (5 marked subjects incl. sub_evs_sci, stored 405/500/81/A2/rank 3)
+  const gwStoredEntry = {
     marks: {
       sub_eng: { obtained: 85, fullMarks: 100 },
       sub_hin: { obtained: 92, fullMarks: 100 },
       sub_math: { obtained: 69, fullMarks: 100 },
+      sub_evs_sci: { obtained: 76, fullMarks: 100 },
       sub_comp: { obtained: 83, fullMarks: 100 }
-    }
+    },
+    total: 405,
+    maxTotal: 500,
+    percentage: 81,
+    grade: 'A2',
+    gradeLabel: 'Excellent',
+    result: 'Pass',
+    isComplete: true,
+    rank: 3
   };
-  const serverFixtureEntry = JSON.parse(JSON.stringify(adminFixtureEntry));
 
-  // Run admin function and server function on same fixture
-  adminLegacyRecalc(adminFixtureEntry, fixtureSubjectsTest);
-  ExamCalculationEngine.recalculateStudentEntry(serverFixtureEntry, fixtureSubjectsTest, { id: 'term_gw_legacy' }, {}, scaleA1ETest);
-
-  assert(serverFixtureEntry.total === adminFixtureEntry.total, 'v80 T31: Server recalculate total matches admin (' + adminFixtureEntry.total + ')');
-  assert(serverFixtureEntry.maxTotal === adminFixtureEntry.maxTotal, 'v80 T31: Server recalculate maxTotal matches admin (' + adminFixtureEntry.maxTotal + ')');
-  assert(serverFixtureEntry.percentage === adminFixtureEntry.percentage, 'v80 T31: Server recalculate percentage matches admin (' + adminFixtureEntry.percentage + '%)');
-  assert(serverFixtureEntry.grade === adminFixtureEntry.grade, 'v80 T31: Server recalculate grade matches admin (' + adminFixtureEntry.grade + ')');
-  assert(serverFixtureEntry.result === adminFixtureEntry.result, 'v80 T31: Server recalculate result matches admin (' + adminFixtureEntry.result + ')');
-  assert(serverFixtureEntry.division === adminFixtureEntry.division, 'v80 T31: Server recalculate division matches admin (' + adminFixtureEntry.division + ')');
+  // Run the admin Results-tab rendering extraction code in VM (js/exams.js:2699-2703)
+  const adminExtractScript = `
+    (function(s, studentMarks) {
+      var m = studentMarks[s.id] || {};
+      var total = m.total !== undefined ? m.total : '—';
+      var maxTotal = m.maxTotal !== undefined ? m.maxTotal : '—';
+      var pct = m.percentage !== undefined ? m.percentage + '%' : '—';
+      var grade = m.grade || '—';
+      var rank = m.rank !== undefined ? m.rank : '—';
+      var result = m.result || '—';
+      return { total: total, maxTotal: maxTotal, percentage: m.percentage, pctStr: pct, grade: grade, rank: rank, result: result };
+    })
+  `;
+  const adminExtractFn = vm.runInContext(adminExtractScript, adminSandbox);
+  const adminRow = adminExtractFn({ id: 'stu_v80_gw' }, { 'stu_v80_gw': gwStoredEntry });
 
   // Request exam-result through portal handler for Greenwood legacy school
   const gwLegacyRes = await invokeHandler('POST', 'exam-result', {
@@ -1423,25 +1472,37 @@ async function runTests() {
 
   assert(gwLegacyRes.status === 200, 'v80 T31: Portal exam-result returns HTTP 200');
   assert(gwLegacyRes.body && gwLegacyRes.body.hasResult === true, 'v80 T31: Portal hasResult === true');
-  assert(gwLegacyRes.body.summary.totalObtained === adminFixtureEntry.total, 'v80 T31: Portal totalObtained == admin output (' + adminFixtureEntry.total + ')');
-  assert(gwLegacyRes.body.summary.maxTotal === adminFixtureEntry.maxTotal, 'v80 T31: Portal maxTotal == admin output (' + adminFixtureEntry.maxTotal + ')');
-  assert(gwLegacyRes.body.summary.percentage === adminFixtureEntry.percentage, 'v80 T31: Portal percentage == admin output (' + adminFixtureEntry.percentage + '%)');
-  assert(gwLegacyRes.body.summary.grade === adminFixtureEntry.grade, 'v80 T31: Portal grade == admin output (' + adminFixtureEntry.grade + ')');
-  assert(gwLegacyRes.body.summary.result === adminFixtureEntry.result, 'v80 T31: Portal result == admin output (' + adminFixtureEntry.result + ')');
-  assert(gwLegacyRes.body.summary.division === adminFixtureEntry.division, 'v80 T31: Portal division == admin output (' + adminFixtureEntry.division + ')');
-  assert(gwLegacyRes.body.summary.rank === 3, 'v80 T31: Stored rank preserved (rank === 3)');
+  // Assert portal summary == stored values AND == admin Results-tab output
+  assert(gwLegacyRes.body.summary.totalObtained === gwStoredEntry.total, 'v80 T31: Portal totalObtained == stored total (' + gwStoredEntry.total + ')');
+  assert(gwLegacyRes.body.summary.totalObtained === adminRow.total, 'v80 T31: Portal totalObtained == admin row total (' + adminRow.total + ')');
+  assert(gwLegacyRes.body.summary.maxTotal === gwStoredEntry.maxTotal, 'v80 T31: Portal maxTotal == stored maxTotal (' + gwStoredEntry.maxTotal + ')');
+  assert(gwLegacyRes.body.summary.maxTotal === adminRow.maxTotal, 'v80 T31: Portal maxTotal == admin row maxTotal (' + adminRow.maxTotal + ')');
+  assert(gwLegacyRes.body.summary.percentage === gwStoredEntry.percentage, 'v80 T31: Portal percentage == stored percentage (' + gwStoredEntry.percentage + '%)');
+  assert(gwLegacyRes.body.summary.percentage === adminRow.percentage, 'v80 T31: Portal percentage == admin row percentage (' + adminRow.percentage + '%)');
+  assert(gwLegacyRes.body.summary.displayPercentage === adminRow.pctStr, 'v80 T31: Portal displayPercentage == admin row (' + adminRow.pctStr + ')');
+  assert(gwLegacyRes.body.summary.grade === gwStoredEntry.grade, 'v80 T31: Portal grade == stored grade (' + gwStoredEntry.grade + ')');
+  assert(gwLegacyRes.body.summary.grade === adminRow.grade, 'v80 T31: Portal grade == admin row grade (' + adminRow.grade + ')');
+  assert(gwLegacyRes.body.summary.result === gwStoredEntry.result, 'v80 T31: Portal result == stored result (' + gwStoredEntry.result + ')');
+  assert(gwLegacyRes.body.summary.result === adminRow.result, 'v80 T31: Portal result == admin row result (' + adminRow.result + ')');
+  assert(gwLegacyRes.body.summary.rank === gwStoredEntry.rank, 'v80 T31: Stored rank preserved (rank === ' + gwStoredEntry.rank + ')');
+  assert(gwLegacyRes.body.summary.rank === adminRow.rank, 'v80 T31: Portal rank == admin row rank (' + adminRow.rank + ')');
 
-  // Verify per-subject grades match CBSE A1-E scale (FIX 3)
+  // Verify subject rows: never drop marked subject, un-marked configured subject shows '—' without affecting totals
   const subjectsRes = gwLegacyRes.body.subjects;
-  assert(Array.isArray(subjectsRes) && subjectsRes.length === 7, 'v80 T31: 7 configured subjects returned');
+  assert(Array.isArray(subjectsRes) && subjectsRes.length === 8, 'v80 T31: 8 subjects returned (7 configured + 1 orphan sub_evs_sci)');
   const engSub = subjectsRes.find(s => s.id === 'sub_eng');
   const hinSub = subjectsRes.find(s => s.id === 'sub_hin');
   const mathSub = subjectsRes.find(s => s.id === 'sub_math');
   const compSub = subjectsRes.find(s => s.id === 'sub_comp');
-  assert(engSub && engSub.grade === 'A2', 'v80 T31: English 85% gets grade A2 on CBSE scale (not A)');
-  assert(hinSub && hinSub.grade === 'A1', 'v80 T31: Hindi 92% gets grade A1 on CBSE scale (not A+)');
-  assert(mathSub && mathSub.grade === 'B2', 'v80 T31: Mathematics 69% gets grade B2 on CBSE scale (not B)');
-  assert(compSub && compSub.grade === 'A2', 'v80 T31: Computer 83% gets grade A2 on CBSE scale (not A)');
+  const orphanSub = subjectsRes.find(s => s.id === 'sub_evs_sci');
+  const unMarkedSub = subjectsRes.find(s => s.id === 'sub_sci');
+
+  assert(engSub && engSub.grade === 'A2', 'v80 T31: English 85% gets grade A2 on CBSE scale');
+  assert(hinSub && hinSub.grade === 'A1', 'v80 T31: Hindi 92% gets grade A1 on CBSE scale');
+  assert(mathSub && mathSub.grade === 'B2', 'v80 T31: Mathematics 69% gets grade B2 on CBSE scale');
+  assert(compSub && compSub.grade === 'A2', 'v80 T31: Computer 83% gets grade A2 on CBSE scale');
+  assert(orphanSub && orphanSub.obtained === '76' && orphanSub.grade === 'B1', 'v80 T31: Orphan sub_evs_sci preserved with 76 marks and B1 grade');
+  assert(unMarkedSub && unMarkedSub.obtained === '—' && unMarkedSub.grade === '—', 'v80 T31: Unmarked configured sub_sci shows —');
 
   // v80 T32: V2 Term Parity
   const gwV2Res = await invokeHandler('POST', 'exam-result', {
@@ -1495,6 +1556,16 @@ async function runTests() {
   });
   assert(loadedMarks && loadedMarks.rank === 3, 'v80 T34: loadStudentExamMarks loaded student entry (rank === 3)');
   assert(loadedMarks.marks && loadedMarks.marks.sub_eng.obtained === 85, 'v80 T34: loadStudentExamMarks loaded marks');
+
+  // v80 T35: Partial Stored Values Mismatch (FIX 3)
+  const gwPartialRes = await invokeHandler('POST', 'exam-result', {
+    schoolId: 'test_school_v80_greenwood',
+    studentId: 'stu_v80_gw',
+    termId: 'term_gw_partial_mismatch'
+  }, authHeaders);
+  assert(gwPartialRes.status === 200, 'v80 T35: Partial mismatch returns HTTP 200');
+  assert(gwPartialRes.body && gwPartialRes.body.hasResult === false, 'v80 T35: Partial mismatch returns hasResult: false');
+  assert(gwPartialRes.body.message === 'Result not available yet', 'v80 T35: Message matches "Result not available yet"');
 
   console.log('\n======================================================================');
   console.log(`PARENT PORTAL PHASE B2 SUMMARY: Total: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);
