@@ -35,7 +35,9 @@ const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');
 const http = require('http');
+const vm = require('vm');
 const ExamCalculationEngine = require('../api/_lib/exam-engine');
+const { loadStudentExamMarks } = require('../api/_lib/parents/marks-loader');
 const parentHandler = require('../api/parents');
 
 if (!admin.apps.length) {
@@ -157,6 +159,7 @@ async function seedTestData() {
         startDate: '2026-09-01',
         endDate: '2026-09-15',
         showResultsToParents: true,
+        rulesVersion: 'v2',
         status: 'published',
         order: 1
       },
@@ -678,6 +681,145 @@ async function seedTestData() {
         ]
       }
     ]
+  });
+
+  // 10. Greenwood-shaped legacy school for v80 parity tests
+  const gwLegacySchoolId = 'test_school_v80_greenwood';
+  const scaleA1E = [
+    { min: 91, max: 100, grade: 'A1', label: 'Outstanding' },
+    { min: 81, max: 90,  grade: 'A2', label: 'Excellent' },
+    { min: 71, max: 80,  grade: 'B1', label: 'Very Good' },
+    { min: 61, max: 70,  grade: 'B2', label: 'Good' },
+    { min: 51, max: 60,  grade: 'C1', label: 'Above Average' },
+    { min: 41, max: 50,  grade: 'C2', label: 'Average' },
+    { min: 33, max: 40,  grade: 'D',  label: 'Pass' },
+    { min: 0,  max: 32,  grade: 'E',  label: 'Needs Improvement' }
+  ];
+  const scaleAPlusF = [
+    { min: 91, max: 100, grade: 'A+', label: 'Outstanding' },
+    { min: 81, max: 90,  grade: 'A',  label: 'Excellent' },
+    { min: 71, max: 80,  grade: 'B+', label: 'Very Good' },
+    { min: 61, max: 70,  grade: 'B',  label: 'Good' },
+    { min: 51, max: 60,  grade: 'C+', label: 'Above Average' },
+    { min: 41, max: 50,  grade: 'C',  label: 'Average' },
+    { min: 33, max: 40,  grade: 'D',  label: 'Pass' },
+    { min: 0,  max: 32,  grade: 'F',  label: 'Fail' }
+  ];
+  const fixtureSubjects = [
+    { id: 'sub_eng', name: 'English', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_hin', name: 'Hindi', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_math', name: 'Mathematics', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_sci', name: 'Science & EVS', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_sst', name: 'Social Science', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_comp', name: 'Computer Science', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_sci50', name: 'Science', fullMarks: 50, passMarks: 17 }
+  ];
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).set({
+    settings: {
+      schoolName: 'Greenwood v80 Test School',
+      studentsMigrated: true,
+      storageVersion: 2,
+      restructured: true,
+      classes: ['4'],
+      parentPortal: { enabled: true, exams: true }
+    },
+    examConfig: {
+      gradingScale: scaleA1E
+    },
+    reportCardConfig: {
+      gradingScale: scaleAPlusF
+    },
+    examTerms: {
+      term_gw_legacy: {
+        id: 'term_gw_legacy',
+        name: 'Term 1 Examination',
+        showResultsToParents: true
+      },
+      term_gw_v2: {
+        id: 'term_gw_v2',
+        name: 'Term 2 Examination (V2)',
+        rulesVersion: 'v2',
+        showResultsToParents: true
+      },
+      term_gw_safety: {
+        id: 'term_gw_safety',
+        name: 'Safety Test Term',
+        showResultsToParents: true
+      }
+    },
+    examSubjects: {
+      term_gw_legacy: {
+        '4': { subjects: fixtureSubjects }
+      },
+      term_gw_v2: {
+        '4': { subjects: fixtureSubjects.slice(0, 4) }
+      },
+      term_gw_safety: {
+        '4': { subjects: [] }
+      }
+    }
+  });
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).collection('portal').doc('config').set({
+    enabled: true,
+    studentsMigrated: true,
+    restructured: true,
+    modules: { exams: true }
+  });
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).collection('students').doc('stu_v80_gw').set({
+    id: 'stu_v80_gw',
+    name: 'Aarav Greenwood',
+    class: '4',
+    section: 'A',
+    parentEmail: parentEmail,
+    parentEmailNorm: parentEmail,
+    status: 'Active'
+  });
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).collection('exam_marks').doc('term_gw_legacy').set({
+    '4': {
+      'A': {
+        'stu_v80_gw': {
+          marks: {
+            sub_eng: { obtained: 85, fullMarks: 100 },
+            sub_hin: { obtained: 92, fullMarks: 100 },
+            sub_math: { obtained: 69, fullMarks: 100 },
+            sub_comp: { obtained: 83, fullMarks: 100 }
+          },
+          rank: 3
+        }
+      }
+    }
+  });
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).collection('exam_marks').doc('term_gw_v2').set({
+    '4': {
+      'A': {
+        'stu_v80_gw': {
+          marks: {
+            sub_eng: { obtained: 85, fullMarks: 100 },
+            sub_hin: { obtained: 92, fullMarks: 100 },
+            sub_math: { obtained: 69, fullMarks: 100 },
+            sub_sci: { obtained: 76, fullMarks: 100 }
+          },
+          rank: 2
+        }
+      }
+    }
+  });
+
+  await db.collection('tenant_data').doc(gwLegacySchoolId).collection('exam_marks').doc('term_gw_safety').set({
+    '4': {
+      'A': {
+        'stu_v80_gw': {
+          marks: {
+            sub_eng: { obtained: 85, fullMarks: 100 }
+          }
+        }
+      }
+    }
   });
 
   console.log('✅ Test data successfully seeded in emulator.\n');
@@ -1204,6 +1346,155 @@ async function runTests() {
   }, authHeaders);
   assert(t30Router.status === 200, 'v79 T30: Exams action through api/parents router returns HTTP 200');
   assert(t30Router.body && t30Router.body.terms.length === realExamsBody.terms.length, 'v79 T30: Router and direct module return identical terms');
+
+  // ======================================================================
+  // v80 TESTS: EXAM RESULT PARITY WITH ADMIN REPORT CARD
+  // ======================================================================
+  console.log('\n--- Checking v80 Exam Result Parity With Admin Report Card ---');
+
+  // Load live admin exams.js into VM Sandbox
+  const examsJsPath = path.resolve(__dirname, '..', 'js', 'exams.js');
+  const examsCode = fs.readFileSync(examsJsPath, 'utf8');
+  const scaleA1ETest = [
+    { min: 91, max: 100, grade: 'A1', label: 'Outstanding' },
+    { min: 81, max: 90,  grade: 'A2', label: 'Excellent' },
+    { min: 71, max: 80,  grade: 'B1', label: 'Very Good' },
+    { min: 61, max: 70,  grade: 'B2', label: 'Good' },
+    { min: 51, max: 60,  grade: 'C1', label: 'Above Average' },
+    { min: 41, max: 50,  grade: 'C2', label: 'Average' },
+    { min: 33, max: 40,  grade: 'D',  label: 'Pass' },
+    { min: 0,  max: 32,  grade: 'E',  label: 'Needs Improvement' }
+  ];
+  const adminSandbox = {
+    window: {},
+    document: { addEventListener: () => {}, getElementById: () => null, querySelector: () => null },
+    SchoolApp: {
+      store: {
+        examConfig: { gradingScale: scaleA1ETest }
+      },
+      registerModule: () => {}
+    },
+    console,
+    setTimeout,
+    clearTimeout
+  };
+  vm.createContext(adminSandbox);
+  vm.runInContext(examsCode, adminSandbox);
+  const adminLegacyRecalc = adminSandbox.window.legacyRecalculateStudentEntry;
+  assert(typeof adminLegacyRecalc === 'function', 'v80 T31: admin legacyRecalculateStudentEntry loaded from js/exams.js');
+
+  const fixtureSubjectsTest = [
+    { id: 'sub_eng', name: 'English', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_hin', name: 'Hindi', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_math', name: 'Mathematics', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_sci', name: 'Science & EVS', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_sst', name: 'Social Science', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_comp', name: 'Computer Science', fullMarks: 100, passMarks: 33 },
+    { id: 'sub_sci50', name: 'Science', fullMarks: 50, passMarks: 17 }
+  ];
+
+  const adminFixtureEntry = {
+    marks: {
+      sub_eng: { obtained: 85, fullMarks: 100 },
+      sub_hin: { obtained: 92, fullMarks: 100 },
+      sub_math: { obtained: 69, fullMarks: 100 },
+      sub_comp: { obtained: 83, fullMarks: 100 }
+    }
+  };
+  const serverFixtureEntry = JSON.parse(JSON.stringify(adminFixtureEntry));
+
+  // Run admin function and server function on same fixture
+  adminLegacyRecalc(adminFixtureEntry, fixtureSubjectsTest);
+  ExamCalculationEngine.recalculateStudentEntry(serverFixtureEntry, fixtureSubjectsTest, { id: 'term_gw_legacy' }, {}, scaleA1ETest);
+
+  assert(serverFixtureEntry.total === adminFixtureEntry.total, 'v80 T31: Server recalculate total matches admin (' + adminFixtureEntry.total + ')');
+  assert(serverFixtureEntry.maxTotal === adminFixtureEntry.maxTotal, 'v80 T31: Server recalculate maxTotal matches admin (' + adminFixtureEntry.maxTotal + ')');
+  assert(serverFixtureEntry.percentage === adminFixtureEntry.percentage, 'v80 T31: Server recalculate percentage matches admin (' + adminFixtureEntry.percentage + '%)');
+  assert(serverFixtureEntry.grade === adminFixtureEntry.grade, 'v80 T31: Server recalculate grade matches admin (' + adminFixtureEntry.grade + ')');
+  assert(serverFixtureEntry.result === adminFixtureEntry.result, 'v80 T31: Server recalculate result matches admin (' + adminFixtureEntry.result + ')');
+  assert(serverFixtureEntry.division === adminFixtureEntry.division, 'v80 T31: Server recalculate division matches admin (' + adminFixtureEntry.division + ')');
+
+  // Request exam-result through portal handler for Greenwood legacy school
+  const gwLegacyRes = await invokeHandler('POST', 'exam-result', {
+    schoolId: 'test_school_v80_greenwood',
+    studentId: 'stu_v80_gw',
+    termId: 'term_gw_legacy'
+  }, authHeaders);
+
+  assert(gwLegacyRes.status === 200, 'v80 T31: Portal exam-result returns HTTP 200');
+  assert(gwLegacyRes.body && gwLegacyRes.body.hasResult === true, 'v80 T31: Portal hasResult === true');
+  assert(gwLegacyRes.body.summary.totalObtained === adminFixtureEntry.total, 'v80 T31: Portal totalObtained == admin output (' + adminFixtureEntry.total + ')');
+  assert(gwLegacyRes.body.summary.maxTotal === adminFixtureEntry.maxTotal, 'v80 T31: Portal maxTotal == admin output (' + adminFixtureEntry.maxTotal + ')');
+  assert(gwLegacyRes.body.summary.percentage === adminFixtureEntry.percentage, 'v80 T31: Portal percentage == admin output (' + adminFixtureEntry.percentage + '%)');
+  assert(gwLegacyRes.body.summary.grade === adminFixtureEntry.grade, 'v80 T31: Portal grade == admin output (' + adminFixtureEntry.grade + ')');
+  assert(gwLegacyRes.body.summary.result === adminFixtureEntry.result, 'v80 T31: Portal result == admin output (' + adminFixtureEntry.result + ')');
+  assert(gwLegacyRes.body.summary.division === adminFixtureEntry.division, 'v80 T31: Portal division == admin output (' + adminFixtureEntry.division + ')');
+  assert(gwLegacyRes.body.summary.rank === 3, 'v80 T31: Stored rank preserved (rank === 3)');
+
+  // Verify per-subject grades match CBSE A1-E scale (FIX 3)
+  const subjectsRes = gwLegacyRes.body.subjects;
+  assert(Array.isArray(subjectsRes) && subjectsRes.length === 7, 'v80 T31: 7 configured subjects returned');
+  const engSub = subjectsRes.find(s => s.id === 'sub_eng');
+  const hinSub = subjectsRes.find(s => s.id === 'sub_hin');
+  const mathSub = subjectsRes.find(s => s.id === 'sub_math');
+  const compSub = subjectsRes.find(s => s.id === 'sub_comp');
+  assert(engSub && engSub.grade === 'A2', 'v80 T31: English 85% gets grade A2 on CBSE scale (not A)');
+  assert(hinSub && hinSub.grade === 'A1', 'v80 T31: Hindi 92% gets grade A1 on CBSE scale (not A+)');
+  assert(mathSub && mathSub.grade === 'B2', 'v80 T31: Mathematics 69% gets grade B2 on CBSE scale (not B)');
+  assert(compSub && compSub.grade === 'A2', 'v80 T31: Computer 83% gets grade A2 on CBSE scale (not A)');
+
+  // v80 T32: V2 Term Parity
+  const gwV2Res = await invokeHandler('POST', 'exam-result', {
+    schoolId: 'test_school_v80_greenwood',
+    studentId: 'stu_v80_gw',
+    termId: 'term_gw_v2'
+  }, authHeaders);
+  assert(gwV2Res.status === 200, 'v80 T32: V2 term exam-result returns HTTP 200');
+  assert(gwV2Res.body && gwV2Res.body.hasResult === true, 'v80 T32: V2 term hasResult === true');
+  const scaleAPlusF = [
+    { min: 91, max: 100, grade: 'A+', label: 'Outstanding' },
+    { min: 81, max: 90,  grade: 'A',  label: 'Excellent' },
+    { min: 71, max: 80,  grade: 'B+', label: 'Very Good' },
+    { min: 61, max: 70,  grade: 'B',  label: 'Good' },
+    { min: 51, max: 60,  grade: 'C+', label: 'Above Average' },
+    { min: 41, max: 50,  grade: 'C',  label: 'Average' },
+    { min: 33, max: 40,  grade: 'D',  label: 'Pass' },
+    { min: 0,  max: 32,  grade: 'F',  label: 'Fail' }
+  ];
+  const expectedV2 = ExamCalculationEngine.calculateStudentResult({
+    marks: {
+      sub_eng: { obtained: 85, fullMarks: 100 },
+      sub_hin: { obtained: 92, fullMarks: 100 },
+      sub_math: { obtained: 69, fullMarks: 100 },
+      sub_sci: { obtained: 76, fullMarks: 100 }
+    },
+    subjects: fixtureSubjectsTest.slice(0, 4),
+    term: { id: 'term_gw_v2', rulesVersion: 'v2' },
+    schoolConfig: { gradingScale: scaleAPlusF }
+  });
+  assert(gwV2Res.body.summary.totalObtained === expectedV2.total, 'v80 T32: V2 totalObtained matches ExamCalculationEngine (' + expectedV2.total + ')');
+  assert(gwV2Res.body.summary.grade === expectedV2.grade, 'v80 T32: V2 grade matches ExamCalculationEngine (' + expectedV2.grade + ')');
+
+  // v80 T33: Safety Check - Missing Subject Config (FIX 5)
+  const gwSafetyRes = await invokeHandler('POST', 'exam-result', {
+    schoolId: 'test_school_v80_greenwood',
+    studentId: 'stu_v80_gw',
+    termId: 'term_gw_safety'
+  }, authHeaders);
+  assert(gwSafetyRes.status === 200, 'v80 T33: Safety check returns HTTP 200');
+  assert(gwSafetyRes.body && gwSafetyRes.body.hasResult === false, 'v80 T33: Safety check returns hasResult: false');
+  assert(gwSafetyRes.body.message === 'Result not available yet', 'v80 T33: Returns exact message "Result not available yet"');
+
+  // v80 T34: Marks Source Loader Helper (FIX 1)
+  const loadedMarks = await loadStudentExamMarks({
+    db,
+    schoolId: 'test_school_v80_greenwood',
+    termId: 'term_gw_legacy',
+    student: { id: 'stu_v80_gw', class: 'Class 4', section: 'a' },
+    isRestructured: true
+  });
+  assert(loadedMarks && loadedMarks.rank === 3, 'v80 T34: loadStudentExamMarks loaded student entry (rank === 3)');
+  assert(loadedMarks.marks && loadedMarks.marks.sub_eng.obtained === 85, 'v80 T34: loadStudentExamMarks loaded marks');
 
   console.log('\n======================================================================');
   console.log(`PARENT PORTAL PHASE B2 SUMMARY: Total: ${passed + failed} | Passed: ${passed} | Failed: ${failed}`);

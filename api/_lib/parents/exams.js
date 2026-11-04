@@ -6,7 +6,7 @@
  * Handles:
  *   - action 'exams': Lists exam terms where showResultsToParents === true.
  *   - action 'exam-result': Computes and returns the single student's subject-wise marks,
- *     totals, percentage, grade, division, and rank using the pure ExamCalculationEngine.
+ *     totals, percentage, grade, division, and rank using the version-aware ExamCalculationEngine.
  */
 
 const admin = require('firebase-admin');
@@ -15,6 +15,7 @@ const { getDb } = require('../firebase-admin');
 const ExamCalculationEngine = require('../exam-engine');
 const { normalizeClassName, normalizeSectionName } = require('../class-normalizer');
 const { resolveIsRestructured } = require('./restructured-helper');
+const { loadStudentExamMarks } = require('./marks-loader');
 
 async function handleExamsList(req, res) {
   const authRes = await authenticateParentRequest(req, res, 'exams');
@@ -105,65 +106,16 @@ async function handleExamResult(req, res) {
     return res.status(403).json({ error: 'Results for this examination term are not published to parents.' });
   }
 
-  // 2. Resolve Mapped Subjects for Student's Class using normalized class matching
-  const studentClass = String(student.class || '').trim();
-  const studentSection = String(student.section || '').trim();
-  const normClass = normalizeClassName(studentClass);
-  const normSection = normalizeSectionName(studentSection);
-
-  const termSubjectsMap = (rootData.examSubjects && rootData.examSubjects[termId]) || {};
-  let subjectsObj = null;
-  for (const cKey of Object.keys(termSubjectsMap)) {
-    if (normalizeClassName(cKey) === normClass) {
-      subjectsObj = termSubjectsMap[cKey];
-      break;
-    }
-  }
-  const subjects = (subjectsObj && Array.isArray(subjectsObj.subjects)) ? subjectsObj.subjects : [];
-
-  // Helper: Find student mark entry by normalized class and section matching
-  function findMarkEntryInMap(marksMap) {
-    if (!marksMap || typeof marksMap !== 'object') return null;
-    let matchingClassMarks = null;
-    for (const cKey of Object.keys(marksMap)) {
-      if (normalizeClassName(cKey) === normClass) {
-        matchingClassMarks = marksMap[cKey];
-        break;
-      }
-    }
-    if (!matchingClassMarks || typeof matchingClassMarks !== 'object') return null;
-
-    let matchingSecMarks = null;
-    for (const sKey of Object.keys(matchingClassMarks)) {
-      if (normalizeSectionName(sKey) === normSection) {
-        matchingSecMarks = matchingClassMarks[sKey];
-        break;
-      }
-    }
-    if (!matchingSecMarks || typeof matchingSecMarks !== 'object') return null;
-
-    return matchingSecMarks[studentId] || null;
-  }
-
-  // 3. Retrieve Student Mark Entry
-  let markEntry = null;
-
-  // Subcollection Path: tenant_data/{schoolId}/exam_marks/{termId}
-  try {
-    const markDocRef = db.collection('tenant_data').doc(schoolId).collection('exam_marks').doc(termId);
-    const markSnap = await markDocRef.get();
-    if (markSnap.exists) {
-      markEntry = findMarkEntryInMap(markSnap.data());
-    }
-  } catch (err) {
-    console.warn('[api/parents/exams] Error fetching subcollection marks:', err.message);
-  }
-
-  // Legacy root fallback ONLY for non-restructured schools (resolved via shared helper)
+  // 2. Resolve restructuring status and load student marks (FIX 1)
   const isRestructured = await resolveIsRestructured(schoolId, portalConfig, db);
-  if (!markEntry && !isRestructured && rootData.examMarks && rootData.examMarks[termId]) {
-    markEntry = findMarkEntryInMap(rootData.examMarks[termId]);
-  }
+  const markEntry = await loadStudentExamMarks({
+    db,
+    schoolId,
+    termId,
+    student,
+    isRestructured,
+    rootExamMarks: rootData.examMarks
+  });
 
   if (!markEntry) {
     return res.status(200).json({
@@ -179,28 +131,88 @@ async function handleExamResult(req, res) {
     });
   }
 
-  // 4. Calculate Results using Pure ExamCalculationEngine
-  const schoolConfig = Object.assign({}, rootData.reportCardConfig || {});
-  const effectiveGradingScale = (Array.isArray(schoolConfig.gradingScale) && schoolConfig.gradingScale.length > 0)
-    ? schoolConfig.gradingScale
-    : ((rootData.examConfig && Array.isArray(rootData.examConfig.gradingScale) && rootData.examConfig.gradingScale.length > 0)
+  // 3. Resolve Mapped Subjects for Student's Class using normalized class matching
+  const studentClass = String(student.class || '').trim();
+  const studentSection = String(student.section || '').trim();
+  const normClass = normalizeClassName(studentClass);
+  const normSection = normalizeSectionName(studentSection);
+
+  const termSubjectsMap = (rootData.examSubjects && rootData.examSubjects[termId]) || {};
+  let subjectsObj = null;
+  for (const cKey of Object.keys(termSubjectsMap)) {
+    if (normalizeClassName(cKey) === normClass) {
+      subjectsObj = termSubjectsMap[cKey];
+      break;
+    }
+  }
+  const subjects = (subjectsObj && Array.isArray(subjectsObj.subjects)) ? subjectsObj.subjects : [];
+
+  // Safety Check (FIX 5): If inputs are missing/cannot be computed, return hasResult: false
+  if (subjects.length === 0 || !markEntry.marks || Object.keys(markEntry.marks).length === 0) {
+    return res.status(200).json({
+      success: true,
+      hasResult: false,
+      term: {
+        id: term.id,
+        name: term.name,
+        shortName: term.shortName,
+        isFinal: !!term.isFinal
+      },
+      message: 'Result not available yet'
+    });
+  }
+
+  // 4. Resolve Effective Grading Scale with exact admin precedence (FIX 3)
+  const isV2 = term && term.rulesVersion === 'v2';
+  let effectiveGradingScale = null;
+
+  if (isV2) {
+    // V2 rules: reportCardConfig.gradingScale has precedence (mirrors js/exams.js:1787-1788)
+    const rcConfig = rootData.reportCardConfig || {};
+    effectiveGradingScale = (Array.isArray(rcConfig.gradingScale) && rcConfig.gradingScale.length > 0)
+      ? rcConfig.gradingScale
+      : ((rootData.examConfig && Array.isArray(rootData.examConfig.gradingScale) && rootData.examConfig.gradingScale.length > 0)
+        ? rootData.examConfig.gradingScale
+        : ((rootData.settings && rootData.settings.examConfig && Array.isArray(rootData.settings.examConfig.gradingScale))
+          ? rootData.settings.examConfig.gradingScale
+          : null));
+  } else {
+    // Legacy rules: examConfig.gradingScale has precedence (mirrors js/exams.js:2027)
+    effectiveGradingScale = (rootData.examConfig && Array.isArray(rootData.examConfig.gradingScale) && rootData.examConfig.gradingScale.length > 0)
       ? rootData.examConfig.gradingScale
       : ((rootData.settings && rootData.settings.examConfig && Array.isArray(rootData.settings.examConfig.gradingScale) && rootData.settings.examConfig.gradingScale.length > 0)
         ? rootData.settings.examConfig.gradingScale
-        : null));
-
-  if (effectiveGradingScale) {
-    schoolConfig.gradingScale = effectiveGradingScale;
+        : ((rootData.reportCardConfig && Array.isArray(rootData.reportCardConfig.gradingScale) && rootData.reportCardConfig.gradingScale.length > 0)
+          ? rootData.reportCardConfig.gradingScale
+          : null));
   }
 
-  const calcResult = ExamCalculationEngine.calculateStudentResult({
-    marks: markEntry.marks || {},
-    subjects: subjects,
-    term: term,
-    schoolConfig: schoolConfig
-  });
+  // 5. Version-aware calculation (FIX 2)
+  const entryClone = JSON.parse(JSON.stringify(markEntry));
+  const calcResult = ExamCalculationEngine.recalculateStudentEntry(
+    entryClone,
+    subjects,
+    term,
+    rootData.reportCardConfig || {},
+    effectiveGradingScale
+  );
 
-  // 5. Build Subject-Wise Marks Breakdown
+  // Safety Check (FIX 5): If computed maxTotal <= 0 (no subjects marked), return hasResult: false
+  if (calcResult.maxTotal <= 0) {
+    return res.status(200).json({
+      success: true,
+      hasResult: false,
+      term: {
+        id: term.id,
+        name: term.name,
+        shortName: term.shortName,
+        isFinal: !!term.isFinal
+      },
+      message: 'Result not available yet'
+    });
+  }
+
+  // 6. Build Subject-Wise Marks Breakdown using same effective grading scale (FIX 3)
   const subjectBreakdown = subjects.map(sub => {
     const sm = (markEntry.marks && markEntry.marks[sub.id]) || {};
     const isAbsent = !!sm.isAbsent;
@@ -225,7 +237,17 @@ async function handleExamResult(req, res) {
     }
 
     const subPct = (numericObtained !== null && fullMarks > 0) ? (numericObtained / fullMarks) * 100 : null;
-    const gradeObj = subPct !== null ? ExamCalculationEngine.calculateGrade(subPct, schoolConfig.gradingScale) : { grade: '—' };
+    let gradeObj = { grade: '—' };
+    if (subPct !== null) {
+      if (isV2) {
+        gradeObj = ExamCalculationEngine.calculateGrade(subPct, effectiveGradingScale);
+      } else {
+        gradeObj = ExamCalculationEngine.legacyCalculateGrade(Math.round(subPct), effectiveGradingScale);
+        if (!isAbsent && !isExempted && numericObtained !== null && numericObtained >= passMarks && gradeObj.grade === 'F') {
+          gradeObj = { grade: 'D', label: 'Pass' };
+        }
+      }
+    }
 
     return {
       id: sub.id,
@@ -257,14 +279,14 @@ async function handleExamResult(req, res) {
     summary: {
       totalObtained: calcResult.total,
       maxTotal: calcResult.maxTotal,
-      passTotal: calcResult.passTotal,
+      passTotal: calcResult.passTotal !== undefined ? calcResult.passTotal : null,
       percentage: calcResult.percentage,
-      displayPercentage: calcResult.displayPercentage,
+      displayPercentage: calcResult.displayPercentage || (calcResult.percentage + '%'),
       grade: calcResult.grade,
       gradeLabel: calcResult.gradeLabel,
       division: calcResult.division,
       result: calcResult.result,
-      isComplete: calcResult.isComplete,
+      isComplete: calcResult.isComplete !== undefined ? calcResult.isComplete : (calcResult.maxTotal > 0),
       rank: (markEntry.rank !== undefined && markEntry.rank !== null) ? markEntry.rank : null
     }
   });

@@ -4,7 +4,8 @@
  * api/_lib/exam-engine.js
  * 
  * Pure, Zero-DOM Exam Calculation Engine.
- * Exact server-side replica of the ERP's ExamCalculationEngine from js/exams.js:272-420.
+ * Exact server-side replica of the ERP's ExamCalculationEngine from js/exams.js:272-420
+ * and legacy calculation functions from js/exams.js:1729-1791 & 2026-2042.
  * Guarantees zero divergent math between school admin report cards and parent portal results.
  */
 
@@ -15,6 +16,27 @@ function ensureSubjectsArray(subjects) {
 }
 
 const ExamCalculationEngine = {
+  // Legacy grade calculation matching js/exams.js:2026-2042
+  legacyCalculateGrade: function(percentage, customScale) {
+    const scale = (Array.isArray(customScale) && customScale.length > 0) ? customScale : [
+      { min: 91, max: 100, grade: 'A+', label: 'Outstanding' },
+      { min: 81, max: 90,  grade: 'A',  label: 'Excellent' },
+      { min: 71, max: 80,  grade: 'B+', label: 'Very Good' },
+      { min: 61, max: 70,  grade: 'B',  label: 'Good' },
+      { min: 51, max: 60,  grade: 'C+', label: 'Above Average' },
+      { min: 41, max: 50,  grade: 'C',  label: 'Average' },
+      { min: 33, max: 40,  grade: 'D',  label: 'Pass' },
+      { min: 0,  max: 32,  grade: 'F',  label: 'Fail' }
+    ];
+    for (let i = 0; i < scale.length; i++) {
+      if (percentage >= scale[i].min && percentage <= scale[i].max) {
+        return scale[i];
+      }
+    }
+    return { grade: 'F', label: 'Fail' };
+  },
+
+  // V2 grade calculation matching js/exams.js:273-288
   calculateGrade: function(percentage, customScale) {
     const scale = (Array.isArray(customScale) && customScale.length > 0) ? customScale : [
       { min: 91, max: 100, grade: 'A+', label: 'Outstanding' },
@@ -32,6 +54,97 @@ const ExamCalculationEngine = {
       }
     }
     return percentage >= 33 ? { grade: 'D', label: 'Pass' } : { grade: 'F', label: 'Fail' };
+  },
+
+  // Legacy recalculation matching js/exams.js:1729-1781
+  legacyRecalculateStudentEntry: function(entry, subjects, customGradingScale) {
+    entry = entry || {};
+    const subjectsArr = ensureSubjectsArray(subjects);
+    let totalFull = 0;
+    let totalObtained = 0;
+    let mandatoryFailed = false;
+    let optionalFailedOrAbsent = false;
+
+    subjectsArr.forEach(function(sub) {
+      const sc = entry.marks && entry.marks[sub.id];
+      if (!sc) return;
+      if (sc.isExempted) return;
+
+      const obtained = sc.isAbsent ? 0 : (Number(sc.obtained) || 0);
+
+      totalFull += (Number(sub.fullMarks) || 0);
+      totalObtained += obtained;
+
+      if (sub.isOptional) {
+        if (sc.isAbsent || obtained < (Number(sub.passMarks) || 0)) {
+          optionalFailedOrAbsent = true;
+        }
+      } else {
+        if (sc.isAbsent || obtained < (Number(sub.passMarks) || 0)) {
+          mandatoryFailed = true;
+        }
+      }
+    });
+
+    entry.total = totalObtained;
+    entry.maxTotal = totalFull;
+    entry.percentage = totalFull > 0 ? Math.round((totalObtained / totalFull) * 100) : 0;
+
+    const gradeObj = this.legacyCalculateGrade(entry.percentage, customGradingScale);
+    entry.gradeObj = gradeObj;
+    entry.grade = gradeObj.grade;
+    entry.gradeLabel = gradeObj.label;
+
+    if (mandatoryFailed) {
+      entry.result = 'FAIL';
+      entry.division = 'Not Applicable';
+    } else {
+      entry.result = 'PASS';
+      if (optionalFailedOrAbsent) {
+        entry.division = 'Not Awarded';
+      } else {
+        if (entry.percentage >= 75) entry.division = 'First Division (Distinction)';
+        else if (entry.percentage >= 60) entry.division = 'First Division';
+        else if (entry.percentage >= 45) entry.division = 'Second Division';
+        else if (entry.percentage >= 33) entry.division = 'Third Division';
+        else entry.division = 'Pass Division';
+      }
+    }
+
+    entry.displayPercentage = totalFull > 0 ? (entry.percentage + '%') : '—';
+    entry.isComplete = (totalFull > 0);
+    return entry;
+  },
+
+  // Version-aware dispatcher matching js/exams.js:1784-1791
+  recalculateStudentEntry: function(entry, subjects, term, schoolConfig, customGradingScale) {
+    entry = entry || {};
+    const isV2 = term && term.rulesVersion === 'v2';
+    if (isV2) {
+      const v2Config = Object.assign({}, schoolConfig || {});
+      if (customGradingScale) v2Config.gradingScale = customGradingScale;
+      const res = this.calculateStudentResult({
+        marks: entry.marks || {},
+        subjects: subjects,
+        term: term,
+        schoolConfig: v2Config
+      });
+      entry.total = res.total;
+      entry.maxTotal = res.maxTotal;
+      entry.passTotal = res.passTotal;
+      entry.percentage = res.percentage;
+      entry.displayPercentage = res.displayPercentage;
+      entry.grade = res.grade;
+      entry.gradeLabel = res.gradeLabel;
+      entry.division = res.division;
+      entry.result = res.result;
+      entry.isComplete = res.isComplete;
+      entry.missingMandatorySubjects = res.missingMandatorySubjects;
+      entry.missingOptionalSubjects = res.missingOptionalSubjects;
+      entry.eligibleForRank = res.eligibleForRank;
+      return entry;
+    }
+    return this.legacyRecalculateStudentEntry(entry, subjects, customGradingScale);
   },
 
   calculateStudentResult: function(params) {
@@ -161,3 +274,4 @@ const ExamCalculationEngine = {
 };
 
 module.exports = ExamCalculationEngine;
+module.exports.ensureSubjectsArray = ensureSubjectsArray;
