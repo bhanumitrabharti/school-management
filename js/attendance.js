@@ -10,7 +10,7 @@
     currentView: 'mark', // 'mark', 'history', or 'summary'
     selectedClass: '',
     selectedSection: '',
-    selectedDate: new Date().toISOString().split('T')[0],
+    selectedDate: (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA'),
     attendanceStatus: {}, // { studentId: 'present'|'absent'|'late' }
     historyFilters: {
       fromDate: '',
@@ -170,24 +170,21 @@
 
   function getSummaryDateRange(preset) {
     var today = new Date();
-    var todayStr = today.toISOString().split('T')[0];
+    var todayStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(today) : today.toLocaleDateString('en-CA');
     var fromStr = todayStr;
 
     if (preset === '1month') {
       var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      fromStr = firstDay.toISOString().split('T')[0];
+      fromStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(firstDay) : firstDay.toLocaleDateString('en-CA');
     } else if (preset === '3months') {
-      var d = new Date(today);
-      d.setMonth(d.getMonth() - 3);
-      fromStr = d.toISOString().split('T')[0];
+      var d = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate());
+      fromStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(d) : d.toLocaleDateString('en-CA');
     } else if (preset === '4months') {
-      var d = new Date(today);
-      d.setMonth(d.getMonth() - 4);
-      fromStr = d.toISOString().split('T')[0];
+      var d = new Date(today.getFullYear(), today.getMonth() - 4, today.getDate());
+      fromStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(d) : d.toLocaleDateString('en-CA');
     } else if (preset === '6months') {
-      var d = new Date(today);
-      d.setMonth(d.getMonth() - 6);
-      fromStr = d.toISOString().split('T')[0];
+      var d = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate());
+      fromStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(d) : d.toLocaleDateString('en-CA');
     } else if (preset === 'academic') {
       var acad = (SchoolApp.store.settings && SchoolApp.store.settings.academicYear) || '';
       var startYear = parseInt(acad.split('-')[0], 10) || today.getFullYear();
@@ -208,7 +205,7 @@
       var monthsToLoad = [];
       var cur = new Date(start.getFullYear(), start.getMonth(), 1);
       while (cur <= end) {
-        var ym = cur.toISOString().slice(0, 7);
+        var ym = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(cur).slice(0, 7) : cur.toISOString().slice(0, 7);
         if (monthsToLoad.indexOf(ym) === -1) {
           monthsToLoad.push(ym);
         }
@@ -252,6 +249,7 @@
     var sumTotalDays = 0;
     var highAttCount = 0;
     var lowAttCount = 0;
+    var noDataCount = 0;
 
     filteredStudents.forEach(function(s) {
       var sClassNorm = normalizeClassName(s.class);
@@ -283,8 +281,12 @@
 
       sumPresent += effectivePresent;
       sumTotalDays += totalDays;
-      if (perc >= 90) highAttCount++;
-      if (perc < 75) lowAttCount++;
+      if (totalDays === 0) {
+        noDataCount++;
+      } else {
+        if (perc >= 90) highAttCount++;
+        if (perc < 75) lowAttCount++;
+      }
 
       studentRows.push({
         studentId: s.id,
@@ -321,12 +323,13 @@
       totalStudents: studentRows.length,
       overallAverage: overallAverage,
       highAttCount: highAttCount,
-      lowAttCount: lowAttCount
+      lowAttCount: lowAttCount,
+      noDataCount: noDataCount
     };
   }
 
   function getAttendanceStats() {
-    var todayStr = new Date().toISOString().split('T')[0];
+    var todayStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
     var todayRecords = SchoolApp.store.attendance.filter(function(a) { return a.date === todayStr; });
     var totalPresent = 0, totalAbsent = 0, totalLate = 0, totalStudents = 0;
 
@@ -343,7 +346,7 @@
     var now = new Date();
     var weekStart = new Date(now);
     weekStart.setDate(weekStart.getDate() - 7);
-    var weekStr = weekStart.toISOString().split('T')[0];
+    var weekStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(weekStart) : weekStart.toLocaleDateString('en-CA');
     var weekRecords = SchoolApp.store.attendance.filter(function(a) { return a.date >= weekStr; });
     var weekPresent = 0, weekTotal = 0;
     weekRecords.forEach(function(r) {
@@ -354,7 +357,7 @@
     });
 
     // Month average
-    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    var monthStart = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)) : new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA');
     var monthRecords = SchoolApp.store.attendance.filter(function(a) { return a.date >= monthStart; });
     var monthPresent = 0, monthTotal = 0;
     monthRecords.forEach(function(r) {
@@ -466,7 +469,7 @@
 
     var punchStatus = null;
     var isPunchedOutToday = false;
-    var curTodayStr = new Date().toISOString().split('T')[0];
+    var curTodayStr = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
     if (SchoolApp.isTeacher() && state.selectedDate === curTodayStr) {
       if (window.TeacherAttendanceModule && typeof window.TeacherAttendanceModule.getTodayPunchStatus === 'function') {
         punchStatus = window.TeacherAttendanceModule.getTodayPunchStatus(SchoolApp.currentUser.id);
@@ -840,6 +843,7 @@
     html += '<div class="stat-card purple" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">groups</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.totalStudents + '</div><div class="stat-label" style="font-size:11px;">Students Evaluated</div></div></div>';
     html += '<div class="stat-card green" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">star</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.highAttCount + '</div><div class="stat-label" style="font-size:11px;">High Attendance (≥90%)</div></div></div>';
     html += '<div class="stat-card red" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">warning</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + summaryData.lowAttCount + '</div><div class="stat-label" style="font-size:11px;">Critical (&lt;75%)</div></div></div>';
+    html += '<div class="stat-card gray" style="padding:14px;"><div class="stat-icon" style="width:36px;height:36px;"><span class="material-icons-round" style="font-size:20px;">help_outline</span></div><div class="stat-info"><div class="stat-number" style="font-size:20px;">' + (summaryData.noDataCount || 0) + '</div><div class="stat-label" style="font-size:11px;">No Data (0 days)</div></div></div>';
     html += '</div>';
 
     // Aggregated Student Summary Table
@@ -1310,7 +1314,7 @@
         return;
       }
 
-      var curToday = new Date().toISOString().split('T')[0];
+      var curToday = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
       if (state.selectedDate === curToday && window.TeacherAttendanceModule && typeof window.TeacherAttendanceModule.getTodayPunchStatus === 'function') {
         var punchStatus = window.TeacherAttendanceModule.getTodayPunchStatus(SchoolApp.currentUser.id);
         if (punchStatus && punchStatus.punchOut) {
@@ -1944,7 +1948,9 @@
   // Register Module
   SchoolApp.registerModule('attendance', {
     init: function() {},
-    render: render
+    render: render,
+    getSummaryDateRange: getSummaryDateRange,
+    aggregateStudentAttendanceSummary: aggregateStudentAttendanceSummary
   });
 
 })();

@@ -576,7 +576,7 @@
     addTimetableRow: function() {
       timetableRows.push({
         subject: 'New Subject',
-        date: new Date().toISOString().split('T')[0],
+        date: (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA'),
         time: '09:00 AM – 12:00 PM',
         marks: 100
       });
@@ -951,7 +951,7 @@
       var address = settings.address || '';
       var phone = settings.phone || '';
       var email = settings.email || '';
-      var today = new Date().toISOString().split('T')[0];
+      var today = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
 
       var certNo = 'BON-' + year.replace(/[^0-9]/g, '').substring(0, 4) + '-' + adm;
 
@@ -1060,7 +1060,7 @@
       var address = settings.address || '';
       var phone = settings.phone || '';
       var email = settings.email || '';
-      var today = new Date().toISOString().split('T')[0];
+      var today = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
 
       var certNo = 'CHAR-' + year.replace(/[^0-9]/g, '').substring(0, 4) + '-' + adm;
 
@@ -1181,7 +1181,7 @@
       var settings = getSettings();
       var affiliation = settings.affiliation || 'State Board of Education';
       var udise = settings.udiseCode || '—';
-      var today = new Date().toISOString().split('T')[0];
+      var today = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
       var yearNum = year.replace(/[^0-9]/g, '').substring(0, 4) || new Date().getFullYear();
 
       var tcNo = '';
@@ -1217,7 +1217,7 @@
       var conductInput = document.getElementById('cert-tc-conduct');
       if (conductInput) conduct = conductInput.value;
 
-      var remarks = 'Promoted to next class';
+      var remarks = (student.status === 'Left') ? '' : 'Promoted to next class';
       var remarksInput = document.getElementById('cert-tc-remarks');
       if (remarksInput) remarks = remarksInput.value;
 
@@ -1271,11 +1271,11 @@
         ['11.', 'Class in which student last studied', 'Class ' + escapeHTML(sClass) + ', Section ' + escapeHTML(sSec)],
         ['12.', 'Roll Number', roll],
         ['13.', 'Admission / Scholar Number', adm],
-        ['14.', 'Date of Leaving the School', isPrint ? dateLeaving : '<input type="date" id="cert-tc-date-leaving" class="form-input" style="padding:2px 6px; font-size:11.5px; width:130px; display:inline-block;" value="' + escapeHTML(dateLeaving) + '" onchange="DocumentsModule.renderCertificatePreview(\'tc\')">'],
+        ['14.', 'Date of Leaving the School', isPrint ? dateLeaving : '<input type="date" id="cert-tc-date-leaving" class="form-input" style="padding:2px 6px; font-size:11.5px; width:130px; display:inline-block;" value="' + escapeHTML(dateLeaving) + '" onchange="DocumentsModule.renderCertificatePreview(\'tc\')">', !isPrint],
         ['15.', 'Class studying at time of leaving', 'Class ' + escapeHTML(sClass) + ', Section ' + escapeHTML(sSec)],
-        ['16.', 'Reason for Leaving the School', isPrint ? reason : '<select id="cert-tc-reason" class="form-select" style="padding:2px 6px; font-size:11.5px; width:180px; display:inline-block;" onchange="DocumentsModule.renderCertificatePreview(\'tc\')"><option value="Family Transfer"' + (reason==='Family Transfer'?' selected':'') + '>Family Transfer</option><option value="On Request"' + (reason==='On Request'?' selected':'') + '>On Request</option><option value="Course Completed"' + (reason==='Course Completed'?' selected':'') + '>Course Completed</option><option value="Withdrawn by Parents"' + (reason==='Withdrawn by Parents'?' selected':'') + '>Withdrawn by Parents</option><option value="Other"' + (reason==='Other'?' selected':'') + '>Other</option></select>'],
-        ['17.', 'General Conduct', isPrint ? conduct : '<select id="cert-tc-conduct" class="form-select" style="padding:2px 6px; font-size:11.5px; width:140px; display:inline-block;" onchange="DocumentsModule.renderCertificatePreview(\'tc\')"><option value="Good"' + (conduct==='Good'?' selected':'') + '>Good</option><option value="Satisfactory"' + (conduct==='Satisfactory'?' selected':'') + '>Satisfactory</option><option value="Excellent"' + (conduct==='Excellent'?' selected':'') + '>Excellent</option></select>'],
-        ['18.', 'Any Other Remarks', isPrint ? remarks : '<input type="text" id="cert-tc-remarks" class="form-input" style="padding:2px 6px; font-size:11.5px; width:220px; display:inline-block;" value="' + escapeHTML(remarks) + '" onchange="DocumentsModule.renderCertificatePreview(\'tc\')">']
+        ['16.', 'Reason for Leaving the School', isPrint ? reason : '<select id="cert-tc-reason" class="form-select" style="padding:2px 6px; font-size:11.5px; width:180px; display:inline-block;" onchange="DocumentsModule.renderCertificatePreview(\'tc\')"><option value="Family Transfer"' + (reason==='Family Transfer'?' selected':'') + '>Family Transfer</option><option value="On Request"' + (reason==='On Request'?' selected':'') + '>On Request</option><option value="Course Completed"' + (reason==='Course Completed'?' selected':'') + '>Course Completed</option><option value="Withdrawn by Parents"' + (reason==='Withdrawn by Parents'?' selected':'') + '>Withdrawn by Parents</option><option value="Other"' + (reason==='Other'?' selected':'') + '>Other</option></select>', !isPrint],
+        ['17.', 'General Conduct', isPrint ? conduct : '<select id="cert-tc-conduct" class="form-select" style="padding:2px 6px; font-size:11.5px; width:140px; display:inline-block;" onchange="DocumentsModule.renderCertificatePreview(\'tc\')"><option value="Good"' + (conduct==='Good'?' selected':'') + '>Good</option><option value="Satisfactory"' + (conduct==='Satisfactory'?' selected':'') + '>Satisfactory</option><option value="Excellent"' + (conduct==='Excellent'?' selected':'') + '>Excellent</option></select>', !isPrint],
+        ['18.', 'Any Other Remarks', isPrint ? remarks : '<input type="text" id="cert-tc-remarks" class="form-input" style="padding:2px 6px; font-size:11.5px; width:220px; display:inline-block;" value="' + escapeHTML(remarks) + '" onchange="DocumentsModule.renderCertificatePreview(\'tc\')">', !isPrint]
       ];
 
       rows.forEach(function(r, idx) {
@@ -1283,7 +1283,8 @@
         html += '    <tr style="background:' + bg + '; border-bottom:1px solid #E2E8F0;">';
         html += '      <td style="padding:5px 8px; width:35px; color:#64748B; font-weight:600; border-right:1px solid #E2E8F0;">' + r[0] + '</td>';
         html += '      <td style="padding:5px 10px; width:260px; color:#475569; font-weight:600; border-right:1px solid #E2E8F0;">' + r[1] + '</td>';
-        html += '      <td style="padding:5px 10px; color:#0F172A;">' + (r[1] === 'Name of Student' ? r[2] : escapeHTML(r[2])) + '</td>';
+        var cellContent = (r[3] || r[1] === 'Name of Student') ? r[2] : escapeHTML(r[2]);
+        html += '      <td style="padding:5px 10px; color:#0F172A;">' + cellContent + '</td>';
         html += '    </tr>';
       });
 
@@ -1337,7 +1338,7 @@
         }
 
         var dateLeavingInput = document.getElementById('cert-tc-date-leaving');
-        var dateLeaving = dateLeavingInput ? dateLeavingInput.value : (selectedStudent.leavingDate || new Date().toISOString().split('T')[0]);
+        var dateLeaving = dateLeavingInput ? dateLeavingInput.value : (selectedStudent.leavingDate || ((typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA')));
 
         var reasonInput = document.getElementById('cert-tc-reason');
         var reason = reasonInput ? reasonInput.value : (selectedStudent.tcReason || 'On Request');
@@ -1361,7 +1362,7 @@
             'Mark this student as Left (TC Issued)?\n\nStudent: ' + stuName + '\nTC Number: ' + tcNo + '\nLeaving Date: ' + dateLeaving + '\n\nThis will update student status to Left and save TC details. Existing dues remain collectable.',
             async function() {
               var schoolId = SchoolApp.currentSchoolId || (SchoolApp.store && SchoolApp.store.currentSchoolId);
-              var today = new Date().toISOString().split('T')[0];
+              var today = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
               var nowIso = new Date().toISOString();
               var updates = {
                 status: 'Left',

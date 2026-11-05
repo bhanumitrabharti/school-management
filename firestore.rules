@@ -130,6 +130,11 @@ service cloud.firestore {
       allow write: if (isSchoolAdmin(schoolId) || isSuperAdmin()) && validFeeMonthDoc();
     }
 
+    // ── Fee Receipt Counters Subcollection — School Admin & Super Admin ONLY ──
+    match /tenant_data/{schoolId}/counters/{counterId} {
+      allow read, write: if isSchoolAdmin(schoolId) || isSuperAdmin();
+    }
+
     // ── Attendance Months Subcollection — School Users (Admin / Teacher) ─────
     match /tenant_data/{schoolId}/attendance_months/{allChildren=**} {
       allow read, write: if canAccessSchool(schoolId) || isSuperAdmin();
@@ -695,6 +700,7 @@ service cloud.firestore {
                       && subcollection != 'private'
                       && subcollection != 'fee_activity_logs'
                       && subcollection != 'fees_years'
+                      && subcollection != 'counters'
                       && subcollection != 'settings'
                       && subcollection != 'attendance_months'
                       && subcollection != 'exam_marks'
@@ -718,6 +724,7 @@ service cloud.firestore {
                       && subcollection != 'private'
                       && subcollection != 'fee_activity_logs'
                       && subcollection != 'fees_years'
+                      && subcollection != 'counters'
                       && subcollection != 'settings'
                       && subcollection != 'attendance_months'
                       && subcollection != 'exam_marks'

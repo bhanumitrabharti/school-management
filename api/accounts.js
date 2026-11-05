@@ -120,6 +120,73 @@ function getFinancialYear(dateStr) {
   }
 }
 
+// ── Fee Head Normalization & Account Resolution (v81) ─────────────────────────
+function normalizeFeeHead(headId, headName) {
+  const raw = (headName || headId || '').trim();
+  const monthNames = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
+  const suffixRegex = new RegExp('\\s*[-–—]\\s*(?:(?:' + monthNames + ')\\s+\\d{4}|\\d{4}[-/]\\d{2})\\s*$', 'i');
+  const parenRegex = new RegExp('\\s*\\((?:(?:' + monthNames + ')\\s+\\d{4}|\\d{4}[-/]\\d{2})\\)\\s*$', 'i');
+  let cleaned = raw.replace(suffixRegex, '').replace(parenRegex, '').trim();
+  cleaned = cleaned.replace(/^Monthly\\s+/i, '').trim();
+
+  if (/transport|bus/i.test(cleaned) || headId === 'fh_transport' || headId === 'transport') {
+    return {
+      id: 'fh_transport',
+      key: 'Transport Fee',
+      name: 'Transport Fee',
+      defaultAccount: '42100'
+    };
+  }
+  if (/tuition/i.test(cleaned) || headId === 'fh_tuition' || headId === 'tuition') {
+    return {
+      id: 'fh_tuition',
+      key: 'Tuition Fee',
+      name: 'Tuition Fee',
+      defaultAccount: '41100'
+    };
+  }
+  if (/exam/i.test(cleaned) || headId === 'fh_exam' || headId === 'exam') {
+    return {
+      id: 'fh_exam',
+      key: 'Examination Fee',
+      name: 'Examination Fee',
+      defaultAccount: '41300'
+    };
+  }
+  if (/annual|development/i.test(cleaned) || headId === 'fh_annual' || headId === 'annual') {
+    return {
+      id: 'fh_annual',
+      key: 'Annual Development Fee',
+      name: 'Annual Development Fee',
+      defaultAccount: '41400'
+    };
+  }
+
+  return {
+    id: headId || cleaned,
+    key: cleaned || headId || 'Unknown Fee Head',
+    name: cleaned || raw || 'Unknown Fee Head',
+    defaultAccount: null
+  };
+}
+
+function resolveFeeHeadIncomeAccount(headId, headName, feeHeadMapping, defaultIncomeAccount) {
+  const norm = normalizeFeeHead(headId, headName);
+  let incomeAcc = feeHeadMapping[headId] ||
+                  feeHeadMapping[norm.id] ||
+                  feeHeadMapping[norm.key] ||
+                  (headName ? feeHeadMapping[headName] : null);
+
+  const isExplicitlyMapped = !!incomeAcc;
+  if (!incomeAcc) {
+    incomeAcc = norm.defaultAccount || defaultIncomeAccount;
+  }
+  return {
+    incomeAcc,
+    isExplicitlyMapped,
+    norm
+  };
+}
 function computeFeeJournalLines(txn, settings, chartMap) {
   if (!txn || !txn.id) return null;
 
@@ -222,15 +289,17 @@ function computeFeeJournalLines(txn, settings, chartMap) {
         if (hAmt > 0) {
           allocPaiseSum += hAmt;
           const headId = alloc.feeHeadId || '';
-          let incomeAcc = feeHeadMapping[headId] || defaultIncomeAccount;
+          const headName = alloc.feeHeadName || '';
+          const resolved = resolveFeeHeadIncomeAccount(headId, headName, feeHeadMapping, defaultIncomeAccount);
+          let incomeAcc = resolved.incomeAcc;
 
           // Validate income account exists in chart
           const incObj = chartMap[incomeAcc];
           if (!incObj || incObj.type !== 'income' || incObj.isActive === false) {
-            warnings.push(`Mapped income account '${incomeAcc}' for head '${alloc.feeHeadName || headId}' is invalid; defaulted to ${defaultIncomeAccount}`);
+            warnings.push(`Mapped income account '${incomeAcc}' for head '${headName || headId}' is invalid; defaulted to ${defaultIncomeAccount}`);
             incomeAcc = defaultIncomeAccount;
-          } else if (!feeHeadMapping[headId]) {
-            unmappedHeads.push({ id: headId, name: alloc.feeHeadName || headId || 'Unknown Fee Head' });
+          } else if (!resolved.isExplicitlyMapped && !resolved.norm.defaultAccount) {
+            unmappedHeads.push({ id: resolved.norm.id, name: resolved.norm.name });
           }
           lines.push({ accountCode: incomeAcc, drPaise: 0, crPaise: hAmt });
         }
@@ -254,13 +323,15 @@ function computeFeeJournalLines(txn, settings, chartMap) {
     } else {
       // Unallocated payment: entire gross credited to head or default
       const headId = txn.feeHeadId || '';
-      let incomeAcc = feeHeadMapping[headId] || defaultIncomeAccount;
+      const headName = txn.feeHeadName || '';
+      const resolved = resolveFeeHeadIncomeAccount(headId, headName, feeHeadMapping, defaultIncomeAccount);
+      let incomeAcc = resolved.incomeAcc;
       const incObj = chartMap[incomeAcc];
       if (!incObj || incObj.type !== 'income' || incObj.isActive === false) {
         incomeAcc = defaultIncomeAccount;
       }
-      if (!feeHeadMapping[headId]) {
-        unmappedHeads.push({ id: headId, name: txn.feeHeadName || headId || 'Unknown Fee Head' });
+      if (!resolved.isExplicitlyMapped && !resolved.norm.defaultAccount) {
+        unmappedHeads.push({ id: resolved.norm.id, name: resolved.norm.name });
       }
       lines.push({ accountCode: incomeAcc, drPaise: 0, crPaise: grossPaise });
     }
@@ -287,7 +358,9 @@ function computeFeeJournalLines(txn, settings, chartMap) {
         if (hAmt > 0) {
           allocPaiseSum += hAmt;
           const headId = alloc.feeHeadId || '';
-          let incomeAcc = feeHeadMapping[headId] || defaultIncomeAccount;
+          const headName = alloc.feeHeadName || '';
+          const resolved = resolveFeeHeadIncomeAccount(headId, headName, feeHeadMapping, defaultIncomeAccount);
+          let incomeAcc = resolved.incomeAcc;
           const incObj = chartMap[incomeAcc];
           if (!incObj || incObj.type !== 'income' || incObj.isActive === false) {
             incomeAcc = defaultIncomeAccount;
@@ -312,9 +385,11 @@ function computeFeeJournalLines(txn, settings, chartMap) {
       }
     } else {
       const headId = txn.feeHeadId || '';
-      let incomeAcc = feeHeadMapping[headId] || defaultIncomeAccount;
-      if (!feeHeadMapping[headId]) {
-        unmappedHeads.push({ id: headId, name: txn.feeHeadName || headId || 'Unknown Fee Head' });
+      const headName = txn.feeHeadName || '';
+      const resolved = resolveFeeHeadIncomeAccount(headId, headName, feeHeadMapping, defaultIncomeAccount);
+      let incomeAcc = resolved.incomeAcc;
+      if (!resolved.isExplicitlyMapped && !resolved.norm.defaultAccount) {
+        unmappedHeads.push({ id: resolved.norm.id, name: resolved.norm.name });
       }
       lines.push({ accountCode: incomeAcc, drPaise: absGross, crPaise: 0 });
     }
@@ -2535,6 +2610,8 @@ async function handler(req, res) {
 
 // Module Exports
 module.exports = handler;
+module.exports.normalizeFeeHead = normalizeFeeHead;
+module.exports.resolveFeeHeadIncomeAccount = resolveFeeHeadIncomeAccount;
 module.exports.getFinancialYear = getFinancialYear;
 module.exports.computeFeeJournalLines = computeFeeJournalLines;
 module.exports.computeExpenseJournalLines = computeExpenseJournalLines;

@@ -1390,7 +1390,9 @@
     // Personal Information
     var maskedAadhaar = '—';
     if (student.aadhaarNumber) {
-      maskedAadhaar = isTeacher ? ('XXXX-XXXX-' + student.aadhaarNumber.slice(-4)) : student.aadhaarNumber;
+      var rawAadhaar = String(student.aadhaarNumber).trim();
+      var last4 = rawAadhaar.slice(-4);
+      maskedAadhaar = rawAadhaar.length >= 4 ? ('XXXX-XXXX-' + last4) : 'XXXX-XXXX-XXXX';
     }
 
     html += '<div class="detail-section"><h4><span class="material-icons-round">person</span> Personal Information</h4><div class="detail-grid">';

@@ -3106,7 +3106,7 @@
     html += '        <div class="form-group"><label class="form-label">Theme</label><select class="form-select" name="theme"><option value="dark"' + (s.theme === 'dark' ? ' selected' : '') + '>Dark</option><option value="light"' + (s.theme === 'light' ? ' selected' : '') + '>Light</option></select></div>';
     
     
-    var logoSrc = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(s) : (s.logoStorageUrl || s.logoUrl || s.schoolLogo || '');
+    var logoSrc = (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') ? window.SchoolApp.getLogoUrl(s) : '';
     html += '        <div class="form-group">';
     html += '          <label class="form-label">School Logo</label>';
     html += '          <input type="file" id="school-logo-input" accept="image/*" class="form-input" onchange="window.handleLogoSelect(this)" />';
@@ -3131,7 +3131,7 @@
     html += '          <div style="font-size:11px;color:#9CA3AF;margin-top:4px;">Appears on certificates, admit cards, and official documents</div>';
     html += '        </div>';
 
-    var sigSrc = (window.SchoolApp && window.SchoolApp.getSignatureUrl) ? window.SchoolApp.getSignatureUrl(s) : (s.principalSignatureStorageUrl || s.principalSignatureUrl || '');
+    var sigSrc = (window.SchoolApp && typeof window.SchoolApp.getSignatureUrl === 'function') ? window.SchoolApp.getSignatureUrl(s) : '';
     html += '        <div class="form-group">';
     html += '          <label class="form-label">Digital Signature</label>';
     html += '          <input type="file" id="settings-signature-upload" accept="image/png, image/jpeg" class="form-input" onchange="window.handleSignatureSelect(this)" />';

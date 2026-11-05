@@ -1267,7 +1267,7 @@
 
     var settings = SchoolApp.store.settings || {};
     var info = settings.schoolInfo || {};
-    var logoUrl = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || (info && (info.logoStorageUrl || info.logoUrl)) || '');
+    var logoUrl = (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') ? window.SchoolApp.getLogoUrl(settings) : '';
     if (!logoUrl) {
       logoUrl = new URL('school-logo-updated.jpg', window.location.href).href + '?t=' + new Date().getTime();
     }
@@ -1948,7 +1948,7 @@
     };
   }
 
-  function generateFeeReceiptHTML(txn, student, currentBalance) {
+  function generateFeeReceiptHTML(txn, student, currentBalance, isDuplicate) {
     var settings = SchoolApp.store.settings || {};
     var schoolInfo = settings.schoolInfo || {};
 
@@ -1956,16 +1956,23 @@
     var schoolAddress = settings.address || schoolInfo.address || '';
     var schoolPhone = settings.phone || schoolInfo.phone || '';
     var schoolEmail = settings.email || schoolInfo.email || '';
-    var logoUrl = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.schoolLogo || settings.logoUrl || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.schoolLogo || schoolInfo.logoUrl)) || '');
+    var logoUrl = (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') ? window.SchoolApp.getLogoUrl(settings) : '';
+    var sigUrl = (window.SchoolApp && typeof window.SchoolApp.getSignatureUrl === 'function') ? window.SchoolApp.getSignatureUrl(settings) : '';
     var primaryColor = (settings.branding && settings.branding.primaryColor) || '#1E3A8A';
 
-    var schoolPrefix = (SchoolApp.currentSchoolId || 'SVM').substring(0, 4).toUpperCase();
-    var tsStr = txn.id ? txn.id.substring(0, 8).toUpperCase() : Date.now().toString().slice(-6);
-    var receiptNo = txn.receiptNo || ('RCP-' + schoolPrefix + '-' + tsStr);
+    var receiptNo = (window.SchoolApp && typeof window.SchoolApp.getReceiptNumber === 'function')
+      ? window.SchoolApp.getReceiptNumber(txn, settings, SchoolApp.currentSchoolId)
+      : (txn.receiptNo || 'RCP-FEES-' + (txn.id ? txn.id.substring(0, 8).toUpperCase() : '00000000'));
 
-    var studentName = student ? (student.firstName + ' ' + (student.lastName || '')).trim() : 'N/A';
+    var studentName = 'N/A';
+    if (student) {
+      studentName = (window.SchoolApp && typeof window.SchoolApp.getStudentFullName === 'function')
+        ? window.SchoolApp.getStudentFullName(student)
+        : (student.name || ((student.firstName || '') + ' ' + (student.lastName || '')).trim() || 'N/A');
+    }
     var classSec = student ? ('Class ' + (student.class || '-') + (student.section ? ' - ' + student.section : '')) : 'N/A';
     var rollNo = student ? (student.rollNumber || student.rollNo || '—') : '—';
+    var admNo = student ? (student.admissionNumber || student.admissionNo || student.scholarNumber || student.rollNumber || '—') : '—';
 
     var payDate = txn.date ? SchoolApp.formatDate(txn.date) : SchoolApp.formatDate(new Date().toISOString().split('T')[0]);
     if (txn.timestamp) {
@@ -2008,7 +2015,7 @@
     
     html += '    <div style="text-align:right;">';
     html += '      <div style="background:' + primaryColor + '; color:#ffffff; padding:6px 14px; border-radius:6px; font-size:13px; font-weight:700; font-family:\'Poppins\',sans-serif; letter-spacing:1px; display:inline-block;">FEE RECEIPT</div>';
-    html += '      <div style="margin-top:6px; font-size:11px; color:#64748b; font-weight:600;">Original Copy</div>';
+    html += '      <div style="margin-top:6px; font-size:11px; color:#64748b; font-weight:600;">' + (isDuplicate ? 'Duplicate Copy' : 'Original Copy') + '</div>';
     html += '    </div>';
     html += '  </div>';
 
@@ -2022,7 +2029,8 @@
     html += '    <div>';
     html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Student Name:</strong> <span style="font-weight:700; color:#0f172a;">' + escapeHTML(studentName) + '</span></div>';
     html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Class & Sec:</strong> <span>' + escapeHTML(classSec) + '</span></div>';
-    html += '      <div><strong style="color:#475569;">Roll No:</strong> <span>' + escapeHTML(rollNo) + '</span></div>';
+    html += '      <div style="margin-bottom:4px;"><strong style="color:#475569;">Roll No:</strong> <span>' + escapeHTML(rollNo) + '</span></div>';
+    html += '      <div><strong style="color:#475569;">Admission No:</strong> <span>' + escapeHTML(admNo) + '</span></div>';
     html += '    </div>';
     html += '  </div>';
 
@@ -2095,6 +2103,13 @@
     html += '    </tbody>';
     html += '  </table>';
 
+    var inWords = (window.SchoolApp && typeof window.SchoolApp.numberToIndianWords === 'function') ? window.SchoolApp.numberToIndianWords(amount) : '';
+    if (inWords) {
+      html += '  <div style="margin-bottom:16px; padding:8px 12px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0; font-size:12px; color:#334155;">';
+      html += '    <strong>Amount in Words:</strong> <span style="font-style:italic; font-weight:600;">' + escapeHTML(inWords) + '</span>';
+      html += '  </div>';
+    }
+
     // Signature & Footer
     html += '  <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top:28px; padding-top:12px;">';
     html += '    <div style="font-size:11px; color:#94a3b8;">';
@@ -2102,8 +2117,11 @@
     html += '      <div>This is a computer generated digital fee receipt.</div>';
     html += '    </div>';
     html += '    <div style="text-align:center;">';
-    html += '      <div style="width:160px; border-bottom:1.5px dashed #94a3b8; margin-bottom:4px;"></div>';
-    html += '      <div style="font-size:11px; font-weight:600; color:#475569;">Authorized Signatory / Cashier</div>';
+    if (sigUrl) {
+      html += '      <img src="' + sigUrl + '" alt="Signature" style="max-height:44px; max-width:140px; object-fit:contain; display:block; margin:0 auto 4px auto;" />';
+    }
+    html += '      <div style="width:160px; border-bottom:1.5px dashed #94a3b8; margin:0 auto 4px auto;"></div>';
+    html += '      <div style="font-size:11px; font-weight:600; color:#475569;">Principal / Authorized Signatory</div>';
     html += '    </div>';
     html += '  </div>';
 
@@ -2112,7 +2130,8 @@
     return html;
   }
 
-  function printFeeReceipt(txnRef, studentRef) {
+  function printFeeReceipt(txnRef, studentRef, isDuplicate) {
+    if (isDuplicate === undefined) isDuplicate = true;
     var txn = typeof txnRef === 'object' ? txnRef : null;
     var student = typeof studentRef === 'object' ? studentRef : null;
 
@@ -2134,13 +2153,18 @@
       return;
     }
 
-    var currentBalance = 0;
+    var postPayBalance = null;
     if (student) {
       var ledger = getStudentLedger(student.id);
-      currentBalance = ledger.outstanding || 0;
+      var matchingLedgerTxn = (ledger.transactions || []).find(function(t) { return t.id === txn.id; });
+      if (matchingLedgerTxn && matchingLedgerTxn.balance !== undefined) {
+        postPayBalance = matchingLedgerTxn.balance;
+      } else {
+        postPayBalance = ledger.outstanding || 0;
+      }
     }
 
-    var htmlContent = generateFeeReceiptHTML(txn, student, currentBalance);
+    var htmlContent = generateFeeReceiptHTML(txn, student, postPayBalance, isDuplicate);
     var studentName = student ? (student.firstName + ' ' + (student.lastName || '')).trim() : 'Student';
     var className = student ? student.class : '';
 
@@ -2182,7 +2206,7 @@
     var printBtn = document.getElementById('post-pay-print-btn');
     if (printBtn) {
       printBtn.addEventListener('click', function() {
-        printFeeReceipt(txn, s);
+        printFeeReceipt(txn, s, false);
       });
     }
 
@@ -2216,9 +2240,13 @@
       txn = (SchoolApp.store.fees || []).find(function(f) { return f.id === txnRef; });
     }
 
-    var studentName = ((student.firstName || '') + ' ' + (student.lastName || '')).trim();
+    var studentName = (window.SchoolApp && typeof window.SchoolApp.getStudentFullName === 'function')
+      ? window.SchoolApp.getStudentFullName(student)
+      : (((student.name || ((student.firstName || '') + ' ' + (student.lastName || '')))).trim() || 'Student');
     var classSec = 'Class ' + (student.class || '') + (student.section ? ' - ' + student.section : '');
-    var receiptNo = (txn && txn.receiptNo) || SchoolApp.lastReceiptNo || ('RCP-SVM-' + Date.now().toString().slice(-5));
+    var receiptNo = (txn && txn.receiptNo) || ((window.SchoolApp && typeof window.SchoolApp.getReceiptNumber === 'function')
+      ? window.SchoolApp.getReceiptNumber(txn, SchoolApp.store.settings, SchoolApp.currentSchoolId)
+      : (SchoolApp.lastReceiptNo || 'RCP-FEES-' + Date.now().toString().slice(-5)));
     var totalBalance = typeof SchoolApp.getStudentBalance === 'function' ? SchoolApp.getStudentBalance(studentId) : 0;
     var dateStr = (txn && txn.date) || new Date().toLocaleDateString('en-IN');
 
@@ -3596,6 +3624,13 @@
             allocations: isAllocationOpen ? allocations : null,
             timestamp: new Date().toISOString()
           };
+
+          if (typeof SchoolApp.generateFeeReceiptNumber === 'function') {
+            var assignedReceiptNo = await SchoolApp.generateFeeReceiptNumber(date, SchoolApp.currentSchoolId);
+            newTxn.receiptNo = assignedReceiptNo;
+            SchoolApp.lastReceiptNo = assignedReceiptNo;
+          }
+
           SchoolApp.store.fees.push(newTxn);
 
           SchoolApp.showLoader('Processing...');

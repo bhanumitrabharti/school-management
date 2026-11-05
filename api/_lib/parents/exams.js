@@ -300,76 +300,11 @@ async function handleExamResult(req, res) {
   const seenSubIds = new Set();
   const subjectBreakdown = [];
 
-  function computeSubjectGrade(numericObtained, fullMarks, passMarks, isAbsent, isExempted) {
-    const subPct = (numericObtained !== null && fullMarks > 0) ? (numericObtained / fullMarks) * 100 : null;
-    let gradeObj = { grade: '—' };
-    if (subPct !== null) {
-      if (isV2) {
-        gradeObj = ExamCalculationEngine.calculateGrade(subPct, effectiveGradingScale);
-      } else {
-        gradeObj = ExamCalculationEngine.legacyCalculateGrade(Math.round(subPct), effectiveGradingScale);
-        if (!isAbsent && !isExempted && numericObtained !== null && numericObtained >= passMarks && gradeObj.grade === 'F') {
-          gradeObj = { grade: 'D', label: 'Pass' };
-        }
-      }
-    }
-    return { grade: gradeObj.grade, percentage: subPct !== null ? Math.round(subPct) : null };
+  function normName(n) {
+    return String(n || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
-  // A. Configured subjects for the class
-  subjects.forEach(sub => {
-    seenSubIds.add(sub.id);
-    const sm = markedMap[sub.id];
-    const isAbsent = !!(sm && sm.isAbsent);
-    const isExempted = !!(sm && sm.isExempted);
-    const fullMarks = Number(sub.fullMarks) || (sm && Number(sm.fullMarks)) || 100;
-    const passMarks = (sub.passMarks !== undefined && sub.passMarks !== null)
-      ? Number(sub.passMarks)
-      : (sm && sm.passMarks !== undefined && sm.passMarks !== null ? Number(sm.passMarks) : Math.round(fullMarks * 0.33));
-
-    let obtainedDisplay = '—';
-    let numericObtained = null;
-    let isPass = false;
-
-    if (sm) {
-      if (isAbsent) {
-        obtainedDisplay = 'AB';
-        isPass = false;
-      } else if (isExempted) {
-        obtainedDisplay = 'EX';
-        isPass = true;
-      } else if (sm.obtained !== undefined && sm.obtained !== null && String(sm.obtained).trim() !== '') {
-        numericObtained = parseFloat(sm.obtained) || 0;
-        obtainedDisplay = numericObtained.toString();
-        isPass = numericObtained >= passMarks;
-      }
-    }
-
-    const { grade, percentage } = computeSubjectGrade(numericObtained, fullMarks, passMarks, isAbsent, isExempted);
-
-    subjectBreakdown.push({
-      id: sub.id,
-      name: sub.name,
-      code: sub.code || '',
-      type: sub.type || 'core',
-      isOptional: !!sub.isOptional,
-      fullMarks: fullMarks,
-      passMarks: passMarks,
-      obtained: obtainedDisplay,
-      percentage: percentage,
-      grade: grade,
-      isPass: isPass,
-      isAbsent: isAbsent,
-      isExempted: isExempted
-    });
-  });
-
-  // B. Never drop a marked subject: add marked subjects not in class's configured subjects
-  for (const [markSubId, sm] of Object.entries(markedMap)) {
-    if (seenSubIds.has(markSubId)) continue;
-    seenSubIds.add(markSubId);
-
-    // Resolve name from any class in this term or other terms
+  function resolveSubjectName(markSubId) {
     let resolvedSubject = null;
     const termSubs = (rootData.examSubjects && rootData.examSubjects[termId]) || {};
     for (const cKey of Object.keys(termSubs)) {
@@ -409,7 +344,6 @@ async function handleExamResult(req, res) {
         if (strMatch) {
           subjectName = strMatch;
         } else {
-          // Check if any configured subject in this class has matching token name (e.g. sub_evs_sci vs "Science & EVS")
           const tokens = cleanId.split('_').filter(Boolean);
           const confMatch = subjects.find(cs => {
             if (!cs || !cs.name) return false;
@@ -423,9 +357,100 @@ async function handleExamResult(req, res) {
       }
     }
 
-    if (!subjectName) {
-      subjectName = 'Subject';
+    return { name: subjectName || 'Subject', resolvedSubject };
+  }
+
+  function computeSubjectGrade(numericObtained, fullMarks, passMarks, isAbsent, isExempted) {
+    const subPct = (numericObtained !== null && fullMarks > 0) ? (numericObtained / fullMarks) * 100 : null;
+    let gradeObj = { grade: '—' };
+    if (subPct !== null) {
+      if (isV2) {
+        gradeObj = ExamCalculationEngine.calculateGrade(subPct, effectiveGradingScale);
+      } else {
+        gradeObj = ExamCalculationEngine.legacyCalculateGrade(Math.round(subPct), effectiveGradingScale);
+        if (!isAbsent && !isExempted && numericObtained !== null && numericObtained >= passMarks && gradeObj.grade === 'F') {
+          gradeObj = { grade: 'D', label: 'Pass' };
+        }
+      }
     }
+    return { grade: gradeObj.grade, percentage: subPct !== null ? Math.round(subPct) : null };
+  }
+
+  // A. Configured subjects for the class
+  subjects.forEach(sub => {
+    seenSubIds.add(sub.id);
+    let sm = markedMap[sub.id];
+
+    // If no mark under configured id, merge orphan mark whose resolved subject NAME matches
+    if (!sm) {
+      for (const [orphanId, orphanSm] of Object.entries(markedMap)) {
+        if (!seenSubIds.has(orphanId)) {
+          const resObj = resolveSubjectName(orphanId);
+          if (normName(resObj.name) === normName(sub.name)) {
+            sm = orphanSm;
+            seenSubIds.add(orphanId); // merged into this row, prevent duplicate row
+            break;
+          }
+        }
+      }
+    }
+
+    const isAbsent = !!(sm && sm.isAbsent);
+    const isExempted = !!(sm && sm.isExempted);
+    const fullMarks = Number(sub.fullMarks) || (sm && Number(sm.fullMarks)) || 100;
+    const passMarks = (sub.passMarks !== undefined && sub.passMarks !== null)
+      ? Number(sub.passMarks)
+      : (sm && sm.passMarks !== undefined && sm.passMarks !== null ? Number(sm.passMarks) : Math.round(fullMarks * 0.33));
+
+    let obtainedDisplay = '—';
+    let numericObtained = null;
+    let isPass = null;
+    let isNotEntered = false;
+
+    if (sm) {
+      if (isAbsent) {
+        obtainedDisplay = 'AB';
+        isPass = false;
+      } else if (isExempted) {
+        obtainedDisplay = 'EX';
+        isPass = true;
+      } else if (sm.obtained !== undefined && sm.obtained !== null && String(sm.obtained).trim() !== '') {
+        numericObtained = parseFloat(sm.obtained) || 0;
+        obtainedDisplay = numericObtained.toString();
+        isPass = numericObtained >= passMarks;
+      } else {
+        isNotEntered = true;
+      }
+    } else {
+      isNotEntered = true;
+    }
+
+    const { grade, percentage } = computeSubjectGrade(numericObtained, fullMarks, passMarks, isAbsent, isExempted);
+
+    subjectBreakdown.push({
+      id: sub.id,
+      name: sub.name,
+      code: sub.code || '',
+      type: sub.type || 'core',
+      isOptional: !!sub.isOptional,
+      fullMarks: fullMarks,
+      passMarks: passMarks,
+      obtained: obtainedDisplay,
+      percentage: percentage,
+      grade: grade,
+      isPass: isPass,
+      isAbsent: isAbsent,
+      isExempted: isExempted,
+      isNotEntered: isNotEntered
+    });
+  });
+
+  // B. Never drop a marked subject: add marked subjects not in class's configured subjects
+  for (const [markSubId, sm] of Object.entries(markedMap)) {
+    if (seenSubIds.has(markSubId)) continue;
+    seenSubIds.add(markSubId);
+
+    const { name: subjectName, resolvedSubject } = resolveSubjectName(markSubId);
 
     const fullMarks = (resolvedSubject && Number(resolvedSubject.fullMarks)) ||
                       (sm && sm.fullMarks !== undefined && sm.fullMarks !== null ? Number(sm.fullMarks) : 100);
@@ -436,7 +461,8 @@ async function handleExamResult(req, res) {
     const isExempted = !!(sm && sm.isExempted);
     let numericObtained = null;
     let obtainedDisplay = '—';
-    let isPass = false;
+    let isPass = null;
+    let isNotEntered = false;
 
     if (isAbsent) {
       obtainedDisplay = 'AB';
@@ -448,6 +474,8 @@ async function handleExamResult(req, res) {
       numericObtained = parseFloat(sm.obtained) || 0;
       obtainedDisplay = numericObtained.toString();
       isPass = numericObtained >= passMarks;
+    } else {
+      isNotEntered = true;
     }
 
     const { grade, percentage } = computeSubjectGrade(numericObtained, fullMarks, passMarks, isAbsent, isExempted);
@@ -465,7 +493,8 @@ async function handleExamResult(req, res) {
       grade: grade,
       isPass: isPass,
       isAbsent: isAbsent,
-      isExempted: isExempted
+      isExempted: isExempted,
+      isNotEntered: isNotEntered
     });
   }
 

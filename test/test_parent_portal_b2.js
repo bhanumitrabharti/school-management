@@ -1487,22 +1487,22 @@ async function runTests() {
   assert(gwLegacyRes.body.summary.rank === gwStoredEntry.rank, 'v80 T31: Stored rank preserved (rank === ' + gwStoredEntry.rank + ')');
   assert(gwLegacyRes.body.summary.rank === adminRow.rank, 'v80 T31: Portal rank == admin row rank (' + adminRow.rank + ')');
 
-  // Verify subject rows: never drop marked subject, un-marked configured subject shows '—' without affecting totals
+  // Verify subject rows: never drop marked subject, orphan marks with matching resolved name merged into configured row, un-marked configured subject shows '—' without affecting totals
   const subjectsRes = gwLegacyRes.body.subjects;
-  assert(Array.isArray(subjectsRes) && subjectsRes.length === 8, 'v80 T31: 8 subjects returned (7 configured + 1 orphan sub_evs_sci)');
+  assert(Array.isArray(subjectsRes) && subjectsRes.length === 7, 'v81 T31: 7 subjects returned (orphan sub_evs_sci merged into configured sub_sci, no duplicate row)');
   const engSub = subjectsRes.find(s => s.id === 'sub_eng');
   const hinSub = subjectsRes.find(s => s.id === 'sub_hin');
   const mathSub = subjectsRes.find(s => s.id === 'sub_math');
   const compSub = subjectsRes.find(s => s.id === 'sub_comp');
-  const orphanSub = subjectsRes.find(s => s.id === 'sub_evs_sci');
-  const unMarkedSub = subjectsRes.find(s => s.id === 'sub_sci');
+  const mergedSciSub = subjectsRes.find(s => s.id === 'sub_sci');
+  const unMarkedSub = subjectsRes.find(s => s.id === 'sub_sst');
 
   assert(engSub && engSub.grade === 'A2', 'v80 T31: English 85% gets grade A2 on CBSE scale');
   assert(hinSub && hinSub.grade === 'A1', 'v80 T31: Hindi 92% gets grade A1 on CBSE scale');
   assert(mathSub && mathSub.grade === 'B2', 'v80 T31: Mathematics 69% gets grade B2 on CBSE scale');
   assert(compSub && compSub.grade === 'A2', 'v80 T31: Computer 83% gets grade A2 on CBSE scale');
-  assert(orphanSub && orphanSub.obtained === '76' && orphanSub.grade === 'B1', 'v80 T31: Orphan sub_evs_sci preserved with 76 marks and B1 grade');
-  assert(unMarkedSub && unMarkedSub.obtained === '—' && unMarkedSub.grade === '—', 'v80 T31: Unmarked configured sub_sci shows —');
+  assert(mergedSciSub && mergedSciSub.obtained === '76' && mergedSciSub.grade === 'B1', 'v81 T31: Orphan sub_evs_sci merged into sub_sci with 76 marks and B1 grade');
+  assert(unMarkedSub && unMarkedSub.obtained === '—' && unMarkedSub.grade === '—' && unMarkedSub.isNotEntered === true, 'v81 T31: Unmarked configured sub_sst shows — and isNotEntered');
 
   // v80 T32: V2 Term Parity
   const gwV2Res = await invokeHandler('POST', 'exam-result', {

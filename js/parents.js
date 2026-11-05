@@ -1227,11 +1227,15 @@ async function loadTermResult(termId) {
 
     subjects.forEach(sub => {
       let statusBadge = `<span class="badge badge-success">Pass</span>`;
-      if (!sub.isPass) {
-        statusBadge = `<span class="badge badge-danger">${sub.isAbsent ? 'Absent' : 'Fail'}</span>`;
+      if (sub.isNotEntered || sub.obtained === '—') {
+        statusBadge = `<span class="badge" style="background:var(--surface-muted);color:var(--ink-muted);">Not entered</span>`;
       } else if (sub.isExempted) {
         statusBadge = `<span class="badge badge-info">Exempted</span>`;
+      } else if (!sub.isPass) {
+        statusBadge = `<span class="badge badge-danger">${sub.isAbsent ? 'Absent' : 'Fail'}</span>`;
       }
+
+      const obtColor = (sub.isNotEntered || sub.obtained === '—') ? 'var(--ink-muted)' : (sub.isPass ? 'var(--ink)' : 'var(--red)');
 
       html += `
         <tr>
@@ -1241,7 +1245,7 @@ async function loadTermResult(termId) {
           </td>
           <td class="center">${escapeHTML(sub.fullMarks)}</td>
           <td class="center">${escapeHTML(sub.passMarks)}</td>
-          <td class="center"><strong style="font-size:1rem;color:${sub.isPass ? 'var(--ink)' : 'var(--red)'};">${escapeHTML(sub.obtained)}</strong></td>
+          <td class="center"><strong style="font-size:1rem;color:${obtColor};">${escapeHTML(sub.obtained)}</strong></td>
           <td class="center"><strong>${escapeHTML(sub.grade)}</strong></td>
           <td class="center">${statusBadge}</td>
         </tr>

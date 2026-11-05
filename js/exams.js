@@ -497,12 +497,43 @@ calculateMultiExamResult: function(params) {
         tSubs = ensureSubjectsArray(tSubs);
 
         var tMarks = marksMap[t.id] || {};
-        var res = ExamCalculationEngine.calculateStudentResult({
-          marks: tMarks,
-          subjects: tSubs,
-          term: t,
-          schoolConfig: schoolConfig
-        });
+        var tEntry = (params.studentEntriesByTerm && params.studentEntriesByTerm[t.id]) ||
+                     (params.studentMarksEntry && params.studentMarksEntry[t.id]) || null;
+        var tIsPub = t && (t.status === 'published' || t.status === 'locked');
+        var tHasComp = tEntry && tEntry.total !== undefined && tEntry.maxTotal !== undefined &&
+                       tEntry.percentage !== undefined && tEntry.grade && tEntry.result;
+
+        var res;
+        if (tIsPub && tHasComp) {
+          var tPct = parseFloat(tEntry.percentage) || 0;
+          res = {
+            total: Number(tEntry.total),
+            maxTotal: Number(tEntry.maxTotal),
+            passTotal: (tEntry.passTotal !== undefined && tEntry.passTotal !== null) ? Number(tEntry.passTotal) : Math.round(Number(tEntry.maxTotal) * 0.33),
+            percentage: tPct,
+            displayPercentage: tPct.toFixed(2) + '%',
+            grade: tEntry.grade,
+            division: tEntry.division || (tPct >= 60 ? '1st Division' : (tPct >= 45 ? '2nd Division' : '3rd Division')),
+            result: String(tEntry.result || 'PASS').toUpperCase(),
+            isComplete: true
+          };
+        } else {
+          var tClone = JSON.parse(JSON.stringify(tEntry || {}));
+          if (!tClone.marks) tClone.marks = tMarks;
+          var tRecalc = recalculateStudentEntry(tClone, tSubs, t);
+          var tPct = parseFloat(tRecalc.percentage) || 0;
+          res = {
+            total: Number(tRecalc.total || 0),
+            maxTotal: Number(tRecalc.maxTotal || 0),
+            passTotal: Math.round(Number(tRecalc.maxTotal || 0) * 0.33),
+            percentage: tPct,
+            displayPercentage: tPct.toFixed(2) + '%',
+            grade: tRecalc.grade || '—',
+            division: tRecalc.division || (tPct >= 60 ? '1st Division' : (tPct >= 45 ? '2nd Division' : '3rd Division')),
+            result: tRecalc.result ? String(tRecalc.result).toUpperCase() : '—',
+            isComplete: !!tRecalc.isComplete
+          };
+        }
         termResults[t.id] = res;
         termTotals[t.id] = {
           obtained: res.total,
@@ -809,7 +840,8 @@ calculateMultiExamResult: function(params) {
       var website = settings.website || settings.schoolWebsite || schoolInfo.website || '';
       var udise = settings.udiseCode || settings.udiseNo || schoolInfo.udiseCode || '';
       var affiliation = settings.affiliation || settings.affiliationNo || schoolInfo.affiliation || '';
-      var logo = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || settings.schoolLogo || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl || schoolInfo.schoolLogo)) || '');
+      var logo = (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') ? window.SchoolApp.getLogoUrl(settings) : '';
+    var sigUrl = (window.SchoolApp && typeof window.SchoolApp.getSignatureUrl === 'function') ? window.SchoolApp.getSignatureUrl(settings) : '';
 
       var termName = activeTerm ? activeTerm.name : 'TERM EXAMINATION';
       // FIX 3: No invented session in v2 code (empty string if no session configured)
@@ -858,13 +890,49 @@ calculateMultiExamResult: function(params) {
           schoolConfig: schoolConfig
         });
       } else {
-        var marksMap = (savedMarks && savedMarks.marks) || {};
-        calcRes = ExamCalculationEngine.calculateStudentResult({
-          marks: marksMap,
-          subjects: subjectsArr,
-          term: activeTerm,
-          schoolConfig: schoolConfig
-        });
+        var isPublishedOrLocked = activeTerm && (activeTerm.status === 'published' || activeTerm.status === 'locked');
+        var hasStoredTotal = savedMarks && savedMarks.total !== undefined && savedMarks.total !== null;
+        var hasStoredMaxTotal = savedMarks && savedMarks.maxTotal !== undefined && savedMarks.maxTotal !== null;
+        var hasStoredPercentage = savedMarks && savedMarks.percentage !== undefined && savedMarks.percentage !== null;
+        var hasStoredGrade = savedMarks && savedMarks.grade !== undefined && savedMarks.grade !== null && String(savedMarks.grade).trim() !== '';
+        var hasStoredResult = savedMarks && savedMarks.result !== undefined && savedMarks.result !== null && String(savedMarks.result).trim() !== '';
+        var hasCompleteStored = hasStoredTotal && hasStoredMaxTotal && hasStoredPercentage && hasStoredGrade && hasStoredResult;
+
+        if (isPublishedOrLocked && hasCompleteStored) {
+          var pct = parseFloat(savedMarks.percentage) || 0;
+          calcRes = {
+            total: Number(savedMarks.total),
+            maxTotal: Number(savedMarks.maxTotal),
+            passTotal: (savedMarks.passTotal !== undefined && savedMarks.passTotal !== null) ? Number(savedMarks.passTotal) : Math.round(Number(savedMarks.maxTotal) * 0.33),
+            percentage: pct,
+            displayPercentage: pct.toFixed(2) + '%',
+            grade: savedMarks.grade,
+            division: savedMarks.division || (pct >= 60 ? '1st Division' : (pct >= 45 ? '2nd Division' : '3rd Division')),
+            result: String(savedMarks.result || 'PASS').toUpperCase(),
+            rank: savedMarks.rank !== undefined ? savedMarks.rank : null,
+            isComplete: true,
+            missingMandatorySubjects: []
+          };
+        } else {
+          var marksMap = (savedMarks && savedMarks.marks) || {};
+          var entryClone = JSON.parse(JSON.stringify(savedMarks || {}));
+          if (!entryClone.marks) entryClone.marks = marksMap;
+          var recalc = recalculateStudentEntry(entryClone, subjectsArr, activeTerm);
+          var pct = parseFloat(recalc.percentage) || 0;
+          calcRes = {
+            total: Number(recalc.total || 0),
+            maxTotal: Number(recalc.maxTotal || 0),
+            passTotal: Math.round(Number(recalc.maxTotal || 0) * 0.33),
+            percentage: pct,
+            displayPercentage: pct.toFixed(2) + '%',
+            grade: recalc.grade || '—',
+            division: recalc.division || (pct >= 60 ? '1st Division' : (pct >= 45 ? '2nd Division' : '3rd Division')),
+            result: recalc.result ? String(recalc.result).toUpperCase() : '—',
+            rank: (savedMarks && savedMarks.rank !== undefined) ? savedMarks.rank : (recalc.rank || null),
+            isComplete: !!recalc.isComplete,
+            missingMandatorySubjects: recalc.missingMandatorySubjects || []
+          };
+        }
       }
 
       var fontStack = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -1602,7 +1670,7 @@ calculateMultiExamResult: function(params) {
         if (secToggles.showParentSignature === true) {
           sHtml += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PARENT SIGNATURE</div></div>';
         }
-        sHtml += '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PRINCIPAL</div></div>';
+        sHtml += '' + (sigUrl ? '<div style="text-align:center; width:130px;"><img src="' + sigUrl + '" style="max-height:' + sigH + '; max-width:110px; object-fit:contain; display:block; margin:0 auto;" /><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PRINCIPAL</div></div>' : '<div style="text-align:center; width:130px;"><div style="height:' + sigH + ';"></div><div style="border-top:1px solid #475569; padding-top:3px; font-size:9.5px; font-weight:700; color:#334155;">PRINCIPAL</div></div>') + '';
         sHtml += '</div>';
         sHtml += '<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:9px; color:#64748B;">';
         sHtml += '<div>Date of Issue: ' + dateStr + '</div>';
@@ -1693,7 +1761,7 @@ calculateMultiExamResult: function(params) {
       var bulkOrientation = schoolConfig.orientation === 'landscape' ? 'landscape' : 'portrait';
       students.forEach(function(s) {
         var m = getStudentExamMarks(s.id, termId);
-        var singleHtml = ExamCalculationEngine.generateSingleStudentCardHTMLV2(s, false, m, null, activeTerm, subjects, schoolConfig);
+        var singleHtml = generateSingleStudentCardHTML(s, false, m, null, activeTerm, subjects);
         if (singleHtml.indexOf('data-orientation="landscape"') !== -1) bulkOrientation = 'landscape';
         cardsHtml += singleHtml;
       });
@@ -3188,7 +3256,8 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
     var email = settings.email || settings.schoolEmail || schoolInfo.email || '';
     var website = settings.website || settings.schoolWebsite || schoolInfo.website || '';
     var udise = settings.udiseCode || settings.udiseNo || settings.udise || schoolInfo.udiseCode || schoolInfo.udise || '';
-    var logo = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || (schoolInfo && (schoolInfo.logoStorageUrl || schoolInfo.logoUrl)) || '');
+    var logo = (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') ? window.SchoolApp.getLogoUrl(settings) : '';
+    var sigUrl = (window.SchoolApp && typeof window.SchoolApp.getSignatureUrl === 'function') ? window.SchoolApp.getSignatureUrl(settings) : '';
 
     var termName = activeTerm ? activeTerm.name : 'ANNUAL EXAMINATION';
     var academicSession = (settings && settings.academicYear) || '2025-26';
@@ -3470,7 +3539,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
     html += '<div style="display:flex; justify-content:space-between; align-items:flex-end;">';
     html += '<div style="text-align:center; width:150px;"><div style="height:32px;"></div><div style="border-top:1px solid #374151; padding-top:6px; font-size:10px; font-weight:700; letter-spacing:0.08em; color:#374151;">CLASS TEACHER</div></div>';
     html += '<div style="text-align:center; width:130px; height:50px; border:1px dashed #9CA3AF; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; color:#9CA3AF; font-weight:600;">SCHOOL SEAL</div>';
-    html += '<div style="text-align:center; width:150px;"><div style="height:32px;"></div><div style="border-top:1px solid #374151; padding-top:6px; font-size:10px; font-weight:700; letter-spacing:0.08em; color:#374151;">PRINCIPAL</div></div>';
+    html += '' + (sigUrl ? '<div style="text-align:center; width:150px;"><img src="' + sigUrl + '" style="max-height:32px; max-width:130px; object-fit:contain; display:block; margin:0 auto;" /><div style="border-top:1px solid #374151; padding-top:6px; font-size:10px; font-weight:700; letter-spacing:0.08em; color:#374151;">PRINCIPAL</div></div>' : '<div style="text-align:center; width:150px;"><div style="height:32px;"></div><div style="border-top:1px solid #374151; padding-top:6px; font-size:10px; font-weight:700; letter-spacing:0.08em; color:#374151;">PRINCIPAL</div></div>') + '';
     html += '</div>';
     html += '<div style="margin-top:10px; font-size:10.5px; color:#4B5563;">Date of Issue: <span style="font-weight:600; border-bottom:1px solid #555; padding-bottom:1px;">' + dateStr + '</span></div>';
     html += '</div>'; // end signatures
@@ -3530,7 +3599,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     var settings = SchoolApp.store.settings || {};
     var info = settings.schoolInfo || {};
-    var logoUrl = (window.SchoolApp && window.SchoolApp.getLogoUrl) ? window.SchoolApp.getLogoUrl(settings) : (settings.logoStorageUrl || settings.logoUrl || (info && (info.logoStorageUrl || info.logoUrl)) || '');
+    var logoUrl = (window.SchoolApp && typeof window.SchoolApp.getLogoUrl === 'function') ? window.SchoolApp.getLogoUrl(settings) : '';
     if (!logoUrl) {
       logoUrl = new URL('school-logo-updated.jpg', window.location.href).href + '?t=' + new Date().getTime();
     }

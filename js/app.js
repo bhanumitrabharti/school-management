@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v80';
+window.APP_VERSION = window.APP_VERSION || 'v81';
 
 // Expose Firestore and Auth globally for any non-module components
 window.db = dbInstance;
@@ -1267,6 +1267,158 @@ window.SchoolApp = {
     var year = d.getFullYear();
     var month = String(d.getMonth() + 1).padStart(2, '0');
     return year + '-' + month;
+  },
+
+  getLocalDateString: function(dateObj) {
+    var d = dateObj || new Date();
+    if (typeof d === 'string') d = new Date(d);
+    if (isNaN(d.getTime())) d = new Date();
+    var year = d.getFullYear();
+    var month = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+  },
+
+  getSchoolCode: function(settings, schoolId) {
+    settings = settings || (this.store && this.store.settings) || {};
+    schoolId = schoolId || this.currentSchoolId || (this.store && this.store.currentSchoolId) || '';
+    if (settings.schoolCode && String(settings.schoolCode).trim() !== '') {
+      return String(settings.schoolCode).trim().toUpperCase();
+    }
+    if (settings.code && String(settings.code).trim() !== '') {
+      return String(settings.code).trim().toUpperCase();
+    }
+    var name = settings.schoolName || (settings.schoolInfo && settings.schoolInfo.name) || '';
+    if (name) {
+      var words = name.trim().split(/\s+/).filter(Boolean);
+      if (words.length >= 2) {
+        var initials = words.map(function(w) { return w[0]; }).join('').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (initials.length >= 2 && initials.length <= 6) return initials;
+      }
+    }
+    var cleanId = schoolId.split('_')[0].replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    return cleanId || 'SCH';
+  },
+
+  getFinancialYear: function(dateStr, startMonth) {
+    var sm = startMonth || (this.store && this.store.settings && this.store.settings.financialYearStartMonth) || 4;
+    var d = dateStr ? new Date(dateStr) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    var y = d.getFullYear();
+    var m = d.getMonth() + 1;
+    if (m >= sm) {
+      return y + '-' + String(y + 1).slice(-2);
+    } else {
+      return (y - 1) + '-' + String(y).slice(-2);
+    }
+  },
+
+  numberToIndianWords: function(num) {
+    if (num === null || num === undefined || isNaN(num)) return '';
+    num = Number(num);
+    if (num === 0) return 'Rupees Zero Only';
+
+    var a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+      'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    var b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    function convertTwoDigits(n) {
+      if (n < 20) return a[n];
+      var tens = Math.floor(n / 10);
+      var unit = n % 10;
+      return b[tens] + (unit ? ' ' + a[unit] : '');
+    }
+
+    function convertThreeDigits(n) {
+      var str = '';
+      var hundreds = Math.floor(n / 100);
+      var rem = n % 100;
+      if (hundreds > 0) {
+        str += a[hundreds] + ' Hundred';
+        if (rem > 0) str += ' ';
+      }
+      if (rem > 0) {
+        str += convertTwoDigits(rem);
+      }
+      return str;
+    }
+
+    var integerPart = Math.floor(Math.abs(num));
+    var paisePart = Math.round((Math.abs(num) - integerPart) * 100);
+
+    var remaining = integerPart;
+    var parts = [];
+
+    var crores = Math.floor(remaining / 10000000);
+    if (crores > 0) {
+      parts.push(convertThreeDigits(crores) + ' Crore');
+      remaining %= 10000000;
+    }
+
+    var lakhs = Math.floor(remaining / 100000);
+    if (lakhs > 0) {
+      parts.push(convertTwoDigits(lakhs) + ' Lakh');
+      remaining %= 100000;
+    }
+
+    var thousands = Math.floor(remaining / 1000);
+    if (thousands > 0) {
+      parts.push(convertTwoDigits(thousands) + ' Thousand');
+      remaining %= 1000;
+    }
+
+    if (remaining > 0) {
+      parts.push(convertThreeDigits(remaining));
+    }
+
+    var result = 'Rupees ' + parts.join(' ');
+    if (paisePart > 0) {
+      result += ' and ' + convertTwoDigits(paisePart) + ' Paise';
+    }
+    result += ' Only';
+    return result;
+  },
+
+  getReceiptNumber: function(txn, settings, schoolId) {
+    if (txn && txn.receiptNo) return txn.receiptNo;
+    settings = settings || (this.store && this.store.settings) || {};
+    schoolId = schoolId || (txn && txn.schoolId) || this.currentSchoolId || (this.store && this.store.currentSchoolId) || '';
+    var schoolCode = this.getSchoolCode(settings, schoolId);
+    var idPart = (txn && txn.id) ? String(txn.id).replace(/[^A-Za-z0-9]/g, '').slice(-8).toUpperCase() : '00000000';
+    return 'RCP-' + schoolCode + '-' + idPart;
+  },
+
+  generateFeeReceiptNumber: async function(dateStr, schoolId) {
+    schoolId = schoolId || this.currentSchoolId || (this.store && this.store.currentSchoolId) || '';
+    var settings = (this.store && this.store.settings) || {};
+    var schoolCode = this.getSchoolCode(settings, schoolId);
+    var fy = this.getFinancialYear(dateStr);
+
+    if (window.firestore && window.db && typeof window.firestore.runTransaction === 'function') {
+      try {
+        var fs = window.firestore;
+        var db = window.db;
+        var counterRef = fs.doc(db, 'tenant_data', schoolId, 'counters', 'fee_receipts');
+        var serialNum = await fs.runTransaction(db, async function(transaction) {
+          var snap = await transaction.get(counterRef);
+          var cur = 0;
+          if (snap.exists() && snap.data() && snap.data()[fy] !== undefined) {
+            cur = parseInt(snap.data()[fy], 10) || 0;
+          }
+          var next = cur + 1;
+          transaction.set(counterRef, { [fy]: next }, { merge: true });
+          return next;
+        });
+        var padded = String(serialNum).padStart(6, '0');
+        return schoolCode + '/' + fy + '/' + padded;
+      } catch (err) {
+        console.warn('[Fees] Failed to generate atomic receipt number, using fallback:', err);
+      }
+    }
+
+    this._localReceiptSeq = (this._localReceiptSeq || 0) + 1;
+    var paddedFallback = String(this._localReceiptSeq).padStart(6, '0');
+    return schoolCode + '/' + fy + '/' + paddedFallback;
   },
 
   loadTeacherAttendanceMonth: async function(schoolId, month) {
