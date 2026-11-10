@@ -120,16 +120,25 @@ function getFinancialYear(dateStr) {
   }
 }
 
-// ── Fee Head Normalization & Account Resolution (v81) ─────────────────────────
-function normalizeFeeHead(headId, headName) {
-  const raw = (headName || headId || '').trim();
+// ── Fee Head Normalization & Account Resolution (v82) ─────────────────────────
+function normalizeFeeHead(headIdOrObj, headName) {
+  let headId = '';
+  let raw = '';
+  if (headIdOrObj && typeof headIdOrObj === 'object') {
+    headId = headIdOrObj.id || headIdOrObj.headId || '';
+    raw = (headIdOrObj.name || headIdOrObj.headName || headIdOrObj.key || '').trim();
+  } else {
+    headId = headIdOrObj || '';
+    raw = (headName || headId || '').trim();
+  }
+
   const monthNames = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
   const suffixRegex = new RegExp('\\s*[-–—]\\s*(?:(?:' + monthNames + ')\\s+\\d{4}|\\d{4}[-/]\\d{2})\\s*$', 'i');
   const parenRegex = new RegExp('\\s*\\((?:(?:' + monthNames + ')\\s+\\d{4}|\\d{4}[-/]\\d{2})\\)\\s*$', 'i');
   let cleaned = raw.replace(suffixRegex, '').replace(parenRegex, '').trim();
-  cleaned = cleaned.replace(/^Monthly\\s+/i, '').trim();
+  cleaned = cleaned.replace(/^Monthly\s+/i, '').trim();
 
-  if (/transport|bus/i.test(cleaned) || headId === 'fh_transport' || headId === 'transport') {
+  if (/transport|bus|van|conveyance|auto/i.test(cleaned) || headId === 'fh_transport' || headId === 'transport') {
     return {
       id: 'fh_transport',
       key: 'Transport Fee',
@@ -153,12 +162,29 @@ function normalizeFeeHead(headId, headName) {
       defaultAccount: '41300'
     };
   }
-  if (/annual|development/i.test(cleaned) || headId === 'fh_annual' || headId === 'annual') {
+  if (/annual|development|activity/i.test(cleaned) || headId === 'fh_annual' || headId === 'annual' || headId === 'fh_activity') {
     return {
       id: 'fh_annual',
       key: 'Annual Development Fee',
       name: 'Annual Development Fee',
       defaultAccount: '41400'
+    };
+  }
+  if (/late|fine/i.test(cleaned) || headId === 'fh_late_fine' || headId === 'fh_mv3iltbv') {
+    return {
+      id: headId || 'fh_late_fine',
+      key: 'Late Fine',
+      name: cleaned || 'Late Fine',
+      defaultAccount: '41100'
+    };
+  }
+  if (!raw || headId === 'fh_unallocated' || cleaned === 'Unknown Fee Head') {
+    return {
+      id: 'fh_unallocated',
+      key: 'Unallocated Fee Payments',
+      name: 'Unallocated Fee Payments',
+      defaultAccount: '41100',
+      isUnallocated: true
     };
   }
 

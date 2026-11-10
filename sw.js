@@ -4,7 +4,7 @@
  * ===================================================
  */
 
-const BUILD_VERSION = 'v81';
+const BUILD_VERSION = 'v82';
 const CACHE_NAME = `erp-cache-${BUILD_VERSION}`;
 
 // Assets to pre-cache on service worker install
@@ -63,7 +63,7 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Activate Event — Clean up older caches (purges v46..v50)
+// Activate Event — Clean up older caches
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => {

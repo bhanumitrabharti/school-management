@@ -135,6 +135,8 @@ function setupTestEnvironment() {
       clear() { this._data = {}; }
     },
     document: {
+      head: { appendChild() {} },
+      body: { appendChild() {} },
       getElementById() { return null; },
       querySelector() { return null; },
       querySelectorAll() { return []; },
@@ -1029,6 +1031,156 @@ async function runAllTests() {
     // 4. Verify total vouchers count in accounts_journal is STILL EXACTLY 1
     const totalJournalSnap = await db.collection(`tenant_data/${schoolId}/accounts_journal`).get();
     assert.strictEqual(totalJournalSnap.size, 1, 'accounts_journal must still contain exactly 1 voucher (no double-posting)');
+  });
+
+  await runTest('Item 6c (v82 hotfix): Greenwood fixture with 4 store heads, unallocated payment & Transport Fee: 0 warnings, table has Transport & Unallocated, both cards show 5/5', async () => {
+    const accountsApi = require('../api/accounts.js');
+    const schoolId = 'test_v82_greenwood_fixture';
+
+    // 1. Seed Greenwood-shaped school in emulator:
+    // Only 4 fee heads in store/tenant (no transport head!)
+    const greenwoodStoreHeads = [
+      { id: 'fh_tuition', name: 'Tuition Fee', frequency: 'Monthly' },
+      { id: 'fh_exam', name: 'Examination Fee', frequency: 'Term' },
+      { id: 'fh_activity', name: 'Annual Activity Fee', frequency: 'Annual' },
+      { id: 'fh_mv3iltbv', name: 'Late Fine' }
+    ];
+
+    await db.collection('tenant_data').doc(schoolId).set({
+      feeHeads: greenwoodStoreHeads,
+      settings: { schoolName: 'Greenwood Test School' }
+    });
+
+    const accountsSettings = {
+      financialYearStartMonth: 4,
+      entityType: 'company',
+      accountingBasis: 'cash',
+      setupCompletedAt: '2026-10-31T05:11:01.772Z',
+      goLiveDate: '2026-04-01',
+      feeCashAccount: '11100',
+      feeDigitalAccount: '11200',
+      bankAccounts: [
+        { id: 'bank_1', label: 'ICICI', bankName: 'ICICI bank', last4: '4567', ledgerAccountId: '11220', isActive: true }
+      ],
+      feeHeadMapping: {
+        fh_tuition: '41100',
+        fh_exam: '41100',
+        fh_activity: '41100',
+        fh_mv3iltbv: '41100'
+      }
+    };
+
+    await db.collection('tenant_data').doc(schoolId).collection('accounts_settings').doc('main').set(accountsSettings);
+
+    // Clear journal
+    const existingSnap = await db.collection('tenant_data').doc(schoolId).collection('accounts_journal').get();
+    for (const doc of existingSnap.docs) {
+      await doc.ref.delete();
+    }
+
+    // 2. Test transactions:
+    // a) Month-suffixed transport payment (like Greenwood Month 11)
+    const txnTransport = {
+      id: 'txn_gw_transport_01',
+      type: 'payment',
+      date: '2026-11-04',
+      amount: 1500,
+      grossAmount: 1500,
+      paymentMethod: 'Cash',
+      allocations: [
+        { feeHeadId: '', feeHeadName: 'Monthly Transport Fee - November 2026', amount: 1500 }
+      ]
+    };
+
+    // b) Unallocated payment without allocations (like Greenwood Month 09)
+    const txnUnallocated = {
+      id: 'id_mu4a0zx4_jrt2d8_test',
+      type: 'payment',
+      date: '2026-09-15',
+      amount: 2500,
+      grossAmount: 2500,
+      paymentMethod: 'Cash',
+      allocations: null,
+      feeHeadId: '',
+      feeHeadName: ''
+    };
+
+    const resTransport = accountsApi.computeFeeJournalLines(txnTransport, accountsSettings);
+    assert(resTransport && Array.isArray(resTransport.lines), 'Transport txn lines must be computed');
+    assert.strictEqual(resTransport.unmappedHeads.length, 0, 'Monthly Transport Fee must NOT be reported as unmapped');
+    const transLine = resTransport.lines.find(l => l.accountCode === '42100');
+    assert(transLine, 'Transport payment must credit 42100');
+    assert.strictEqual(transLine.crPaise, 150000);
+
+    const resUnalloc = accountsApi.computeFeeJournalLines(txnUnallocated, accountsSettings);
+    assert(resUnalloc && Array.isArray(resUnalloc.lines), 'Unallocated txn lines must be computed');
+    assert.strictEqual(resUnalloc.unmappedHeads.length, 0, 'Unallocated payment must NOT be reported as unmapped');
+    const unallocLine = resUnalloc.lines.find(l => l.accountCode === '41100');
+    assert(unallocLine, 'Unallocated payment must credit 41100 (Tuition Fees)');
+    assert.strictEqual(unallocLine.crPaise, 250000);
+
+    // 3. Test client VM: getFeeHeadMappingStatus, Overview checklist, and Settings checklist & table
+    const { sandbox, window } = setupTestEnvironment();
+    window.SchoolApp.store = {
+      feeHeads: greenwoodStoreHeads,
+      settings: {}
+    };
+
+    const accountsCode = fs.readFileSync(path.resolve(__dirname, '../js/accounts.js'), 'utf8');
+    vm.runInContext(accountsCode, sandbox);
+
+    const accountsMod = window.SchoolApp.modules.accounts;
+    accountsMod.settings = accountsSettings;
+    accountsMod.chart = [
+      { code: '11100', name: 'Cash in Hand', type: 'asset', isActive: true },
+      { code: '11200', name: 'Primary Bank Account', type: 'asset', isActive: true },
+      { code: '41100', name: 'Tuition Fees', type: 'income', isActive: true },
+      { code: '41300', name: 'Examination Fees', type: 'income', isActive: true },
+      { code: '41400', name: 'Annual Development Fees', type: 'income', isActive: true },
+      { code: '42100', name: 'Transport / Bus Charges', type: 'income', isActive: true }
+    ];
+    accountsMod.receipts = [];
+    accountsMod.expenses = [];
+    accountsMod.transfers = [];
+    accountsMod.syncState = {
+      lastSyncAt: '2026-11-10T03:33:34.000Z',
+      warnings: [],
+      skipped: [],
+      counts: { feesPosted: 300, vouchersTotal: 300 }
+    };
+
+    // Evaluate unified status
+    const status = accountsMod.getFeeHeadMappingStatus();
+    assert.strictEqual(status.unmappedHeads.length, 0, 'Unmapped heads must be 0');
+    assert.strictEqual(status.item1Done, true, 'Item 1 (Setup Wizard) must be done');
+    assert.strictEqual(status.item2Done, true, 'Item 2 (Bank accounts) must be done');
+    assert.strictEqual(status.item3Done, true, 'Item 3 (Digital account) must be done');
+    assert.strictEqual(status.item4Done, true, 'Item 4 (Fee heads mapped) must be done');
+    assert.strictEqual(status.item5Done, true, 'Item 5 (Sync with 0 warnings) must be done');
+    assert.strictEqual(status.completedCount, 5, 'Completed count must be exactly 5');
+    assert.strictEqual(status.allDone, true, 'AllDone must be true');
+
+    // Confirm Transport Fee and Unallocated Fee Payments are present in allHeads
+    const headTransport = status.allHeads.find(h => h.id === 'fh_transport');
+    assert(headTransport, 'allHeads must include Transport Fee');
+    assert.strictEqual(headTransport.defaultAccount, '42100', 'Transport Fee must default to 42100');
+
+    const headUnallocated = status.allHeads.find(h => h.id === 'fh_unallocated');
+    assert(headUnallocated, 'allHeads must include Unallocated Fee Payments');
+    assert.strictEqual(headUnallocated.defaultAccount, '41100', 'Unallocated Fee Payments must default to 41100');
+
+    // Test Overview Checklist HTML
+    accountsMod._forceShowChecklist = true;
+    const overviewHtml = accountsMod.renderChecklistHTML();
+    assert(overviewHtml.includes('5/5 Complete'), 'Overview checklist header must show 5/5 Complete');
+
+    // Test Settings HTML
+    const settingsHtml = accountsMod.renderSettingsHTML();
+    assert(settingsHtml.includes('5/5 Complete'), 'Settings checklist status bar must show 5/5 Complete');
+    assert(settingsHtml.includes('Transport Fee'), 'Settings mapping table must render Transport Fee row');
+    assert(settingsHtml.includes('data-head-id="fh_transport"'), 'Settings table must have select with data-head-id="fh_transport"');
+    assert(settingsHtml.includes('Unallocated Fee Payments'), 'Settings mapping table must render Unallocated Fee Payments row');
+    assert(settingsHtml.includes('data-head-id="fh_unallocated"'), 'Settings table must have select with data-head-id="fh_unallocated"');
   });
 
   // --------------------------------------------------------------------------
