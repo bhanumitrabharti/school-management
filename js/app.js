@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v82';
+window.APP_VERSION = window.APP_VERSION || 'v83';
 if (typeof window.updateVersionUI === 'function') {
   window.updateVersionUI(window.APP_VERSION);
 }
@@ -944,9 +944,65 @@ window.SchoolApp = {
     }
   },
 
+  isSchoolAccessVerified: function(schoolId) {
+    if (!this.currentUser) return false;
+    var currentSchoolId = schoolId || (this.store && this.store.currentSchoolId) || this.currentSchoolId;
+    if (this._verifiedSchoolAccess && this._verifiedSchoolAccess.schoolId === currentSchoolId) {
+      return true;
+    }
+    if (typeof sessionStorage !== 'undefined') {
+      var sUid = sessionStorage.getItem('erp_active_session_uid');
+      var sSchool = sessionStorage.getItem('erp_active_school_id');
+      if (sUid && sSchool === currentSchoolId) return true;
+    }
+    return false;
+  },
+
+  attachAuthenticatedListeners: function(schoolId) {
+    schoolId = schoolId || (this.store && this.store.currentSchoolId) || this.currentSchoolId;
+    if (!this.currentUser || !this.isSchoolAccessVerified(schoolId)) {
+      console.warn('[Listeners] Gated: session not authenticated or school_access unverified for school ' + schoolId);
+      return;
+    }
+    var store = this.store || {};
+    var settings = store.settings || {};
+    if (settings.studentsMigrated === true) {
+      this.initStudentsSubcollectionListener(schoolId);
+    }
+    if (settings.storageVersion >= 2) {
+      this.loadV2Subcollections(schoolId);
+    }
+    if (this.isRestructured(schoolId)) {
+      var currentYM = new Date().toISOString().slice(0, 7);
+      var currentYr = String(new Date().getFullYear());
+      var self = this;
+      if (typeof self.loadAttendanceMonth === 'function') {
+        self.loadAttendanceMonth(currentYM).then(function() {
+          if (typeof self.listenToAttendanceMonth === 'function') {
+            self.listenToAttendanceMonth(currentYM);
+          }
+        });
+      }
+      if (!self.isTeacher() && typeof self.loadFeesYear === 'function') {
+        self.loadFeesYear(currentYr).then(function() {
+          if (typeof self.listenToFeesYear === 'function') {
+            self.listenToFeesYear(currentYr);
+          }
+          if (self.currentPage === 'fees' && window.FeesModule && typeof window.FeesModule.render === 'function') {
+            window.FeesModule.render();
+          }
+        });
+      }
+    }
+  },
+
   initStudentsSubcollectionListener: function(schoolId) {
     var self = this;
     if (!window.firestore || !window.db || !schoolId) return;
+    if (!this.currentUser || !this.isSchoolAccessVerified(schoolId)) {
+      console.warn('[Listeners] Students listener blocked: user unauthenticated or school_access unverified.');
+      return;
+    }
 
     // Attached ONCE per school per session. Re-attached only if schoolId changes or listener errored.
     if (this._studentsSubcollectionSchoolId === schoolId &&
@@ -1474,6 +1530,10 @@ window.SchoolApp = {
 
   loadV2Subcollections: async function(schoolId) {
     if (!schoolId || !window.firestore || !window.db) return;
+    if (!this.currentUser || !this.isSchoolAccessVerified(schoolId)) {
+      console.warn('[Listeners] loadV2Subcollections blocked: user unauthenticated or school_access unverified.');
+      return;
+    }
     var fs = window.firestore;
     var db = window.db;
 
@@ -2251,11 +2311,111 @@ window.SchoolApp = {
       }
     }
 
-    // Single-write: If restructured, write targeted doc to fees_years/{yr}/months/{mo}
+    // Single-write: If restructured, execute atomic transaction on month doc
     if (this.isRestructured(currentSchoolId)) {
       if (!bypassLoader) this.showLoader('Recording fee transaction...');
       try {
-        var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yr, 'months', mo);
+        var fs = window.firestore;
+        var db = window.db;
+        var docRef = fs.doc(db, 'tenant_data', currentSchoolId, 'fees_years', yr, 'months', mo);
+        var isPayment = (txn && txn.type === 'payment');
+        var needsReceiptNo = isPayment && !txn.receiptNo;
+        var counterRef = (needsReceiptNo && fs && db) ? fs.doc(db, 'tenant_data', currentSchoolId, 'counters', 'fee_receipts') : null;
+        var logDocRef = (logEntry && logEntry.id && this.isFeeLogMigrated(currentSchoolId) && fs && db)
+          ? fs.doc(db, 'tenant_data', currentSchoolId, 'fee_activity_logs', logEntry.id)
+          : null;
+
+        var fy = this.getFinancialYear(txn.date || new Date().toISOString().split('T')[0]);
+        var schoolCode = this.getSchoolCode((this.store && this.store.settings) || {}, currentSchoolId);
+        var self = this;
+
+        if (fs && db && typeof fs.runTransaction === 'function') {
+          var txnResult = await fs.runTransaction(db, async function(transaction) {
+            // Reads first
+            var monthSnap = await transaction.get(docRef);
+            var counterSnap = counterRef ? await transaction.get(counterRef) : null;
+
+            var serverTxns = [];
+            if (monthSnap && (typeof monthSnap.exists === 'function' ? monthSnap.exists() : monthSnap.exists)) {
+              var data = (typeof monthSnap.data === 'function') ? monthSnap.data() : (monthSnap ? monthSnap.data : null);
+              if (data && Array.isArray(data.transactions)) {
+                serverTxns = data.transactions;
+              }
+            }
+
+            // A2 Idempotency check: if transaction with this id/idempotencyKey already exists, return it without writing
+            var existingTxn = serverTxns.find(function(f) {
+              return f.id === txn.id || (txn.idempotencyKey && f.idempotencyKey === txn.idempotencyKey);
+            });
+            if (existingTxn) {
+              console.warn('[Fees Idempotency] Payment ' + txn.id + ' already exists in month doc. Returning existing record without rewriting.');
+              return { alreadyExists: true, txn: existingTxn };
+            }
+
+            // A3 Atomic receipt serial reservation inside the transaction
+            if (needsReceiptNo && counterRef) {
+              var cur = 0;
+              var cExists = (typeof counterSnap.exists === 'function') ? counterSnap.exists() : !!(counterSnap && counterSnap.exists);
+              var cData = (typeof counterSnap.data === 'function') ? counterSnap.data() : (counterSnap ? counterSnap.data : null);
+              if (cExists && cData && cData[fy] !== undefined) {
+                cur = parseInt(cData[fy], 10) || 0;
+              }
+              var nextSeq = cur + 1;
+              var padded = String(nextSeq).padStart(6, '0');
+              txn.receiptNo = schoolCode + '/' + fy + '/' + padded;
+              transaction.set(counterRef, { [fy]: nextSeq }, { merge: true });
+            }
+
+            // A4 Two-tab / stale-array safety: append to fresh server copy inside transaction
+            var updatedTxns = serverTxns.slice();
+            updatedTxns.push(JSON.parse(JSON.stringify(txn)));
+            transaction.set(docRef, { transactions: updatedTxns });
+
+            if (logDocRef) {
+              transaction.set(logDocRef, JSON.parse(JSON.stringify(logEntry)));
+            }
+
+            return { alreadyExists: false, txn: txn };
+          });
+
+          var finalTxn = txnResult && txnResult.txn ? txnResult.txn : txn;
+          if (finalTxn.receiptNo) {
+            self.lastReceiptNo = finalTxn.receiptNo;
+          }
+
+          // Sync local memory store
+          if (!self.store.fees) self.store.fees = [];
+          var fIdx = self.store.fees.findIndex(function(f) {
+            return f.id === finalTxn.id || (finalTxn.idempotencyKey && f.idempotencyKey === finalTxn.idempotencyKey);
+          });
+          if (fIdx !== -1) {
+            self.store.fees[fIdx] = finalTxn;
+          } else {
+            self.store.fees.push(finalTxn);
+          }
+
+          if (!self._feesYears[yr]) {
+            self._feesYears[yr] = self.store.fees.filter(function(f) { return f.date && String(f.date).startsWith(yr); });
+          } else {
+            var yIdx = self._feesYears[yr].findIndex(function(f) {
+              return f.id === finalTxn.id || (finalTxn.idempotencyKey && f.idempotencyKey === finalTxn.idempotencyKey);
+            });
+            if (yIdx !== -1) {
+              self._feesYears[yr][yIdx] = finalTxn;
+            } else {
+              self._feesYears[yr].push(finalTxn);
+            }
+          }
+
+          if (self.store.feeActivityLog && !self.isFeeLogMigrated(currentSchoolId)) {
+            await self.save(true);
+          }
+
+          console.log('[Fees] Successfully saved transaction (id: ' + finalTxn.id + ', receiptNo: ' + (finalTxn.receiptNo || 'none') + ') to fees_years/' + yr + '/months/' + mo);
+          return true;
+        }
+
+        // Fallback if runTransaction not available (e.g. offline emulation)
         var ymPrefix = yr + '-' + mo;
         var monthTxns = (this._feesYears[yr] || []).filter(function(f) {
           return f.date && String(f.date).startsWith(ymPrefix);
@@ -3234,14 +3394,18 @@ window.SchoolApp = {
             }
           }
 
-          // CHANGE 2: Connect to students subcollection if migrated mode is active
+          // CHANGE 2: Connect to students subcollection if migrated mode is active (auth-gated)
           if (parsed.settings && parsed.settings.studentsMigrated === true) {
-            self.initStudentsSubcollectionListener(schoolId);
+            if (self.currentUser && self.isSchoolAccessVerified(schoolId)) {
+              self.initStudentsSubcollectionListener(schoolId);
+            }
           }
 
-          // SCALED ARCHITECTURE: Connect to v2 subcollections
+          // SCALED ARCHITECTURE: Connect to v2 subcollections (auth-gated)
           if (parsed.settings && parsed.settings.storageVersion >= 2) {
-            self.loadV2Subcollections(schoolId);
+            if (self.currentUser && self.isSchoolAccessVerified(schoolId)) {
+              self.loadV2Subcollections(schoolId);
+            }
           }
         }
 
@@ -3343,7 +3507,7 @@ window.SchoolApp = {
 
         self.updateBrandUI();
 
-        if (self.isRestructured(schoolId)) {
+        if (self.isRestructured(schoolId) && self.currentUser && self.isSchoolAccessVerified(schoolId)) {
           var currentYM = new Date().toISOString().slice(0, 7);
           var currentYr = String(new Date().getFullYear());
           self.loadAttendanceMonth(currentYM).then(function() {
@@ -4520,6 +4684,8 @@ window.SchoolApp = {
           sessionStorage.setItem('erp_active_teacher_id', teacher.id || 'teacher');
         }
       }
+      this._verifiedSchoolAccess = { uid: credentials.email, schoolId: targetSchoolId, role: role };
+      this.attachAuthenticatedListeners(targetSchoolId);
       this.applyUserTheme();
 
       // Clear pre-login poisoned caches
@@ -7853,6 +8019,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const saData = saSnap.data();
         const role = saData.role || 'admin';
         SchoolApp._lastAuthSuccessTimestamp = Date.now();
+        SchoolApp._verifiedSchoolAccess = { uid: authUser.uid, schoolId: currentSchoolId, role: role };
         console.log('[Auth] Active verified session restored for school: ' + currentSchoolId + ' role: ' + role);
         SchoolApp.showLoader('Restoring session...');
         const tenantOk = await SchoolApp.initTenantStore(currentSchoolId, false);
@@ -7899,6 +8066,7 @@ document.addEventListener('DOMContentLoaded', async function() {
               subjectTeacherOf: subjectTeacherOf
             };
           }
+          SchoolApp.attachAuthenticatedListeners(currentSchoolId);
           SchoolApp.applyUserTheme();
           SchoolApp.setupEventListeners();
           SchoolApp.updateSidebarLockBadges();

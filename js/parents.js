@@ -1,7 +1,7 @@
 /**
  * js/parents.js
  * Paathshala Parent Portal — Lightweight Client Controller
- * Version: v82
+ * Version: v83
  *
  * Handles:
  *   - Turnstile verification
@@ -45,6 +45,51 @@ const state = {
   timetableDay: null,
   examTermId: null
 };
+
+// --- Context Caching (C3: Parent Portal Quick Open) ---
+const PARENT_CONTEXT_CACHE_KEY = 'paathshala_parent_context_v1';
+
+function sanitizeContextForCache(schools) {
+  if (!Array.isArray(schools)) return [];
+  return schools.map(s => ({
+    schoolId: s.schoolId,
+    schoolName: s.schoolName,
+    portalSettings: {
+      theme: s.portalSettings && s.portalSettings.theme,
+      branding: s.portalSettings && s.portalSettings.branding,
+      modules: s.portalSettings && s.portalSettings.modules
+    },
+    students: (s.students || []).map(stu => ({
+      id: stu.id,
+      name: stu.name,
+      class: stu.class,
+      section: stu.section,
+      rollNumber: stu.rollNumber,
+      admissionNumber: stu.admissionNumber,
+      photoUrl: stu.photoUrl
+    }))
+  }));
+}
+
+function saveCachedContext(schools, selectedSchoolId) {
+  try {
+    const cleanSchools = sanitizeContextForCache(schools);
+    const payload = {
+      schools: cleanSchools,
+      selectedSchoolId: selectedSchoolId || (cleanSchools[0] && cleanSchools[0].schoolId),
+      timestamp: Date.now()
+    };
+    localStorage.setItem(PARENT_CONTEXT_CACHE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    console.warn('[Parents] Failed to save context cache:', e);
+  }
+}
+
+function clearCachedContext() {
+  try {
+    localStorage.removeItem(PARENT_CONTEXT_CACHE_KEY);
+  } catch (_) {}
+}
 
 // DOM Elements
 const elements = {
@@ -368,6 +413,11 @@ function setupTurnstile() {
   const container = document.getElementById('turnstile-widget');
   if (!container) return;
 
+  // Turnstile must not block a signed-in reopen or dashboard view
+  if (state.schools && state.schools.length > 0 && elements.viewParentApp && !elements.viewParentApp.classList.contains('hidden')) {
+    return;
+  }
+
   if (state.turnstileWidgetId !== null) return;
 
   if (!window.turnstile) {
@@ -456,6 +506,15 @@ async function callParentApi(action, params = {}) {
     },
     body: JSON.stringify(payload)
   });
+
+  if (resp.status === 401) {
+    clearCachedContext();
+    showView('email');
+    setupTurnstile();
+    showAlert(elements.emailAlert, 'Session expired. Please request a new verification code.');
+    try { await signOut(auth); } catch (_) {}
+    throw new Error('Session expired (401)');
+  }
 
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -595,6 +654,15 @@ async function fetchContextAndLoad() {
       }
     });
 
+    if (resp.status === 401) {
+      clearCachedContext();
+      showView('email');
+      setupTurnstile();
+      showAlert(elements.emailAlert, 'Session expired or invalid. Please request a new code.');
+      await signOut(auth);
+      return;
+    }
+
     const data = await resp.json();
 
     if (!resp.ok) {
@@ -604,24 +672,37 @@ async function fetchContextAndLoad() {
     state.schools = data.schools || [];
 
     if (state.schools.length === 0) {
+      clearCachedContext();
       showView('email');
+      setupTurnstile();
       showAlert(elements.emailAlert, 'No active student records found for your account. Please check with your school administrator.', 'info');
       await signOut(auth);
       return;
     }
 
+    // Persist latest context to cache (C3)
+    saveCachedContext(state.schools, state.activeSchoolId);
+
     // Auto-select school if only 1, otherwise prompt selection
     if (state.schools.length === 1) {
       selectSchool(state.schools[0].schoolId);
     } else {
-      renderSchoolSelection();
-      showView('school-select');
+      if (!state.activeSchoolId) {
+        renderSchoolSelection();
+        showView('school-select');
+      } else {
+        selectSchool(state.activeSchoolId);
+      }
     }
   } catch (err) {
     console.error('[Parents] Context loading error:', err);
-    showView('email');
-    showAlert(elements.emailAlert, 'Session expired or invalid. Please request a new code.');
-    await signOut(auth);
+    if (!state.schools || state.schools.length === 0) {
+      clearCachedContext();
+      showView('email');
+      setupTurnstile();
+      showAlert(elements.emailAlert, 'Session expired or invalid. Please request a new code.');
+      await signOut(auth);
+    }
   }
 }
 
@@ -657,6 +738,8 @@ function selectSchool(schoolId) {
   state.activeSchoolId = schoolId;
   const school = state.schools.find(s => s.schoolId === schoolId);
   if (!school) return;
+
+  saveCachedContext(state.schools, schoolId);
 
   elements.activeSchoolName.textContent = school.schoolName;
 
@@ -1286,6 +1369,7 @@ function setupListeners() {
   });
 
   elements.btnLogout.addEventListener('click', async () => {
+    clearCachedContext();
     try {
       await signOut(auth);
     } catch (_) {}
@@ -1297,6 +1381,7 @@ function setupListeners() {
     elements.inputEmail.value = '';
     elements.inputOtp.value = '';
     showView('email');
+    setupTurnstile();
   });
 
   elements.btnBackDashboard.addEventListener('click', () => {
@@ -1332,7 +1417,9 @@ function setupListeners() {
     if (user) {
       fetchContextAndLoad();
     } else {
+      clearCachedContext();
       showView('email');
+      setupTurnstile();
     }
   });
 }
@@ -1341,5 +1428,31 @@ function setupListeners() {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   setupListeners();
-  setupTurnstile();
+
+  // Quick Open (C3): restore context from cache immediately (0 ms perceived latency)
+  let renderedFromCache = false;
+  try {
+    const cachedStr = localStorage.getItem(PARENT_CONTEXT_CACHE_KEY);
+    if (cachedStr) {
+      const cached = JSON.parse(cachedStr);
+      if (cached && Array.isArray(cached.schools) && cached.schools.length > 0) {
+        state.schools = cached.schools;
+        const targetSchoolId = cached.selectedSchoolId || cached.schools[0].schoolId;
+        if (cached.schools.length === 1 || targetSchoolId) {
+          selectSchool(targetSchoolId);
+        } else {
+          renderSchoolSelection();
+          showView('school-select');
+        }
+        renderedFromCache = true;
+      }
+    }
+  } catch (e) {
+    console.warn('[Parents] Error restoring cached context:', e);
+  }
+
+  // Turnstile must not block a signed-in reopen
+  if (!renderedFromCache) {
+    setupTurnstile();
+  }
 });

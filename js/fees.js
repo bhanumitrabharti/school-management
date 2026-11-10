@@ -3206,6 +3206,11 @@
     var s = SchoolApp.store.students.find(function(x) { return x.id === studentId; });
     if (!s) return;
 
+    // A2: Single client idempotency key per modal session
+    var formIdempotencyKey = 'pay_' + (typeof SchoolApp.generateId === 'function'
+      ? SchoolApp.generateId()
+      : ('id_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 6)));
+
     var stats = getStudentFeeStats(studentId);
     var pendingMap = getStudentPendingDuesByHead(studentId);
     var defaultGross = stats.outstanding > 0 ? stats.outstanding : 0;
@@ -3540,6 +3545,23 @@
     // --- SAVE SUBMISSION HANDLER ---
     if (saveBtn) {
       saveBtn.addEventListener('click', async function() {
+        // A1: On the FIRST click, before any await: if already submitting, return
+        if (saveBtn.disabled || saveBtn.getAttribute('data-submitting') === 'true') {
+          return;
+        }
+        saveBtn.disabled = true;
+        saveBtn.setAttribute('data-submitting', 'true');
+        var origSaveBtnHTML = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<span class="material-icons-round spin" style="font-size:16px; animation: spin 1s infinite linear; vertical-align: middle;">sync</span> Recording payment...';
+        SchoolApp.showLoader('Recording payment...');
+
+        var resetSubmittingState = function() {
+          saveBtn.disabled = false;
+          saveBtn.removeAttribute('data-submitting');
+          saveBtn.innerHTML = origSaveBtnHTML;
+          SchoolApp.hideLoader();
+        };
+
         var grossAmt = parseFloat(grossInput.value);
         var mode = document.getElementById('pay-mode').value;
         var date = document.getElementById('pay-date').value;
@@ -3548,10 +3570,12 @@
         // SEC-10: Sanitize and validate payment amount
         grossAmt = Math.round(Number(grossAmt) * 100) / 100;
         if (isNaN(grossAmt) || !isFinite(grossAmt) || grossAmt <= 0) {
+          resetSubmittingState();
           SchoolApp.showToast('Please enter a valid payment amount.', 'error');
           return;
         }
         if (!date) {
+          resetSubmittingState();
           SchoolApp.showToast('Please select a payment date.', 'error');
           return;
         }
@@ -3566,12 +3590,14 @@
 
           // TEST 7 GUARD: Discount cannot exceed gross settlement
           if (discountAmt > grossAmt) {
+            resetSubmittingState();
             SchoolApp.showToast('Discount cannot exceed gross amount.', 'error');
             return;
           }
           // SEC-10: Sanitize discount
           discountAmt = Math.round(Number(discountAmt) * 100) / 100;
           if (!isFinite(discountAmt) || discountAmt < 0) {
+            resetSubmittingState();
             SchoolApp.showToast('Discount cannot be negative.', 'error');
             return;
           }
@@ -3588,6 +3614,7 @@
             allocSum += (parseFloat(inp.value) || 0);
           });
           if (!isAllocValid || Math.round(allocSum) !== Math.round(grossAmt)) {
+            resetSubmittingState();
             SchoolApp.showToast('Allocated ₹' + allocSum.toLocaleString('en-IN') + ' of ₹' + grossAmt.toLocaleString('en-IN') + ' — adjust to continue', 'error');
             return;
           }
@@ -3606,73 +3633,74 @@
         }
 
         var doSave = async function() {
-          if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
-
-          var newTxn = {
-            id: SchoolApp.generateId(),
-            studentId: studentId,
-            schoolId: SchoolApp.currentSchoolId,
-            type: 'payment',
-            amount: netAmt,
-            discount: discountAmt,
-            discountType: isDiscountChecked ? discountMode : null,
-            discountValue: isDiscountChecked ? discountVal : 0,
-            grossAmount: grossAmt,
-            date: date,
-            mode: mode,
-            remarks: remarks,
-            allocations: isAllocationOpen ? allocations : null,
-            timestamp: new Date().toISOString()
-          };
-
-          if (typeof SchoolApp.generateFeeReceiptNumber === 'function') {
-            var assignedReceiptNo = await SchoolApp.generateFeeReceiptNumber(date, SchoolApp.currentSchoolId);
-            if (assignedReceiptNo) {
-              newTxn.receiptNo = assignedReceiptNo;
-              SchoolApp.lastReceiptNo = assignedReceiptNo;
-            }
-          }
-
-          SchoolApp.store.fees.push(newTxn);
-
-          SchoolApp.showLoader('Processing...');
-          saveBtn.disabled = true;
-          saveBtn.textContent = 'Processing...';
-          
           var success = false;
-          if (typeof SchoolApp.saveFeeTransaction === 'function') {
-            success = await SchoolApp.saveFeeTransaction(newTxn);
-          } else {
-            success = await SchoolApp.save(true);
-          }
-          
-          SchoolApp.hideLoader();
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Record Payment';
+          try {
+            if (!SchoolApp.store.fees) SchoolApp.store.fees = [];
 
-          if (success) {
-            SchoolApp.closeModal();
-            var successMsg = 'Payment of ₹' + netAmt.toLocaleString('en-IN') + ' recorded successfully!';
-            if (discountAmt > 0) {
-              successMsg = 'Payment of ₹' + netAmt.toLocaleString('en-IN') + ' recorded (₹' + discountAmt.toLocaleString('en-IN') + ' discount applied)!';
+            var newTxn = {
+              id: formIdempotencyKey,
+              idempotencyKey: formIdempotencyKey,
+              studentId: studentId,
+              schoolId: SchoolApp.currentSchoolId || (SchoolApp.store && SchoolApp.store.currentSchoolId),
+              type: 'payment',
+              amount: netAmt,
+              discount: discountAmt,
+              discountType: isDiscountChecked ? discountMode : null,
+              discountValue: isDiscountChecked ? discountVal : 0,
+              grossAmount: grossAmt,
+              date: date,
+              mode: mode,
+              remarks: remarks,
+              allocations: isAllocationOpen ? allocations : null,
+              timestamp: new Date().toISOString()
+            };
+
+            // Atomic reservation of receipt serial occurs inside saveFeeTransaction's Firestore transaction
+            if (typeof SchoolApp.saveFeeTransaction === 'function') {
+              success = await SchoolApp.saveFeeTransaction(newTxn);
+            } else {
+              SchoolApp.store.fees.push(newTxn);
+              success = await SchoolApp.save(true);
             }
-            SchoolApp.showToast(successMsg, 'success');
-            render();
 
-            // Show Post-Payment Options Modal (Print PDF, WhatsApp, Skip)
-            setTimeout(function() {
-              showPostPaymentOptionsModal(newTxn, studentId);
-            }, 300);
+            if (success) {
+              SchoolApp.hideLoader();
+              SchoolApp.closeModal();
+              var successMsg = 'Payment of ₹' + netAmt.toLocaleString('en-IN') + ' recorded successfully!';
+              if (discountAmt > 0) {
+                successMsg = 'Payment of ₹' + netAmt.toLocaleString('en-IN') + ' recorded (₹' + discountAmt.toLocaleString('en-IN') + ' discount applied)!';
+              }
+              SchoolApp.showToast(successMsg, 'success');
+              render();
+
+              // Show Post-Payment Options Modal (Print PDF, WhatsApp, Skip)
+              setTimeout(function() {
+                showPostPaymentOptionsModal(newTxn, studentId);
+              }, 300);
+            }
+          } catch (err) {
+            console.error('[Fees] Payment submission error:', err);
+            success = false;
+          } finally {
+            if (!success) {
+              resetSubmittingState();
+              SchoolApp.showToast('Payment not saved — check the Payment History before retrying', 'error');
+            }
           }
         };
 
         var ledger = getStudentLedger(studentId);
         if (ledger.outstanding <= 0) {
+          resetSubmittingState();
           var promptMsg = ledger.outstanding < 0
             ? 'This student already has an advance balance of ₹' + Math.abs(ledger.outstanding).toLocaleString('en-IN') + '. Record an additional payment of ₹' + netAmt.toLocaleString('en-IN') + '?'
             : 'This student has ₹0 outstanding dues. Are you sure you want to record an advance payment of ₹' + netAmt.toLocaleString('en-IN') + '?';
 
           SchoolApp.showConfirm(promptMsg, function() {
+            saveBtn.disabled = true;
+            saveBtn.setAttribute('data-submitting', 'true');
+            saveBtn.innerHTML = '<span class="material-icons-round spin" style="font-size:16px; animation: spin 1s infinite linear; vertical-align: middle;">sync</span> Recording payment...';
+            SchoolApp.showLoader('Recording payment...');
             doSave();
           });
           return;

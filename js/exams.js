@@ -1052,8 +1052,7 @@ calculateMultiExamResult: function(params) {
       }
 
       var hasPhoto = (studentCfg.photo !== false) && !!(s.photoUrl || s.photo);
-      var remarksText = (savedMarks && savedMarks.remarks) || '';
-      var effectiveRemarks = remarksText || (calcRes && calcRes.result === 'PASS' ? 'Good performance. Promoted to next class.' : 'Needs improvement in weak subjects.');
+      var effectiveRemarks = resolveReportCardRemark(s, subjectsArr, savedMarks, calcRes, schoolConfig || (SchoolApp && SchoolApp.store && SchoolApp.store.reportCardConfig));
       var isFinalTerm = !!(activeTerm && activeTerm.isFinal === true);
       var hasPromotion = isFinalTerm && (acaCfg.promotionStatus === true);
       var hasLegend = (secToggles.showGradingLegend !== false);
@@ -3152,7 +3151,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
   window.DEFAULT_TEMPLATES = DEFAULT_TEMPLATES;
 
-  function generateSmartRemark(student, subjects, savedMarks, entry, templates) {
+  function generateSmartRemark(student, subjects, savedMarks, entry, templates, customScale) {
     var tpl = Object.assign({}, DEFAULT_TEMPLATES, templates || {});
 
     var studentName = 'The student';
@@ -3227,14 +3226,36 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     var remark = '';
 
+    // Follow school grading scale for remark tiers
+    var scale = customScale || (SchoolApp && SchoolApp.store && SchoolApp.store.examConfig && SchoolApp.store.examConfig.gradingScale);
+    var excellentMin = 81;
+    var goodMin = 50;
+
+    if (Array.isArray(scale) && scale.length > 0) {
+      for (var gi = 0; gi < scale.length; gi++) {
+        var gItem = scale[gi];
+        var lbl = (gItem.label || '').toLowerCase();
+        var grd = (gItem.grade || '').toUpperCase();
+        if (lbl === 'excellent' || lbl === 'outstanding' || grd === 'A' || grd === 'A+' || grd === 'A1' || grd === 'A2') {
+          if (typeof gItem.min === 'number') {
+            excellentMin = Math.min(excellentMin, gItem.min);
+          }
+        } else if (lbl.indexOf('good') !== -1 || grd === 'B' || grd === 'B+' || grd === 'B1' || grd === 'B2') {
+          if (typeof gItem.min === 'number') {
+            goodMin = Math.min(goodMin, gItem.min);
+          }
+        }
+      }
+    }
+
     if (allProblematic.length === 0) {
-      // All passed — good/excellent logic
-      if (overallResult === 'PASS' && pct < 50) {
-        remark = fillTemplate(tpl.pass_low, []);
-      } else if (overallResult === 'PASS' && pct >= 50 && pct < 75) {
-        remark = fillTemplate(tpl.good, []);
-      } else if (overallResult === 'PASS' && pct >= 75) {
+      // All passed — align with school grading scale
+      if (overallResult === 'PASS' && pct >= excellentMin) {
         remark = fillTemplate(tpl.excellent, []);
+      } else if (overallResult === 'PASS' && pct >= goodMin) {
+        remark = fillTemplate(tpl.good, []);
+      } else if (overallResult === 'PASS') {
+        remark = fillTemplate(tpl.pass_low, []);
       } else {
         remark = fillTemplate(tpl.good, []);
       }
@@ -3259,6 +3280,40 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     return remark;
   }
+
+  function resolveReportCardRemark(student, subjects, savedMarks, calcResult, reportCardConfig) {
+    // 1. Manual savedMarks.remarks always wins
+    if (savedMarks && typeof savedMarks.remarks === 'string' && savedMarks.remarks.trim()) {
+      return savedMarks.remarks.trim();
+    }
+
+    // 2. If smartRemarks === true, use generateSmartRemark with remarkTemplates and grading scale
+    var acaCfg = (reportCardConfig && reportCardConfig.academic) || {};
+    var smartRemarksEnabled = (acaCfg.smartRemarks === true);
+
+    if (smartRemarksEnabled) {
+      var customTemplates = (reportCardConfig && reportCardConfig.remarkTemplates) || {};
+      var entry = {
+        result: (calcResult && calcResult.result) ? calcResult.result : 'PASS',
+        percentage: (calcResult && typeof calcResult.percentage === 'number') ? calcResult.percentage : 0
+      };
+      var marksObj = (savedMarks && savedMarks.marks) ? savedMarks.marks : (savedMarks || {});
+      var customScale = (reportCardConfig && reportCardConfig.gradingScale) || (acaCfg && acaCfg.gradingScale);
+      var smartRemark = generateSmartRemark(student, subjects, marksObj, entry, customTemplates, customScale);
+      if (smartRemark && smartRemark.trim()) {
+        return smartRemark.trim();
+      }
+    }
+
+    // 3. Fallback
+    if (calcResult && String(calcResult.result).toUpperCase() === 'PASS') {
+      return 'Good performance. Promoted to next class.';
+    }
+    return 'Needs improvement in weak subjects.';
+  }
+
+  window.resolveReportCardRemark = resolveReportCardRemark;
+  ExamCalculationEngine.resolveReportCardRemark = resolveReportCardRemark;
 
   function legacyGenerateSingleStudentCardHTML(s, isCombined, savedMarks, combinedData, activeTerm, subjects) {
     var subjectsArr = ensureSubjectsArray(subjects || []);
@@ -3529,23 +3584,11 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
     html += '</div>';
 
     var remarksText = '';
-    var smartRemarksEnabled = acaCfg.smartRemarks === true;
     var showRemarks = acaCfg.remarks !== false;
 
     if (showRemarks) {
-      if (smartRemarksEnabled) {
-        var customTemplates = (reportCardConfig && reportCardConfig.remarkTemplates) || {};
-        var entry = { result: resultText, percentage: percentage };
-        remarksText = generateSmartRemark(
-          s,
-          subjectsArr,
-          savedMarks && savedMarks.marks,
-          entry,
-          customTemplates
-        );
-      } else {
-        remarksText = (savedMarks && savedMarks.remarks) || '';
-      }
+      var calcResLegacy = { result: resultText, percentage: percentage };
+      remarksText = resolveReportCardRemark(s, subjectsArr, savedMarks, calcResLegacy, reportCardConfig);
 
       html += '<div style="border:1px solid #E5E7EB; border-radius:6px; padding:8px 12px; min-height:16mm; max-height:28mm; margin-top:6px;">';
       html += '<div style="font-family:Inter,sans-serif; font-size:10px; color:#6B7280; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px;">TEACHER\'S REMARKS</div>';
