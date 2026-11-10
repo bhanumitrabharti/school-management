@@ -361,12 +361,23 @@
       html += '<div class="pagination">';
       html += '<span class="pagination-info">Showing ' + (start + 1) + ' to ' + Math.min(start + state.perPage, students.length) + ' of ' + students.length + ' students</span>';
       html += '<button class="pagination-btn" ' + (state.currentPage <= 1 ? 'disabled' : '') + ' data-page="prev"><span class="material-icons-round">chevron_left</span></button>';
+      var lastEmitted = 0;
       for (var i = 1; i <= totalPages; i++) {
-        if (totalPages > 7 && i > 3 && i < totalPages - 2 && Math.abs(i - state.currentPage) > 1) {
-          if (i === 4 || i === totalPages - 3) html += '<span style="padding:0 4px;color:var(--text-muted)">...</span>';
+        var showPage = (totalPages <= 7) ||
+                       (i === 1 || i === totalPages) ||
+                       (Math.abs(i - state.currentPage) <= 1) ||
+                       (state.currentPage <= 3 && i <= 3) ||
+                       (state.currentPage >= totalPages - 2 && i >= totalPages - 2);
+
+        if (!showPage) {
           continue;
         }
+
+        if (lastEmitted && i - lastEmitted > 1) {
+          html += '<span style="padding:0 4px;color:var(--text-muted)">...</span>';
+        }
         html += '<button class="pagination-btn' + (i === state.currentPage ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+        lastEmitted = i;
       }
       html += '<button class="pagination-btn" ' + (state.currentPage >= totalPages ? 'disabled' : '') + ' data-page="next"><span class="material-icons-round">chevron_right</span></button>';
       html += '</div>';

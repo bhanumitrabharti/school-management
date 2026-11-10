@@ -22,6 +22,16 @@
     }
   }
 
+  function formatClassLabel(cls) {
+    if (window.SchoolApp && typeof window.SchoolApp.formatClassLabel === 'function') {
+      return window.SchoolApp.formatClassLabel(cls);
+    }
+    if (!cls) return '';
+    var str = String(cls).trim().replace(/^(class\s+)+/i, '').trim();
+    if (['Nursery', 'LKG', 'UKG'].indexOf(str) !== -1) return str;
+    return 'Class ' + str;
+  }
+
   // Window beforeunload guard for unsaved draft
   if (!window._timetableBeforeUnloadAttached) {
     window.addEventListener('beforeunload', function(e) {
@@ -200,7 +210,7 @@
 
     inactiveSlots.forEach(function(s) {
       html += '          <tr style="border-bottom: 1px solid var(--border-light);">';
-      html += '            <td style="padding: 10px 8px;"><strong>Class ' + s.classSection + '</strong></td>';
+      html += '            <td style="padding: 10px 8px;"><strong>' + formatClassLabel(s.classSection) + '</strong></td>';
       html += '            <td style="padding: 10px 8px;">' + s.day + ' (Period ' + s.period + ')</td>';
       html += '            <td style="padding: 10px 8px;"><span class="badge badge-purple">' + s.subject + '</span></td>';
       html += '            <td style="padding: 10px 8px;"><span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">' + s.teacherName + ' (Inactive)</span></td>';
@@ -363,7 +373,7 @@
       html += '    <div style="flex: 1; min-width: 140px;">';
       html += '      <label class="form-label" style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; display: block;">Select Class</label>';
       html += '      <select class="form-select" id="timetable-class-select" style="width: 100%;">';
-      classes.forEach(function(c) { html += '<option value="' + c + '"' + (state.classVal === c ? ' selected' : '') + '>Class ' + c + '</option>'; });
+      classes.forEach(function(c) { html += '<option value="' + c + '"' + (state.classVal === c ? ' selected' : '') + '>' + formatClassLabel(c) + '</option>'; });
       html += '      </select>';
       html += '    </div>';
       html += '    <div style="flex: 1; min-width: 100px;">';
@@ -425,7 +435,7 @@
       // Main Period Grid Card list
       html += '<div class="card" style="margin-top: 20px;">';
       html += '  <div class="card-header" style="border-bottom: 1px solid var(--border-light); padding: 16px 20px;">';
-      html += '    <h3 style="margin: 0; font-size: 16px;">Schedule for Class ' + currentClassSection + ' (' + state.dayVal + ')</h3>';
+      html += '    <h3 style="margin: 0; font-size: 16px;">Schedule for ' + formatClassLabel(currentClassSection) + ' (' + state.dayVal + ')</h3>';
       html += '  </div>';
       html += '  <div class="card-body" style="padding: 20px;">';
       html += '    <div class="timetable-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">';
@@ -628,7 +638,7 @@
               borderStyle = 'border: 2px dashed #f59e0b; background: rgba(245, 158, 11, 0.05);';
             }
             html += '            <td style="padding: 12px 16px; ' + borderStyle + ' text-align: center; vertical-align: middle; position: relative;">';
-            html += '              <strong style="' + (t.status !== 'Active' ? 'color: #ef4444;' : 'color: var(--accent-primary-light);') + ' font-size: 13px;">Class ' + draftAssignment.classSection + '</strong><br>';
+            html += '              <strong style="' + (t.status !== 'Active' ? 'color: #ef4444;' : 'color: var(--accent-primary-light);') + ' font-size: 13px;">' + formatClassLabel(draftAssignment.classSection) + '</strong><br>';
             var badgeClass = t.status !== 'Active' ? 'badge' : 'badge badge-purple';
             var badgeStyle = t.status !== 'Active' ? 'background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);' : '';
             html += '              <span class="' + badgeClass + '" style="font-size: 10px; margin-top: 4px; ' + badgeStyle + '">' + draftAssignment.subject + (t.status !== 'Active' ? ' (Inactive) ⚠️' : '') + '</span>';
@@ -860,7 +870,7 @@
             if (classSection === 'settings') continue;
             var daySchedule = timetableData[classSection] ? timetableData[classSection][state.dayVal] : null;
             if (daySchedule && daySchedule[p] && daySchedule[p].teacherId === t.id) {
-              assignment = 'Class ' + classSection + ' - ' + daySchedule[p].subject;
+              assignment = formatClassLabel(classSection) + ' - ' + daySchedule[p].subject;
               break;
             }
           }
@@ -1060,7 +1070,7 @@
     bodyHTML += '    <select class="form-select" id="modal-assign-class" style="width: 100%;" required>';
     bodyHTML += '      <option value="">Select a Class Section</option>';
     availableClasses.forEach(function(cs) {
-      bodyHTML += '    <option value="' + cs + '">Class ' + cs + '</option>';
+      bodyHTML += '    <option value="' + cs + '">' + formatClassLabel(cs) + '</option>';
     });
     bodyHTML += '    </select>';
     bodyHTML += '  </div>';
@@ -1125,7 +1135,7 @@
       // Check conflict double insurance
       var conflict = getTeacherConflict(teacherId, day, period, selectedClass);
       if (conflict) {
-        SchoolApp.showToast('Conflict: ' + teacherName + ' is already scheduled in Class ' + conflict + ' during this slot.', 'error');
+        SchoolApp.showToast('Conflict: ' + teacherName + ' is already scheduled in ' + formatClassLabel(conflict) + ' during this slot.', 'error');
         return;
       }
 
@@ -1498,7 +1508,7 @@
           if (slot) {
             // Completeness check
             if ((slot.subject && !slot.teacherId) || (!slot.subject && slot.teacherId)) {
-              SchoolApp.showToast('Please select both Subject and Teacher for Class ' + classSection + ', Period ' + p + ' on ' + day + '.', 'error');
+              SchoolApp.showToast('Please select both Subject and Teacher for ' + formatClassLabel(classSection) + ', Period ' + p + ' on ' + day + '.', 'error');
               return;
             }
 
@@ -1511,7 +1521,7 @@
                   var teachers = SchoolApp.store.teachers || [];
                   var tObj = teachers.find(function(t) { return t.id === slot.teacherId; });
                   var tName = tObj ? (tObj.firstName + ' ' + tObj.lastName) : 'Teacher';
-                  SchoolApp.showToast('Conflict detected: ' + tName + ' is scheduled in both Class ' + classSection + ' and Class ' + otherClass + ' on ' + day + ' during Period ' + p + '.', 'error');
+                  SchoolApp.showToast('Conflict detected: ' + tName + ' is scheduled in both ' + formatClassLabel(classSection) + ' and ' + formatClassLabel(otherClass) + ' on ' + day + ' during Period ' + p + '.', 'error');
                   return;
                 }
               }

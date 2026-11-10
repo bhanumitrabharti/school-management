@@ -68,7 +68,7 @@ async function scanDuplicatePayments() {
 
         if (!snap.exists) continue;
         const txns = Array.isArray(snap.data().transactions) ? snap.data().transactions : [];
-        const payments = txns.filter(t => t && t.type === 'payment' && !t.isReversal);
+        const payments = txns.filter(t => t && t.type === 'payment' && !t.isReversal && !t.isVoided);
 
         // Group by studentId + date + amount
         const groups = new Map();

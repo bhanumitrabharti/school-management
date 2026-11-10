@@ -3519,7 +3519,28 @@
     html += '  </div>';
 
     // Card 5: Auto-Fee Billing Engine Status & Dry-Run Preview
-    var lastRunPeriod = settings.autoChargeLastRun || SchoolApp.store.lastAutomatedFeeRun || 'Not run yet';
+    var lastRunPeriod = settings.autoChargeLastRun;
+    if (!lastRunPeriod) {
+      if (SchoolApp.store && Array.isArray(SchoolApp.store.fees) && SchoolApp.store.fees.length > 0) {
+        var billedPeriods = [];
+        SchoolApp.store.fees.forEach(function(f) {
+          if (!f || f.isVoided) return;
+          if (f.type === 'due' || f.isAuto) {
+            var bp = f.billingPeriod || f.billingMonth || (f.date ? f.date.substring(0, 7) : null);
+            if (bp && /^\d{4}-\d{2}$/.test(bp)) {
+              billedPeriods.push(bp);
+            }
+          }
+        });
+        if (billedPeriods.length > 0) {
+          billedPeriods.sort();
+          lastRunPeriod = billedPeriods[billedPeriods.length - 1];
+        }
+      }
+    }
+    if (!lastRunPeriod) {
+      lastRunPeriod = (SchoolApp.store && SchoolApp.store.lastAutomatedFeeRun) || 'Not run yet';
+    }
     html += '  <div class="card fee-setup-card">';
     html += '    <div class="card-header fee-setup-header"><h3><span class="material-icons-round">play_circle</span> Billing Engine Status & Dry-Run Preview</h3></div>';
     html += '    <div class="card-body">';
@@ -3932,9 +3953,12 @@
     var html = '<div class="tab-content' + (state.activeTab === 'system' ? ' active' : '') + '" id="tab-system">';
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">info</span> System Information</h3></div><div class="card-body">';
 
+    var currentVer = window.APP_VERSION || (typeof SchoolApp !== 'undefined' && SchoolApp.version) || '';
+    var buildTimeVal = window.BUILD_TIME || (window.BUILD_DATE) || '—';
+
     var info = [
-      { label: 'Application', value: 'Paathshala ERP v1.0.0' },
-      { label: 'Build Date', value: SchoolApp.formatDate(new Date().toISOString().split('T')[0]) },
+      { label: 'Application', value: 'Paathshala ERP ' + currentVer },
+      { label: 'Build Date', value: buildTimeVal },
       { label: 'Browser', value: navigator.userAgent.split('(')[0].trim() },
       { label: 'Screen Resolution', value: screen.width + ' × ' + screen.height },
       { label: 'Window Size', value: window.innerWidth + ' × ' + window.innerHeight },
@@ -3949,10 +3973,12 @@
     });
     html += '</div>';
 
-    // Password migration button
-    html += '<div style="margin-top:20px;">';
-    html += '  <button class="btn btn-primary" onclick="migrateAllPasswords()">🔐 Migrate Passwords to Secure Hash</button>';
-    html += '</div>';
+    // Password migration button (super-admin only)
+    if (typeof SchoolApp !== 'undefined' && SchoolApp.isSuperAdmin && SchoolApp.isSuperAdmin()) {
+      html += '<div style="margin-top:20px;">';
+      html += '  <button class="btn btn-primary" onclick="migrateAllPasswords()">🔐 Migrate Passwords to Secure Hash</button>';
+      html += '</div>';
+    }
 
     html += '</div></div></div>';
     return html;

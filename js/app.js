@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v83';
+window.APP_VERSION = window.APP_VERSION || 'v84';
 if (typeof window.updateVersionUI === 'function') {
   window.updateVersionUI(window.APP_VERSION);
 }
@@ -78,6 +78,9 @@ if (storageEmulatorPort) {
 }
 window.storage = storage;
 window.storageSDK = { ref, uploadBytes, getDownloadURL, deleteObject };
+window.formatClassLabel = function(c) {
+  return window.SchoolApp && window.SchoolApp.formatClassLabel ? window.SchoolApp.formatClassLabel(c) : (c ? 'Class ' + String(c).replace(/^(class\s+)+/i, '').trim() : '');
+};
 window.openStudentProfile = function(studentId) {
   if (typeof window.openStudentFinancialProfile === 'function') {
     return window.openStudentFinancialProfile(studentId);
@@ -1491,6 +1494,78 @@ window.SchoolApp = {
 
     console.warn('[Fees] Firestore transaction API not available; leaving receiptNo unset for deterministic fallback.');
     return null;
+  },
+
+  generateCertificateNumber: async function(certType, student, dateStr, schoolId) {
+    certType = (certType || 'bonafide').toLowerCase();
+    var prefix = (certType === 'character' || certType === 'char') ? 'CHAR' : 'BON';
+    var propName = (prefix === 'CHAR') ? 'characterCertNo' : 'bonafideCertNo';
+    if (student && student[propName]) {
+      return student[propName];
+    }
+    schoolId = schoolId || this.currentSchoolId || (this.store && this.store.currentSchoolId) || '';
+    var fy = this.getFinancialYear(dateStr);
+    var counterKey = prefix + '_' + fy;
+    var maxRetries = 3;
+    var lastErr = null;
+
+    if (window.firestore && window.db && typeof window.firestore.runTransaction === 'function') {
+      var fs = window.firestore;
+      var db = window.db;
+      var counterRef = fs.doc(db, 'tenant_data', schoolId, 'counters', 'certificates');
+
+      for (var attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          var serialNum = await fs.runTransaction(db, async function(transaction) {
+            var snap = await transaction.get(counterRef);
+            var cur = 0;
+            var data = (snap && typeof snap.data === 'function') ? snap.data() : (snap ? snap.data : null);
+            var exists = (snap && typeof snap.exists === 'function') ? snap.exists() : !!(snap && snap.exists);
+            if (exists && data && data[counterKey] !== undefined) {
+              cur = parseInt(data[counterKey], 10) || 0;
+            }
+            var next = cur + 1;
+            transaction.set(counterRef, { [counterKey]: next }, { merge: true });
+            return next;
+          });
+          var padded = String(serialNum).padStart(6, '0');
+          var generated = prefix + '/' + fy + '/' + padded;
+          if (student) {
+            student[propName] = generated;
+            if (student.id && fs.setDoc && fs.doc) {
+              var stuRef = fs.doc(db, 'tenant_data', schoolId, 'students', student.id);
+              fs.setDoc(stuRef, { [propName]: generated }, { merge: true }).catch(function(e) {
+                console.warn('[Documents] Failed to persist certificate number on student doc:', e);
+              });
+            }
+          }
+          return generated;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < maxRetries) {
+            var backoffMs = (50 * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 25);
+            await new Promise(function(resolve) { setTimeout(resolve, backoffMs); });
+          }
+        }
+      }
+      console.warn('[Documents] Failed to generate atomic certificate number after ' + maxRetries + ' attempts; falling back:', lastErr);
+    }
+
+    var fallbackSeq = 1;
+    if (this.store && Array.isArray(this.store.students)) {
+      this.store.students.forEach(function(s) {
+        if (s && s[propName] && s[propName].startsWith(prefix + '/' + fy + '/')) {
+          var parts = s[propName].split('/');
+          var seq = parseInt(parts[2], 10);
+          if (!isNaN(seq) && seq >= fallbackSeq) fallbackSeq = seq + 1;
+        }
+      });
+    }
+    var res = prefix + '/' + fy + '/' + String(fallbackSeq).padStart(6, '0');
+    if (student) {
+      student[propName] = res;
+    }
+    return res;
   },
 
   loadTeacherAttendanceMonth: async function(schoolId, month) {
@@ -5820,8 +5895,8 @@ window.SchoolApp = {
     return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   },
 
-  getPeriodTimeStr: function(p, day) {
-    var settings = (this.store && this.store.timetable && this.store.timetable.settings) || {
+  getPeriodTimeStr: function(p, day, customSettings) {
+    var settings = customSettings || (this.store && this.store.timetable && this.store.timetable.settings) || {
       startTime: "08:00",
       endTime: "14:00",
       totalPeriods: 8,
@@ -5833,6 +5908,12 @@ window.SchoolApp = {
       satLunchAfterPeriod: 0
     };
 
+    if (settings.periodTimes && (settings.periodTimes[p] || settings.periodTimes[String(p)])) {
+      var pt = settings.periodTimes[p] || settings.periodTimes[String(p)];
+      if (typeof pt === 'string') return pt;
+      if (pt && pt.start && pt.end) return pt.start + ' - ' + pt.end;
+    }
+
     var isSaturday = false;
     if (day) {
       var dStr = String(day).toLowerCase().trim();
@@ -5841,12 +5922,12 @@ window.SchoolApp = {
       }
     }
 
-    var startTime = isSaturday ? (settings.satStartTime || "08:00") : (settings.startTime || "08:00");
+    var startTime = isSaturday ? (settings.satStartTime || "08:00") : (settings.startTime || (settings.startHour ? (String(settings.startHour).padStart(2, '0') + ':00') : "08:00"));
     var endTime = isSaturday ? (settings.satEndTime || "12:30") : (settings.endTime || "14:00");
-    var totalPeriods = parseInt(isSaturday ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8)) || 8;
-    var lunchAfter = parseInt(isSaturday ? settings.satLunchAfterPeriod : settings.lunchAfterPeriod);
+    var totalPeriods = parseInt(isSaturday ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8), 10) || 8;
+    var lunchAfter = parseInt(isSaturday ? (settings.satLunchAfterPeriod || 0) : (settings.lunchAfterPeriod !== undefined ? settings.lunchAfterPeriod : 4), 10);
     if (isNaN(lunchAfter)) lunchAfter = 0;
-    var lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration || 0));
+    var lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration !== undefined ? settings.lunchDuration : 30), 10);
     if (isNaN(lunchDur)) lunchDur = 0;
 
     function timeToMin(timeStr) {
@@ -5904,6 +5985,16 @@ window.SchoolApp = {
     return formatTime(pStart) + ' - ' + formatTime(pEnd);
   },
 
+  formatClassLabel: function(cls) {
+    if (!cls) return '';
+    var str = String(cls).trim();
+    str = str.replace(/^(class\s+)+/i, '').trim();
+    if (['Nursery', 'LKG', 'UKG'].indexOf(str) !== -1) {
+      return str;
+    }
+    return 'Class ' + str;
+  },
+
   getStudentFullName: function(student) {
     if (!student) return 'Unknown';
     if (student.name && String(student.name).trim()) return String(student.name).trim();
@@ -5914,11 +6005,21 @@ window.SchoolApp = {
   },
 
   getInitials: function(firstName, lastName) {
-    if (firstName && !lastName && firstName.includes(' ')) {
-      var parts = firstName.trim().split(/\s+/);
-      return ((parts[0] || '')[0] || '') + ((parts[parts.length - 1] || '')[0] || '');
+    var raw = '';
+    if (firstName && lastName) {
+      raw = (firstName + ' ' + lastName).trim();
+    } else {
+      raw = (firstName || lastName || '').trim();
     }
-    return ((firstName || '')[0] || '') + ((lastName || '')[0] || '');
+    if (!raw) return '';
+
+    var cleaned = raw.replace(/^(mr|mrs|ms|dr|shri|smt)\.?\s+/i, '').trim();
+    var parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '';
+    if (parts.length === 1) {
+      return (parts[0][0] || '').toUpperCase();
+    }
+    return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase();
   },
 
   getAvatarColor: function(name) {
@@ -6623,8 +6724,12 @@ window.SchoolApp = {
       classDist[key] = (classDist[key] || 0) + 1;
     });
 
-    // Recent activity
-    var recentAtt = (this.store.attendance || []).slice(-5).reverse();
+    // Recent activity - sort by date newest-first
+    var recentAtt = (this.store.attendance || []).slice().sort(function(a, b) {
+      var dateA = new Date(a.date || a.timestamp || 0).getTime();
+      var dateB = new Date(b.date || b.timestamp || 0).getTime();
+      return dateB - dateA;
+    }).slice(0, 5);
     var teachers = this.store.teachers || [];
     var self = this;
 
@@ -6674,12 +6779,15 @@ window.SchoolApp = {
         if (!Array.isArray(audArr)) audArr = [audArr];
         var audLabel = '👥 Everyone';
         var audBadge = 'badge-info';
-        if (audArr.indexOf('teachers') !== -1) {
-          audLabel = '👨‍🏫 Teachers';
+        if (audArr.indexOf('teachers') !== -1 || audArr.indexOf('teachers_only') !== -1) {
+          audLabel = '👨‍🏫 Teachers Only';
           audBadge = 'badge-purple';
         } else if (audArr.indexOf('students') !== -1) {
           audLabel = '🎓 Students';
           audBadge = 'badge-cyan';
+        } else if (audArr.indexOf('parents') !== -1) {
+          audLabel = '👨‍👩‍👧 Parents';
+          audBadge = 'badge-success';
         }
 
         html += '<div class="notice-item ' + priorityClass + '" style="padding:14px; border-radius:8px; border-left:4px solid; transition:all var(--transition-fast);">';
@@ -6745,8 +6853,22 @@ window.SchoolApp = {
     html += '<div class="card"><div class="card-header"><h3><span class="material-icons-round">history</span> Recent Activity</h3></div><div class="card-body"><div class="activity-list">';
     if (recentAtt.length > 0) {
       recentAtt.forEach(function(a) {
-        var teacher = teachers.find(function(t) { return t.id === a.teacherId; });
-        var teacherName = teacher ? teacher.firstName + ' ' + teacher.lastName : 'Unknown';
+        var teacher = teachers.find(function(t) {
+          return (a.teacherId && (t.id === a.teacherId || t.teacherId === a.teacherId)) ||
+                 (a.teacherEmail && t.email === a.teacherEmail);
+        });
+        var teacherName = '';
+        if (teacher) {
+          teacherName = teacher.name || ((teacher.firstName || '') + ' ' + (teacher.lastName || '')).trim();
+        } else if (a.teacherName && a.teacherName.trim()) {
+          teacherName = a.teacherName.trim();
+        } else if (a.markedBy && a.markedBy !== 'Unknown') {
+          teacherName = a.markedBy;
+        } else if (a.teacherId === 'admin' || !a.teacherId || (SchoolApp.user && SchoolApp.user.role === 'admin')) {
+          teacherName = 'Administrator';
+        } else {
+          teacherName = 'Administrator';
+        }
         var recList = self.normalizeAttendanceRecords(a.records);
         var presentCount = recList.filter(function(r) { return r.status === 'present'; }).length;
         html += '<div class="activity-item"><div class="activity-icon green"><span class="material-icons-round">fact_check</span></div><div class="activity-text"><strong>' + teacherName + '</strong> marked attendance for Class ' + a.class + '-' + a.section + '<br><span class="activity-time">' + self.formatDate(a.date) + ' · ' + presentCount + '/' + recList.length + ' present</span></div></div>';
@@ -7169,7 +7291,7 @@ window.SchoolApp = {
     }
 
     // List of valid pages
-    var validPages = ['dashboard', 'students', 'teachers', 'attendance', 'fees', 'timetable', 'exams', 'admin', 'help', 'teacher-attendance'];
+    var validPages = ['dashboard', 'students', 'teachers', 'attendance', 'fees', 'timetable', 'exams', 'admin', 'help', 'teacher-attendance', 'documents', 'accounts', 'payroll'];
     if (validPages.indexOf(targetPage) === -1) {
       targetPage = 'dashboard';
     }
@@ -8080,7 +8202,6 @@ document.addEventListener('DOMContentLoaded', async function() {
           }, 50);
           SchoolApp.hideLoader();
           SchoolApp.showApp();
-          SchoolApp.navigate('dashboard');
           return;
         }
         SchoolApp.hideLoader();

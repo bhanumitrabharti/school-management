@@ -91,13 +91,20 @@ async function handleTimetable(req, res) {
     class: studentClass,
     section: studentSection,
     schedule: formattedSchedule,
-    settings: {
+    settings: Object.assign({}, ttSettings, {
       totalPeriods: ttSettings.totalPeriods || 8,
-      satTotalPeriods: ttSettings.satTotalPeriods || 5,
+      satTotalPeriods: ttSettings.satTotalPeriods || 6,
       periodTimes: ttSettings.periodTimes || {},
       startHour: ttSettings.startHour || 8,
-      periodDuration: ttSettings.periodDuration || 45
-    }
+      startTime: ttSettings.startTime || "08:00",
+      endTime: ttSettings.endTime || "14:00",
+      lunchAfterPeriod: ttSettings.lunchAfterPeriod !== undefined ? ttSettings.lunchAfterPeriod : 4,
+      lunchDuration: ttSettings.lunchDuration !== undefined ? ttSettings.lunchDuration : 30,
+      satStartTime: ttSettings.satStartTime || "08:00",
+      satEndTime: ttSettings.satEndTime || "12:30",
+      satLunchAfterPeriod: ttSettings.satLunchAfterPeriod !== undefined ? ttSettings.satLunchAfterPeriod : 0,
+      satLunchDuration: ttSettings.satLunchDuration !== undefined ? ttSettings.satLunchDuration : 0
+    })
   });
 }
 

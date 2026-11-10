@@ -1,7 +1,7 @@
 /**
  * js/parents.js
  * Paathshala Parent Portal — Lightweight Client Controller
- * Version: v83
+ * Version: v84
  *
  * Handles:
  *   - Turnstile verification
@@ -242,7 +242,7 @@ function formatNoticeDate(rawDate) {
   }
 }
 
-function getPeriodTimeStr(pNum, dayName, settings = {}) {
+export function getPeriodTimeStr(pNum, dayName, settings = {}) {
   const p = parseInt(pNum, 10);
   if (isNaN(p) || p <= 0) return '';
 
@@ -256,8 +256,8 @@ function getPeriodTimeStr(pNum, dayName, settings = {}) {
   const startTime = isSaturday ? (settings.satStartTime || "08:00") : (settings.startTime || (settings.startHour ? `${String(settings.startHour).padStart(2, '0')}:00` : "08:00"));
   const endTime = isSaturday ? (settings.satEndTime || "12:30") : (settings.endTime || "14:00");
   const totalPeriods = parseInt(isSaturday ? (settings.satTotalPeriods || 6) : (settings.totalPeriods || 8), 10) || 8;
-  const lunchAfter = parseInt(isSaturday ? (settings.satLunchAfterPeriod || 0) : (settings.lunchAfterPeriod || 4), 10);
-  const lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration || 30), 10);
+  const lunchAfter = parseInt(isSaturday ? (settings.satLunchAfterPeriod || 0) : (settings.lunchAfterPeriod !== undefined ? settings.lunchAfterPeriod : 4), 10);
+  const lunchDur = parseInt(isSaturday ? (settings.satLunchDuration !== undefined ? settings.satLunchDuration : (settings.lunchDuration || 0)) : (settings.lunchDuration !== undefined ? settings.lunchDuration : 30), 10);
 
   function timeToMin(timeStr) {
     const parts = String(timeStr || "08:00").split(':');
@@ -271,7 +271,7 @@ function getPeriodTimeStr(pNum, dayName, settings = {}) {
   const effectiveLunchDur = (lunchAfter > 0 && lunchAfter < totalPeriods && !isNaN(lunchDur)) ? lunchDur : 0;
   const totalAvailMin = endMin - startMin;
   const totalTeachingMin = totalAvailMin - effectiveLunchDur;
-  const periodDur = (settings.periodDuration && !settings.endTime) ? settings.periodDuration : Math.floor(totalTeachingMin / totalPeriods);
+  const periodDur = Math.floor(totalTeachingMin / totalPeriods);
   const remainder = totalTeachingMin % totalPeriods;
 
   let currentMin = startMin;
@@ -280,7 +280,7 @@ function getPeriodTimeStr(pNum, dayName, settings = {}) {
 
   for (let i = 1; i <= totalPeriods; i++) {
     let currentPeriodDur = periodDur;
-    if (i === totalPeriods && !settings.periodDuration) {
+    if (i === totalPeriods) {
       currentPeriodDur += remainder;
     }
     const startOfPeriod = currentMin;

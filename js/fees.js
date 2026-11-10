@@ -2734,10 +2734,19 @@
     bodyHTML += '  </div>';
     bodyHTML += '</div>';
 
-    // 3. Summary Strip at Top of Financial Profile (4 Metrics)
+    // 3. Summary Strip at Top of Financial Profile (5 Metrics)
     var totalDueAmt = statement.totalCharged || 0;
     var totalPaidAmt = statement.totalPaid || 0;
+    var totalDiscountAmt = statement.totalDiscount || 0;
     var outstandingAmt = Math.max(0, statement.netDue || 0);
+
+    var unpaidDuesList = getStudentUnpaidDues(studentId) || [];
+    var unpaidDueMap = {};
+    unpaidDuesList.forEach(function(ud) {
+      if (ud && ud.id) {
+        unpaidDueMap[ud.id] = ud;
+      }
+    });
 
     // Dynamic Due-Date & Overdue Lifecycle Model
     var settings = SchoolApp.store.settings || {};
@@ -2752,7 +2761,6 @@
 
     if (outstandingAmt > 0) {
       // Unpaid dues exist: evaluate earliest unpaid due via FIFO allocation
-      var unpaidDuesList = getStudentUnpaidDues(studentId);
       if (unpaidDuesList.length > 0) {
         var earliestDue = unpaidDuesList[0];
         var parts = (earliestDue.dueDate || earliestDue.billingDate).split('-');
@@ -2803,7 +2811,7 @@
       }
     }
 
-    bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(4, 1fr); gap: 10px;">';
+    bodyHTML += '<div class="stats-grid mb-3" style="grid-template-columns: repeat(5, 1fr); gap: 10px;">';
     bodyHTML += '  <div class="stat-card purple" style="padding:12px 14px;">';
     bodyHTML += '    <div class="stat-info">';
     bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + totalDueAmt.toLocaleString('en-IN') + '</div>';
@@ -2814,6 +2822,12 @@
     bodyHTML += '    <div class="stat-info">';
     bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + totalPaidAmt.toLocaleString('en-IN') + '</div>';
     bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Paid</div>';
+    bodyHTML += '    </div>';
+    bodyHTML += '  </div>';
+    bodyHTML += '  <div class="stat-card blue" style="padding:12px 14px;">';
+    bodyHTML += '    <div class="stat-info">';
+    bodyHTML += '      <div class="stat-number" style="font-size:18px;">₹' + totalDiscountAmt.toLocaleString('en-IN') + '</div>';
+    bodyHTML += '      <div class="stat-label" style="font-size:11px;">Total Discount</div>';
     bodyHTML += '    </div>';
     bodyHTML += '  </div>';
     var balColor = outstandingAmt > 0 ? 'amber' : 'green';
@@ -2895,13 +2909,9 @@
             var partsD = dueMeta.dueDate.split('-');
             var dFmt = partsD.length === 3 ? (partsD[2] + '/' + partsD[1] + '/' + partsD[0]) : dueMeta.dueDate;
             rowDescHTML += '<br><small style="color:var(--text-muted); font-size:11px;">Due: ' + escapeHTML(dFmt) + '</small>';
-            var gDays = parseInt((SchoolApp.store.settings && SchoolApp.store.settings.gracePeriodDays), 10) || 0;
-            var dTimeMs = new Date(dueMeta.dueDate).getTime();
-            if (!isNaN(dTimeMs) && !t.isVoided) {
-              var isDueOverdue = (new Date().toISOString().split('T')[0]) > new Date(dTimeMs + gDays * 86400000).toISOString().split('T')[0];
-              if (isDueOverdue) {
-                rowDescHTML += ' <span class="badge" style="background:rgba(239,68,68,0.12); color:var(--danger, #ef4444); border:1px solid rgba(239,68,68,0.25); font-size:10px; padding:1px 5px; border-radius:10px; font-weight:600;">Overdue</span>';
-              }
+            var udInfo = unpaidDueMap[t.id];
+            if (udInfo && udInfo.remaining > 0 && udInfo.isOverdue && !t.isVoided) {
+              rowDescHTML += ' <span class="badge" style="background:rgba(239,68,68,0.12); color:var(--danger, #ef4444); border:1px solid rgba(239,68,68,0.25); font-size:10px; padding:1px 5px; border-radius:10px; font-weight:600;">Overdue</span>';
             }
           }
           bodyHTML += '<td><strong>' + rowDescHTML + '</strong>';

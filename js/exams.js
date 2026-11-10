@@ -1052,7 +1052,7 @@ calculateMultiExamResult: function(params) {
       }
 
       var hasPhoto = (studentCfg.photo !== false) && !!(s.photoUrl || s.photo);
-      var effectiveRemarks = resolveReportCardRemark(s, subjectsArr, savedMarks, calcRes, schoolConfig || (SchoolApp && SchoolApp.store && SchoolApp.store.reportCardConfig));
+      var effectiveRemarks = resolveReportCardRemark(s, subjectsArr, savedMarks, calcRes, schoolConfig || (SchoolApp && SchoolApp.store && SchoolApp.store.reportCardConfig), false);
       var isFinalTerm = !!(activeTerm && activeTerm.isFinal === true);
       var hasPromotion = isFinalTerm && (acaCfg.promotionStatus === true);
       var hasLegend = (secToggles.showGradingLegend !== false);
@@ -2224,7 +2224,8 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         html += '<td><strong>' + escapeHTML(t.name) + '</strong></td>';
         html += '<td>' + escapeHTML(t.shortName) + '</td>';
         html += '<td>' + (t.startDate ? t.startDate + ' to ' + t.endDate : '—') + '</td>';
-        html += '<td>' + t.weightage + '%</td>';
+        var weightageDisp = (t.weightage !== undefined && t.weightage !== null && String(t.weightage).trim() !== '') ? (t.weightage + '%') : '—';
+        html += '<td>' + weightageDisp + '</td>';
         html += '<td>' + getStatusBadge(t.status) + '</td>';
         var showParents = (t.showResultsToParents === true);
         var parentToggle = '<label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; margin:0;" title="Toggle whether parents can see results for this term in Parent Portal">' +
@@ -2501,7 +2502,8 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
       if (isTermFrozen) {
         html += '  <div class="alert alert-warning mb-3" style="background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; padding:12px 16px; border-radius:8px; display:flex; align-items:center; gap:10px;">';
         html += '    <span class="material-icons-round" style="font-size:22px; color:#D97706;">lock</span>';
-        html += '    <div><strong>Term is ' + (activeTermObj.status === 'published' ? 'Published' : 'Locked') + ':</strong> Marks entry and modifications are frozen for this term. (Client-side enforcement).</div>';
+        var lockMsg = activeTermObj.status === 'published' ? 'Marks are locked because this term is published.' : 'Marks are locked because this term is locked.';
+        html += '    <div>' + escapeHTML(lockMsg) + '</div>';
         html += '  </div>';
       }
 
@@ -3281,7 +3283,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
     return remark;
   }
 
-  function resolveReportCardRemark(student, subjects, savedMarks, calcResult, reportCardConfig) {
+  function resolveReportCardRemark(student, subjects, savedMarks, calcResult, reportCardConfig, isLegacy) {
     // 1. Manual savedMarks.remarks always wins
     if (savedMarks && typeof savedMarks.remarks === 'string' && savedMarks.remarks.trim()) {
       return savedMarks.remarks.trim();
@@ -3298,7 +3300,15 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         percentage: (calcResult && typeof calcResult.percentage === 'number') ? calcResult.percentage : 0
       };
       var marksObj = (savedMarks && savedMarks.marks) ? savedMarks.marks : (savedMarks || {});
-      var customScale = (reportCardConfig && reportCardConfig.gradingScale) || (acaCfg && acaCfg.gradingScale);
+      var customScale;
+      if (isLegacy === true) {
+        // Legacy engine grading scale order: examConfig.gradingScale
+        customScale = (SchoolApp && SchoolApp.store && SchoolApp.store.examConfig && SchoolApp.store.examConfig.gradingScale);
+      } else {
+        // V2 engine grading scale order: schoolConfig.gradingScale, then store.examConfig.gradingScale
+        customScale = (reportCardConfig && reportCardConfig.gradingScale) ||
+                      (SchoolApp && SchoolApp.store && SchoolApp.store.examConfig && SchoolApp.store.examConfig.gradingScale);
+      }
       var smartRemark = generateSmartRemark(student, subjects, marksObj, entry, customTemplates, customScale);
       if (smartRemark && smartRemark.trim()) {
         return smartRemark.trim();
@@ -3588,7 +3598,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
 
     if (showRemarks) {
       var calcResLegacy = { result: resultText, percentage: percentage };
-      remarksText = resolveReportCardRemark(s, subjectsArr, savedMarks, calcResLegacy, reportCardConfig);
+      remarksText = resolveReportCardRemark(s, subjectsArr, savedMarks, calcResLegacy, reportCardConfig, true);
 
       html += '<div style="border:1px solid #E5E7EB; border-radius:6px; padding:8px 12px; min-height:16mm; max-height:28mm; margin-top:6px;">';
       html += '<div style="font-family:Inter,sans-serif; font-size:10px; color:#6B7280; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px;">TEACHER\'S REMARKS</div>';
@@ -4120,7 +4130,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         var tId = this.getAttribute('data-id');
         var term = SchoolApp.store.examTerms && SchoolApp.store.examTerms[tId];
         if (!term) return;
-        if (!confirm('Unlock examination term "' + term.name + '"?\n\nThis will reopen marks entry and allow modifications. (Client-side enforcement).')) {
+        if (!confirm('Unlock examination term "' + term.name + '"?\n\nThis will reopen marks entry and allow modifications.')) {
           return;
         }
         term.status = 'marks_entry';

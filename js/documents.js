@@ -77,7 +77,7 @@
 
   function getPrincipalName() {
     var s = getSettings();
-    return s.principalName || 'Principal';
+    return (s.principalName && String(s.principalName).trim()) ? String(s.principalName).trim() : '';
   }
 
   function getSchoolPhone() {
@@ -163,6 +163,15 @@
     return formattedNumeric + ' (' + dayWords + ' ' + month + ' ' + numberToWords(year) + ')';
   }
 
+  function formatDDMMYYYY(dateStr) {
+    if (!dateStr) return '';
+    var parts = String(dateStr).trim().split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return parts[2] + '-' + parts[1] + '-' + parts[0];
+    }
+    return dateStr;
+  }
+
   // ==================== DOCUMENTS MODULE DEFINITION ====================
   var DocumentsModule = {
 
@@ -196,6 +205,13 @@
       html += '      <span>Digital Signatures: ' + (getPrincipalSignature() ? '<b style="color:var(--success);">Active</b>' : '<b style="color:var(--warning);">Not Uploaded</b> (Configure in Admin Settings)') + '</span>';
       html += '    </div>';
       html += '  </div>';
+
+      if (!getPrincipalName()) {
+        html += '  <div class="docs-hint-banner" style="margin-bottom:16px; padding:10px 14px; background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.3); border-radius:8px; font-size:12.5px; color:var(--text-primary); display:flex; align-items:center; gap:8px;">';
+        html += '    <span class="material-icons-round" style="color:var(--warning, #f59e0b); font-size:18px;">info</span>';
+        html += '    <span>Add the principal\'s name in Admin Panel → School Settings</span>';
+        html += '  </div>';
+      }
 
       // SECTION A: Generate Document
       html += '  <section class="docs-section" style="margin-bottom:28px;">';
@@ -478,33 +494,50 @@
 
       console.log('[DocumentsModule] onAdmitCardFilterChange:', { termId: termId, className: className, section: section });
 
-      // Resolve subjects
+      // Resolve subjects: list only the selected class's exam subjects for that term (normalized match, never every school subject)
       var subjects = [];
-      if (className !== 'ALL' && store.examSubjects && store.examSubjects[termId] && store.examSubjects[termId][className] && store.examSubjects[termId][className].subjects) {
-        subjects = store.examSubjects[termId][className].subjects;
-      } else if (store.settings && Array.isArray(store.settings.subjects) && store.settings.subjects.length > 0) {
-        subjects = store.settings.subjects.map(function(s, idx) {
-          return { name: s, fullMarks: 100 };
-        });
-      } else {
-        subjects = [
-          { name: 'English', fullMarks: 100 },
-          { name: 'Hindi', fullMarks: 100 },
-          { name: 'Mathematics', fullMarks: 100 },
-          { name: 'Science', fullMarks: 100 },
-          { name: 'Social Studies', fullMarks: 100 }
-        ];
+      if (className !== 'ALL' && store.examSubjects && store.examSubjects[termId]) {
+        var termSubMap = store.examSubjects[termId];
+        if (termSubMap[className] && Array.isArray(termSubMap[className].subjects)) {
+          subjects = termSubMap[className].subjects;
+        } else {
+          var normClassKey = function(cls) {
+            return String(cls || '').replace(/^class\s+/i, '').trim().toLowerCase();
+          };
+          var targetNorm = normClassKey(className);
+          var matchedKey = Object.keys(termSubMap).find(function(k) {
+            return normClassKey(k) === targetNorm;
+          });
+          if (!matchedKey) {
+            var baseNorm = targetNorm.replace(/[-_\s][a-z0-9]$/i, '').trim();
+            matchedKey = Object.keys(termSubMap).find(function(k) {
+              return normClassKey(k).replace(/[-_\s][a-z0-9]$/i, '').trim() === baseNorm;
+            });
+          }
+          if (matchedKey && termSubMap[matchedKey] && Array.isArray(termSubMap[matchedKey].subjects)) {
+            subjects = termSubMap[matchedKey].subjects;
+          }
+        }
       }
 
-      // Auto-assign dates starting from examTerm startDate (skip weekends)
+      // Default dates must fall inside the term dates and skip Sundays
       var examTerm = (store.examTerms && store.examTerms[termId]) || {};
       var curDate = examTerm.startDate ? new Date(examTerm.startDate) : new Date();
       if (isNaN(curDate.getTime())) curDate = new Date();
+      var endDate = examTerm.endDate ? new Date(examTerm.endDate) : null;
+      if (endDate && isNaN(endDate.getTime())) endDate = null;
 
       timetableRows = subjects.map(function(sub) {
-        // Skip Saturday (6) and Sunday (0)
-        while (curDate.getDay() === 0 || curDate.getDay() === 6) {
+        // Skip Sundays only (0)
+        while (curDate.getDay() === 0) {
           curDate.setDate(curDate.getDate() + 1);
+        }
+        // Keep within term endDate if defined
+        if (endDate && curDate > endDate) {
+          curDate = new Date(endDate);
+          while (curDate.getDay() === 0) {
+            curDate.setDate(curDate.getDate() - 1);
+          }
         }
         var yyyy = curDate.getFullYear();
         var mm = String(curDate.getMonth() + 1).padStart(2, '0');
@@ -686,7 +719,7 @@
         var bg = rIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
         card += '        <tr style="background:' + bg + '; border-bottom:1px solid #E2E8F0;">';
         card += '          <td style="padding:3.5px 8px; border-right:1px solid #E2E8F0; font-weight:600;">' + escapeHTML(row.subject) + '</td>';
-        card += '          <td style="padding:3.5px 8px; border-right:1px solid #E2E8F0;">' + escapeHTML(row.date) + '</td>';
+        card += '          <td style="padding:3.5px 8px; border-right:1px solid #E2E8F0;">' + escapeHTML(formatDDMMYYYY(row.date)) + '</td>';
         card += '          <td style="padding:3.5px 8px; border-right:1px solid #E2E8F0;">' + escapeHTML(row.time) + '</td>';
         card += '          <td style="padding:3.5px 8px; text-align:center;">' + escapeHTML(row.marks) + '</td>';
         card += '        </tr>';
@@ -709,7 +742,11 @@
         card += '      <div style="height:28px;"></div>';
       }
       card += '      <div style="border-top:1px solid #475569; padding-top:2px; font-weight:600; min-width:130px;">';
-      card += '        ' + escapeHTML(principalName) + '<br><span style="font-size:9.5px; color:#64748B; font-weight:400;">Principal</span>';
+      if (principalName) {
+        card += '        ' + escapeHTML(principalName) + '<br><span style="font-size:9.5px; color:#64748B; font-weight:400;">Principal</span>';
+      } else {
+        card += '        <span style="font-size:10px; color:#1E293B; font-weight:600;">Principal</span>';
+      }
       card += '      </div>';
       card += '    </div>';
       card += '  </div>';
@@ -953,15 +990,33 @@
       var email = settings.email || '';
       var today = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
 
-      var certNo = 'BON-' + year.replace(/[^0-9]/g, '').substring(0, 4) + '-' + adm;
+      var dateVal = today;
+      var dateInput = document.getElementById('cert-bonafide-date');
+      if (dateInput && dateInput.value) dateVal = dateInput.value;
+
+      var fy = (typeof SchoolApp !== 'undefined' && SchoolApp.getFinancialYear) ? SchoolApp.getFinancialYear(dateVal) : (year.indexOf('-') !== -1 ? year : (year + '-' + String(parseInt(year, 10) + 1).slice(-2)));
+      var certNo = student.bonafideCertNo;
+      if (!certNo) {
+        var nextSeq = 1;
+        var store = getStore();
+        if (store && Array.isArray(store.students)) {
+          store.students.forEach(function(st) {
+            if (st.bonafideCertNo && st.bonafideCertNo.startsWith('BON/' + fy + '/')) {
+              var p = st.bonafideCertNo.split('/');
+              var num = parseInt(p[2], 10);
+              if (!isNaN(num) && num >= nextSeq) nextSeq = num + 1;
+            }
+          });
+        }
+        certNo = 'BON/' + fy + '/' + String(nextSeq).padStart(6, '0');
+      }
 
       var purpose = 'General Purpose';
       var purposeInput = document.getElementById('cert-bonafide-purpose');
       if (purposeInput) purpose = purposeInput.value;
 
-      var dateVal = today;
-      var dateInput = document.getElementById('cert-bonafide-date');
-      if (dateInput) dateVal = dateInput.value;
+      var affiliation = settings.affiliation || settings.affiliationNo || (settings.schoolInfo && (settings.schoolInfo.affiliation || settings.schoolInfo.affiliationNo)) || '';
+      var udise = settings.udiseCode || settings.udiseNo || (settings.schoolInfo && (settings.schoolInfo.udiseCode || settings.schoolInfo.udiseNo)) || '';
 
       var html = '';
       html += '<div class="certificate bonafide-cert" style="font-family:Georgia, serif; color:#1E293B; line-height:1.7; position:relative; box-sizing:border-box;">';
@@ -976,6 +1031,12 @@
       if (address) html += escapeHTML(address) + ' &nbsp;|&nbsp; ';
       if (phone) html += 'Ph: ' + escapeHTML(phone) + ' &nbsp;|&nbsp; ';
       if (email) html += 'Email: ' + escapeHTML(email);
+      if (affiliation || udise) {
+        html += '<br>';
+        if (affiliation) html += 'Board Affiliation: ' + escapeHTML(affiliation);
+        if (affiliation && udise) html += ' &nbsp;|&nbsp; ';
+        if (udise) html += 'UDISE Code: ' + escapeHTML(udise);
+      }
       html += '    </div>';
       html += '  </div>';
 
@@ -998,8 +1059,9 @@
       html += '  </div>';
 
       // Body Paragraph
+      var dobText = formatDateWords(student.dateOfBirth);
       html += '  <div style="font-size:15px; text-align:justify; margin-bottom:30px; text-indent:30px;">';
-      html += '    This is to certify that <b>' + escapeHTML(sName) + '</b>, ' + escapeHTML(sonDaughter) + ' of <b>' + escapeHTML(pName) + '</b> and <b>' + escapeHTML(mName) + '</b>, bearing Admission Number <b>' + escapeHTML(adm) + '</b>, is a bonafide student of <b>' + escapeHTML(schoolName) + '</b>.';
+      html += '    This is to certify that <b>' + escapeHTML(sName) + '</b>, ' + escapeHTML(sonDaughter) + ' of <b>' + escapeHTML(pName) + '</b> and <b>' + escapeHTML(mName) + '</b>, bearing Admission Number <b>' + escapeHTML(adm) + '</b>, with Date of Birth <b>' + escapeHTML(dobText) + '</b>, is a bonafide student of <b>' + escapeHTML(schoolName) + '</b>.';
       html += '  </div>';
       html += '  <div style="font-size:15px; text-align:justify; margin-bottom:30px; text-indent:30px;">';
       html += '    ' + escapeHTML(heShe) + ' is currently studying in <b>Class ' + escapeHTML(sClass) + '</b>, Section <b>' + escapeHTML(sSec) + '</b> during the Academic Year <b>' + escapeHTML(year) + '</b>.';
@@ -1031,8 +1093,13 @@
         html += '      <div style="height:48px;"></div>';
       }
       html += '      <div style="border-top:1px solid #1E293B; padding-top:4px; font-weight:700; font-size:13px; min-width:160px;">';
-      html += '        ' + escapeHTML(principalName) + '<br>';
-      html += '        <span style="font-size:11px; color:#64748B; font-weight:500;">Principal, ' + escapeHTML(schoolName) + '</span>';
+      if (principalName) {
+        html += '        ' + escapeHTML(principalName) + '<br>';
+        html += '        <span style="font-size:11px; color:#64748B; font-weight:500;">Principal, ' + escapeHTML(schoolName) + '</span>';
+      } else {
+        html += '        <span style="font-size:13px; color:#1E293B; font-weight:700;">Principal</span><br>';
+        html += '        <span style="font-size:11px; color:#64748B; font-weight:500;">' + escapeHTML(schoolName) + '</span>';
+      }
       html += '      </div>';
       html += '    </div>';
       html += '  </div>';
@@ -1055,6 +1122,7 @@
       var gender = (student.gender || '').toLowerCase();
       var sonDaughter = (gender === 'female' || gender === 'girl') ? 'Daughter' : (gender === 'male' || gender === 'boy') ? 'Son' : 'Ward';
       var hisHer = (gender === 'female' || gender === 'girl') ? 'her' : 'his';
+      var himHer = (gender === 'female' || gender === 'girl') ? 'her' : 'him';
       var heShe = (gender === 'female' || gender === 'girl') ? 'She' : 'He';
       var settings = getSettings();
       var address = settings.address || '';
@@ -1062,7 +1130,26 @@
       var email = settings.email || '';
       var today = (typeof SchoolApp !== 'undefined' && SchoolApp.getLocalDateString) ? SchoolApp.getLocalDateString() : new Date().toLocaleDateString('en-CA');
 
-      var certNo = 'CHAR-' + year.replace(/[^0-9]/g, '').substring(0, 4) + '-' + adm;
+      var dateVal = today;
+      var dateInput = document.getElementById('cert-character-date');
+      if (dateInput && dateInput.value) dateVal = dateInput.value;
+
+      var fy = (typeof SchoolApp !== 'undefined' && SchoolApp.getFinancialYear) ? SchoolApp.getFinancialYear(dateVal) : (year.indexOf('-') !== -1 ? year : (year + '-' + String(parseInt(year, 10) + 1).slice(-2)));
+      var certNo = student.characterCertNo;
+      if (!certNo) {
+        var nextSeq = 1;
+        var store = getStore();
+        if (store && Array.isArray(store.students)) {
+          store.students.forEach(function(st) {
+            if (st.characterCertNo && st.characterCertNo.startsWith('CHAR/' + fy + '/')) {
+              var p = st.characterCertNo.split('/');
+              var num = parseInt(p[2], 10);
+              if (!isNaN(num) && num >= nextSeq) nextSeq = num + 1;
+            }
+          });
+        }
+        certNo = 'CHAR/' + fy + '/' + String(nextSeq).padStart(6, '0');
+      }
 
       // Admission Date format
       var admDateText = 'April 2024';
@@ -1078,9 +1165,10 @@
       var conductInput = document.getElementById('cert-character-conduct');
       if (conductInput) conduct = conductInput.value;
 
-      var dateVal = today;
-      var dateInput = document.getElementById('cert-character-date');
-      if (dateInput) dateVal = dateInput.value;
+      var isActive = (student.status === 'Active' || !student.status);
+      var studentStatusText = isActive ? 'is a student' : 'was a student';
+      var leavingDateVal = student.leavingDate || student.tcDate || dateVal;
+      var periodText = isActive ? ('from <b>' + escapeHTML(admDateText) + '</b> till date') : ('from <b>' + escapeHTML(admDateText) + '</b> to <b>' + escapeHTML(leavingDateVal) + '</b>');
 
       var html = '';
       html += '<div class="certificate character-cert" style="font-family:Georgia, serif; color:#1E293B; line-height:1.8; position:relative; box-sizing:border-box;">';
@@ -1114,7 +1202,7 @@
 
       // Body Paragraphs
       html += '  <div style="font-size:15px; text-align:justify; margin-bottom:24px; text-indent:30px;">';
-      html += '    This is to certify that <b>' + escapeHTML(sName) + '</b>, ' + escapeHTML(sonDaughter) + ' of <b>' + escapeHTML(pName) + '</b>, bearing Admission Number <b>' + escapeHTML(adm) + '</b>, was/is a student of <b>' + escapeHTML(schoolName) + '</b> from <b>' + escapeHTML(admDateText) + '</b> to <b>' + escapeHTML(dateVal) + '</b>.';
+      html += '    This is to certify that <b>' + escapeHTML(sName) + '</b>, ' + escapeHTML(sonDaughter) + ' of <b>' + escapeHTML(pName) + '</b>, bearing Admission Number <b>' + escapeHTML(adm) + '</b>, ' + studentStatusText + ' of <b>' + escapeHTML(schoolName) + '</b> ' + periodText + '.';
       html += '  </div>';
 
       html += '  <div style="font-size:15px; text-align:justify; margin-bottom:24px; text-indent:30px;">';
@@ -1127,7 +1215,7 @@
         conducts.forEach(function(c) {
           html += '<option value="' + escapeHTML(c) + '"' + (c === conduct ? ' selected' : '') + '>' + escapeHTML(c) + '</option>';
         });
-        html += '    </select>.';
+        html += '    </select>';
       }
       html += '  </div>';
 
@@ -1136,7 +1224,7 @@
       html += '  </div>';
 
       html += '  <div style="font-size:15px; text-align:justify; margin-bottom:40px; text-indent:30px;">';
-      html += '    We wish ' + escapeHTML(hisHer) + ' all the best in ' + escapeHTML(hisHer) + ' future endeavors.';
+      html += '    We wish ' + escapeHTML(himHer) + ' all the best in ' + escapeHTML(hisHer) + ' future endeavors.';
       html += '  </div>';
 
       // Footer
@@ -1151,8 +1239,13 @@
         html += '      <div style="height:48px;"></div>';
       }
       html += '      <div style="border-top:1px solid #1E293B; padding-top:4px; font-weight:700; font-size:13px; min-width:160px;">';
-      html += '        ' + escapeHTML(principalName) + '<br>';
-      html += '        <span style="font-size:11px; color:#64748B; font-weight:500;">Principal, ' + escapeHTML(schoolName) + '</span>';
+      if (principalName) {
+        html += '        ' + escapeHTML(principalName) + '<br>';
+        html += '        <span style="font-size:11px; color:#64748B; font-weight:500;">Principal, ' + escapeHTML(schoolName) + '</span>';
+      } else {
+        html += '        <span style="font-size:13px; color:#1E293B; font-weight:700;">Principal</span><br>';
+        html += '        <span style="font-size:11px; color:#64748B; font-weight:500;">' + escapeHTML(schoolName) + '</span>';
+      }
       html += '      </div>';
       html += '    </div>';
       html += '  </div>';
@@ -1307,7 +1400,7 @@
       }
       html += '      <div style="border-top:1px solid #1E293B; padding-top:4px; font-weight:700; font-size:12px; min-width:160px;">';
       html += '        Signature of Principal<br>';
-      html += '        <span style="font-size:10px; color:#64748B; font-weight:400;">' + escapeHTML(principalName) + ' &bull; ' + escapeHTML(schoolName) + '</span>';
+      html += '        <span style="font-size:10px; color:#64748B; font-weight:400;">' + (principalName ? escapeHTML(principalName) + ' &bull; ' : '') + escapeHTML(schoolName) + '</span>';
       html += '      </div>';
       html += '    </div>';
       html += '  </div>';
@@ -1321,7 +1414,7 @@
       return html;
     },
 
-    printCurrentCertificate: function(certType) {
+    printCurrentCertificate: async function(certType) {
       if (!selectedStudent) {
         SchoolApp.showToast('Please select a student first.', 'warning');
         return;
@@ -1391,10 +1484,23 @@
       }
 
       var html = '';
-      if (certType === 'bonafide') {
-        html = this.buildBonafideHTML(selectedStudent, true);
-      } else if (certType === 'character') {
-        html = this.buildCharacterHTML(selectedStudent, true);
+      if (certType === 'bonafide' || certType === 'character') {
+        var propName = certType === 'character' ? 'characterCertNo' : 'bonafideCertNo';
+        if (!selectedStudent[propName] && window.SchoolApp && typeof window.SchoolApp.generateCertificateNumber === 'function') {
+          try {
+            var dateInputEl = document.getElementById('cert-' + certType + '-date');
+            var certDate = (dateInputEl && dateInputEl.value) || undefined;
+            var assignedNo = await window.SchoolApp.generateCertificateNumber(certType, selectedStudent, certDate);
+            selectedStudent[propName] = assignedNo;
+          } catch (e) {
+            console.warn('[Documents] Failed to generate certificate serial:', e);
+          }
+        }
+        if (certType === 'bonafide') {
+          html = this.buildBonafideHTML(selectedStudent, true);
+        } else {
+          html = this.buildCharacterHTML(selectedStudent, true);
+        }
       }
 
       this.printDocument(html, 'portrait', '15mm');
