@@ -506,14 +506,25 @@ calculateMultiExamResult: function(params) {
         var res;
         if (tIsPub && tHasComp) {
           var tPct = parseFloat(tEntry.percentage) || 0;
+          var tDiv = (tEntry.division !== undefined && tEntry.division !== null) ? String(tEntry.division).trim() : '';
+          if (!tDiv && typeof recalculateStudentEntry === 'function') {
+            try {
+              var tClone = JSON.parse(JSON.stringify(tEntry || {}));
+              if (!tClone.marks) tClone.marks = tMarks;
+              var tRecalc = recalculateStudentEntry(tClone, tSubs, t);
+              tDiv = (tRecalc && tRecalc.division) || '';
+            } catch (_) {
+              tDiv = '';
+            }
+          }
           res = {
             total: Number(tEntry.total),
             maxTotal: Number(tEntry.maxTotal),
-            passTotal: (tEntry.passTotal !== undefined && tEntry.passTotal !== null) ? Number(tEntry.passTotal) : Math.round(Number(tEntry.maxTotal) * 0.33),
+            passTotal: (tEntry.passTotal !== undefined && tEntry.passTotal !== null) ? Number(tEntry.passTotal) : null,
             percentage: tPct,
             displayPercentage: tPct.toFixed(2) + '%',
             grade: tEntry.grade,
-            division: tEntry.division || (tPct >= 60 ? '1st Division' : (tPct >= 45 ? '2nd Division' : '3rd Division')),
+            division: tDiv || '',
             result: String(tEntry.result || 'PASS').toUpperCase(),
             isComplete: true
           };
@@ -522,14 +533,15 @@ calculateMultiExamResult: function(params) {
           if (!tClone.marks) tClone.marks = tMarks;
           var tRecalc = recalculateStudentEntry(tClone, tSubs, t);
           var tPct = parseFloat(tRecalc.percentage) || 0;
+          var tDiv = (tRecalc && tRecalc.division) || '';
           res = {
             total: Number(tRecalc.total || 0),
             maxTotal: Number(tRecalc.maxTotal || 0),
-            passTotal: Math.round(Number(tRecalc.maxTotal || 0) * 0.33),
+            passTotal: (tRecalc.passTotal !== undefined && tRecalc.passTotal !== null) ? Number(tRecalc.passTotal) : null,
             percentage: tPct,
             displayPercentage: tPct.toFixed(2) + '%',
             grade: tRecalc.grade || '—',
-            division: tRecalc.division || (tPct >= 60 ? '1st Division' : (tPct >= 45 ? '2nd Division' : '3rd Division')),
+            division: tDiv || '',
             result: tRecalc.result ? String(tRecalc.result).toUpperCase() : '—',
             isComplete: !!tRecalc.isComplete
           };
@@ -900,14 +912,26 @@ calculateMultiExamResult: function(params) {
 
         if (isPublishedOrLocked && hasCompleteStored) {
           var pct = parseFloat(savedMarks.percentage) || 0;
+          var div = (savedMarks.division !== undefined && savedMarks.division !== null) ? String(savedMarks.division).trim() : '';
+          if (!div && typeof recalculateStudentEntry === 'function') {
+            try {
+              var marksMap = (savedMarks && savedMarks.marks) || {};
+              var entryClone = JSON.parse(JSON.stringify(savedMarks || {}));
+              if (!entryClone.marks) entryClone.marks = marksMap;
+              var recalc = recalculateStudentEntry(entryClone, subjectsArr, activeTerm);
+              div = (recalc && recalc.division) || '';
+            } catch (_) {
+              div = '';
+            }
+          }
           calcRes = {
             total: Number(savedMarks.total),
             maxTotal: Number(savedMarks.maxTotal),
-            passTotal: (savedMarks.passTotal !== undefined && savedMarks.passTotal !== null) ? Number(savedMarks.passTotal) : Math.round(Number(savedMarks.maxTotal) * 0.33),
+            passTotal: (savedMarks.passTotal !== undefined && savedMarks.passTotal !== null) ? Number(savedMarks.passTotal) : null,
             percentage: pct,
             displayPercentage: pct.toFixed(2) + '%',
             grade: savedMarks.grade,
-            division: savedMarks.division || (pct >= 60 ? '1st Division' : (pct >= 45 ? '2nd Division' : '3rd Division')),
+            division: div || '',
             result: String(savedMarks.result || 'PASS').toUpperCase(),
             rank: savedMarks.rank !== undefined ? savedMarks.rank : null,
             isComplete: true,
@@ -919,14 +943,15 @@ calculateMultiExamResult: function(params) {
           if (!entryClone.marks) entryClone.marks = marksMap;
           var recalc = recalculateStudentEntry(entryClone, subjectsArr, activeTerm);
           var pct = parseFloat(recalc.percentage) || 0;
+          var div = (recalc && recalc.division) || '';
           calcRes = {
             total: Number(recalc.total || 0),
             maxTotal: Number(recalc.maxTotal || 0),
-            passTotal: Math.round(Number(recalc.maxTotal || 0) * 0.33),
+            passTotal: (recalc.passTotal !== undefined && recalc.passTotal !== null) ? Number(recalc.passTotal) : null,
             percentage: pct,
             displayPercentage: pct.toFixed(2) + '%',
             grade: recalc.grade || '—',
-            division: recalc.division || (pct >= 60 ? '1st Division' : (pct >= 45 ? '2nd Division' : '3rd Division')),
+            division: div || '',
             result: recalc.result ? String(recalc.result).toUpperCase() : '—',
             rank: (savedMarks && savedMarks.rank !== undefined) ? savedMarks.rank : (recalc.rank || null),
             isComplete: !!recalc.isComplete,
@@ -1490,7 +1515,7 @@ calculateMultiExamResult: function(params) {
           mHtml += '<tr class="total-row" style="background:#0F172A; color:#FFFFFF; font-weight:800; font-size:11.5px;">';
           mHtml += '<td style="padding:' + cellPad + '; text-align:left; border:1px solid #0F172A;">TOTAL</td>';
           if (colToggles.showFullMarks !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalFull + '</td>';
-          if (colToggles.showPassMarks !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalPass + '</td>';
+          if (colToggles.showPassMarks !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + (totalPass !== null && totalPass !== undefined ? totalPass : '—') + '</td>';
           if (colToggles.showObtained !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalObtained + '</td>';
           if (colToggles.showGrade !== false) mHtml += '<td style="padding:' + cellPad + '; text-align:center; border:1px solid #0F172A;">' + totalGrade + '</td>';
           mHtml += '</tr></tbody></table>';
@@ -1846,6 +1871,7 @@ ExamCalculationEngine.getStudentAttendancePercentage = getStudentAttendancePerce
         else entry.division = 'Pass Division';
       }
     }
+    return entry;
   }
 
   // Version-aware dispatcher

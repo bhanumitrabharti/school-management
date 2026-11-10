@@ -397,39 +397,125 @@ async function runAllTests() {
     assert.strictEqual(preserved, 'DPS/2026-27/000123', 'Explicit receiptNo must be returned untouched');
   });
 
+  await runTest('Item 2: Parallel payments resolve to distinct consecutive serials', async () => {
+    const { window } = setupTestEnvironment();
+    const schoolId = 'test_v81_parallel_school';
+    await db.collection('tenant_data').doc(schoolId).collection('counters').doc('fee_receipts').delete();
+    await db.collection('tenant_data').doc(schoolId).set({
+      settings: { schoolCode: 'PAR', schoolName: 'Parallel High' }
+    });
+    window.SchoolApp.store = {
+      currentSchoolId: schoolId,
+      settings: { schoolCode: 'PAR', schoolName: 'Parallel High' }
+    };
+
+    const [p1, p2] = await Promise.all([
+      window.SchoolApp.generateFeeReceiptNumber('2026-11-05', schoolId),
+      window.SchoolApp.generateFeeReceiptNumber('2026-11-05', schoolId)
+    ]);
+
+    assert(p1 && p2, 'Both parallel calls must return receipt numbers');
+    assert.notStrictEqual(p1, p2, 'Parallel calls must NOT return identical receipt numbers: ' + p1 + ' vs ' + p2);
+    const s1 = parseInt(p1.split('/')[2], 10);
+    const s2 = parseInt(p2.split('/')[2], 10);
+    assert.strictEqual(Math.abs(s1 - s2), 1, 'Parallel receipt numbers must be consecutive serials: ' + p1 + ' and ' + p2);
+  });
+
+  await runTest('Item 2: Forced transaction failure retries up to 3 times, returns null, and fallback produces no serial-format number', async () => {
+    const { window } = setupTestEnvironment();
+    const schoolId = 'test_v81_fail_school';
+    window.SchoolApp.store = {
+      currentSchoolId: schoolId,
+      settings: { schoolCode: 'FAIL', schoolName: 'Fail High' }
+    };
+
+    let attempts = 0;
+    const originalRunTransaction = window.firestore.runTransaction;
+    window.firestore.runTransaction = async function() {
+      attempts++;
+      throw new Error('Forced Firestore transaction failure');
+    };
+
+    try {
+      const receiptNo = await window.SchoolApp.generateFeeReceiptNumber('2026-11-05', schoolId);
+      assert.strictEqual(attempts, 3, 'Must retry exactly 3 times before failing');
+      assert.strictEqual(receiptNo, null, 'Must return null on transaction failure (never invent a serial number)');
+
+      // In payment flow: when receiptNo is null/unset, newTxn.receiptNo remains undefined,
+      // so SchoolApp.getReceiptNumber produces deterministic RCP-FAIL-<8chars>
+      const newTxn = { id: 'txn_fail_12345678', date: '2026-11-05', amount: 2000 };
+      if (receiptNo) newTxn.receiptNo = receiptNo; // Should not be set
+      assert.strictEqual(newTxn.receiptNo, undefined, 'newTxn.receiptNo must remain unset');
+
+      const finalReceiptNum = (newTxn && newTxn.receiptNo) || window.SchoolApp.getReceiptNumber(newTxn, window.SchoolApp.store.settings, schoolId);
+      assert(finalReceiptNum.startsWith('RCP-FAIL-'), 'Fallback receipt number must be deterministic RCP-<CODE>-<8chars>, got: ' + finalReceiptNum);
+      assert(!finalReceiptNum.includes('/2026-27/'), 'Must NOT invent a serial-format number on transaction failure');
+    } finally {
+      window.firestore.runTransaction = originalRunTransaction;
+    }
+  });
+
   if (testEnv) {
-    await runTest('Item 2: Security Rules permit school admin to write counters, block parents and unauthenticated', async () => {
+    await runTest('Item 2: Security Rules test all 5 caller contexts on /tenant_data/{schoolId}/counters/{counterId}', async () => {
       const adminCtx = testEnv.authenticatedContext('admin_user_01');
+      const teacherCtx = testEnv.authenticatedContext('teacher_user_01');
       const parentCtx = testEnv.authenticatedContext('parent_user_01');
       const unauthCtx = testEnv.unauthenticatedContext();
+      const otherAdminCtx = testEnv.authenticatedContext('other_admin_01');
 
-      // Seed school_access for admin
+      // Seed school_access
       await testEnv.withSecurityRulesDisabled(async (context) => {
-        const adminFirestore = context.firestore();
-        await adminFirestore.collection('school_access').doc('admin_user_01').set({
+        const af = context.firestore();
+        // 1. School Admin of rules_test_school
+        await af.collection('school_access').doc('admin_user_01').set({
           schoolId: 'rules_test_school',
           role: 'admin'
         });
+        // 2. Teacher of rules_test_school
+        await af.collection('school_access').doc('teacher_user_01').set({
+          schoolId: 'rules_test_school',
+          role: 'teacher'
+        });
+        // 3. Parent user has NO school_access doc
+        // 4. Other school admin belongs to other_school
+        await af.collection('school_access').doc('other_admin_01').set({
+          schoolId: 'other_school',
+          role: 'admin'
+        });
+
+        // Seed counter doc
+        await af.collection('tenant_data').doc('rules_test_school').collection('counters').doc('fee_receipts').set({
+          '2026-27': 5
+        });
       });
 
-      const adminDbClient = adminCtx.firestore();
-      const parentDbClient = parentCtx.firestore();
-      const unauthDbClient = unauthCtx.firestore();
+      const adminFs = adminCtx.firestore();
+      const teacherFs = teacherCtx.firestore();
+      const parentFs = parentCtx.firestore();
+      const unauthFs = unauthCtx.firestore();
+      const otherAdminFs = otherAdminCtx.firestore();
 
-      // Admin write succeeds
-      await assertSucceeds(adminDbClient.collection('tenant_data').doc('rules_test_school').collection('counters').doc('fee_receipts').set({
-        '2026-27': 1
-      }));
+      const counterPath = 'tenant_data/rules_test_school/counters/fee_receipts';
 
-      // Parent write fails
-      await assertFails(parentDbClient.collection('tenant_data').doc('rules_test_school').collection('counters').doc('fee_receipts').set({
-        '2026-27': 2
-      }));
+      // 1. School Admin of rules_test_school: READ ALLOWED, WRITE ALLOWED
+      await assertSucceeds(adminFs.doc(counterPath).get(), 'School admin must be allowed to read counter');
+      await assertSucceeds(adminFs.doc(counterPath).set({ '2026-27': 6 }, { merge: true }), 'School admin must be allowed to write counter');
 
-      // Unauthenticated write fails
-      await assertFails(unauthDbClient.collection('tenant_data').doc('rules_test_school').collection('counters').doc('fee_receipts').set({
-        '2026-27': 3
-      }));
+      // 2. Teacher of rules_test_school: READ DENIED, WRITE DENIED
+      await assertFails(teacherFs.doc(counterPath).get(), 'Teacher must be DENIED read on counters');
+      await assertFails(teacherFs.doc(counterPath).set({ '2026-27': 7 }, { merge: true }), 'Teacher must be DENIED write on counters');
+
+      // 3. Parent token: READ DENIED, WRITE DENIED
+      await assertFails(parentFs.doc(counterPath).get(), 'Parent must be DENIED read on counters');
+      await assertFails(parentFs.doc(counterPath).set({ '2026-27': 8 }, { merge: true }), 'Parent must be DENIED write on counters');
+
+      // 4. Anonymous / unauthenticated: READ DENIED, WRITE DENIED
+      await assertFails(unauthFs.doc(counterPath).get(), 'Unauthenticated must be DENIED read on counters');
+      await assertFails(unauthFs.doc(counterPath).set({ '2026-27': 9 }, { merge: true }), 'Unauthenticated must be DENIED write on counters');
+
+      // 5. Another school admin: READ DENIED, WRITE DENIED
+      await assertFails(otherAdminFs.doc(counterPath).get(), 'Other school admin must be DENIED read on different school counters');
+      await assertFails(otherAdminFs.doc(counterPath).set({ '2026-27': 10 }, { merge: true }), 'Other school admin must be DENIED write on different school counters');
     });
   }
 
@@ -673,6 +759,65 @@ async function runAllTests() {
     assert.strictEqual(multiResult.termResults.term_pub.grade, 'A2', 'Should use stored grade (A2)');
   });
 
+  await runTest('Item 5b: A FAIL entry without stored division never shows a division band, and passTotal is null when missing', async () => {
+    const { sandbox, window } = setupTestEnvironment();
+    const examsCode = fs.readFileSync(path.resolve(__dirname, '../js/exams.js'), 'utf8');
+    vm.runInContext(examsCode, sandbox);
+
+    const activeTerm = { id: 'term_1', status: 'published', rulesVersion: 'v2' };
+    const subjects = [
+      { id: 'sub_math', name: 'Mathematics', fullMarks: 100, passMarks: 33 },
+      { id: 'sub_sci', name: 'Science', fullMarks: 100, passMarks: 33 }
+    ];
+    const student = { id: 'stu_fail_01', name: 'Student Fail', class: '5', section: 'A' };
+
+    // Student has 27.5% marks and result FAIL, but no division stored
+    const failEntry = {
+      marks: {
+        sub_math: { obtained: 25, fullMarks: 100 },
+        sub_sci: { obtained: 30, fullMarks: 100 }
+      },
+      total: 55,
+      maxTotal: 200,
+      percentage: 27.5,
+      grade: 'E',
+      result: 'Fail'
+      // division: undefined
+      // passTotal: undefined
+    };
+
+    window.SchoolApp.store = {
+      reportCardConfig: { academic: { division: true } },
+      settings: {},
+      students: [student]
+    };
+
+    const cardHtml = window.ExamCalculationEngine.generateSingleStudentCardHTMLV2(
+      student, false, failEntry, null, activeTerm, subjects, window.SchoolApp.store.reportCardConfig
+    );
+
+    // Assert: NEVER shows '1st Division', '2nd Division', or '3rd Division'
+    assert(!cardHtml.includes('1st Division'), 'Fail entry must NOT show 1st Division');
+    assert(!cardHtml.includes('2nd Division'), 'Fail entry must NOT show 2nd Division');
+    assert(!cardHtml.includes('3rd Division'), 'Fail entry must NOT show 3rd Division');
+
+    // Assert: passTotal without stored passTotal renders as '—'
+    assert(cardHtml.includes('border:1px solid #0F172A;">—</td>'), 'Table pass total must display "—" when passTotal is null');
+
+    // Assert multi-exam result also leaves division blank or Not Applicable, and passTotal null
+    const multiRes = window.ExamCalculationEngine.calculateMultiExamResult({
+      terms: [activeTerm],
+      marksMap: { term_1: failEntry.marks },
+      subjects,
+      studentClass: '5',
+      schoolConfig: window.SchoolApp.store.reportCardConfig,
+      studentEntriesByTerm: { term_1: failEntry }
+    });
+
+    assert.strictEqual(multiRes.termResults.term_1.passTotal, null, 'Multi card passTotal must be null');
+    assert.notStrictEqual(multiRes.termResults.term_1.division, '3rd Division', 'Multi card division must NOT be 3rd Division');
+  });
+
   // --------------------------------------------------------------------------
   // ITEM 6: Accounts Transport Fee Mapping (api/accounts.js & js/accounts.js)
   // --------------------------------------------------------------------------
@@ -721,6 +866,94 @@ async function runAllTests() {
     assert(incomeLine, 'Should have credit income line');
     assert.strictEqual(incomeLine.accountCode, '42100', 'Income line must credit 42100 (Transport / Bus Charges)');
     assert.strictEqual(incomeLine.crPaise, 180000);
+  });
+
+  await runTest('Item 6: Accounts Re-Sync on Greenwood-shaped fixture with month-suffixed transport posts to 42100 once, and 2nd sync is idempotent', async () => {
+    const accountsApi = require('../api/accounts.js');
+    const schoolId = 'test_v81_accounts_sync_school';
+
+    // Seed test school in emulator
+    await db.collection('tenant_data').doc(schoolId).set({
+      settings: {
+        schoolName: 'Greenwood Accounts Test School',
+        feeHeadMapping: {
+          fh_tuition: { accountCode: '41100', accountName: 'Tuition Fee' }
+          // fh_transport is intentionally UNMAPPED in settings -> must fallback via normalizeFeeHead to 42100
+        }
+      }
+    });
+
+    await db.collection('tenant_data').doc(schoolId).collection('accounts_settings').doc('main').set({
+      goLiveDate: '2026-04-01',
+      feeCashAccount: '11100',
+      hasFeeVouchers: false,
+      feeHeadMapping: {
+        fh_tuition: { accountCode: '41100', accountName: 'Tuition Fee' }
+      }
+    });
+
+    // Clear any previous journal docs
+    const existingSnap = await db.collection('tenant_data').doc(schoolId).collection('accounts_journal').get();
+    for (const doc of existingSnap.docs) {
+      await doc.ref.delete();
+    }
+
+    // Seed fee transaction with month-suffixed transport fee head
+    const txn = {
+      id: 'txn_gw_transport_nov_01',
+      type: 'payment',
+      date: '2026-11-03',
+      amount: 2000,
+      grossAmount: 2000,
+      paymentMethod: 'Cash',
+      allocations: [
+        { feeHeadId: 'fh_tuition_nov', feeHeadName: 'Tuition Fee - November 2026', amount: 1400 },
+        { feeHeadId: 'head_trans_nov_2026', feeHeadName: 'Transport Fee - November 2026', amount: 600 }
+      ]
+    };
+
+    // Run first sync simulation via computeFeeJournalLines & postVouchersBatch
+    const settingsDoc = await db.doc(`tenant_data/${schoolId}/accounts_settings/main`).get();
+    const settings = settingsDoc.data();
+    const linesRes = accountsApi.computeFeeJournalLines(txn, settings);
+
+    assert(linesRes && Array.isArray(linesRes.lines), 'Lines must be computed');
+    assert.strictEqual(linesRes.unmappedHeads.length, 0, 'Transport fee head must NOT be unmapped');
+
+    const transportLine = linesRes.lines.find(l => l.accountCode === '42100');
+    assert(transportLine, 'Must have credit line to 42100 (Transport / Bus Charges)');
+    assert.strictEqual(transportLine.crPaise, 60000, 'Transport credit must be 60000 paise (Rs. 600)');
+
+    const candidateVoucher = {
+      voucherId: `JV-FEE-${txn.id}`,
+      voucherNo: `JV-FEE-${txn.id}`,
+      type: 'journal',
+      fy: '2026-27',
+      date: txn.date,
+      amountPaise: 200000,
+      lines: linesRes.lines,
+      status: 'posted',
+      sourceType: 'fee',
+      sourceId: txn.id
+    };
+
+    // First post: posts exactly 1 voucher to 42100
+    const postRes1 = await accountsApi.postVouchersBatch(db, schoolId, [candidateVoucher], '2026-27');
+    assert.strictEqual(postRes1.newlyPosted, 1, 'First sync must post exactly 1 voucher');
+
+    // Verify voucher exists in Firestore emulator
+    const vDocSnap1 = await db.doc(`tenant_data/${schoolId}/accounts_journal/${candidateVoucher.voucherId}`).get();
+    assert(vDocSnap1.exists, 'Voucher JV-FEE-txn_gw_transport_nov_01 must exist in accounts_journal');
+    const storedVoucher = vDocSnap1.data();
+    assert.strictEqual(storedVoucher.lines.find(l => l.accountCode === '42100').crPaise, 60000, 'Stored voucher must credit 42100 with 60000 paise');
+
+    // Second sync: posting the exact same deterministic voucher again
+    const postRes2 = await accountsApi.postVouchersBatch(db, schoolId, [candidateVoucher], '2026-27');
+    assert.strictEqual(postRes2.newlyPosted, 0, 'Second sync must post 0 new vouchers (idempotent deterministic ID)');
+
+    // Ensure total count in accounts_journal is still exactly 1
+    const allVouchers = await db.collection(`tenant_data/${schoolId}/accounts_journal`).get();
+    assert.strictEqual(allVouchers.size, 1, 'accounts_journal must contain exactly 1 voucher after 2 syncs');
   });
 
   // --------------------------------------------------------------------------

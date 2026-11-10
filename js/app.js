@@ -1394,31 +1394,44 @@ window.SchoolApp = {
     var schoolCode = this.getSchoolCode(settings, schoolId);
     var fy = this.getFinancialYear(dateStr);
 
+    var maxRetries = 3;
+    var lastErr = null;
+
     if (window.firestore && window.db && typeof window.firestore.runTransaction === 'function') {
-      try {
-        var fs = window.firestore;
-        var db = window.db;
-        var counterRef = fs.doc(db, 'tenant_data', schoolId, 'counters', 'fee_receipts');
-        var serialNum = await fs.runTransaction(db, async function(transaction) {
-          var snap = await transaction.get(counterRef);
-          var cur = 0;
-          if (snap.exists() && snap.data() && snap.data()[fy] !== undefined) {
-            cur = parseInt(snap.data()[fy], 10) || 0;
+      var fs = window.firestore;
+      var db = window.db;
+      var counterRef = fs.doc(db, 'tenant_data', schoolId, 'counters', 'fee_receipts');
+
+      for (var attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          var serialNum = await fs.runTransaction(db, async function(transaction) {
+            var snap = await transaction.get(counterRef);
+            var cur = 0;
+            var data = (snap && typeof snap.data === 'function') ? snap.data() : (snap ? snap.data : null);
+            var exists = (snap && typeof snap.exists === 'function') ? snap.exists() : !!(snap && snap.exists);
+            if (exists && data && data[fy] !== undefined) {
+              cur = parseInt(data[fy], 10) || 0;
+            }
+            var next = cur + 1;
+            transaction.set(counterRef, { [fy]: next }, { merge: true });
+            return next;
+          });
+          var padded = String(serialNum).padStart(6, '0');
+          return schoolCode + '/' + fy + '/' + padded;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < maxRetries) {
+            var backoffMs = (50 * Math.pow(2, attempt - 1)) + Math.floor(Math.random() * 25);
+            await new Promise(function(resolve) { setTimeout(resolve, backoffMs); });
           }
-          var next = cur + 1;
-          transaction.set(counterRef, { [fy]: next }, { merge: true });
-          return next;
-        });
-        var padded = String(serialNum).padStart(6, '0');
-        return schoolCode + '/' + fy + '/' + padded;
-      } catch (err) {
-        console.warn('[Fees] Failed to generate atomic receipt number, using fallback:', err);
+        }
       }
+      console.warn('[Fees] Failed to generate atomic receipt number after ' + maxRetries + ' attempts; leaving receiptNo unset for deterministic fallback:', lastErr);
+      return null;
     }
 
-    this._localReceiptSeq = (this._localReceiptSeq || 0) + 1;
-    var paddedFallback = String(this._localReceiptSeq).padStart(6, '0');
-    return schoolCode + '/' + fy + '/' + paddedFallback;
+    console.warn('[Fees] Firestore transaction API not available; leaving receiptNo unset for deterministic fallback.');
+    return null;
   },
 
   loadTeacherAttendanceMonth: async function(schoolId, month) {

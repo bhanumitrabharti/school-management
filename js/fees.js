@@ -3627,8 +3627,10 @@
 
           if (typeof SchoolApp.generateFeeReceiptNumber === 'function') {
             var assignedReceiptNo = await SchoolApp.generateFeeReceiptNumber(date, SchoolApp.currentSchoolId);
-            newTxn.receiptNo = assignedReceiptNo;
-            SchoolApp.lastReceiptNo = assignedReceiptNo;
+            if (assignedReceiptNo) {
+              newTxn.receiptNo = assignedReceiptNo;
+              SchoolApp.lastReceiptNo = assignedReceiptNo;
+            }
           }
 
           SchoolApp.store.fees.push(newTxn);

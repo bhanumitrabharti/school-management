@@ -507,10 +507,15 @@ async function runAllTests() {
       assert(previewSrc.includes('firebasestorage.googleapis.com'), `Signature preview should display storage URL, got: ${previewSrc}`);
 
       // Verify Firestore
-      const snap = await db.collection('tenant_data').doc(TEST_SCHOOL).get();
-      const data = snap.data();
-      assert(data.settings.principalSignatureStorageUrl.includes('firebasestorage'), 'settings.principalSignatureStorageUrl must be set');
-      assert(data.settings.schoolInfo.principalSignatureStorageUrl.includes('firebasestorage'), 'schoolInfo.principalSignatureStorageUrl must be set');
+      let snap, data;
+      for (let i = 0; i < 15; i++) {
+        snap = await db.collection('tenant_data').doc(TEST_SCHOOL).get();
+        data = snap.data() || {};
+        if (data.settings && data.settings.principalSignatureStorageUrl) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      assert(data.settings && data.settings.principalSignatureStorageUrl && data.settings.principalSignatureStorageUrl.includes('firebasestorage'), 'settings.principalSignatureStorageUrl must be set');
+      assert(data.settings.schoolInfo && data.settings.schoolInfo.principalSignatureStorageUrl && data.settings.schoolInfo.principalSignatureStorageUrl.includes('firebasestorage'), 'schoolInfo.principalSignatureStorageUrl must be set');
     });
 
     await test('3.4: Remove signature -> preview empty -> ALL 4 signature fields cleared in Firestore', async () => {
