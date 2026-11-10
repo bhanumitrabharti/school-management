@@ -51,10 +51,20 @@
 
   function normalizeClassName(cls) {
     if (!cls) return '';
-    return cls.toString()
-      .replace(/^class\s+/i, '')
-      .trim()
-      .toLowerCase();
+    if (window.SchoolApp && typeof window.SchoolApp.normalizeClassIdentifier === 'function') {
+      return window.SchoolApp.normalizeClassIdentifier(cls);
+    }
+    var str = cls.toString().replace(/^(class|grade|std|standard)\s+/i, '').trim().toLowerCase();
+    var romanMap = { 'i':'1', 'ii':'2', 'iii':'3', 'iv':'4', 'v':'5', 'vi':'6', 'vii':'7', 'viii':'8', 'ix':'9', 'x':'10', 'xi':'11', 'xii':'12' };
+    if (romanMap[str]) return romanMap[str];
+    return str.replace(/^(\d+)(st|nd|rd|th)$/i, '$1');
+  }
+
+  function classesMatch(clsA, clsB, secA, secB) {
+    if (window.SchoolApp && typeof window.SchoolApp.classesMatch === 'function') {
+      return window.SchoolApp.classesMatch(clsA, clsB, secA, secB);
+    }
+    return normalizeClassName(clsA) === normalizeClassName(clsB);
   }
 
   function normalizeSectionName(sec) {
@@ -98,7 +108,8 @@
       }
       sectList.forEach(function(s) {
         var hasStudents = (SchoolApp.store.students || []).some(function(st) {
-          return normalizeClassName(st.class) === normalizeClassName(c) &&
+          return !st.inTrash && st.status !== 'Deleted' &&
+                 classesMatch(st.class, c, st.section, s) &&
                  normalizeSectionName(st.section) === normalizeSectionName(s);
         });
         if (hasStudents || (SchoolApp.store.students || []).length === 0) {
@@ -110,8 +121,9 @@
   }
 
   function getStudentsForClass(cls, section) {
-    return SchoolApp.store.students.filter(function(s) {
-      return normalizeClassName(s.class) === normalizeClassName(cls) &&
+    return (SchoolApp.store.students || []).filter(function(s) {
+      return !s.inTrash && s.status !== 'Deleted' &&
+             classesMatch(s.class, cls, s.section, section) &&
              normalizeSectionName(s.section) === normalizeSectionName(section) &&
              s.status === 'Active';
     }).sort(function(a, b) {
@@ -127,7 +139,7 @@
     available.forEach(function(c) {
       var rec = records.find(function(a) {
         return a.date === targetDate &&
-               normalizeClassName(a.class) === normalizeClassName(c.class) &&
+               classesMatch(a.class, c.class, a.section, c.section) &&
                normalizeSectionName(a.section) === normalizeSectionName(c.section);
       });
 
@@ -225,8 +237,8 @@
 
     // Filter students
     var filteredStudents = students.filter(function(s) {
-      if (s.status !== 'Active') return false;
-      if (classFilter && classFilter !== 'all' && normalizeClassName(s.class) !== normalizeClassName(classFilter)) return false;
+      if (s.inTrash || s.status === 'Deleted' || s.status !== 'Active') return false;
+      if (classFilter && classFilter !== 'all' && !classesMatch(s.class, classFilter)) return false;
       if (sectionFilter && sectionFilter !== 'all' && normalizeSectionName(s.section) !== normalizeSectionName(sectionFilter)) return false;
       if (searchTerm) {
         var term = searchTerm.toLowerCase().trim();
@@ -252,11 +264,10 @@
     var noDataCount = 0;
 
     filteredStudents.forEach(function(s) {
-      var sClassNorm = normalizeClassName(s.class);
       var sSecNorm = normalizeSectionName(s.section);
 
       var matchingSessions = rangeRecords.filter(function(r) {
-        return normalizeClassName(r.class) === sClassNorm && normalizeSectionName(r.section) === sSecNorm;
+        return classesMatch(r.class, s.class, r.section, s.section) && normalizeSectionName(r.section) === sSecNorm;
       });
 
       var totalDays = 0;
@@ -448,7 +459,7 @@
 
     html += '<div class="class-status-chips" style="display:flex;flex-wrap:wrap;gap:8px;">';
     statusMap.forEach(function(c) {
-      var isCurrent = normalizeClassName(state.selectedClass) === normalizeClassName(c.class) &&
+      var isCurrent = classesMatch(state.selectedClass, c.class, state.selectedSection, c.section) &&
                       normalizeSectionName(state.selectedSection) === normalizeSectionName(c.section);
       var borderStyle = isCurrent ? '2px solid var(--accent-primary)' : '1px solid var(--border-light)';
       var bgStyle = c.taken ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.10)';
@@ -485,7 +496,7 @@
       html += '<span class="material-icons-round" style="color:var(--danger);font-size:28px;">lock_clock</span>';
       html += '<div>';
       html += '<div style="font-weight:700;color:var(--danger);font-size:14px;">Attendance Submission Locked — Duty Completed</div>';
-      html += '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">Aapne aaj <strong>' + (punchStatus.punchOut.time || 'earlier') + '</strong> par Punch Out kar liya hai. Punch Out ke baad attendance mark ya edit karna locked hai.</div>';
+      html += '<div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">You have punched out today at <strong>' + (punchStatus.punchOut.time || 'earlier') + '</strong>. Marking or editing attendance is locked after punch-out.</div>';
       html += '</div></div>';
     }
 
@@ -975,7 +986,7 @@
           var students = getStudentsForClass(state.selectedClass, state.selectedSection);
           var existing = SchoolApp.store.attendance.find(function(a) {
             return a.date === state.selectedDate &&
-                   normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+                   classesMatch(a.class, state.selectedClass, a.section, state.selectedSection) &&
                    normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
           });
           state.attendanceStatus = {};
@@ -1005,7 +1016,7 @@
           state.attendanceStatus = {};
           var existing = SchoolApp.store.attendance.find(function(a) {
             return a.date === state.selectedDate &&
-                   normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+                   classesMatch(a.class, state.selectedClass, a.section, state.selectedSection) &&
                    normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
           });
           students.forEach(function(s) {
@@ -1306,7 +1317,7 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var isCt = ct.some(function(c) {
-        return normalizeClassName(c.class) === normalizeClassName(state.selectedClass) &&
+        return classesMatch(c.class, state.selectedClass, c.section, state.selectedSection) &&
                normalizeSectionName(c.section) === normalizeSectionName(state.selectedSection);
       });
       if (!isCt) {
@@ -1335,7 +1346,7 @@
       // Check for existing record
       var existingIdx = SchoolApp.store.attendance.findIndex(function(a) {
         return a.date === state.selectedDate &&
-               normalizeClassName(a.class) === normalizeClassName(state.selectedClass) &&
+               classesMatch(a.class, state.selectedClass, a.section, state.selectedSection) &&
                normalizeSectionName(a.section) === normalizeSectionName(state.selectedSection);
       });
 
@@ -1419,7 +1430,7 @@
     if (SchoolApp.isTeacher()) {
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       var isCt = ct.some(function(c) {
-        return normalizeClassName(c.class) === normalizeClassName(record.class) &&
+        return classesMatch(c.class, record.class, c.section, record.section) &&
                normalizeSectionName(c.section) === normalizeSectionName(record.section);
       });
       if (!isCt) {
@@ -1665,7 +1676,7 @@
       var ct = SchoolApp.currentUser.classTeacherOf || [];
       filtered = filtered.filter(function(r) {
         return ct.some(function(c) {
-          return normalizeClassName(c.class) === normalizeClassName(r.class) &&
+          return classesMatch(c.class, r.class, c.section, r.section) &&
                  normalizeSectionName(c.section) === normalizeSectionName(r.section);
         });
       });
@@ -1678,7 +1689,7 @@
       filtered = filtered.filter(function(r) { return r.date <= archiveModalFilters.toDate; });
     }
     if (archiveModalFilters.classFilter !== 'all') {
-      filtered = filtered.filter(function(r) { return r.class === archiveModalFilters.classFilter; });
+      filtered = filtered.filter(function(r) { return classesMatch(r.class, archiveModalFilters.classFilter); });
     }
     if (archiveModalFilters.sectionFilter !== 'all') {
       filtered = filtered.filter(function(r) { return r.section === archiveModalFilters.sectionFilter; });

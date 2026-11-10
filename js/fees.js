@@ -200,6 +200,35 @@
     return;
   }
 
+  function formatTxnDateTime(t) {
+    if (!t) return '—';
+    var ts = (typeof t === 'string') ? t : (t.timestamp || t.dateTime || t.date_time);
+    if (ts) {
+      var hasTime = false;
+      if (typeof ts === 'string') {
+        hasTime = ts.indexOf('T') !== -1 || ts.indexOf(':') !== -1;
+      } else if (typeof ts === 'number' || ts instanceof Date) {
+        hasTime = true;
+      }
+      if (hasTime) {
+        try {
+          var d = new Date(ts);
+          if (!isNaN(d.getTime())) {
+            return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+          }
+        } catch (e) {}
+      }
+    }
+    var dStr = (typeof t === 'object' && t !== null) ? (t.date || (typeof ts === 'string' ? ts.split('T')[0] : '')) : (typeof t === 'string' ? t.split('T')[0] : '');
+    if (dStr) {
+      return formatDateDDMMYYYY(dStr);
+    }
+    return '—';
+  }
+  if (typeof window !== 'undefined' && window.SchoolApp) {
+    window.SchoolApp.formatTxnDateTime = formatTxnDateTime;
+  }
+
   function renderLedgerTab(dataContainer) {
     var stats = calculateFeeLedgerStats();
     var todayColl = document.getElementById('ledger-today-collection');
@@ -243,15 +272,35 @@
         var name = st ? escapeHTML(st.firstName + ' ' + st.lastName) : 'Unknown Student';
         var cls = st ? (st.class + '-' + st.section) : '—';
         var amt = parseFloat(t.amount || 0);
-        var dt = t.date ? new Date(t.date).toLocaleString('en-IN') : '—';
+        var dt = formatTxnDateTime(t);
+        var receiptNo = (window.SchoolApp && typeof window.SchoolApp.getReceiptNumber === 'function')
+          ? window.SchoolApp.getReceiptNumber(t)
+          : (t.receiptNo || (t.id ? t.id.substring(0, 8) : '—'));
 
-        html += '<tr>';
+        var rowStyle = t.isVoided ? ' style="opacity:0.75;"' : '';
+        html += '<tr' + rowStyle + '>';
         html += '<td><strong style="color:var(--accent-primary);">' + name + '</strong></td>';
         html += '<td><span class="badge badge-info">' + cls + '</span></td>';
-        html += '<td><strong style="color:var(--success);">₹' + amt.toLocaleString('en-IN') + '</strong></td>';
+
+        if (t.isVoided) {
+          html += '<td><del style="color:var(--text-muted);">₹' + Math.abs(amt).toLocaleString('en-IN') + '</del> <span class="badge badge-danger" title="' + escapeHTML(t.voidReason || 'Voided') + '" style="font-size:10px; margin-left:4px; cursor:help;">Voided</span></td>';
+        } else if (t.isReversal || amt < 0) {
+          html += '<td><strong style="color:var(--warning, #f59e0b);">-₹' + Math.abs(amt).toLocaleString('en-IN') + '</strong></td>';
+        } else {
+          html += '<td><strong style="color:var(--success);">₹' + amt.toLocaleString('en-IN') + '</strong></td>';
+        }
+
         html += '<td><span class="badge badge-secondary">' + (t.mode || 'Cash') + '</span></td>';
         html += '<td>' + dt + '</td>';
-        html += '<td><code>' + (t.id ? t.id.substring(0, 8) : '—') + '</code></td>';
+
+        if (t.isReversal || amt < 0) {
+          var origTxn = (SchoolApp.store.fees || []).find(function(x) { return x.id === t.originalTxnId; });
+          var origReceiptNo = origTxn ? ((window.SchoolApp && typeof window.SchoolApp.getReceiptNumber === 'function') ? window.SchoolApp.getReceiptNumber(origTxn) : (origTxn.receiptNo || origTxn.id)) : (t.originalTxnId || 'payment');
+          html += '<td><code title="TX ID: ' + escapeHTML(t.id || '') + '" style="cursor:help;">' + escapeHTML(receiptNo) + '</code><br><small style="color:var(--warning); font-size:11px;">Reversal of ' + escapeHTML(origReceiptNo) + '</small></td>';
+        } else {
+          html += '<td><code title="TX ID: ' + escapeHTML(t.id || '') + '" style="cursor:help;">' + escapeHTML(receiptNo) + '</code></td>';
+        }
+
         html += '</tr>';
       });
 
@@ -547,7 +596,7 @@
         msg += 'Last Payment: ' + formatDateDDMMYYYY(s.lastPaymentDate) + '\n';
       }
       if (upiId) {
-        msg += '\nPayment ke liye UPI: ' + upiId + '\n';
+        msg += '\nUPI for Payment: ' + upiId + '\n';
       }
       msg += '\nPlease contact the school office to clear the pending balance.\n';
       msg += '\n- ' + schoolName;
@@ -562,7 +611,7 @@
     // Itemized current month charges
     var groupedKeys = Object.keys(s.currentMonthGrouped || {});
     if (groupedKeys.length > 0) {
-      msg += '*Is Mahine Ke Charges:*\n';
+      msg += '*Current Month Charges:*\n';
       groupedKeys.forEach(function(head) {
         var label = head;
         if ((head === 'Tuition Fee' || head.toLowerCase().indexOf('tuition') !== -1) && s.tuitionMonths) {
@@ -570,11 +619,11 @@
         }
         msg += '• ' + label + ': ₹' + s.currentMonthGrouped[head] + '\n';
       });
-      msg += 'Is Mahine Ka Total: ₹' + s.currentMonthTotal + '\n\n';
+      msg += 'Current Month Total: ₹' + s.currentMonthTotal + '\n\n';
     }
     
     if (s.priorChargesTotal > 0) {
-      msg += 'Pichla Baaki: ₹' + s.priorChargesTotal + '\n';
+      msg += 'Previous Balance: ₹' + s.priorChargesTotal + '\n';
     }
     
     msg += 'Total Paid Till Date: ₹' + s.totalPaid + '\n';
@@ -586,11 +635,11 @@
     msg += '\n*Total Due: ₹' + s.netDue + '*\n';
     
     if (upiId) {
-      msg += '\nPayment ke liye UPI: ' + upiId + '\n';
+      msg += '\nUPI for Payment: ' + upiId + '\n';
     }
     
     if (s.monthsOverdue >= 3) {
-      msg += '\n_Note: 3 mahine se zyada baaki hone par ₹20/mahina late fine lagu ho sakta hai._\n';
+      msg += '\n_Note: A late fee of ₹20/month may be applied for dues pending over 3 months._\n';
     }
     
     msg += '\n- ' + schoolName;
@@ -1158,7 +1207,7 @@
         header: 'Timestamp',
         key: 'timestamp',
         transform: function(val) {
-          return SchoolApp.formatDate(val.split('T')[0]) + ' ' + new Date(val).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          return formatTxnDateTime(val);
         }
       },
       {
@@ -1312,7 +1361,7 @@
     // Info block
     html += '<div class="info-grid">';
     html += '<div class="info-item"><span>Generated On:</span> ' + new Date().toLocaleString() + '</div>';
-    html += '<div class="info-item"><span>Class Filter:</span> ' + (state.historyClassFilter === 'all' ? 'All Classes' : 'Class ' + state.historyClassFilter) + '</div>';
+    html += '<div class="info-item"><span>Class Filter:</span> ' + (state.historyClassFilter === 'all' ? 'All Classes' : (window.formatClassLabel ? window.formatClassLabel(state.historyClassFilter) : 'Class ' + state.historyClassFilter)) + '</div>';
     html += '<div class="info-item"><span>Fee Type Filter:</span> ' + (state.historyTypeFilter === 'all' ? 'All Types' : state.historyTypeFilter) + '</div>';
     var dateRangeStr = 'All Time';
     if (state.historyStartDate || state.historyEndDate) {
@@ -1334,7 +1383,7 @@
     html += '</tr></thead><tbody>';
 
     logs.forEach(function(log) {
-      var logDateStr = SchoolApp.formatDate(log.timestamp.split('T')[0]) + ' ' + new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      var logDateStr = formatTxnDateTime(log);
       html += '<tr>';
       html += '<td>' + logDateStr + '</td>';
       html += '<td>' + log.studentName + '</td>';
@@ -1438,7 +1487,7 @@
       html += '</tr></thead><tbody>';
 
       pageLogs.forEach(function(log) {
-        var logDateStr = SchoolApp.formatDate(log.timestamp.split('T')[0]) + ' ' + new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        var logDateStr = formatTxnDateTime(log);
         html += '<tr>';
         html += '<td>' + logDateStr + '</td>';
         html += '<td><strong style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + log.studentId + '\')">' + escapeHTML(log.studentName) + '</strong></td>';
@@ -1588,7 +1637,8 @@
       var settings = SchoolApp.store.settings || {};
       var classesList = settings.classes || (settings.schoolInfo && settings.schoolInfo.classes) || [];
       classesList.forEach(function(c) {
-        shellHtml += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
+        var clsLabel = window.formatClassLabel ? window.formatClassLabel(c) : (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c);
+        shellHtml += '<option value="' + c + '"' + (state.classFilter === c ? ' selected' : '') + '>' + clsLabel + '</option>';
       });
       shellHtml += '</select>';
 
@@ -1626,7 +1676,8 @@
       
       shellHtml += '<select class="form-select" id="fees-history-class-filter" style="width: auto; min-width: 130px;"><option value="all">All Classes</option>';
       classesList.forEach(function(c) {
-        shellHtml += '<option value="' + c + '"' + (state.historyClassFilter === c ? ' selected' : '') + '>' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
+        var clsLabel = window.formatClassLabel ? window.formatClassLabel(c) : (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c);
+        shellHtml += '<option value="' + c + '"' + (state.historyClassFilter === c ? ' selected' : '') + '>' + clsLabel + '</option>';
       });
       shellHtml += '</select>';
 
@@ -1652,7 +1703,6 @@
       shellHtml += '<div class="search-wrapper" style="flex: 1; min-width: 200px;"><span class="material-icons-round">search</span>';
       shellHtml += '<input type="text" id="fees-ledger-search" placeholder="Search today\'s payments..." value="' + (state.ledgerSearchQuery || '') + '">';
       shellHtml += '</div>';
-      shellHtml += '<button class="btn btn-secondary bulk-fee-reminders-btn" id="bulk-fee-reminders-ledger-btn" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:18px">campaign</span> 📢 Send Bulk Fee Reminders</button>';
       shellHtml += '</div>';
 
       shellHtml += '<div id="fees-data-container"></div>';
@@ -2251,7 +2301,7 @@
     var dateStr = (txn && txn.date) || new Date().toLocaleDateString('en-IN');
 
     var message = 
-      'Namaste! 🙏\n' +
+      'Dear Parent,\n' +
       'Payment of ₹' + Number(amount).toLocaleString('en-IN') + ' received for ' + studentName + ' (' + classSec + ').\n\n' +
       'Receipt No: ' + receiptNo + '\n' +
       'Payment Mode: ' + (mode || 'Cash') + '\n' +
@@ -3876,7 +3926,8 @@
     bodyHTML += '<select id="bulk-class" class="form-select">';
     bodyHTML += '<option value="all">All Classes (Entire School)</option>';
     classes.forEach(function(c) {
-      bodyHTML += '<option value="' + c + '">' + (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c) + '</option>';
+      var clsLabel = window.formatClassLabel ? window.formatClassLabel(c) : (['Nursery','LKG','UKG'].indexOf(c) !== -1 ? c : 'Class ' + c);
+      bodyHTML += '<option value="' + c + '">' + clsLabel + '</option>';
     });
     bodyHTML += '</select></div>';
 
@@ -4081,7 +4132,7 @@
         });
 
         if (students.length > 0 && chargedCount === 0 && skippedCount > 0) {
-          SchoolApp.showToast('Ye students is month / date ke liye already charge ho chuke hain.', 'warning');
+          SchoolApp.showToast('These students have already been charged for this month / date.', 'warning');
           saveBtn.disabled = false;
           saveBtn.textContent = 'Generate Dues';
           return;

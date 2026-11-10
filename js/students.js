@@ -90,7 +90,9 @@
   }
 
   function getFilteredStudents() {
-    var students = SchoolApp.store.students || [];
+    var students = (SchoolApp.store.students || []).filter(function(s) {
+      return !s.inTrash && s.status !== 'Deleted';
+    });
 
     // Teacher: only show assigned classes (combining classTeacherOf and subjectTeacherOf)
     if (SchoolApp.isTeacher()) {
@@ -506,6 +508,21 @@
             s.inTrash = true;
             SchoolApp.moveToTrash('student', s.id, getStudentFullName(s), 'Class ' + s.class + '-' + s.section, s);
           });
+          if (SchoolApp.isStudentsMigrated && SchoolApp.isStudentsMigrated()) {
+            deleted.forEach(function(s) {
+              try {
+                var ref = window.firestore.doc(window.db, 'tenant_data', SchoolApp.store.currentSchoolId, 'students', s.id);
+                window.firestore.updateDoc(ref, {
+                  status: 'Deleted',
+                  statusBeforeDelete: s.statusBeforeDelete,
+                  inTrash: true,
+                  deletedAt: new Date().toISOString()
+                });
+              } catch (e) {
+                console.warn('Subcollection bulk delete update error:', e);
+              }
+            });
+          }
           SchoolApp.store.students = SchoolApp.store.students.filter(function(s) {
             return state.selectedIds.indexOf(s.id) === -1;
           });

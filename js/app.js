@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v84';
+window.APP_VERSION = window.APP_VERSION || 'v85';
 if (typeof window.updateVersionUI === 'function') {
   window.updateVersionUI(window.APP_VERSION);
 }
@@ -381,7 +381,7 @@ window.SchoolApp = {
       var serverTeacherBaseline = (this.liveServerTeacherCount !== undefined) ? this.liveServerTeacherCount : (this.initialServerTeacherCount || 0);
 
       var payloadStudents = Array.isArray(payload.students) ? payload.students : [];
-      var payloadTrash = Array.isArray(payload.trash) ? payload.trash : [];
+      var payloadTrash = Array.isArray(payload.trash) ? payload.trash : (Array.isArray(this.store && this.store.trash) ? this.store.trash : []);
 
       if (!this.isStudentsMigrated(currentSchoolId) && serverStudentBaseline > 0 && payloadStudents.length < serverStudentBaseline) {
         var baselineStudents = Array.isArray(this._serverStudentsBaseline) ? this._serverStudentsBaseline : (Array.isArray(this._frozenRootStudents) ? this._frozenRootStudents : []);
@@ -779,7 +779,7 @@ window.SchoolApp = {
   isStudentsMigrated: function(schoolId) {
     var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
     if (!sid) return false;
-    return !!(this.store && this.store.settings && this.store.settings.studentsMigrated === true);
+    return !!((this.store && this.store.settings && this.store.settings.studentsMigrated === true) || (this.store && this.store.studentsMigrated === true));
   },
 
   isStudentsDualWrite: function(schoolId) {
@@ -1617,8 +1617,22 @@ window.SchoolApp = {
       var currentMonth = this.getLocalMonthString();
       await this.loadTeacherAttendanceMonth(schoolId, currentMonth);
 
-      // 2. Notices
-      var noticesSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notices')).catch(function() { return null; });
+      // 2. Notices (load latest 100 with fallback)
+      var noticesQuery;
+      try {
+        if (typeof fs.query === 'function' && typeof fs.orderBy === 'function' && typeof fs.limit === 'function') {
+          noticesQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notices'), fs.orderBy('date', 'desc'), fs.limit(100));
+        } else {
+          noticesQuery = fs.collection(db, 'tenant_data', schoolId, 'notices');
+        }
+      } catch (e) {
+        noticesQuery = fs.collection(db, 'tenant_data', schoolId, 'notices');
+      }
+      var noticesSnap = await fs.getDocs(noticesQuery).catch(async function() {
+        try {
+          return await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notices'));
+        } catch (e) { return null; }
+      });
       if (noticesSnap && !noticesSnap.empty) {
         var subNotices = [];
         this._serverNoticesMap = new Map();
@@ -1628,14 +1642,38 @@ window.SchoolApp = {
           subNotices.push(d);
           SchoolApp._serverNoticesMap.set(d.id, JSON.parse(JSON.stringify(d)));
         });
+        this._lastNoticeDoc = noticesSnap.docs[noticesSnap.docs.length - 1];
+        this._hasMoreNotices = noticesSnap.docs.length >= 100;
         var noticeMap = new Map();
         (this.store.notices || []).forEach(function(n) { if (n && n.id) noticeMap.set(n.id, n); });
         subNotices.forEach(function(n) { noticeMap.set(n.id, n); });
         this.store.notices = Array.from(noticeMap.values());
+      } else {
+        this._hasMoreNotices = false;
       }
 
-      // 3. Notifications
-      var notifsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notifications')).catch(function() { return null; });
+      // 3. Notifications (load latest 100 with fallback)
+      var notifsQuery;
+      try {
+        if (typeof fs.query === 'function' && typeof fs.orderBy === 'function' && typeof fs.limit === 'function') {
+          notifsQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notifications'), fs.orderBy('date', 'desc'), fs.limit(100));
+        } else {
+          notifsQuery = fs.collection(db, 'tenant_data', schoolId, 'notifications');
+        }
+      } catch (e) {
+        notifsQuery = fs.collection(db, 'tenant_data', schoolId, 'notifications');
+      }
+      var notifsSnap = await fs.getDocs(notifsQuery).catch(async function() {
+        try {
+          if (typeof fs.query === 'function' && typeof fs.orderBy === 'function') {
+            try {
+              var tQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notifications'), fs.orderBy('timestamp', 'desc'), fs.limit(100));
+              return await fs.getDocs(tQuery);
+            } catch (err2) {}
+          }
+          return await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notifications'));
+        } catch (e) { return null; }
+      });
       if (notifsSnap && !notifsSnap.empty) {
         var subNotifs = [];
         this._serverNotificationsMap = new Map();
@@ -1645,10 +1683,14 @@ window.SchoolApp = {
           subNotifs.push(d);
           SchoolApp._serverNotificationsMap.set(d.id, JSON.parse(JSON.stringify(d)));
         });
+        this._lastNotificationDoc = notifsSnap.docs[notifsSnap.docs.length - 1];
+        this._hasMoreNotifications = notifsSnap.docs.length >= 100;
         var notifMap = new Map();
         (this.store.notifications || []).forEach(function(n) { if (n && n.id) notifMap.set(n.id, n); });
         subNotifs.forEach(function(n) { notifMap.set(n.id, n); });
         this.store.notifications = Array.from(notifMap.values());
+      } else {
+        this._hasMoreNotifications = false;
       }
 
       // 4. Attendance Requests
@@ -1734,6 +1776,96 @@ window.SchoolApp = {
       }
     } catch (e) {
       console.warn('[loadV2Subcollections] Error loading subcollections for ' + schoolId, e);
+    }
+  },
+
+  loadOlderNotices: async function() {
+    var schoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!schoolId || !this._lastNoticeDoc || !window.firestore || !window.db) return 0;
+    var fs = window.firestore;
+    var db = window.db;
+    try {
+      var q = fs.query(
+        fs.collection(db, 'tenant_data', schoolId, 'notices'),
+        fs.orderBy('date', 'desc'),
+        fs.startAfter(this._lastNoticeDoc),
+        fs.limit(100)
+      );
+      var snap = await fs.getDocs(q);
+      if (snap && !snap.empty) {
+        this._lastNoticeDoc = snap.docs[snap.docs.length - 1];
+        this._hasMoreNotices = snap.docs.length >= 100;
+        var newNotices = [];
+        var self = this;
+        snap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          newNotices.push(d);
+          if (self._serverNoticesMap) self._serverNoticesMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var noticeMap = new Map();
+        (this.store.notices || []).forEach(function(n) { if (n && n.id) noticeMap.set(n.id, n); });
+        newNotices.forEach(function(n) { noticeMap.set(n.id, n); });
+        this.store.notices = Array.from(noticeMap.values());
+        return newNotices.length;
+      } else {
+        this._hasMoreNotices = false;
+        return 0;
+      }
+    } catch (e) {
+      console.warn('[Notices] Error loading older notices:', e);
+      this._hasMoreNotices = false;
+      return 0;
+    }
+  },
+
+  loadOlderNotifications: async function() {
+    var schoolId = (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!schoolId || !this._lastNotificationDoc || !window.firestore || !window.db) return 0;
+    var fs = window.firestore;
+    var db = window.db;
+    try {
+      var self = this;
+      var q = fs.query(
+        fs.collection(db, 'tenant_data', schoolId, 'notifications'),
+        fs.orderBy('date', 'desc'),
+        fs.startAfter(this._lastNotificationDoc),
+        fs.limit(100)
+      );
+      var snap = await fs.getDocs(q).catch(async function() {
+        try {
+          var tQuery = fs.query(
+            fs.collection(db, 'tenant_data', schoolId, 'notifications'),
+            fs.orderBy('timestamp', 'desc'),
+            fs.startAfter(self._lastNotificationDoc),
+            fs.limit(100)
+          );
+          return await fs.getDocs(tQuery);
+        } catch (e2) { return null; }
+      });
+      if (snap && !snap.empty) {
+        this._lastNotificationDoc = snap.docs[snap.docs.length - 1];
+        this._hasMoreNotifications = snap.docs.length >= 100;
+        var newNotifs = [];
+        snap.forEach(function(docSnap) {
+          var d = docSnap.data();
+          d.id = docSnap.id;
+          newNotifs.push(d);
+          if (self._serverNotificationsMap) self._serverNotificationsMap.set(d.id, JSON.parse(JSON.stringify(d)));
+        });
+        var notifMap = new Map();
+        (this.store.notifications || []).forEach(function(n) { if (n && n.id) notifMap.set(n.id, n); });
+        newNotifs.forEach(function(n) { notifMap.set(n.id, n); });
+        this.store.notifications = Array.from(notifMap.values());
+        return newNotifs.length;
+      } else {
+        this._hasMoreNotifications = false;
+        return 0;
+      }
+    } catch (e) {
+      console.warn('[Notifications] Error loading older notifications:', e);
+      this._hasMoreNotifications = false;
+      return 0;
     }
   },
 
@@ -2017,10 +2149,11 @@ window.SchoolApp = {
     var ym = (record && record.date ? record.date : new Date().toISOString().split('T')[0]).slice(0, 7);
 
     // Update in-memory store
+    var self = this;
     if (!this.store.attendance) this.store.attendance = [];
     var idx = this.store.attendance.findIndex(function(a) {
       return a.id === record.id || (a.date === record.date &&
-        String(a.class).toLowerCase().trim() === String(record.class).toLowerCase().trim() &&
+        self.classesMatch(a.class, record.class, a.section, record.section) &&
         String(a.section).toLowerCase().trim() === String(record.section).toLowerCase().trim());
     });
     if (idx !== -1) {
@@ -2035,7 +2168,7 @@ window.SchoolApp = {
     } else {
       var mIdx = this._attendanceMonths[ym].findIndex(function(a) {
         return a.id === record.id || (a.date === record.date &&
-          String(a.class).toLowerCase().trim() === String(record.class).toLowerCase().trim() &&
+          self.classesMatch(a.class, record.class, a.section, record.section) &&
           String(a.section).toLowerCase().trim() === String(record.section).toLowerCase().trim());
       });
       if (mIdx !== -1) {
@@ -2052,7 +2185,7 @@ window.SchoolApp = {
         var classId = String(record.class);
         var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'attendance_months', ym, 'classes', classId);
         var classRecords = (this._attendanceMonths[ym] || []).filter(function(a) {
-          return String(a.class) === String(record.class);
+          return self.classesMatch(a.class, record.class, a.section, record.section);
         });
         var saveFn = () => window.firestore.setDoc(docRef, { records: JSON.parse(JSON.stringify(classRecords)) });
         var success = await this.saveWithRetry(saveFn);
@@ -5798,10 +5931,25 @@ window.SchoolApp = {
     } else {
       html += '<div style="padding: 16px; text-align: center; font-size: 11px; color: var(--text-muted);">No system actions recorded.</div>';
     }
+
+    if (this._hasMoreNotifications) {
+      html += '<div style="padding: 8px 16px; text-align: center; border-top: 1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.1);"><button type="button" class="btn btn-secondary btn-xs" id="btn-load-older-notifs" style="font-size:11px; padding: 3px 8px;"><span class="material-icons-round" style="font-size:13px; vertical-align:middle;">history</span> Load older notifications</button></div>';
+    }
     
     html += '</div>';
     
     dropdown.innerHTML = html;
+
+    var loadMoreNotifsBtn = document.getElementById('btn-load-older-notifs');
+    if (loadMoreNotifsBtn) {
+      loadMoreNotifsBtn.addEventListener('click', async function(e) {
+        e.stopPropagation();
+        this.disabled = true;
+        this.textContent = 'Loading...';
+        await self.loadOlderNotifications();
+        self.renderNotificationDropdown();
+      });
+    }
   },
   
   clearNotifications: function() {
@@ -5989,10 +6137,91 @@ window.SchoolApp = {
     if (!cls) return '';
     var str = String(cls).trim();
     str = str.replace(/^(class\s+)+/i, '').trim();
-    if (['Nursery', 'LKG', 'UKG'].indexOf(str) !== -1) {
-      return str;
-    }
+    var upper = str.toUpperCase();
+    if (upper === 'NURSERY') return 'Nursery';
+    if (upper === 'LKG') return 'LKG';
+    if (upper === 'UKG') return 'UKG';
+    if (upper === 'PRE-NURSERY') return 'Pre-Nursery';
+    if (upper === 'PLAYGROUP' || upper === 'PLAY GROUP') return 'Playgroup';
+    if (upper === 'KG' || upper === 'K.G.') return 'KG';
     return 'Class ' + str;
+  },
+
+  normalizeClassIdentifier: function(cls) {
+    if (!cls) return '';
+    var str = String(cls).trim().toLowerCase();
+    // Strip prefixes: class, grade, std, standard
+    str = str.replace(/^(class|grade|std|standard)\s+/i, '').trim();
+    // Common pre-primary aliases
+    if (str === 'nur' || str === 'nursery') return 'nursery';
+    if (str === 'lkg' || str === 'l.k.g.' || str === 'lower kg') return 'lkg';
+    if (str === 'ukg' || str === 'u.k.g.' || str === 'upper kg') return 'ukg';
+    if (str === 'kg' || str === 'k.g.' || str === 'kindergarten') return 'kg';
+    if (str === 'playgroup' || str === 'play group' || str === 'pg') return 'playgroup';
+    // Ordinal numbers (1st -> 1, 2nd -> 2, 3rd -> 3, 4th -> 4, etc.)
+    str = str.replace(/^(\d+)(st|nd|rd|th)$/i, '$1');
+    // Roman numerals (I through XII)
+    var romanMap = {
+      'i': '1', 'ii': '2', 'iii': '3', 'iv': '4', 'v': '5',
+      'vi': '6', 'vii': '7', 'viii': '8', 'ix': '9', 'x': '10',
+      'xi': '11', 'xii': '12'
+    };
+    if (romanMap[str]) {
+      return romanMap[str];
+    }
+    return str;
+  },
+
+  classesMatch: function(clsA, clsB, secA, secB) {
+    if (!clsA || !clsB) return false;
+    var rawA = String(clsA).trim().toLowerCase();
+    var rawB = String(clsB).trim().toLowerCase();
+    if (rawA === rawB) return true;
+
+    // Check alias map from settings if available
+    var settings = (this.store && this.store.settings) || {};
+    var aliases = settings.classAliases || settings.renamedClasses || {};
+    if (aliases[clsA] && String(aliases[clsA]).trim().toLowerCase() === rawB) return true;
+    if (aliases[clsB] && String(aliases[clsB]).trim().toLowerCase() === rawA) return true;
+
+    var normA = this.normalizeClassIdentifier(clsA);
+    var normB = this.normalizeClassIdentifier(clsB);
+    if (normA && normA === normB) return true;
+
+    // If alias matches on normalized values
+    for (var k in aliases) {
+      if (Object.prototype.hasOwnProperty.call(aliases, k)) {
+        var v = aliases[k];
+        if ((this.normalizeClassIdentifier(k) === normA && this.normalizeClassIdentifier(v) === normB) ||
+            (this.normalizeClassIdentifier(k) === normB && this.normalizeClassIdentifier(v) === normA)) {
+          return true;
+        }
+      }
+    }
+
+    // Check composite class-section: e.g. "6-A" vs "6" + "A"
+    if (secA || secB) {
+      var sA = secA ? String(secA).trim().toLowerCase() : '';
+      var sB = secB ? String(secB).trim().toLowerCase() : '';
+      if (rawA === (normB + '-' + sB) || rawA === (normB + ' ' + sB)) return true;
+      if (rawB === (normA + '-' + sA) || rawB === (normA + ' ' + sA)) return true;
+    }
+
+    return false;
+  },
+
+  getUserFullName: function(user) {
+    if (!user) return 'Administrator';
+    if (user.name && String(user.name).trim() && user.name.trim() !== 'undefined undefined') {
+      return String(user.name).trim();
+    }
+    var parts = [user.firstName, user.lastName].filter(Boolean);
+    if (parts.length > 0) {
+      var full = parts.join(' ').trim();
+      if (full && full !== 'undefined undefined') return full;
+    }
+    if (user.username && String(user.username).trim()) return String(user.username).trim();
+    return user.role === 'teacher' ? 'Teacher' : 'Administrator';
   },
 
   getStudentFullName: function(student) {
@@ -6706,21 +6935,39 @@ window.SchoolApp = {
     });
     var attendancePerc = todayTotal > 0 ? Math.round((todayPresent / todayTotal) * 100) : 0;
 
-    // Attendance chart data (last 7 entries)
-    var attData = (this.store.attendance || []).slice(-7).map(function(a) {
+    // Attendance chart data: aggregate per date across classes, sort ascending, last 7 school days
+    var attByDate = {};
+    (this.store.attendance || []).forEach(function(a) {
+      var d = a.date || (a.timestamp ? a.timestamp.split('T')[0] : '');
+      if (!d) return;
+      if (!attByDate[d]) {
+        attByDate[d] = { present: 0, total: 0 };
+      }
       var recList = self.normalizeAttendanceRecords(a.records);
-      var present = recList.filter(function(r) { return r.status === 'present' || r.status === 'late'; }).length;
-      var total = recList.length;
+      recList.forEach(function(r) {
+        attByDate[d].total++;
+        if (r.status === 'present' || r.status === 'late') {
+          attByDate[d].present++;
+        }
+      });
+    });
+
+    var sortedDates = Object.keys(attByDate).sort().slice(-7);
+    var attData = sortedDates.map(function(d) {
+      var entry = attByDate[d];
+      var dParts = d.split('-');
+      var ddmm = dParts.length === 3 ? (dParts[2] + '-' + dParts[1]) : d;
       return {
-        label: a.date ? a.date.substr(5) : '',
-        value: total > 0 ? Math.round((present / total) * 100) : 0
+        date: d,
+        label: ddmm,
+        value: entry.total > 0 ? Math.round((entry.present / entry.total) * 100) : 0
       };
     });
 
     // Class distribution
     var classDist = {};
     allActiveStudents.filter(function(s) { return s.status === 'Active'; }).forEach(function(s) {
-      var key = 'Class ' + s.class;
+      var key = self.formatClassLabel(s.class);
       classDist[key] = (classDist[key] || 0) + 1;
     });
 
@@ -7228,13 +7475,29 @@ window.SchoolApp = {
 
     // Update user info in sidebar
     if (this.currentUser) {
-      var initials = this.getInitials(this.currentUser.firstName, this.currentUser.lastName);
-      document.getElementById('sidebar-avatar').textContent = initials;
-      document.getElementById('sidebar-avatar').setAttribute('data-color', this.getAvatarColor(this.currentUser.firstName));
-      document.getElementById('header-avatar').textContent = initials;
-      document.getElementById('header-avatar').setAttribute('data-color', this.getAvatarColor(this.currentUser.firstName));
-      document.getElementById('sidebar-user-name').textContent = this.currentUser.firstName + ' ' + this.currentUser.lastName;
-      document.getElementById('sidebar-user-role').textContent = this.currentUser.role === 'admin' ? 'Admin' : 'Teacher';
+      var displayName = this.getUserFullName(this.currentUser);
+      var nameParts = displayName.split(/\s+/);
+      var fn = this.currentUser.firstName || nameParts[0] || 'Administrator';
+      var ln = this.currentUser.lastName || nameParts.slice(1).join(' ') || '';
+      var initials = this.getInitials(fn, ln);
+      var sidebarAvatar = document.getElementById('sidebar-avatar');
+      if (sidebarAvatar) {
+        sidebarAvatar.textContent = initials;
+        sidebarAvatar.setAttribute('data-color', this.getAvatarColor(fn));
+      }
+      var headerAvatar = document.getElementById('header-avatar');
+      if (headerAvatar) {
+        headerAvatar.textContent = initials;
+        headerAvatar.setAttribute('data-color', this.getAvatarColor(fn));
+      }
+      var sidebarUserName = document.getElementById('sidebar-user-name');
+      if (sidebarUserName) {
+        sidebarUserName.textContent = displayName;
+      }
+      var sidebarUserRole = document.getElementById('sidebar-user-role');
+      if (sidebarUserRole) {
+        sidebarUserRole.textContent = this.currentUser.role === 'admin' ? 'Admin' : 'Teacher';
+      }
     }
 
     // Render filtered sidebar nav
@@ -7351,47 +7614,63 @@ window.SchoolApp = {
       }
     });
 
-    // Popstate event listener for browser back/forward buttons
-    window.addEventListener('popstate', function(event) {
-      if (self.currentUser) {
-        if (event.state && event.state.page) {
-          var page = event.state.page;
-          var tab = event.state.tab;
-          
-          if (self.adminIsDirty) {
-            self.pendingNavigation = { page: page, tab: tab, fromHistory: true };
-            self.confirmUnsavedChanges(function() {
-              if (page === 'admin') {
-                var adminModule = self.modules['admin'];
-                if (adminModule && typeof adminModule.setActiveTab === 'function') {
-                  adminModule.setActiveTab(tab || 'settings');
-                }
-              }
-              self.navigate(page, true);
-            });
-            return;
-          }
+    function handleHashOrPopstate(targetPage, targetTab, fromHistory) {
+      if (!self.currentUser) return;
+      var page = targetPage || null;
+      var tab = targetTab || null;
 
+      if (!page) {
+        var hash = window.location.hash;
+        if (hash && hash.length > 1) {
+          var clean = hash.substring(1);
+          var parts = clean.split('-');
+          page = parts[0];
+          if (parts[1]) tab = parts.slice(1).join('-');
+        }
+      }
+      if (!page) page = 'dashboard';
+
+      var validPages = ['dashboard', 'students', 'teachers', 'attendance', 'fees', 'timetable', 'exams', 'admin', 'help', 'teacher-attendance', 'documents', 'accounts', 'payroll'];
+      if (validPages.indexOf(page) === -1) {
+        page = 'dashboard';
+      }
+
+      if (self.adminIsDirty) {
+        self.pendingNavigation = { page: page, tab: tab, fromHistory: fromHistory };
+        self.confirmUnsavedChanges(function() {
           if (page === 'admin') {
             var adminModule = self.modules['admin'];
             if (adminModule && typeof adminModule.setActiveTab === 'function') {
               adminModule.setActiveTab(tab || 'settings');
             }
           }
-          
-          self.navigate(page, true);
-        } else {
-          // Fallback to dashboard if state is empty/null
-          if (self.adminIsDirty) {
-            self.pendingNavigation = { page: 'dashboard', tab: null, fromHistory: true };
-            self.confirmUnsavedChanges(function() {
-              self.navigate('dashboard', true);
-            });
-            return;
-          }
-          self.navigate('dashboard', true);
+          self.navigate(page, fromHistory);
+        });
+        return;
+      }
+
+      if (page === 'admin') {
+        var adminModule = self.modules['admin'];
+        if (adminModule && typeof adminModule.setActiveTab === 'function') {
+          adminModule.setActiveTab(tab || 'settings');
         }
       }
+
+      self.navigate(page, fromHistory);
+    }
+
+    // Popstate event listener for browser back/forward buttons
+    window.addEventListener('popstate', function(event) {
+      if (event.state && event.state.page) {
+        handleHashOrPopstate(event.state.page, event.state.tab, true);
+      } else {
+        handleHashOrPopstate(null, null, true);
+      }
+    });
+
+    // Hashchange event listener for manual typing in address bar
+    window.addEventListener('hashchange', function() {
+      handleHashOrPopstate(null, null, true);
     });
 
     // Login form
@@ -8017,10 +8296,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         var stClasses = Array.isArray(impTeacher.subjectTeacherOf) ? impTeacher.subjectTeacherOf : (impTeacher.assignedClasses || []).map(function(ac) {
           return { class: ac.class, section: ac.section, subject: impTeacher.subject || '' };
         });
+        var teacherDisplayName = impTeacher.name || [impTeacher.firstName, impTeacher.lastName].filter(Boolean).join(' ') || 'Impersonated Teacher';
         SchoolApp.currentUser = {
           role: 'teacher',
           id: impTeacher.id || 'imp_teacher',
-          name: impTeacher.name || 'Impersonated Teacher',
+          name: teacherDisplayName,
+          firstName: impTeacher.firstName || teacherDisplayName.split(' ')[0] || 'Teacher',
+          lastName: impTeacher.lastName || teacherDisplayName.split(' ').slice(1).join(' ') || '',
           email: impTeacher.email || 'teacher@school.edu.in',
           assignedClasses: impTeacher.assignedClasses || [],
           classTeacherOf: ctClasses,
@@ -8030,6 +8312,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         SchoolApp.currentUser = {
           role: 'admin',
           name: 'Administrator',
+          firstName: 'Administrator',
+          lastName: '',
           username: SchoolApp.store.settings.adminUsername || 'admin'
         };
       }

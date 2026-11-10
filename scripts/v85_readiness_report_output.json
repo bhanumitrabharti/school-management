@@ -1,0 +1,1855 @@
+[
+  {
+    "schoolId": "apex_khalcho_mugmtmx4",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 36511,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 31070,
+        "count": 38
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 2023,
+        "count": 5
+      },
+      {
+        "key": "teachers",
+        "size": 1228,
+        "count": 1
+      },
+      {
+        "key": "notifications",
+        "size": 816,
+        "count": 6
+      },
+      {
+        "key": "feeStructures",
+        "size": 722,
+        "count": 13
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "updatedAt",
+        "size": 26,
+        "count": 1
+      },
+      {
+        "key": "currentSchoolId",
+        "size": 23,
+        "count": 1
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "students",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 6,
+        "subCount": 6,
+        "rootSize": 816,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 828,
+    "projectedRootSize": 35683
+  },
+  {
+    "schoolId": "cambridge_mtl62hkp",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 3752,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 1615,
+        "count": 20
+      },
+      {
+        "key": "feeStructures",
+        "size": 694,
+        "count": 12
+      },
+      {
+        "key": "examConfig",
+        "size": 471,
+        "count": 3
+      },
+      {
+        "key": "notifications",
+        "size": 261,
+        "count": 2
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "updatedAt",
+        "size": 26,
+        "count": 1
+      },
+      {
+        "key": "currentSchoolId",
+        "size": 20,
+        "count": 1
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "teacherCorrectionRequests",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "trash",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 2,
+        "subCount": 2,
+        "rootSize": 261,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 273,
+    "projectedRootSize": 3479
+  },
+  {
+    "schoolId": "dugda_mq7qfia3",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 235625,
+    "top10": [
+      {
+        "key": "timetable",
+        "size": 71610,
+        "count": 24
+      },
+      {
+        "key": "students",
+        "size": 65468,
+        "count": 127
+      },
+      {
+        "key": "settings",
+        "size": 43511,
+        "count": 43
+      },
+      {
+        "key": "examSubjects",
+        "size": 21747,
+        "count": 6
+      },
+      {
+        "key": "notifications",
+        "size": 6973,
+        "count": 50
+      },
+      {
+        "key": "examMarks",
+        "size": 6258,
+        "count": 4
+      },
+      {
+        "key": "teachers",
+        "size": 3544,
+        "count": 4
+      },
+      {
+        "key": "fees",
+        "size": 3535,
+        "count": 18
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 3427,
+        "count": 24
+      },
+      {
+        "key": "attendance",
+        "size": 2196,
+        "count": 7
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 127,
+        "subCount": 127,
+        "rootSize": 65468,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 5,
+        "subCount": 5,
+        "rootSize": 1288,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 50,
+        "subCount": 55,
+        "rootSize": 6973,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 2,
+        "subCount": 2,
+        "rootSize": 451,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 18,
+        "subCount": 0,
+        "rootSize": 3535,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "attendance",
+        "rootCount": 7,
+        "subCount": 0,
+        "rootSize": 2196,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      }
+    ],
+    "reclaimableBytes": 74182,
+    "projectedRootSize": 161443
+  },
+  {
+    "schoolId": "dummy_test_school_isolated",
+    "storageVer": 2,
+    "restructured": false,
+    "studentsMigrated": true,
+    "fullSize": 209,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 172,
+        "count": 5
+      },
+      {
+        "key": "students",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "fees",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 2,
+    "projectedRootSize": 207
+  },
+  {
+    "schoolId": "edify_imjvqmef",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 6384,
+    "top10": [
+      {
+        "key": "reportCardConfig",
+        "size": 3429,
+        "count": 24
+      },
+      {
+        "key": "settings",
+        "size": 1377,
+        "count": 31
+      },
+      {
+        "key": "students",
+        "size": 567,
+        "count": 1
+      },
+      {
+        "key": "examConfig",
+        "size": 471,
+        "count": 3
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "currentSchoolId",
+        "size": 16,
+        "count": 1
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "teachers",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "attendance",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "fees",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 1,
+        "subCount": 1,
+        "rootSize": 567,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 0,
+        "subCount": 5,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 1,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 571,
+    "projectedRootSize": 5813
+  },
+  {
+    "schoolId": "idealschoolgomoh_mv1xhpe5",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 112363,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 63594,
+        "count": 44
+      },
+      {
+        "key": "teacherAttendance",
+        "size": 20836,
+        "count": 45
+      },
+      {
+        "key": "notifications",
+        "size": 7083,
+        "count": 49
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 3432,
+        "count": 24
+      },
+      {
+        "key": "students",
+        "size": 3248,
+        "count": 5
+      },
+      {
+        "key": "teachers",
+        "size": 2371,
+        "count": 5
+      },
+      {
+        "key": "teacherCorrectionRequests",
+        "size": 2247,
+        "count": 4
+      },
+      {
+        "key": "attendanceRequests",
+        "size": 2247,
+        "count": 4
+      },
+      {
+        "key": "feeStructures",
+        "size": 1827,
+        "count": 13
+      },
+      {
+        "key": "examSubjects",
+        "size": 1679,
+        "count": 4
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 5,
+        "subCount": 5,
+        "rootSize": 3248,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 49,
+        "subCount": 82,
+        "rootSize": 7083,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 1,
+        "subCount": 1,
+        "rootSize": 640,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 10979,
+    "projectedRootSize": 101384
+  },
+  {
+    "schoolId": "ips_mttx07mt",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 516963,
+    "top10": [
+      {
+        "key": "students",
+        "size": 350832,
+        "count": 978
+      },
+      {
+        "key": "timetable",
+        "size": 120319,
+        "count": 27
+      },
+      {
+        "key": "teachers",
+        "size": 22286,
+        "count": 27
+      },
+      {
+        "key": "settings",
+        "size": 14576,
+        "count": 38
+      },
+      {
+        "key": "notifications",
+        "size": 3449,
+        "count": 23
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 2018,
+        "count": 5
+      },
+      {
+        "key": "teacherAttendance",
+        "size": 1373,
+        "count": 4
+      },
+      {
+        "key": "absenceIntimationLog",
+        "size": 889,
+        "count": 6
+      },
+      {
+        "key": "examConfig",
+        "size": 471,
+        "count": 3
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 978,
+        "subCount": 978,
+        "rootSize": 350832,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 23,
+        "subCount": 23,
+        "rootSize": 3449,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 354291,
+    "projectedRootSize": 162672
+  },
+  {
+    "schoolId": "kkgs_mttt4ufq",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 601157,
+    "top10": [
+      {
+        "key": "teacherAttendance",
+        "size": 186867,
+        "count": 469
+      },
+      {
+        "key": "settings",
+        "size": 179962,
+        "count": 47
+      },
+      {
+        "key": "students",
+        "size": 79102,
+        "count": 162
+      },
+      {
+        "key": "timetable",
+        "size": 48687,
+        "count": 17
+      },
+      {
+        "key": "schools",
+        "size": 38063,
+        "count": 1
+      },
+      {
+        "key": "examSubjects",
+        "size": 34233,
+        "count": 2
+      },
+      {
+        "key": "teachers",
+        "size": 12141,
+        "count": 12
+      },
+      {
+        "key": "notifications",
+        "size": 6844,
+        "count": 50
+      },
+      {
+        "key": "feeStructures",
+        "size": 4822,
+        "count": 16
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 3423,
+        "count": 24
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 162,
+        "subCount": 162,
+        "rootSize": 79102,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 3,
+        "subCount": 3,
+        "rootSize": 548,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 50,
+        "subCount": 53,
+        "rootSize": 6844,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 778,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 86502,
+    "projectedRootSize": 514655
+  },
+  {
+    "schoolId": "nts_mu28myws",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 5940,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 2142,
+        "count": 30
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 2023,
+        "count": 5
+      },
+      {
+        "key": "feeStructures",
+        "size": 722,
+        "count": 13
+      },
+      {
+        "key": "notifications",
+        "size": 408,
+        "count": 3
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "updatedAt",
+        "size": 26,
+        "count": 1
+      },
+      {
+        "key": "currentSchoolId",
+        "size": 14,
+        "count": 1
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "students",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "teachers",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 3,
+        "subCount": 3,
+        "rootSize": 408,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 420,
+    "projectedRootSize": 5520
+  },
+  {
+    "schoolId": "oxford_narra_muktjcky",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 63181,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 44133,
+        "count": 39
+      },
+      {
+        "key": "students",
+        "size": 5250,
+        "count": 15
+      },
+      {
+        "key": "notifications",
+        "size": 4961,
+        "count": 36
+      },
+      {
+        "key": "teachers",
+        "size": 3775,
+        "count": 4
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 2023,
+        "count": 5
+      },
+      {
+        "key": "absenceIntimationLog",
+        "size": 883,
+        "count": 6
+      },
+      {
+        "key": "feeStructures",
+        "size": 722,
+        "count": 13
+      },
+      {
+        "key": "examConfig",
+        "size": 471,
+        "count": 3
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "timetable",
+        "size": 219,
+        "count": 1
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 15,
+        "subCount": 15,
+        "rootSize": 5250,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 36,
+        "subCount": 36,
+        "rootSize": 4961,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 10221,
+    "projectedRootSize": 52960
+  },
+  {
+    "schoolId": "pcma_mw1pmzlw",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 7276,
+    "top10": [
+      {
+        "key": "reportCardConfig",
+        "size": 3429,
+        "count": 24
+      },
+      {
+        "key": "settings",
+        "size": 2052,
+        "count": 28
+      },
+      {
+        "key": "feeStructures",
+        "size": 722,
+        "count": 13
+      },
+      {
+        "key": "students",
+        "size": 583,
+        "count": 1
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "currentSchoolId",
+        "size": 15,
+        "count": 1
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "teachers",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "attendance",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "fees",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 1,
+        "subCount": 1,
+        "rootSize": 583,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 0,
+        "subCount": 2,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 587,
+    "projectedRootSize": 6689
+  },
+  {
+    "schoolId": "svm_bokaro_001",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 314225,
+    "top10": [
+      {
+        "key": "timetable",
+        "size": 96937,
+        "count": 23
+      },
+      {
+        "key": "students",
+        "size": 92344,
+        "count": 166
+      },
+      {
+        "key": "settings",
+        "size": 41489,
+        "count": 47
+      },
+      {
+        "key": "feeActivityLog",
+        "size": 35769,
+        "count": 169
+      },
+      {
+        "key": "teachers",
+        "size": 11269,
+        "count": 13
+      },
+      {
+        "key": "examSubjects",
+        "size": 9859,
+        "count": 1
+      },
+      {
+        "key": "subjectMapping",
+        "size": 8752,
+        "count": 11
+      },
+      {
+        "key": "notifications",
+        "size": 7142,
+        "count": 50
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 3429,
+        "count": 24
+      },
+      {
+        "key": "notices",
+        "size": 2460,
+        "count": 4
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 166,
+        "subCount": 166,
+        "rootSize": 92344,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 4,
+        "subCount": 5,
+        "rootSize": 2460,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 50,
+        "subCount": 104,
+        "rootSize": 7142,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 169,
+        "subCount": 169,
+        "rootSize": 35769,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 137721,
+    "projectedRootSize": 176504
+  },
+  {
+    "schoolId": "svm_mqbv7qm2",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 214949,
+    "top10": [
+      {
+        "key": "students",
+        "size": 66666,
+        "count": 124
+      },
+      {
+        "key": "teacherAttendance",
+        "size": 35865,
+        "count": 88
+      },
+      {
+        "key": "settings",
+        "size": 31386,
+        "count": 40
+      },
+      {
+        "key": "timetable",
+        "size": 22954,
+        "count": 12
+      },
+      {
+        "key": "examAuditLog",
+        "size": 21024,
+        "count": 76
+      },
+      {
+        "key": "examSubjects",
+        "size": 13341,
+        "count": 1
+      },
+      {
+        "key": "teachers",
+        "size": 8241,
+        "count": 5
+      },
+      {
+        "key": "notifications",
+        "size": 7088,
+        "count": 50
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 3430,
+        "count": 24
+      },
+      {
+        "key": "teacherCorrectionRequests",
+        "size": 943,
+        "count": 2
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 124,
+        "subCount": 124,
+        "rootSize": 66666,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 50,
+        "subCount": 52,
+        "rootSize": 7088,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 2,
+        "subCount": 2,
+        "rootSize": 450,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 74212,
+    "projectedRootSize": 140737
+  },
+  {
+    "schoolId": "usha_academy_mango_muzflr5z",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 79555,
+    "top10": [
+      {
+        "key": "students",
+        "size": 70256,
+        "count": 167
+      },
+      {
+        "key": "trash",
+        "size": 2723,
+        "count": 5
+      },
+      {
+        "key": "settings",
+        "size": 2233,
+        "count": 31
+      },
+      {
+        "key": "reportCardConfig",
+        "size": 2023,
+        "count": 5
+      },
+      {
+        "key": "notifications",
+        "size": 996,
+        "count": 7
+      },
+      {
+        "key": "feeStructures",
+        "size": 722,
+        "count": 13
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "currentSchoolId",
+        "size": 29,
+        "count": 1
+      },
+      {
+        "key": "updatedAt",
+        "size": 26,
+        "count": 1
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 167,
+        "subCount": 167,
+        "rootSize": 70256,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 7,
+        "subCount": 7,
+        "rootSize": 996,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 5,
+        "subCount": 1,
+        "rootSize": 2723,
+        "sampleMatch": true,
+        "fullyMigrated": false
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 71260,
+    "projectedRootSize": 8295
+  },
+  {
+    "schoolId": "web_demo_rk79u76d",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 1814,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 1024,
+        "count": 28
+      },
+      {
+        "key": "schools",
+        "size": 358,
+        "count": 1
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "students",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "teachers",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "attendance",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "fees",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "feeStructures",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "feeActivityLog",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 12,
+    "projectedRootSize": 1802
+  },
+  {
+    "schoolId": "xyzss_7y5yh01e",
+    "storageVer": 2,
+    "restructured": true,
+    "studentsMigrated": true,
+    "fullSize": 1313,
+    "top10": [
+      {
+        "key": "settings",
+        "size": 936,
+        "count": 27
+      },
+      {
+        "key": "feeHeads",
+        "size": 222,
+        "count": 5
+      },
+      {
+        "key": "restructured",
+        "size": 4,
+        "count": 1
+      },
+      {
+        "key": "students",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "teachers",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "attendance",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "fees",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "feeStructures",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "exams",
+        "size": 2,
+        "count": 0
+      },
+      {
+        "key": "marks",
+        "size": 2,
+        "count": 0
+      }
+    ],
+    "migratedFieldAnalysis": [
+      {
+        "field": "students",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": false,
+        "fullyMigrated": false
+      },
+      {
+        "field": "notices",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "notifications",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "trash",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "feeActivityLog",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 0,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "fees",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      },
+      {
+        "field": "attendance",
+        "rootCount": 0,
+        "subCount": 0,
+        "rootSize": 2,
+        "sampleMatch": true,
+        "fullyMigrated": true
+      }
+    ],
+    "reclaimableBytes": 6,
+    "projectedRootSize": 1307
+  }
+]

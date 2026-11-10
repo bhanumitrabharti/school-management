@@ -844,7 +844,7 @@
       }
     },
 
-    // ── Fee Head Normalization & Account Resolution (v84) ─────────────────────
+    // ── Fee Head Normalization & Account Resolution (v85) ─────────────────────
     normalizeFeeHead: function(headIdOrObj, headName) {
       var headId = '';
       var raw = '';
@@ -920,7 +920,7 @@
       };
     },
 
-    // ── Unified Fee Head Mapping & Checklist Status (v84) ─────────────
+    // ── Unified Fee Head Mapping & Checklist Status (v85) ─────────────
     getFeeHeadMappingStatus: function(customSettings, customChart) {
       var s = customSettings || this.settings || {};
       var chart = customChart || this.chart || [];
@@ -4773,7 +4773,7 @@
       var html = '';
       html += '<div style="max-width:840px; margin:0 auto;">';
 
-      // Checklist Status Bar & Reopen Button (F4 / v84)
+      // Checklist Status Bar & Reopen Button (F4 / v85)
       var status = this.getFeeHeadMappingStatus();
       var checkAllDone = status.allDone;
       var checkCompletedCount = status.completedCount;

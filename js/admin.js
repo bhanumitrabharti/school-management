@@ -3763,6 +3763,9 @@
       });
       
       html += '</tbody></table></div>';
+      if (window.SchoolApp && window.SchoolApp._hasMoreNotices) {
+        html += '<div style="text-align:center; padding:16px 0;"><button type="button" class="btn btn-secondary btn-sm" id="btn-load-older-notices" style="display:inline-flex; align-items:center; gap:6px;"><span class="material-icons-round" style="font-size:16px;">history</span> Load older notices</button></div>';
+      }
     } else {
       html += '<div class="empty-state"><span class="material-icons-round">campaign</span><h3>No Announcements Published</h3><p>Use the form above to post notices directly to the dashboard.</p></div>';
     }
@@ -7033,6 +7036,17 @@
         render();
       });
     });
+
+    // Load Older Notices Handler
+    var loadOlderNoticesBtn = document.getElementById('btn-load-older-notices');
+    if (loadOlderNoticesBtn) {
+      loadOlderNoticesBtn.addEventListener('click', async function() {
+        this.disabled = true;
+        this.innerHTML = '<span class="material-icons-round" style="animation:app-spin 0.85s linear infinite; font-size:16px; vertical-align:middle; margin-right:4px;">sync</span> Loading...';
+        await SchoolApp.loadOlderNotices();
+        render();
+      });
+    }
 
     // Transactions Tab Event Bindings
     if (state.activeTab === 'transactions') {
