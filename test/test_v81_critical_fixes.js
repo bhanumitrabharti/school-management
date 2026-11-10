@@ -956,6 +956,81 @@ async function runAllTests() {
     assert.strictEqual(allVouchers.size, 1, 'accounts_journal must contain exactly 1 voucher after 2 syncs');
   });
 
+  await runTest('Item 6b: postVouchersBatch matches on source txn ID (sourceId) and never double-posts across different voucher ID formats', async () => {
+    const accountsApi = require('../api/accounts.js');
+    const schoolId = 'test_v81_double_posting_prevention_school';
+
+    // Clear any previous journal docs
+    const existingSnap = await db.collection('tenant_data').doc(schoolId).collection('accounts_journal').get();
+    for (const doc of existingSnap.docs) {
+      await doc.ref.delete();
+    }
+
+    const testTxnId = 'id_mw0jk8cu_2bcxia_test';
+
+    // 1. Post voucher under standard vch_fee_ prefix (matching Greenwood live)
+    const initialVoucher = {
+      voucherId: `vch_fee_${testTxnId}`,
+      voucherNo: `VCH-FEE-${testTxnId}`,
+      type: 'receipt',
+      source: 'fee',
+      sourceId: testTxnId,
+      date: '2026-11-03',
+      fy: '2026-27',
+      lines: [
+        { accountCode: '11100', drPaise: 200000, crPaise: 0 },
+        { accountCode: '41100', drPaise: 0, crPaise: 200000 }
+      ]
+    };
+
+    const res1 = await accountsApi.postVouchersBatch(db, schoolId, [initialVoucher], '2026-27');
+    assert.strictEqual(res1.newlyPosted, 1, 'Initial voucher under vch_fee_ must post');
+
+    // Verify voucher exists
+    const snap1 = await db.doc(`tenant_data/${schoolId}/accounts_journal/${initialVoucher.voucherId}`).get();
+    assert(snap1.exists, 'Initial voucher must exist in Firestore');
+
+    // 2. Try posting the same transaction under JV-FEE- prefix (as in dry-run candidate)
+    const candidateJV = {
+      voucherId: `JV-FEE-${testTxnId}`,
+      voucherNo: `JV-FEE-${testTxnId}`,
+      type: 'journal',
+      source: 'fee',
+      sourceId: testTxnId,
+      date: '2026-11-03',
+      fy: '2026-27',
+      lines: [
+        { accountCode: '11100', drPaise: 200000, crPaise: 0 },
+        { accountCode: '42100', drPaise: 0, crPaise: 200000 }
+      ]
+    };
+
+    const res2 = await accountsApi.postVouchersBatch(db, schoolId, [candidateJV], '2026-27');
+    assert.strictEqual(res2.newlyPosted, 0, 'Must NOT post JV-FEE voucher when sourceId is already posted under vch_fee_');
+
+    // 3. Try posting the same transaction under an arbitrary custom voucherId
+    const candidateCustom = {
+      voucherId: `custom_random_voucher_id_${testTxnId}`,
+      voucherNo: `CUSTOM-FEE-${testTxnId}`,
+      type: 'receipt',
+      source: 'fee',
+      sourceId: testTxnId,
+      date: '2026-11-03',
+      fy: '2026-27',
+      lines: [
+        { accountCode: '11100', drPaise: 200000, crPaise: 0 },
+        { accountCode: '41100', drPaise: 0, crPaise: 200000 }
+      ]
+    };
+
+    const res3 = await accountsApi.postVouchersBatch(db, schoolId, [candidateCustom], '2026-27');
+    assert.strictEqual(res3.newlyPosted, 0, 'Must NOT post custom voucherId when sourceId is already posted');
+
+    // 4. Verify total vouchers count in accounts_journal is STILL EXACTLY 1
+    const totalJournalSnap = await db.collection(`tenant_data/${schoolId}/accounts_journal`).get();
+    assert.strictEqual(totalJournalSnap.size, 1, 'accounts_journal must still contain exactly 1 voucher (no double-posting)');
+  });
+
   // --------------------------------------------------------------------------
   // ITEM 8: Privacy & Attendance (js/students.js & js/attendance.js)
   // --------------------------------------------------------------------------

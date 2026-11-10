@@ -1472,15 +1472,89 @@ async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
     }
   }
 
-  // 1. Cheap getAll pre-check outside transaction to skip already-posted vouchers
-  const vchRefs = candidateVouchers.map(v => db.doc(`tenant_data/${schoolId}/accounts_journal/${v.voucherId}`));
-  const preSnaps = await db.getAll(...vchRefs);
+  // 1. Cheap getAll pre-check outside transaction to skip already-posted vouchers.
+  // Match both on doc ID (voucherId and known aliases) AND on source transaction ID (sourceId).
+  const docRefsToCheck = [];
+  const candidateRefIndices = []; // candidate index -> array of ref indices
+
+  candidateVouchers.forEach((v, idx) => {
+    const refsForV = [db.doc(`tenant_data/${schoolId}/accounts_journal/${v.voucherId}`)];
+    if (v.sourceId) {
+      if (v.source === 'fee' || v.voucherId.startsWith('vch_fee_') || v.voucherId.startsWith('JV-FEE-')) {
+        refsForV.push(db.doc(`tenant_data/${schoolId}/accounts_journal/vch_fee_${v.sourceId}`));
+        refsForV.push(db.doc(`tenant_data/${schoolId}/accounts_journal/JV-FEE-${v.sourceId}`));
+      }
+    }
+    const myRefIndices = [];
+    refsForV.forEach(r => {
+      myRefIndices.push(docRefsToCheck.length);
+      docRefsToCheck.push(r);
+    });
+    candidateRefIndices[idx] = myRefIndices;
+  });
+
+  const preSnaps = await db.getAll(...docRefsToCheck);
+
+  // Filter candidates that don't match any known doc ID alias
+  const tentativelyAbsent = [];
+  candidateVouchers.forEach((v, idx) => {
+    const indices = candidateRefIndices[idx] || [];
+    const existsAny = indices.some(refIdx => preSnaps[refIdx] && preSnaps[refIdx].exists);
+    if (!existsAny) {
+      tentativelyAbsent.push(v);
+    }
+  });
+
+  if (tentativelyAbsent.length === 0) {
+    return { newlyPosted: 0, postedVoucherIds: [], hasDigitalCommitted: false };
+  }
+
+  // 1b. Match on source txn ID (sourceId) across all existing vouchers in accounts_journal
+  const sourceIdsToCheck = [...new Set(
+    tentativelyAbsent
+      .map(v => v.sourceId)
+      .filter(id => typeof id === 'string' && id.trim().length > 0)
+  )];
+
+  const existingSourceEntries = new Set();
+  if (sourceIdsToCheck.length > 0) {
+    for (let i = 0; i < sourceIdsToCheck.length; i += 30) {
+      const chunk = sourceIdsToCheck.slice(i, i + 30);
+      const qSnap = await db.collection(`tenant_data/${schoolId}/accounts_journal`)
+        .where('sourceId', 'in', chunk)
+        .get();
+      qSnap.docs.forEach(doc => {
+        const d = doc.data() || {};
+        const sId = String(d.sourceId || doc.id);
+        const sSource = d.source || (d.voucherNo && d.voucherNo.includes('FEE') ? 'fee' : '');
+        const sType = d.type || '';
+        const isCx = doc.id.includes('cx_') || (d.voucherId && d.voucherId.includes('cx_'));
+        existingSourceEntries.add(sId);
+        if (sSource) existingSourceEntries.add(`${sSource}:${sId}`);
+        existingSourceEntries.add(`${sSource}:${sId}:${isCx ? 'cx' : sType}`);
+      });
+    }
+  }
 
   const absentVouchers = [];
-  preSnaps.forEach((snap, idx) => {
-    if (!snap.exists) {
-      absentVouchers.push(candidateVouchers[idx]);
+  tentativelyAbsent.forEach(v => {
+    if (v.sourceId) {
+      const sId = String(v.sourceId);
+      const isFee = (v.source === 'fee' || v.voucherId.startsWith('vch_fee_') || v.voucherId.startsWith('JV-FEE-'));
+      if (isFee) {
+        // For fee payments, any existing voucher with this sourceId means already posted
+        if (existingSourceEntries.has(sId) || existingSourceEntries.has(`fee:${sId}`)) {
+          return; // Skip: already posted under another voucher ID!
+        }
+      } else {
+        const isCx = v.voucherId.includes('cx_');
+        const specificKey = `${v.source || ''}:${sId}:${isCx ? 'cx' : (v.type || '')}`;
+        if (existingSourceEntries.has(specificKey)) {
+          return; // Skip: already posted!
+        }
+      }
     }
+    absentVouchers.push(v);
   });
 
   if (absentVouchers.length === 0) {
@@ -1499,7 +1573,23 @@ async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
     // F3: Group batch updates per FY doc (summary FY follows voucher date)
     const distinctFYs = [...new Set(batch.map(v => v.fy || targetFY))];
     const summaryRefs = distinctFYs.map(fy => db.doc(`tenant_data/${schoolId}/accounts_summary/${fy}`));
-    const batchRefs = batch.map(v => db.doc(`tenant_data/${schoolId}/accounts_journal/${v.voucherId}`));
+
+    // In transaction: include both primary voucherId and known alias doc IDs
+    const batchRefs = [];
+    const vRefIndices = [];
+    batch.forEach((v, idx) => {
+      const refs = [db.doc(`tenant_data/${schoolId}/accounts_journal/${v.voucherId}`)];
+      if (v.sourceId && (v.source === 'fee' || v.voucherId.startsWith('vch_fee_') || v.voucherId.startsWith('JV-FEE-'))) {
+        refs.push(db.doc(`tenant_data/${schoolId}/accounts_journal/vch_fee_${v.sourceId}`));
+        refs.push(db.doc(`tenant_data/${schoolId}/accounts_journal/JV-FEE-${v.sourceId}`));
+      }
+      const myIndices = [];
+      refs.forEach(r => {
+        myIndices.push(batchRefs.length);
+        batchRefs.push(r);
+      });
+      vRefIndices[idx] = myIndices;
+    });
 
     await db.runTransaction(async (t) => {
       const vSnaps = await t.getAll(...batchRefs);
@@ -1513,11 +1603,13 @@ async function postVouchersBatch(db, schoolId, candidateVouchers, targetFY) {
         summaryByFY[fy].accounts = summaryByFY[fy].accounts || {};
       });
 
-      // Filter truly absent vouchers
+      // Filter truly absent vouchers (checking doc existence of voucherId AND aliases)
       const toCreate = [];
-      vSnaps.forEach((vSnap, idx) => {
-        if (!vSnap.exists) {
-          toCreate.push(batch[idx]);
+      batch.forEach((v, idx) => {
+        const indices = vRefIndices[idx] || [];
+        const existsAny = indices.some(refIdx => vSnaps[refIdx] && vSnaps[refIdx].exists);
+        if (!existsAny) {
+          toCreate.push(v);
         }
       });
 
