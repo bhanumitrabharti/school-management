@@ -101,6 +101,41 @@ if (!fs.existsSync(versionJsonPath)) {
         console.log(`✅ js/app.js: window.APP_VERSION fallback matches ${expectedVersion}`);
       }
     }
+
+    // 4. Strict check: Fail on ANY hard-coded vNN in specified files that does not match version.json
+    console.log('\n--- Checking for Stale Hard-Coded Version Strings (vNN) ---');
+    const specificScanFiles = [
+      'index.html',
+      'parents.html',
+      'register.html',
+      'super-admin.html',
+      'sw.js',
+      ...fs.readdirSync(path.join(__dirname, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f)
+    ];
+
+    const vPattern = /\bv\d{2,}\b/gi;
+    let staleCount = 0;
+    specificScanFiles.forEach(relPath => {
+      const fullPath = path.join(__dirname, relPath);
+      if (!fs.existsSync(fullPath)) return;
+      const fileText = fs.readFileSync(fullPath, 'utf-8');
+      const lines = fileText.split(/\r?\n/);
+      lines.forEach((line, idx) => {
+        let m;
+        vPattern.lastIndex = 0;
+        while ((m = vPattern.exec(line)) !== null) {
+          if (m[0].toLowerCase() !== expectedVersion.toLowerCase()) {
+            console.error(`❌ ${relPath}:${idx + 1}: Found hard-coded "${m[0]}" (expected "${expectedVersion}")`);
+            console.error(`   Line: ${line.trim()}`);
+            hasError = true;
+            staleCount++;
+          }
+        }
+      });
+    });
+    if (staleCount === 0) {
+      console.log(`✅ All scanned files contain zero stale hard-coded vNN strings (all match ${expectedVersion})`);
+    }
   }
 }
 

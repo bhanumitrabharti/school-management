@@ -844,16 +844,25 @@
       }
     },
 
-    // ── Fee Head Normalization & Unmapped Heads Helper (v81) ─────────────────
-    normalizeFeeHead: function(headId, headName) {
-      var raw = (headName || headId || '').trim();
+    // ── Fee Head Normalization & Account Resolution (v82) ─────────────────────
+    normalizeFeeHead: function(headIdOrObj, headName) {
+      var headId = '';
+      var raw = '';
+      if (headIdOrObj && typeof headIdOrObj === 'object') {
+        headId = headIdOrObj.id || headIdOrObj.headId || '';
+        raw = (headIdOrObj.name || headIdOrObj.headName || headIdOrObj.key || '').trim();
+      } else {
+        headId = headIdOrObj || '';
+        raw = (headName || headId || '').trim();
+      }
+
       var monthNames = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
       var suffixRegex = new RegExp('\\s*[-–—]\\s*(?:(?:' + monthNames + ')\\s+\\d{4}|\\d{4}[-/]\\d{2})\\s*$', 'i');
       var parenRegex = new RegExp('\\s*\\((?:(?:' + monthNames + ')\\s+\\d{4}|\\d{4}[-/]\\d{2})\\)\\s*$', 'i');
       var cleaned = raw.replace(suffixRegex, '').replace(parenRegex, '').trim();
-      cleaned = cleaned.replace(/^Monthly\\s+/i, '').trim();
+      cleaned = cleaned.replace(/^Monthly\s+/i, '').trim();
 
-      if (/transport|bus/i.test(cleaned) || headId === 'fh_transport' || headId === 'transport') {
+      if (/transport|bus|van|conveyance|auto/i.test(cleaned) || headId === 'fh_transport' || headId === 'transport') {
         return {
           id: 'fh_transport',
           key: 'Transport Fee',
@@ -877,12 +886,29 @@
           defaultAccount: '41300'
         };
       }
-      if (/annual|development/i.test(cleaned) || headId === 'fh_annual' || headId === 'annual') {
+      if (/annual|development|activity/i.test(cleaned) || headId === 'fh_annual' || headId === 'annual' || headId === 'fh_activity') {
         return {
           id: 'fh_annual',
           key: 'Annual Development Fee',
           name: 'Annual Development Fee',
           defaultAccount: '41400'
+        };
+      }
+      if (/late|fine/i.test(cleaned) || headId === 'fh_late_fine' || headId === 'fh_mv3iltbv') {
+        return {
+          id: headId || 'fh_late_fine',
+          key: 'Late Fine',
+          name: cleaned || 'Late Fine',
+          defaultAccount: '41100'
+        };
+      }
+      if (!raw || headId === 'fh_unallocated' || cleaned === 'Unknown Fee Head') {
+        return {
+          id: 'fh_unallocated',
+          key: 'Unallocated Fee Payments',
+          name: 'Unallocated Fee Payments',
+          defaultAccount: '41100',
+          isUnallocated: true
         };
       }
 
@@ -894,48 +920,161 @@
       };
     },
 
-    getUnmappedFeeHeads: function() {
-      var s = this.settings || {};
+    // ── Unified Fee Head Mapping & Checklist Status (v82 hotfix) ─────────────
+    getFeeHeadMappingStatus: function(customSettings, customChart) {
+      var s = customSettings || this.settings || {};
+      var chart = customChart || this.chart || [];
       var feeHeadMap = s.feeHeadMapping || {};
-      var storeHeads = (SchoolApp.store && (SchoolApp.store.feeHeads || (SchoolApp.store.settings && SchoolApp.store.settings.feeHeads))) || [
-        { id: 'fh_tuition', name: 'Tuition Fee' },
-        { id: 'fh_transport', name: 'Transport Fee' },
-        { id: 'fh_exam', name: 'Examination Fee' },
-        { id: 'fh_annual', name: 'Annual Development Fee' }
+
+      var chartMap = {};
+      chart.forEach(function(a) {
+        if (a && a.code) chartMap[a.code] = a;
+      });
+
+      var baseHeads = [
+        { id: 'fh_tuition', name: 'Tuition Fee', defaultAccount: '41100' },
+        { id: 'fh_transport', name: 'Transport Fee', defaultAccount: '42100' },
+        { id: 'fh_exam', name: 'Examination Fee', defaultAccount: '41300' },
+        { id: 'fh_annual', name: 'Annual Development Fee', defaultAccount: '41400' }
       ];
 
-      var self = this;
-      var unmapped = [];
-      storeHeads.forEach(function(h) {
-        if (!h) return;
-        var norm = self.normalizeFeeHead(h.id, h.name);
-        var mapped = feeHeadMap[h.id] ||
-                     feeHeadMap[norm.id] ||
-                     feeHeadMap[norm.key] ||
-                     (h.name ? feeHeadMap[h.name] : null);
+      var storeHeads = (SchoolApp.store && (SchoolApp.store.feeHeads || (SchoolApp.store.settings && SchoolApp.store.settings.feeHeads))) || [];
 
-        if (!mapped && !norm.defaultAccount) {
-          unmapped.push({ id: norm.id, name: norm.name || h.name || h.id });
-        }
+      var headsMap = new Map();
+
+      // 1. Add base heads
+      baseHeads.forEach(function(bh) {
+        var norm = this.normalizeFeeHead(bh.id, bh.name);
+        headsMap.set(norm.id, {
+          id: norm.id,
+          name: norm.name,
+          key: norm.key,
+          defaultAccount: norm.defaultAccount,
+          isStandard: true
+        });
+      }.bind(this));
+
+      // 2. Add store heads
+      if (Array.isArray(storeHeads)) {
+        storeHeads.forEach(function(sh) {
+          if (!sh) return;
+          var norm = this.normalizeFeeHead(sh.id, sh.name);
+          var existing = headsMap.get(norm.id);
+          if (existing) {
+            if (sh.name && sh.name !== norm.name) {
+              existing.name = sh.name;
+            }
+          } else {
+            var defAcc = norm.defaultAccount;
+            if (!defAcc && /fine|late/i.test(sh.name || sh.id)) {
+              defAcc = '41100';
+            }
+            headsMap.set(norm.id, {
+              id: sh.id || norm.id,
+              name: sh.name || norm.name,
+              key: norm.key,
+              defaultAccount: defAcc,
+              isStoreHead: true
+            });
+          }
+        }.bind(this));
+      }
+
+      // 3. Add Unallocated Fee Payments head
+      headsMap.set('fh_unallocated', {
+        id: 'fh_unallocated',
+        name: 'Unallocated Fee Payments',
+        key: 'Unallocated Fee Payments',
+        defaultAccount: '41100',
+        description: 'Payments recorded without a specific fee head allocation (defaulting to Tuition Fees 41100)',
+        isUnallocated: true
       });
-      return unmapped;
-    },
-    // ── Setup Checklist Helper (F4) ─────────────────────────────────────────
-    renderChecklistHTML: function () {
-      var s = this.settings || {};
-      var bankAccounts = (s.bankAccounts && Array.isArray(s.bankAccounts)) ? s.bankAccounts : [];
-      var unmappedHeads = this.getUnmappedFeeHeads();
 
-      var item1Done = !!(s.setupCompletedAt);
+      // 4. Resolve mapping status for each head
+      var allHeads = [];
+      var unmappedHeads = [];
+
+      headsMap.forEach(function(head) {
+        var rawId = head.id;
+        var norm = this.normalizeFeeHead(head.id, head.name);
+        var mappedAcc = feeHeadMap[rawId] ||
+                        feeHeadMap[norm.id] ||
+                        feeHeadMap[norm.key] ||
+                        (head.name ? feeHeadMap[head.name] : null);
+
+        var effectiveAcc = mappedAcc || head.defaultAccount || norm.defaultAccount || null;
+        var isExplicitlyMapped = !!mappedAcc;
+
+        var accObj = effectiveAcc ? chartMap[effectiveAcc] : null;
+        var isValidInChart = !chart.length || !!(accObj && accObj.type === 'income' && accObj.isActive !== false);
+
+        var isUnmapped = !effectiveAcc || !isValidInChart;
+
+        var resolvedHead = {
+          id: head.id,
+          name: head.name,
+          description: head.description || '',
+          defaultAccount: head.defaultAccount || norm.defaultAccount || '41100',
+          mappedAccount: effectiveAcc || head.defaultAccount || '41100',
+          isExplicitlyMapped: isExplicitlyMapped,
+          isUnmapped: isUnmapped
+        };
+
+        allHeads.push(resolvedHead);
+        if (isUnmapped) {
+          unmappedHeads.push(resolvedHead);
+        }
+      }.bind(this));
+
+      var bankAccounts = (s.bankAccounts && Array.isArray(s.bankAccounts)) ? s.bankAccounts : [];
+      var item1Done = !!s.setupCompletedAt;
       var item2Done = (bankAccounts.length > 0);
-      var item3Done = !!(s.feeDigitalAccount);
+      var item3Done = !!s.feeDigitalAccount;
       var item4Done = (unmappedHeads.length === 0);
       var syncRan = !!(this.syncState && this.syncState.lastSyncAt);
       var warnCount = (this.syncState && this.syncState.warnings) ? this.syncState.warnings.length : 0;
       var item5Done = (syncRan && warnCount === 0);
 
-      var allDone = (item1Done && item2Done && item3Done && item4Done && item5Done);
       var completedCount = [item1Done, item2Done, item3Done, item4Done, item5Done].filter(Boolean).length;
+      var allDone = completedCount === 5;
+
+      return {
+        allHeads: allHeads,
+        unmappedHeads: unmappedHeads,
+        bankAccounts: bankAccounts,
+        item1Done: item1Done,
+        item2Done: item2Done,
+        item3Done: item3Done,
+        item4Done: item4Done,
+        item5Done: item5Done,
+        completedCount: completedCount,
+        allDone: allDone,
+        warnCount: warnCount,
+        syncRan: syncRan
+      };
+    },
+
+    getUnmappedFeeHeads: function() {
+      var status = this.getFeeHeadMappingStatus();
+      return status.unmappedHeads;
+    },
+    // ── Setup Checklist Helper (F4) ─────────────────────────────────────────
+    renderChecklistHTML: function () {
+      var status = this.getFeeHeadMappingStatus();
+      var s = this.settings || {};
+      var bankAccounts = status.bankAccounts;
+      var unmappedHeads = status.unmappedHeads;
+
+      var item1Done = status.item1Done;
+      var item2Done = status.item2Done;
+      var item3Done = status.item3Done;
+      var item4Done = status.item4Done;
+      var syncRan = status.syncRan;
+      var warnCount = status.warnCount;
+      var item5Done = status.item5Done;
+
+      var allDone = status.allDone;
+      var completedCount = status.completedCount;
 
       // Hide card when all are done unless user explicitly clicked to re-open from Settings
       if (allDone && !this._forceShowChecklist) {
@@ -4634,18 +4773,10 @@
       var html = '';
       html += '<div style="max-width:840px; margin:0 auto;">';
 
-      // Checklist Status Bar & Reopen Button (F4)
-      var checkBankAccounts = (s.bankAccounts && Array.isArray(s.bankAccounts)) ? s.bankAccounts : [];
-      var checkUnmapped = this.getUnmappedFeeHeads();
-      var checkItem1 = !!s.setupCompletedAt;
-      var checkItem2 = (checkBankAccounts.length > 0);
-      var checkItem3 = !!s.feeDigitalAccount;
-      var checkItem4 = (checkUnmapped.length === 0);
-      var checkSyncRan = !!(this.syncState && this.syncState.lastSyncAt);
-      var checkWarnCount = (this.syncState && this.syncState.warnings) ? this.syncState.warnings.length : 0;
-      var checkItem5 = (checkSyncRan && checkWarnCount === 0);
-      var checkAllDone = (checkItem1 && checkItem2 && checkItem3 && checkItem4 && checkItem5);
-      var checkCompletedCount = [checkItem1, checkItem2, checkItem3, checkItem4, checkItem5].filter(Boolean).length;
+      // Checklist Status Bar & Reopen Button (F4 / v82 hotfix)
+      var status = this.getFeeHeadMappingStatus();
+      var checkAllDone = status.allDone;
+      var checkCompletedCount = status.completedCount;
 
       html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding:12px 16px; background:var(--bg-secondary); border-radius:8px; border:1px solid var(--border-color); flex-wrap:wrap; gap:8px;">';
       html += '    <div>';
@@ -4831,11 +4962,15 @@
       html += '        </thead>';
       html += '        <tbody>';
 
-      storeHeads.forEach(function (h) {
-        var norm = this.normalizeFeeHead(h.id, h.name);
-        var curMapped = feeHeadMap[h.id] || feeHeadMap[norm.id] || feeHeadMap[norm.key] || norm.defaultAccount || '41100';
+      status.allHeads.forEach(function (h) {
+        var curMapped = h.mappedAccount;
         html += '          <tr style="border-bottom:1px solid var(--border-color);">';
-        html += '            <td style="padding:8px 12px; font-weight:600;">' + SchoolApp.escapeHTML(h.name) + '</td>';
+        html += '            <td style="padding:8px 12px; font-weight:600;">';
+        html += '              <div>' + SchoolApp.escapeHTML(h.name) + '</div>';
+        if (h.description) {
+          html += '              <div style="font-size:11px; color:var(--text-secondary); font-weight:400; margin-top:2px;">' + SchoolApp.escapeHTML(h.description) + '</div>';
+        }
+        html += '            </td>';
         html += '            <td style="padding:8px 12px;">';
         html += '              <select class="form-control form-select settings-fee-head-select" data-head-id="' + SchoolApp.escapeHTML(h.id) + '" style="font-size:12.5px;">';
         var headOffered = new Set();
