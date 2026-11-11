@@ -1617,11 +1617,12 @@ window.SchoolApp = {
       var currentMonth = this.getLocalMonthString();
       await this.loadTeacherAttendanceMonth(schoolId, currentMonth);
 
-      // 2. Notices (load latest 100 with fallback)
+      // 2. Notices (load latest 100 with fallback to unordered read + client sort so notices lacking 'date' are never excluded)
       var noticesQuery;
       try {
-        if (typeof fs.query === 'function' && typeof fs.orderBy === 'function' && typeof fs.limit === 'function') {
-          noticesQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notices'), fs.orderBy('date', 'desc'), fs.limit(100));
+        if (typeof fs.query === 'function' && typeof fs.limit === 'function') {
+          // Unordered read ensures notices lacking 'date' are never excluded by Firestore's orderBy
+          noticesQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notices'), fs.limit(100));
         } else {
           noticesQuery = fs.collection(db, 'tenant_data', schoolId, 'notices');
         }
@@ -1636,18 +1637,27 @@ window.SchoolApp = {
       if (noticesSnap && !noticesSnap.empty) {
         var subNotices = [];
         this._serverNoticesMap = new Map();
+        var self = this;
         noticesSnap.forEach(function(docSnap) {
           var d = docSnap.data();
           d.id = docSnap.id;
           subNotices.push(d);
-          SchoolApp._serverNoticesMap.set(d.id, JSON.parse(JSON.stringify(d)));
+          if (self._serverNoticesMap) self._serverNoticesMap.set(d.id, JSON.parse(JSON.stringify(d)));
         });
         this._lastNoticeDoc = noticesSnap.docs[noticesSnap.docs.length - 1];
         this._hasMoreNotices = noticesSnap.docs.length >= 100;
         var noticeMap = new Map();
         (this.store.notices || []).forEach(function(n) { if (n && n.id) noticeMap.set(n.id, n); });
         subNotices.forEach(function(n) { noticeMap.set(n.id, n); });
-        this.store.notices = Array.from(noticeMap.values());
+        var mergedNotices = Array.from(noticeMap.values());
+        mergedNotices.sort(function(a, b) {
+          var da = (a && (a.date || a.timestamp)) || '';
+          var dbVal = (b && (b.date || b.timestamp)) || '';
+          if (da < dbVal) return 1;
+          if (da > dbVal) return -1;
+          return 0;
+        });
+        this.store.notices = mergedNotices;
       } else {
         this._hasMoreNotices = false;
       }
@@ -1656,7 +1666,7 @@ window.SchoolApp = {
       var notifsQuery;
       try {
         if (typeof fs.query === 'function' && typeof fs.orderBy === 'function' && typeof fs.limit === 'function') {
-          notifsQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notifications'), fs.orderBy('date', 'desc'), fs.limit(100));
+          notifsQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notifications'), fs.orderBy('timestamp', 'desc'), fs.limit(100));
         } else {
           notifsQuery = fs.collection(db, 'tenant_data', schoolId, 'notifications');
         }
@@ -1665,30 +1675,42 @@ window.SchoolApp = {
       }
       var notifsSnap = await fs.getDocs(notifsQuery).catch(async function() {
         try {
-          if (typeof fs.query === 'function' && typeof fs.orderBy === 'function') {
-            try {
-              var tQuery = fs.query(fs.collection(db, 'tenant_data', schoolId, 'notifications'), fs.orderBy('timestamp', 'desc'), fs.limit(100));
-              return await fs.getDocs(tQuery);
-            } catch (err2) {}
-          }
           return await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notifications'));
         } catch (e) { return null; }
       });
+      // Safety fallback: if ordered query returned empty, try unordered read so notifications lacking 'timestamp' are not lost
+      if (!notifsSnap || notifsSnap.empty) {
+        try {
+          var unordNotifsSnap = await fs.getDocs(fs.collection(db, 'tenant_data', schoolId, 'notifications'));
+          if (unordNotifsSnap && !unordNotifsSnap.empty) {
+            notifsSnap = unordNotifsSnap;
+          }
+        } catch (eFallNotifs) {}
+      }
       if (notifsSnap && !notifsSnap.empty) {
         var subNotifs = [];
         this._serverNotificationsMap = new Map();
+        var selfNotifs = this;
         notifsSnap.forEach(function(docSnap) {
           var d = docSnap.data();
           d.id = docSnap.id;
           subNotifs.push(d);
-          SchoolApp._serverNotificationsMap.set(d.id, JSON.parse(JSON.stringify(d)));
+          if (selfNotifs._serverNotificationsMap) selfNotifs._serverNotificationsMap.set(d.id, JSON.parse(JSON.stringify(d)));
         });
         this._lastNotificationDoc = notifsSnap.docs[notifsSnap.docs.length - 1];
         this._hasMoreNotifications = notifsSnap.docs.length >= 100;
         var notifMap = new Map();
         (this.store.notifications || []).forEach(function(n) { if (n && n.id) notifMap.set(n.id, n); });
         subNotifs.forEach(function(n) { notifMap.set(n.id, n); });
-        this.store.notifications = Array.from(notifMap.values());
+        var mergedNotifs = Array.from(notifMap.values());
+        mergedNotifs.sort(function(a, b) {
+          var ta = (a && (a.timestamp || a.date || a.time)) || '';
+          var tb = (b && (b.timestamp || b.date || b.time)) || '';
+          if (ta < tb) return 1;
+          if (ta > tb) return -1;
+          return 0;
+        });
+        this.store.notifications = mergedNotifs;
       } else {
         this._hasMoreNotifications = false;
       }
@@ -1785,12 +1807,13 @@ window.SchoolApp = {
     var fs = window.firestore;
     var db = window.db;
     try {
-      var q = fs.query(
-        fs.collection(db, 'tenant_data', schoolId, 'notices'),
-        fs.orderBy('date', 'desc'),
-        fs.startAfter(this._lastNoticeDoc),
-        fs.limit(100)
-      );
+      var q = (typeof fs.query === 'function' && typeof fs.startAfter === 'function' && typeof fs.limit === 'function')
+        ? fs.query(
+            fs.collection(db, 'tenant_data', schoolId, 'notices'),
+            fs.startAfter(this._lastNoticeDoc),
+            fs.limit(100)
+          )
+        : fs.collection(db, 'tenant_data', schoolId, 'notices');
       var snap = await fs.getDocs(q);
       if (snap && !snap.empty) {
         this._lastNoticeDoc = snap.docs[snap.docs.length - 1];
@@ -1806,7 +1829,15 @@ window.SchoolApp = {
         var noticeMap = new Map();
         (this.store.notices || []).forEach(function(n) { if (n && n.id) noticeMap.set(n.id, n); });
         newNotices.forEach(function(n) { noticeMap.set(n.id, n); });
-        this.store.notices = Array.from(noticeMap.values());
+        var mergedNotices = Array.from(noticeMap.values());
+        mergedNotices.sort(function(a, b) {
+          var da = (a && (a.date || a.timestamp)) || '';
+          var dbVal = (b && (b.date || b.timestamp)) || '';
+          if (da < dbVal) return 1;
+          if (da > dbVal) return -1;
+          return 0;
+        });
+        this.store.notices = mergedNotices;
         return newNotices.length;
       } else {
         this._hasMoreNotices = false;
@@ -1828,19 +1859,18 @@ window.SchoolApp = {
       var self = this;
       var q = fs.query(
         fs.collection(db, 'tenant_data', schoolId, 'notifications'),
-        fs.orderBy('date', 'desc'),
+        fs.orderBy('timestamp', 'desc'),
         fs.startAfter(this._lastNotificationDoc),
         fs.limit(100)
       );
       var snap = await fs.getDocs(q).catch(async function() {
         try {
-          var tQuery = fs.query(
+          var unordQuery = fs.query(
             fs.collection(db, 'tenant_data', schoolId, 'notifications'),
-            fs.orderBy('timestamp', 'desc'),
             fs.startAfter(self._lastNotificationDoc),
             fs.limit(100)
           );
-          return await fs.getDocs(tQuery);
+          return await fs.getDocs(unordQuery);
         } catch (e2) { return null; }
       });
       if (snap && !snap.empty) {
@@ -1856,7 +1886,15 @@ window.SchoolApp = {
         var notifMap = new Map();
         (this.store.notifications || []).forEach(function(n) { if (n && n.id) notifMap.set(n.id, n); });
         newNotifs.forEach(function(n) { notifMap.set(n.id, n); });
-        this.store.notifications = Array.from(notifMap.values());
+        var mergedNotifs = Array.from(notifMap.values());
+        mergedNotifs.sort(function(a, b) {
+          var ta = (a && (a.timestamp || a.date || a.time)) || '';
+          var tb = (b && (b.timestamp || b.date || b.time)) || '';
+          if (ta < tb) return 1;
+          if (ta > tb) return -1;
+          return 0;
+        });
+        this.store.notifications = mergedNotifs;
         return newNotifs.length;
       } else {
         this._hasMoreNotifications = false;
@@ -5871,7 +5909,11 @@ window.SchoolApp = {
       return self.isNoticeVisibleForUser(n);
     });
     noticesList = noticesList.slice().sort(function(a, b) {
-      return new Date(b.date) - new Date(a.date);
+      var da = (a && (a.date || a.timestamp)) || '';
+      var dbVal = (b && (b.date || b.timestamp)) || '';
+      if (da < dbVal) return 1;
+      if (da > dbVal) return -1;
+      return 0;
     }).slice(0, 3);
     
     if (noticesList.length > 0) {
@@ -5884,7 +5926,7 @@ window.SchoolApp = {
         html += '<span style="font-size: 9px; padding: 2px 6px; border-radius: 4px; background: ' + priorityBg + '; color: ' + priorityText + '; font-weight: 700;">' + SchoolApp.escapeHTML(n.priority) + '</span>';
         html += '</div>';
         html += '<p style="margin: 0; font-size: 11px; color: var(--text-secondary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">' + SchoolApp.escapeHTML(n.message) + '</p>';
-        html += '<span style="font-size: 9px; color: var(--text-muted);">' + SchoolApp.formatDate(n.date) + '</span>';
+        html += '<span style="font-size: 9px; color: var(--text-muted);">' + (n.date ? SchoolApp.formatDate(n.date) : (n.timestamp ? SchoolApp.formatDate(n.timestamp) : '—')) + '</span>';
         html += '</div>';
       });
     } else {
@@ -7013,14 +7055,18 @@ window.SchoolApp = {
     });
     // Sort by date newest first
     noticesList = noticesList.slice().sort(function(a, b) {
-      return new Date(b.date) - new Date(a.date);
+      var da = (a && (a.date || a.timestamp)) || '';
+      var dbVal = (b && (b.date || b.timestamp)) || '';
+      if (da < dbVal) return 1;
+      if (da > dbVal) return -1;
+      return 0;
     });
 
     if (noticesList.length > 0) {
       html += '<div class="notices-dashboard-list" style="display:flex; flex-direction:column; gap:12px;">';
       noticesList.forEach(function(notice) {
         var priorityClass = notice.priority === 'Urgent' ? 'urgent-notice' : 'normal-notice';
-        var dateFormatted = self.formatDate(notice.date);
+        var dateFormatted = notice.date ? self.formatDate(notice.date) : (notice.timestamp ? self.formatDate(notice.timestamp) : '—');
         
         var audArr = notice.audience || ['everyone'];
         if (!Array.isArray(audArr)) audArr = [audArr];
@@ -7276,14 +7322,18 @@ window.SchoolApp = {
       return n.status === 'published' && self.isNoticeVisibleForUser(n);
     });
     noticesList = noticesList.slice().sort(function(a, b) {
-      return new Date(b.date) - new Date(a.date);
+      var da = (a && (a.date || a.timestamp)) || '';
+      var dbVal = (b && (b.date || b.timestamp)) || '';
+      if (da < dbVal) return 1;
+      if (da > dbVal) return -1;
+      return 0;
     });
 
     if (noticesList.length > 0) {
       html += '<div class="notices-dashboard-list" style="display:flex; flex-direction:column; gap:12px;">';
       noticesList.forEach(function(notice) {
         var priorityClass = notice.priority === 'Urgent' ? 'urgent-notice' : 'normal-notice';
-        var dateFormatted = self.formatDate(notice.date);
+        var dateFormatted = notice.date ? self.formatDate(notice.date) : (notice.timestamp ? self.formatDate(notice.timestamp) : '—');
         
         html += '<div class="notice-item ' + priorityClass + '" style="padding:14px; border-radius:8px; border-left:4px solid; transition:all var(--transition-fast);">';
         html += '<div class="flex justify-between" style="align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">';

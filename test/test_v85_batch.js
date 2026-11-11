@@ -201,6 +201,13 @@ async function main() {
       document: documentMock,
       localStorage: windowMock.localStorage,
       sessionStorage: windowMock.sessionStorage,
+      URLSearchParams: global.URLSearchParams,
+      URL: global.URL,
+      Map: global.Map,
+      Set: global.Set,
+      Date: global.Date,
+      Math: global.Math,
+      JSON: global.JSON,
       console: console,
       setTimeout: () => {},
       clearTimeout: () => {},
@@ -401,6 +408,186 @@ async function main() {
 
     const adminCode = fs.readFileSync(path.resolve(__dirname, '../js/admin.js'), 'utf8');
     assert(adminCode.includes('btn-load-older-notices'), 'btn-load-older-notices button and handler must exist');
+  });
+
+  // Test 12: Notifications with timestamp-only and notices without date
+  await runTest('4.b Notifications with timestamp only are all loaded and shown; notices without date are still shown', async () => {
+    const notifsFixture = [
+      { id: 'notif_1', message: 'Payment recorded for Priya', type: 'info', timestamp: '2026-11-10T10:00:00Z', read: false },
+      { id: 'notif_2', message: 'Exam marks published', type: 'warning', timestamp: '2026-11-10T11:00:00Z', read: false },
+      { id: 'notif_3', message: 'System maintenance scheduled', type: 'success', timestamp: '2026-11-10T12:00:00Z', read: true }
+    ];
+
+    const noticesFixture = [
+      { id: 'notice_no_date', title: 'Winter Uniform Mandatory', message: 'Starting Monday winter uniform is required.', priority: 'Urgent', status: 'published' },
+      { id: 'notice_with_date', title: 'Fee Reminder', message: 'Quarterly dues deadline is approaching.', date: '2026-11-10', priority: 'Normal', status: 'published' }
+    ];
+
+    function makeSnap(arr) {
+      const docs = arr.map(d => ({
+        id: d.id,
+        data: () => ({ ...d })
+      }));
+      return {
+        empty: docs.length === 0,
+        docs: docs,
+        forEach: function(fn) { docs.forEach(fn); }
+      };
+    }
+
+    const mockFirestore = {
+      collection: (database, ...parts) => ({ type: 'collection', path: parts.join('/') }),
+      query: (collRef, ...ops) => ({ type: 'query', coll: collRef, ops: ops }),
+      orderBy: (field, dir) => ({ type: 'orderBy', field: field, dir: dir }),
+      limit: (num) => ({ type: 'limit', num: num }),
+      getDocs: async (q) => {
+        if (!q) return makeSnap([]);
+        const path = q.path || (q.coll && q.coll.path) || '';
+        
+        if (path.includes('notifications')) {
+          // If query orders by 'date', documents without 'date' are silently omitted in Firestore
+          const hasOrderByDate = q.ops && q.ops.some(op => op.type === 'orderBy' && op.field === 'date');
+          if (hasOrderByDate) {
+            return makeSnap([]);
+          }
+          return makeSnap(notifsFixture);
+        }
+
+        if (path.includes('notices')) {
+          const hasOrderByDate = q.ops && q.ops.some(op => op.type === 'orderBy' && op.field === 'date');
+          let returned = noticesFixture;
+          if (hasOrderByDate) {
+            returned = noticesFixture.filter(n => n.date !== undefined);
+          }
+          return makeSnap(returned);
+        }
+
+        return makeSnap([]);
+      }
+    };
+
+    const { windowMock, documentMock, store } = createBrowserEnvironment();
+    windowMock.firestore = mockFirestore;
+    windowMock.db = {};
+
+    const appCode = fs.readFileSync(path.resolve(__dirname, '../js/app.js'), 'utf8');
+    const sandbox = {
+      window: windowMock,
+      document: documentMock,
+      localStorage: windowMock.localStorage,
+      sessionStorage: windowMock.sessionStorage,
+      URLSearchParams: global.URLSearchParams,
+      URL: global.URL,
+      Map: global.Map,
+      Set: global.Set,
+      Date: global.Date,
+      Math: global.Math,
+      JSON: global.JSON,
+      console: console,
+      setTimeout: () => {},
+      clearTimeout: () => {},
+      setInterval: () => {},
+      clearInterval: () => {}
+    };
+    vm.createContext(sandbox);
+
+    const firebaseStubs = `
+      function initializeApp() { return {}; }
+      function initializeFirestore() { return {}; }
+      function persistentLocalCache() { return {}; }
+      function persistentMultipleTabManager() { return {}; }
+      function getFirestore() { return {}; }
+      function connectFirestoreEmulator() {}
+      function doc() { return {}; }
+      function getDoc() { return Promise.resolve({ exists: () => false, data: () => ({}) }); }
+      function getDocFromServer() { return Promise.resolve({ exists: () => false, data: () => ({}) }); }
+      function setDoc() { return Promise.resolve(); }
+      function updateDoc() { return Promise.resolve(); }
+      function deleteDoc() { return Promise.resolve(); }
+      function collection() { return {}; }
+      function getDocs() { return Promise.resolve({ empty: true, docs: [] }); }
+      function onSnapshot() { return () => {}; }
+      function serverTimestamp() { return new Date(); }
+      const FieldPath = { documentId: () => '__name__' };
+      function waitForPendingWrites() { return Promise.resolve(); }
+      function terminate() { return Promise.resolve(); }
+      function clearIndexedDbPersistence() { return Promise.resolve(); }
+      function query() { return {}; }
+      function where() { return {}; }
+      function limit() { return {}; }
+      function orderBy() { return {}; }
+      function startAfter() { return {}; }
+      function writeBatch() { return { set() {}, commit() { return Promise.resolve(); } }; }
+      function deleteField() { return null; }
+      function arrayUnion() { return []; }
+      function runTransaction() { return Promise.resolve(); }
+      function getAuth() { return { onAuthStateChanged: () => () => {} }; }
+      function signInWithEmailAndPassword() { return Promise.resolve(); }
+      function signOut() { return Promise.resolve(); }
+      function setPersistence() { return Promise.resolve(); }
+      const browserSessionPersistence = 'SESSION';
+      function connectAuthEmulator() {}
+      function getStorage() { return {}; }
+      function ref() { return {}; }
+      function uploadBytes() { return Promise.resolve(); }
+      function getDownloadURL() { return Promise.resolve(''); }
+      function deleteObject() { return Promise.resolve(); }
+      function connectStorageEmulator() {}
+    `;
+
+    let runCode = appCode.replace(/^\s*import\s+[\s\S]*?;\s*$/gm, '');
+    runCode = runCode.replace(/^\s*export\s+const\s+/gm, 'const ');
+    runCode = runCode.replace(/^\s*export\s+/gm, '');
+    const cutIdx = runCode.indexOf("document.addEventListener('DOMContentLoaded'");
+    if (cutIdx !== -1) runCode = runCode.substring(0, cutIdx);
+    runCode = firebaseStubs + '\n' + runCode;
+
+    vm.runInContext(runCode, sandbox);
+    const SchoolApp = sandbox.SchoolApp || sandbox.window.SchoolApp || windowMock.SchoolApp;
+    sandbox.SchoolApp = SchoolApp;
+    global.SchoolApp = SchoolApp;
+    assert(SchoolApp, 'SchoolApp should be defined');
+
+    // Attach mock firestore AFTER running app code so it is not overwritten by initialization stubs
+    windowMock.firestore = mockFirestore;
+    sandbox.window.firestore = mockFirestore;
+    sandbox.firestore = mockFirestore;
+    windowMock.db = { name: 'mockDb' };
+    sandbox.window.db = windowMock.db;
+    sandbox.db = windowMock.db;
+
+    SchoolApp.store = store;
+    SchoolApp.store.currentSchoolId = 'svm_bokaro_001';
+    SchoolApp.currentSchoolId = 'svm_bokaro_001';
+    SchoolApp.currentUser = { uid: 'admin_test_1', role: 'admin' };
+    SchoolApp._verifiedSchoolAccess = { role: 'admin' };
+    SchoolApp.isSchoolAccessVerified = () => true;
+    SchoolApp.getLocalMonthString = () => '2026-11';
+    SchoolApp.loadTeacherAttendanceMonth = async () => {};
+
+    // Execute loadV2Subcollections
+    await SchoolApp.loadV2Subcollections('svm_bokaro_001');
+
+    // 1. Verify all notifications with timestamp-only are loaded
+    assert.strictEqual(SchoolApp.store.notifications.length, 3, 'All 3 notifications with timestamp-only must be loaded');
+    const notifIds = SchoolApp.store.notifications.map(n => n.id);
+    assert(notifIds.includes('notif_1') && notifIds.includes('notif_2') && notifIds.includes('notif_3'), 'All notif IDs present');
+
+    // Verify notifications dropdown rendering shows notifications
+    const dropdownEl = documentMock.getElementById('notification-dropdown');
+    SchoolApp.renderNotificationDropdown();
+    const dropdownHtml = dropdownEl.innerHTML;
+    assert(dropdownHtml.includes('Payment recorded for Priya'), 'Payment recorded notif must be rendered in dropdown');
+    assert(dropdownHtml.includes('Exam marks published'), 'Exam marks notif must be rendered in dropdown');
+
+    // 2. Verify notice without date is loaded and shown
+    const loadedNoticeNoDate = SchoolApp.store.notices.find(n => n.id === 'notice_no_date');
+    assert(loadedNoticeNoDate, 'Notice without date must be present in store.notices');
+    assert.strictEqual(loadedNoticeNoDate.title, 'Winter Uniform Mandatory', 'Title must match');
+
+    // Verify it renders in dropdown without NaN or errors
+    assert(dropdownHtml.includes('Winter Uniform Mandatory'), 'Notice without date must be rendered in dropdown');
+    assert(!dropdownHtml.includes('NaN'), 'Rendered output must not contain NaN');
   });
 
   console.log(`\nResults: ${passedCount} passed, ${failedCount} failed.\n`);
