@@ -2626,7 +2626,12 @@ window.SchoolApp = {
               var nextSeq = cur + 1;
               var padded = String(nextSeq).padStart(6, '0');
               txn.receiptNo = schoolCode + '/' + fy + '/' + padded;
+              if (logEntry) {
+                logEntry.receiptNo = txn.receiptNo;
+              }
               transaction.set(counterRef, { [fy]: nextSeq }, { merge: true });
+            } else if (logEntry && txn.receiptNo) {
+              logEntry.receiptNo = txn.receiptNo;
             }
 
             // A4 Two-tab / stale-array safety: append to fresh server copy inside transaction
@@ -2696,22 +2701,27 @@ window.SchoolApp = {
         });
 
         if (isSubcoll) {
+          if (logEntry && txn.receiptNo) {
+            logEntry.receiptNo = txn.receiptNo;
+          }
           var batch = window.firestore.writeBatch(window.db);
           batch.set(docRef, { transactions: JSON.parse(JSON.stringify(monthTxns)) });
           if (logEntry && logEntry.id) {
             var logDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', logEntry.id);
             batch.set(logDocRef, JSON.parse(JSON.stringify(logEntry)));
-            if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
-            var lIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
-            if (lIdx !== -1) {
-              this.store.feeActivityLog[lIdx] = logEntry;
-            } else {
-              this.store.feeActivityLog.unshift(logEntry);
-            }
           }
           var saveFn = () => batch.commit();
           var success = await this.saveWithRetry(saveFn);
           if (success) {
+            if (logEntry && logEntry.id) {
+              if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+              var lIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
+              if (lIdx !== -1) {
+                this.store.feeActivityLog[lIdx] = logEntry;
+              } else {
+                this.store.feeActivityLog.unshift(logEntry);
+              }
+            }
             console.log('[Fees] Successfully saved transaction and fee_activity_log via batch.');
             return true;
           }
@@ -2737,7 +2747,8 @@ window.SchoolApp = {
       }
     }
 
-    if (logEntry && logEntry.id) {
+    var saveOk = await this.save(bypassLoader);
+    if (saveOk && logEntry && logEntry.id) {
       if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
       var lIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
       if (lIdx !== -1) {
@@ -2746,7 +2757,7 @@ window.SchoolApp = {
         this.store.feeActivityLog.unshift(logEntry);
       }
     }
-    return await this.save(bypassLoader);
+    return saveOk;
   },
 
   saveFeeTransactions: async function(txns, bypassLoader, logEntries) {
@@ -2817,18 +2828,6 @@ window.SchoolApp = {
         }
         console.log('[Fees] Bulk saved ' + txns.length + ' transactions across months.');
 
-        // In-memory feeActivityLog synchronization
-        if (Array.isArray(logEntries) && logEntries.length > 0) {
-          if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
-          var existingLogMap = new Map();
-          self.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
-          logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
-          self.store.feeActivityLog = Array.from(existingLogMap.values());
-          self.store.feeActivityLog.sort(function(a, b) {
-            return new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0);
-          });
-        }
-
         // Subcollection write for all v2 / restructured / feeLogMigrated schools
         var isSubcoll = this.isFeeLogSubcollection(currentSchoolId);
         if (isSubcoll) {
@@ -2853,9 +2852,31 @@ window.SchoolApp = {
             }
             console.log('[Fees] Bulk saved ' + logEntries.length + ' fee logs to subcollection.');
           }
+
+          // In-memory feeActivityLog synchronization ONLY after successful write
+          if (Array.isArray(logEntries) && logEntries.length > 0) {
+            if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
+            var existingLogMap = new Map();
+            self.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+            logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+            self.store.feeActivityLog = Array.from(existingLogMap.values());
+            self.store.feeActivityLog.sort(function(a, b) {
+              return new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0);
+            });
+          }
           return true;
         }
 
+        if (Array.isArray(logEntries) && logEntries.length > 0) {
+          if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
+          var existingLogMap = new Map();
+          self.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+          logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+          self.store.feeActivityLog = Array.from(existingLogMap.values());
+          self.store.feeActivityLog.sort(function(a, b) {
+            return new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0);
+          });
+        }
         if (self.store.feeActivityLog) {
           await self.save(true);
         }
@@ -2868,15 +2889,15 @@ window.SchoolApp = {
       }
     }
 
-    if (Array.isArray(logEntries) && logEntries.length > 0) {
+    var saveOk = await this.save(bypassLoader);
+    if (saveOk && Array.isArray(logEntries) && logEntries.length > 0) {
       if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
       var existingLogMap = new Map();
       this.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
       logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
       this.store.feeActivityLog = Array.from(existingLogMap.values());
     }
-
-    return await this.save(bypassLoader);
+    return saveOk;
   },
 
   deleteFeeTransaction: async function(txnId, txnDate, bypassLoader) {
@@ -2917,6 +2938,7 @@ window.SchoolApp = {
 
     var deleteLog = {
       id: this.generateId(),
+      txnId: txnId,
       timestamp: new Date().toISOString(),
       studentId: targetTxn ? targetTxn.studentId : '',
       studentName: studentName,
@@ -2926,8 +2948,6 @@ window.SchoolApp = {
       addedBy: adminName,
       note: 'Deleted transaction: ' + txnId + (targetTxn && targetTxn.receiptNo ? ' (Receipt: ' + targetTxn.receiptNo + ')' : '')
     };
-    if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
-    this.store.feeActivityLog.unshift(deleteLog);
 
     if (!bypassLoader) this.showLoader('Deleting fee transaction...');
     if (this.isRestructured(currentSchoolId)) {
@@ -2941,10 +2961,25 @@ window.SchoolApp = {
           await window.firestore.setDoc(docRef, { transactions: monthTxns });
         }
         if (isSubcoll && window.firestore && window.db) {
-          var logDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', deleteLog.id);
-          await window.firestore.setDoc(logDocRef, JSON.parse(JSON.stringify(deleteLog)));
+          try {
+            var logDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', deleteLog.id);
+            await window.firestore.setDoc(logDocRef, JSON.parse(JSON.stringify(deleteLog)));
+          } catch (logErr) {
+            console.warn('[Fees] Failed to write delete fee_activity_log:', logErr);
+          }
         } else if (!isSubcoll) {
-          await this.save(true);
+          try {
+            if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+            this.store.feeActivityLog.unshift(deleteLog);
+            await this.save(true);
+          } catch (logErr) {
+            console.warn('[Fees] Failed to write root fee_activity_log:', logErr);
+          }
+        }
+        if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+        var dlIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === deleteLog.id; });
+        if (dlIdx === -1) {
+          this.store.feeActivityLog.unshift(deleteLog);
         }
         return true;
       } catch (err) {
@@ -2956,7 +2991,15 @@ window.SchoolApp = {
     }
 
     try {
-      return await this.save(true);
+      var saveOk = await this.save(true);
+      if (saveOk) {
+        if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+        var dlIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === deleteLog.id; });
+        if (dlIdx === -1) {
+          this.store.feeActivityLog.unshift(deleteLog);
+        }
+      }
+      return saveOk;
     } finally {
       if (!bypassLoader) this.hideLoader();
     }
@@ -4813,13 +4856,13 @@ window.SchoolApp = {
 
       // Generate activity logs for automated fee dues
       var autoLogs = [];
-      if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
       var stds = this.store.students || [];
       for (var ai = 0; ai < newDueTxns.length; ai++) {
         var nd = newDueTxns[ai];
         var st = stds.find(function(s) { return s.id === nd.studentId; });
         var aLog = {
           id: this.generateId(),
+          txnId: nd.id,
           timestamp: new Date().toISOString(),
           studentId: nd.studentId,
           studentName: st ? (st.firstName + ' ' + (st.lastName || '')).trim() : 'Student',
@@ -4829,7 +4872,6 @@ window.SchoolApp = {
           addedBy: 'system (auto-billing)',
           note: 'Auto-reconciliation for period ' + (nd.billingPeriod || currentPeriod)
         };
-        this.store.feeActivityLog.push(aLog);
         autoLogs.push(aLog);
       }
 
@@ -4839,6 +4881,10 @@ window.SchoolApp = {
         saveSuccess = await this.saveFeeTransactions(newDueTxns, true, autoLogs);
       } else {
         saveSuccess = await this.save(true);
+        if (saveSuccess) {
+          if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+          autoLogs.forEach(function(l) { self.store.feeActivityLog.push(l); });
+        }
       }
 
       if (!saveSuccess) {

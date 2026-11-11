@@ -1426,14 +1426,30 @@
     var rawLogs = (SchoolApp.store.feeActivityLog || []).slice();
 
     // Gap handling: Identify transactions without matching logs
+    // 1b. While SchoolApp._feeLogsHasMore === true, derive ONLY for txns whose timestamp/date is >= the oldest loaded log's timestamp
+    var oldestLoadedTs = null;
+    if (SchoolApp._feeLogsHasMore === true && rawLogs.length > 0) {
+      for (var ri = 0; ri < rawLogs.length; ri++) {
+        var rts = rawLogs[ri].timestamp || (rawLogs[ri].date ? (rawLogs[ri].date + 'T00:00:00.000Z') : null);
+        if (rts) {
+          var tVal = new Date(rts).getTime();
+          if (!isNaN(tVal)) {
+            if (oldestLoadedTs === null || tVal < oldestLoadedTs) {
+              oldestLoadedTs = tVal;
+            }
+          }
+        }
+      }
+    }
+
     var knownTxnIds = new Set();
     var knownReceipts = new Set();
     var knownSignatures = new Set();
 
     rawLogs.forEach(function(l) {
       if (!l) return;
-      if (l.id) knownTxnIds.add(l.id);
-      if (l.txnId) knownTxnIds.add(l.txnId);
+      if (l.txnId) knownTxnIds.add(String(l.txnId).trim());
+      if (l.originalTxnId) knownTxnIds.add(String(l.originalTxnId).trim());
       if (l.receiptNo) knownReceipts.add(String(l.receiptNo).trim());
       var dt = l.timestamp ? String(l.timestamp).slice(0, 10) : (l.date ? String(l.date).slice(0, 10) : '');
       var amt = Math.abs(parseFloat(l.amount || 0)).toFixed(2);
@@ -1446,7 +1462,29 @@
     var allFees = SchoolApp.store.fees || [];
     allFees.forEach(function(txn) {
       if (!txn || !txn.id) return;
-      if (knownTxnIds.has(txn.id)) return;
+
+      // 1a. Derive entries ONLY for txns with type 'payment' or reversal (mode 'Reversal' / type 'reversal'). Never derive for dues/charges.
+      var isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
+      var isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
+      if (txn.type === 'due' || txn.type === 'charge' || txn.type === 'monthly_due' || txn.type === 'fee_due') {
+        isPayment = false;
+      }
+      if (!isPayment && !isReversal) {
+        return; // Never derive for dues/charges
+      }
+
+      // 1b. While SchoolApp._feeLogsHasMore === true, derive ONLY for txns whose timestamp/date >= oldest loaded log's timestamp.
+      var txnTsStr = txn.timestamp || (txn.date ? (txn.date + 'T00:00:00.000Z') : null);
+      if (oldestLoadedTs !== null) {
+        if (!txnTsStr) return;
+        var txnTime = new Date(txnTsStr).getTime();
+        if (isNaN(txnTime) || txnTime < oldestLoadedTs) return;
+      }
+
+      // 1c. Prefer exact matching: match on log.txnId === txn.id first
+      if (knownTxnIds.has(String(txn.id).trim())) return;
+
+      // Fallback for legacy logs
       if (txn.receiptNo && knownReceipts.has(String(txn.receiptNo).trim())) return;
 
       var txnDt = txn.timestamp ? String(txn.timestamp).slice(0, 10) : (txn.date ? String(txn.date).slice(0, 10) : '');
@@ -1468,11 +1506,9 @@
       var st = studentMap[txn.studentId];
       var stName = st ? (st.firstName + ' ' + (st.lastName || '')).trim() : (txn.studentName || 'Student');
       var stClass = st ? (st.class + (st.section ? '-' + st.section : '')) : (txn.className || '');
-      var isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
-      var isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
-      var headName = isReversal ? 'Void / Reversal' : (isPayment ? ('Payment (' + (txn.mode || 'Cash') + ')') : (txn.description || 'Fee Due'));
+      var headName = isReversal ? 'Void / Reversal' : ('Payment (' + (txn.mode || 'Cash') + ')');
       var adminUser = txn.recordedBy || txn.addedBy || txn.voidedBy || 'admin';
-      var ts = txn.timestamp || (txn.date ? (txn.date + 'T00:00:00.000Z') : new Date().toISOString());
+      var ts = txnTsStr || new Date().toISOString();
 
       derivedLogs.push({
         id: 'derived_' + txn.id,
@@ -1485,7 +1521,7 @@
         feeHeadName: headName,
         amount: isReversal ? -Math.abs(txn.amount || 0) : (txn.amount || 0),
         addedBy: adminUser,
-        note: (txn.receiptNo ? ('Receipt: ' + txn.receiptNo + (txn.remarks ? ' | ' : '')) : '') + (txn.remarks || (isPayment ? 'Fee payment recorded' : (isReversal ? 'Payment reversed' : 'Fee due charged'))),
+        note: (txn.receiptNo ? ('Receipt: ' + txn.receiptNo + (txn.remarks ? ' | ' : '')) : '') + (txn.remarks || (isPayment ? 'Fee payment recorded' : 'Payment reversed')),
         receiptNo: txn.receiptNo || null,
         txnId: txn.id
       });
@@ -2496,6 +2532,8 @@
     var className = student ? (student.class + (student.section ? '-' + student.section : '')) : (txn.className || '');
     var voidLog = {
       id: SchoolApp.generateId(),
+      txnId: reversalTxn.id,
+      originalTxnId: txn.id,
       timestamp: new Date().toISOString(),
       studentId: txn.studentId,
       studentName: studentName,
@@ -2505,8 +2543,6 @@
       addedBy: adminName,
       note: 'Voided transaction: ' + (txn.receiptNo || txn.id) + ' | Reason: ' + reason.trim()
     };
-    if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
-    SchoolApp.store.feeActivityLog.unshift(voidLog);
 
     SchoolApp.showLoader('Processing reversal...');
     try {
@@ -2522,6 +2558,11 @@
           SchoolApp.store.fees.push(reversalTxn);
         }
         success = await SchoolApp.save(true);
+        if (success) {
+          if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+          var vIdx = SchoolApp.store.feeActivityLog.findIndex(function(l) { return l.id === voidLog.id; });
+          if (vIdx === -1) SchoolApp.store.feeActivityLog.unshift(voidLog);
+        }
       }
 
       if (success) {
@@ -3811,6 +3852,7 @@
             var sClass = student ? (student.class + (student.section ? '-' + student.section : '')) : '';
             var paymentLog = {
               id: SchoolApp.generateId(),
+              txnId: newTxn.id,
               timestamp: newTxn.timestamp || new Date().toISOString(),
               studentId: studentId,
               studentName: student ? (student.firstName + ' ' + (student.lastName || '')).trim() : 'Student',
@@ -3820,8 +3862,6 @@
               addedBy: adminName,
               note: (newTxn.remarks || 'Fee payment recorded') + (discountAmt > 0 ? (' (₹' + discountAmt + ' discount)') : '')
             };
-            if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
-            SchoolApp.store.feeActivityLog.unshift(paymentLog);
 
             // Atomic reservation of receipt serial occurs inside saveFeeTransaction's Firestore transaction
             if (typeof SchoolApp.saveFeeTransaction === 'function') {
@@ -3829,6 +3869,11 @@
             } else {
               SchoolApp.store.fees.push(newTxn);
               success = await SchoolApp.save(true);
+              if (success) {
+                if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+                var pIdx = SchoolApp.store.feeActivityLog.findIndex(function(l) { return l.id === paymentLog.id; });
+                if (pIdx === -1) SchoolApp.store.feeActivityLog.unshift(paymentLog);
+              }
             }
 
             if (success) {
@@ -3986,6 +4031,7 @@
 
         var logEntry = {
           id: SchoolApp.generateId(),
+          txnId: dueTxn.id,
           timestamp: new Date().toISOString(),
           studentId: studentId,
           studentName: studentName,
@@ -3995,7 +4041,6 @@
           addedBy: SchoolApp.currentUser ? (SchoolApp.currentUser.username || SchoolApp.currentUser.firstName || 'admin') : 'admin',
           note: note
         };
-        SchoolApp.store.feeActivityLog.push(logEntry);
 
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
@@ -4006,6 +4051,10 @@
             success = await SchoolApp.saveFeeTransaction(dueTxn, true, logEntry);
           } else {
             success = await SchoolApp.save(true);
+            if (success) {
+              if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+              SchoolApp.store.feeActivityLog.push(logEntry);
+            }
           }
         } finally {
           SchoolApp.hideLoader();
@@ -4223,6 +4272,7 @@
 
             var newBulkLog = {
               id: SchoolApp.generateId(),
+              txnId: newTxn.id,
               timestamp: new Date().toISOString(),
               studentId: s.id,
               studentName: s.firstName + ' ' + s.lastName,
@@ -4232,7 +4282,6 @@
               addedBy: adminName,
               note: note
             };
-            SchoolApp.store.feeActivityLog.push(newBulkLog);
             generatedLogs.push(newBulkLog);
 
             chargedCount++;
@@ -4264,6 +4313,10 @@
             success = await SchoolApp.saveFeeTransactions(generatedTxns, true, generatedLogs);
           } else {
             success = await SchoolApp.save(true);
+            if (success) {
+              if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+              generatedLogs.forEach(function(l) { SchoolApp.store.feeActivityLog.push(l); });
+            }
           }
         } finally {
           SchoolApp.hideLoader();

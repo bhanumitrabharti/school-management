@@ -216,13 +216,14 @@ async function runAllTests() {
     assert.strictEqual(merged[2].id, 'log_root_old', 'Oldest root log must be last');
   });
 
-  await recordTest('LOGIC-05', 'Gap handling derives fee history from transactions without real logs', async () => {
+  await recordTest('LOGIC-05', 'Gap handling derives fee history ONLY for payments and reversals, never dues', async () => {
     const app = createMockSchoolApp(2, false, true);
+    app._feeLogsHasMore = false;
     // Real log exists for txn 1
     app.store.feeActivityLog = [
       { id: 'log_1', txnId: 'txn_1', receiptNo: 'GPS/2026-27/000001', studentId: 's1', amount: 500, timestamp: '2026-09-20T10:00:00Z' }
     ];
-    // Transactions: txn_1 (logged), txn_2 (payment gap in Nov), txn_3 (due gap in Nov), txn_4 (void reversal in Nov)
+    // Transactions: txn_1 (logged), txn_2 (payment gap in Nov), txn_3 (due gap in Nov - must NEVER be derived), txn_4 (void reversal in Nov)
     app.store.fees = [
       { id: 'txn_1', type: 'payment', mode: 'Cash', receiptNo: 'GPS/2026-27/000001', studentId: 's1', amount: 500, timestamp: '2026-09-20T10:00:00Z' },
       { id: 'txn_2', type: 'payment', mode: 'UPI', receiptNo: 'GPS/2026-27/000002', studentId: 's2', amount: 1500, timestamp: '2026-11-05T14:30:00Z', recordedBy: 'accountant' },
@@ -236,13 +237,29 @@ async function runAllTests() {
     };
 
     const rawLogs = app.store.feeActivityLog.slice();
+    let oldestLoadedTs = null;
+    if (app._feeLogsHasMore === true && rawLogs.length > 0) {
+      for (let ri = 0; ri < rawLogs.length; ri++) {
+        const rts = rawLogs[ri].timestamp || (rawLogs[ri].date ? (rawLogs[ri].date + 'T00:00:00.000Z') : null);
+        if (rts) {
+          const tVal = new Date(rts).getTime();
+          if (!isNaN(tVal)) {
+            if (oldestLoadedTs === null || tVal < oldestLoadedTs) {
+              oldestLoadedTs = tVal;
+            }
+          }
+        }
+      }
+    }
+
     const knownTxnIds = new Set();
     const knownReceipts = new Set();
     const knownSignatures = new Set();
 
     rawLogs.forEach(l => {
-      if (l.id) knownTxnIds.add(l.id);
-      if (l.txnId) knownTxnIds.add(l.txnId);
+      if (!l) return;
+      if (l.txnId) knownTxnIds.add(String(l.txnId).trim());
+      if (l.originalTxnId) knownTxnIds.add(String(l.originalTxnId).trim());
       if (l.receiptNo) knownReceipts.add(String(l.receiptNo).trim());
       const dt = l.timestamp ? String(l.timestamp).slice(0, 10) : '';
       const amt = Math.abs(parseFloat(l.amount || 0)).toFixed(2);
@@ -251,15 +268,38 @@ async function runAllTests() {
 
     const derivedLogs = [];
     app.store.fees.forEach(txn => {
-      if (knownTxnIds.has(txn.id)) return;
+      if (!txn || !txn.id) return;
+
+      const isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
+      let isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
+      if (txn.type === 'due' || txn.type === 'charge' || txn.type === 'monthly_due' || txn.type === 'fee_due') {
+        isPayment = false;
+      }
+      if (!isPayment && !isReversal) return;
+
+      const txnTsStr = txn.timestamp || (txn.date ? (txn.date + 'T00:00:00.000Z') : null);
+      if (oldestLoadedTs !== null) {
+        if (!txnTsStr) return;
+        const txnTime = new Date(txnTsStr).getTime();
+        if (isNaN(txnTime) || txnTime < oldestLoadedTs) return;
+      }
+
+      if (knownTxnIds.has(String(txn.id).trim())) return;
       if (txn.receiptNo && knownReceipts.has(String(txn.receiptNo).trim())) return;
+
       const txnDt = txn.timestamp ? String(txn.timestamp).slice(0, 10) : '';
       const txnAmt = Math.abs(parseFloat(txn.amount || 0)).toFixed(2);
       if (txn.studentId && txnDt && knownSignatures.has(txn.studentId + '|' + txnDt + '|' + txnAmt)) return;
 
-      const isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
-      const isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
-      const headName = isReversal ? 'Void / Reversal' : (isPayment ? ('Payment (' + (txn.mode || 'Cash') + ')') : (txn.description || 'Fee Due'));
+      const noteMatch = rawLogs.some(l => {
+        if (!l || !l.note) return false;
+        if (l.note.indexOf(txn.id) !== -1) return true;
+        if (txn.receiptNo && l.note.indexOf(txn.receiptNo) !== -1) return true;
+        return false;
+      });
+      if (noteMatch) return;
+
+      const headName = isReversal ? 'Void / Reversal' : ('Payment (' + (txn.mode || 'Cash') + ')');
 
       derivedLogs.push({
         id: 'derived_' + txn.id,
@@ -271,16 +311,17 @@ async function runAllTests() {
         feeHeadName: headName,
         amount: isReversal ? -Math.abs(txn.amount) : txn.amount,
         addedBy: txn.recordedBy || txn.addedBy || txn.voidedBy,
-        receiptNo: txn.receiptNo || null
+        receiptNo: txn.receiptNo || null,
+        txnId: txn.id
       });
     });
 
-    assert.strictEqual(derivedLogs.length, 3, 'Must derive entries for exactly 3 unlogged transactions');
+    assert.strictEqual(derivedLogs.length, 2, 'Must derive entries ONLY for payment and reversal (never dues)');
     assert.strictEqual(derivedLogs.some(d => d.id === 'derived_txn_1'), false, 'txn_1 already had real log, must not be duplicated');
     assert.strictEqual(derivedLogs.find(d => d.id === 'derived_txn_2').isDerived, true);
     assert.strictEqual(derivedLogs.find(d => d.id === 'derived_txn_2').feeHeadName, 'Payment (UPI)');
     assert.strictEqual(derivedLogs.find(d => d.id === 'derived_txn_2').amount, 1500);
-    assert.strictEqual(derivedLogs.find(d => d.id === 'derived_txn_3').feeHeadName, 'Exam Fee');
+    assert.strictEqual(derivedLogs.some(d => d.id === 'derived_txn_3'), false, 'Dues (txn_3) must NEVER be derived');
     assert.strictEqual(derivedLogs.find(d => d.id === 'derived_txn_4').feeHeadName, 'Void / Reversal');
     assert.strictEqual(derivedLogs.find(d => d.id === 'derived_txn_4').amount, -1500);
   });
@@ -289,6 +330,216 @@ async function runAllTests() {
     const feesJs = fs.readFileSync(path.join(ROOT_DIR, 'js/fees.js'), 'utf8');
     assert.strictEqual(feesJs.includes('<div class="stat-label">Cash Collected Today</div>'), true);
     assert.strictEqual(feesJs.includes('<div class="stat-label">Cash in Hand</div>'), false);
+  });
+
+  await recordTest('LOGIC-07', 'Fixture with 778 subcollection logs (only 100 loaded): 0 derived for older txns, dues never derived, 1 unlogged in window derived', async () => {
+    const app = createMockSchoolApp(2, false, true);
+    app._feeLogsHasMore = true; // Still has more logs in Firestore (total 778, only 100 loaded)
+
+    const studentMap = { s1: app.store.students[0], s2: app.store.students[1] };
+
+    // 100 loaded logs: timestamps from 2026-10-01 to 2026-11-10
+    const loadedLogs = [];
+    const allFees = [];
+
+    // Oldest loaded log will be 2026-10-01T00:00:00Z
+    for (let i = 0; i < 100; i++) {
+      const day = String(1 + Math.floor(i / 3)).padStart(2, '0');
+      const ts = `2026-10-${day}T10:00:00.000Z`;
+      const txnId = `pay_loaded_${i}`;
+      const rNo = `GPS/2026-27/${String(1000 + i).padStart(6, '0')}`;
+      loadedLogs.push({
+        id: `log_sub_${i}`,
+        txnId: txnId,
+        receiptNo: rNo,
+        timestamp: ts,
+        studentId: i % 2 === 0 ? 's1' : 's2',
+        amount: 1000
+      });
+      allFees.push({
+        id: txnId,
+        type: 'payment',
+        receiptNo: rNo,
+        mode: 'Cash',
+        timestamp: ts,
+        studentId: i % 2 === 0 ? 's1' : 's2',
+        amount: 1000
+      });
+    }
+
+    // 678 older transactions before 2026-10-01 (May to Sep 2026) whose logs exist in subcollection but are NOT loaded
+    for (let j = 0; j < 678; j++) {
+      const oldTs = `2026-08-${String((j % 28) + 1).padStart(2, '0')}T09:00:00.000Z`;
+      allFees.push({
+        id: `pay_old_${j}`,
+        type: 'payment',
+        mode: 'Cash',
+        receiptNo: `GPS/2026-27/${String(100 + j).padStart(6, '0')}`,
+        timestamp: oldTs,
+        studentId: j % 2 === 0 ? 's1' : 's2',
+        amount: 800
+      });
+    }
+
+    // Dues generated across both windows (dues must NEVER be derived)
+    for (let k = 0; k < 50; k++) {
+      allFees.push({
+        id: `due_item_${k}`,
+        type: 'due',
+        description: 'Monthly Tuition Fee',
+        timestamp: k % 2 === 0 ? '2026-11-01T00:00:00.000Z' : '2026-08-01T00:00:00.000Z',
+        studentId: 's1',
+        amount: 1200
+      });
+    }
+
+    // Exactly 1 payment with NO log inside the loaded window (Nov 2026)
+    const unloggedPayTs = '2026-11-08T15:30:00.000Z';
+    allFees.push({
+      id: 'pay_unlogged_gap_nov',
+      type: 'payment',
+      mode: 'UPI',
+      receiptNo: 'GPS/2026-27/009999',
+      timestamp: unloggedPayTs,
+      studentId: 's2',
+      amount: 2500,
+      recordedBy: 'Admin'
+    });
+
+    app.store.feeActivityLog = loadedLogs;
+    app.store.fees = allFees;
+
+    // Run derivation
+    const rawLogs = (app.store.feeActivityLog || []).slice();
+    let oldestLoadedTs = null;
+    if (app._feeLogsHasMore === true && rawLogs.length > 0) {
+      for (let ri = 0; ri < rawLogs.length; ri++) {
+        const rts = rawLogs[ri].timestamp || (rawLogs[ri].date ? (rawLogs[ri].date + 'T00:00:00.000Z') : null);
+        if (rts) {
+          const tVal = new Date(rts).getTime();
+          if (!isNaN(tVal)) {
+            if (oldestLoadedTs === null || tVal < oldestLoadedTs) {
+              oldestLoadedTs = tVal;
+            }
+          }
+        }
+      }
+    }
+
+    const knownTxnIds = new Set();
+    const knownReceipts = new Set();
+    const knownSignatures = new Set();
+
+    rawLogs.forEach(l => {
+      if (!l) return;
+      if (l.txnId) knownTxnIds.add(String(l.txnId).trim());
+      if (l.originalTxnId) knownTxnIds.add(String(l.originalTxnId).trim());
+      if (l.receiptNo) knownReceipts.add(String(l.receiptNo).trim());
+      const dt = l.timestamp ? String(l.timestamp).slice(0, 10) : '';
+      const amt = Math.abs(parseFloat(l.amount || 0)).toFixed(2);
+      if (l.studentId && dt) knownSignatures.add(l.studentId + '|' + dt + '|' + amt);
+    });
+
+    const derivedLogs = [];
+    allFees.forEach(txn => {
+      if (!txn || !txn.id) return;
+
+      const isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
+      let isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
+      if (txn.type === 'due' || txn.type === 'charge' || txn.type === 'monthly_due' || txn.type === 'fee_due') {
+        isPayment = false;
+      }
+      if (!isPayment && !isReversal) return;
+
+      const txnTsStr = txn.timestamp || (txn.date ? (txn.date + 'T00:00:00.000Z') : null);
+      if (oldestLoadedTs !== null) {
+        if (!txnTsStr) return;
+        const txnTime = new Date(txnTsStr).getTime();
+        if (isNaN(txnTime) || txnTime < oldestLoadedTs) return;
+      }
+
+      if (knownTxnIds.has(String(txn.id).trim())) return;
+      if (txn.receiptNo && knownReceipts.has(String(txn.receiptNo).trim())) return;
+
+      const txnDt = txn.timestamp ? String(txn.timestamp).slice(0, 10) : '';
+      const txnAmt = Math.abs(parseFloat(txn.amount || 0)).toFixed(2);
+      if (txn.studentId && txnDt && knownSignatures.has(txn.studentId + '|' + txnDt + '|' + txnAmt)) return;
+
+      const noteMatch = rawLogs.some(l => {
+        if (!l || !l.note) return false;
+        if (l.note.indexOf(txn.id) !== -1) return true;
+        if (txn.receiptNo && l.note.indexOf(txn.receiptNo) !== -1) return true;
+        return false;
+      });
+      if (noteMatch) return;
+
+      const headName = isReversal ? 'Void / Reversal' : ('Payment (' + (txn.mode || 'Cash') + ')');
+
+      derivedLogs.push({
+        id: 'derived_' + txn.id,
+        isDerived: true,
+        timestamp: txn.timestamp,
+        studentId: txn.studentId,
+        studentName: studentMap[txn.studentId].firstName + ' ' + studentMap[txn.studentId].lastName,
+        className: studentMap[txn.studentId].class + '-' + studentMap[txn.studentId].section,
+        feeHeadName: headName,
+        amount: isReversal ? -Math.abs(txn.amount) : txn.amount,
+        addedBy: txn.recordedBy || txn.addedBy || txn.voidedBy,
+        receiptNo: txn.receiptNo || null,
+        txnId: txn.id
+      });
+    });
+
+    assert.strictEqual(derivedLogs.length, 1, 'Exactly 1 derived entry must be produced for the unlogged payment in loaded window');
+    assert.strictEqual(derivedLogs[0].id, 'derived_pay_unlogged_gap_nov');
+    assert.strictEqual(derivedLogs[0].amount, 2500);
+    assert.strictEqual(derivedLogs[0].feeHeadName, 'Payment (UPI)');
+  });
+
+  await recordTest('LOGIC-08', 'Exact linkage on new log entries (txnId, originalTxnId, receiptNo set before logDocRef write)', async () => {
+    const feesJs = fs.readFileSync(path.join(ROOT_DIR, 'js/fees.js'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT_DIR, 'js/app.js'), 'utf8');
+
+    // 1. doSave payment log has txnId: newTxn.id
+    assert.ok(feesJs.includes('txnId: newTxn.id'), 'doSave paymentLog must contain txnId: newTxn.id');
+
+    // 2. voidFeeTransaction log has txnId: reversalTxn.id and originalTxnId: txn.id
+    assert.ok(feesJs.includes('txnId: reversalTxn.id'), 'voidLog must contain txnId: reversalTxn.id');
+    assert.ok(feesJs.includes('originalTxnId: txn.id'), 'voidLog must contain originalTxnId: txn.id');
+
+    // 3. deleteFeeTransaction log has txnId: txnId
+    assert.ok(appJs.includes('txnId: txnId'), 'deleteLog must contain txnId: txnId');
+
+    // 4. auto-billing log has txnId: nd.id
+    assert.ok(appJs.includes('txnId: nd.id'), 'autoLogs must contain txnId: nd.id');
+
+    // 5. bulk charge log has txnId: newTxn.id
+    assert.ok(feesJs.includes('txnId: newTxn.id'), 'newBulkLog must contain txnId: newTxn.id');
+
+    // 6. saveFeeTransaction assigns logEntry.receiptNo BEFORE writing logDocRef inside transaction
+    const assignPos = appJs.indexOf('logEntry.receiptNo = txn.receiptNo');
+    const logDocPos = appJs.indexOf('transaction.set(logDocRef, JSON.parse(JSON.stringify(logEntry)))');
+    assert.ok(assignPos !== -1, 'Must assign logEntry.receiptNo = txn.receiptNo');
+    assert.ok(logDocPos !== -1, 'Must write logDocRef');
+    assert.ok(assignPos < logDocPos, 'logEntry.receiptNo assignment must precede transaction.set(logDocRef, ...)');
+  });
+
+  await recordTest('LOGIC-09', 'Don\'t keep phantom logs: no premature unshift/push and resilient deleteFeeTransaction', async () => {
+    const feesJs = fs.readFileSync(path.join(ROOT_DIR, 'js/fees.js'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT_DIR, 'js/app.js'), 'utf8');
+
+    // doSave must NOT unshift paymentLog before saveFeeTransaction
+    const doSaveMatch = feesJs.match(/var paymentLog = {[\s\S]*?};[\s\S]*?SchoolApp\.saveFeeTransaction/);
+    assert.ok(doSaveMatch, 'doSave paymentLog definition found');
+    assert.strictEqual(doSaveMatch[0].includes('SchoolApp.store.feeActivityLog.unshift(paymentLog)'), false, 'paymentLog must NOT be unshifted before saveFeeTransaction');
+
+    // voidFeeTransaction must NOT unshift voidLog before save
+    const voidMatch = feesJs.match(/var voidLog = {[\s\S]*?};[\s\S]*?SchoolApp\.showLoader\('Processing reversal/);
+    assert.ok(voidMatch, 'voidLog definition found');
+    assert.strictEqual(voidMatch[0].includes('SchoolApp.store.feeActivityLog.unshift(voidLog)'), false, 'voidLog must NOT be unshifted before save');
+
+    // deleteFeeTransaction must wrap logDocRef write in try/catch so log error doesn't fail delete
+    assert.ok(appJs.includes('[Fees] Failed to write delete fee_activity_log:'), 'deleteFeeTransaction must catch log write error');
   });
 
   // ========================================================
@@ -428,6 +679,24 @@ async function runAllTests() {
     assert.ok(caseHtml.includes('<link rel="canonical" href="https://www.ctrlshifts.in/case-study.html">'), 'case-study.html canonical');
     assert.ok(caseHtml.includes('<meta property="og:site_name" content="Paathshala by Ctrl Shift Solutions">'), 'case-study.html og:site_name');
     assert.ok(caseHtml.includes('application/ld+json'), 'case-study.html JSON-LD');
+  });
+
+  await recordTest('SEO-13', 'about.html copy reflects v86.1 corrections (no scheduled backup claim, recycle bin text, no age 50 claim, unstable internet text)', async () => {
+    const aboutHtml = fs.readFileSync(path.join(ROOT_DIR, 'about.html'), 'utf8');
+    assert.strictEqual(aboutHtml.includes('automatically backed up daily'), false, 'No automated daily backup claim');
+    assert.ok(aboutHtml.includes('Deleted records go to a recycle bin first, and our support team can restore them on request.'), 'Recycle bin sentence present');
+    assert.strictEqual(aboutHtml.includes('Teachers aged 50 and above'), false, 'No age 50 claim');
+    assert.ok(aboutHtml.includes('The interface is designed so that teachers who have never used ERP software can start using it quickly.'), 'Quick start sentence present');
+    assert.strictEqual(aboutHtml.includes('offline-first Progressive Web Application architecture'), false, 'No offline-first PWA claim');
+    assert.ok(aboutHtml.includes('built to keep working on slow or unstable internet, with changes syncing when the connection returns.'), 'Unstable internet sentence present');
+  });
+
+  await recordTest('SEO-14', 'case-study.html copy reflects v86.1 corrections (no 80% claim, no within 24 hours claim, preserves over 280 enrolled students)', async () => {
+    const caseHtml = fs.readFileSync(path.join(ROOT_DIR, 'case-study.html'), 'utf8');
+    assert.strictEqual(caseHtml.includes('80% Reduction in Administrative Overhead'), false, 'No 80% reduction claim');
+    assert.ok(caseHtml.includes('Significant Reduction in Administrative Overhead'), 'Significant reduction sentence present');
+    assert.strictEqual(caseHtml.includes('within 24 hours'), false, 'No within 24 hours claim');
+    assert.ok(caseHtml.includes('over 280 enrolled students'), 'Preserves over 280 enrolled students');
   });
 
   // ========================================================
