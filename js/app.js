@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v85';
+window.APP_VERSION = window.APP_VERSION || 'v86';
 if (typeof window.updateVersionUI === 'function') {
   window.updateVersionUI(window.APP_VERSION);
 }
@@ -867,6 +867,12 @@ window.SchoolApp = {
     return !!(this.store && this.store.settings && this.store.settings.feeLogMigrated === true);
   },
 
+  isFeeLogSubcollection: function(schoolId) {
+    var sid = schoolId || (this.store && this.store.currentSchoolId) || localStorage.getItem('impersonate_school_id') || '';
+    if (!sid) return false;
+    return this.isFeeLogMigrated(sid) || this.isStorageVersion2(sid) || this.isRestructured(sid);
+  },
+
   loadFeeActivityLogs: async function(loadMore) {
     var schoolId = this.currentSchoolId || (this.store && this.store.currentSchoolId);
     if (!schoolId || !window.firestore || !window.db) return [];
@@ -875,7 +881,7 @@ window.SchoolApp = {
 
     var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'fee_activity_logs');
     var q;
-    var pageSize = 50;
+    var pageSize = 100;
 
     try {
       if (loadMore && this._lastFeeLogDoc && window.firestore.startAfter) {
@@ -900,19 +906,23 @@ window.SchoolApp = {
       }
       this._feeLogsHasMore = (snap.docs.length === pageSize);
 
-      if (loadMore) {
-        var existingIds = new Set(this.store.feeActivityLog.map(function(l) { return l.id; }));
-        fetched.forEach(function(l) {
-          if (!existingIds.has(l.id)) {
-            SchoolApp.store.feeActivityLog.push(l);
-          }
-        });
-      } else {
-        var existingNewLogs = this.store.feeActivityLog.filter(function(l) {
-          return !fetched.some(function(f) { return f.id === l.id; });
-        });
-        this.store.feeActivityLog = existingNewLogs.concat(fetched);
-      }
+      var self = this;
+      var logMap = new Map();
+      // Keep existing in-memory / root logs
+      (this.store.feeActivityLog || []).forEach(function(l) {
+        if (l && l.id) logMap.set(l.id, l);
+      });
+      // Merge fetched subcollection records
+      fetched.forEach(function(l) {
+        if (l && l.id) logMap.set(l.id, l);
+      });
+      var merged = Array.from(logMap.values());
+      merged.sort(function(a, b) {
+        var tA = a.timestamp || a.date || '';
+        var tB = b.timestamp || b.date || '';
+        return new Date(tB).getTime() - new Date(tA).getTime();
+      });
+      this.store.feeActivityLog = merged;
       this._feeLogsLoaded = true;
       return this.store.feeActivityLog;
     } catch (e) {
@@ -928,14 +938,20 @@ window.SchoolApp = {
     try {
       var collRef = window.firestore.collection(window.db, 'tenant_data', schoolId, 'fee_activity_logs');
       var snap = await window.firestore.getDocs(collRef);
-      var allLogs = [];
+      var fetched = [];
       snap.forEach(function(docSnap) {
         var d = docSnap.data();
         d.id = docSnap.id;
-        allLogs.push(d);
+        fetched.push(d);
       });
+      var logMap = new Map();
+      (this.store.feeActivityLog || []).forEach(function(l) { if (l && l.id) logMap.set(l.id, l); });
+      fetched.forEach(function(l) { if (l && l.id) logMap.set(l.id, l); });
+      var allLogs = Array.from(logMap.values());
       allLogs.sort(function(a, b) {
-        return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+        var tA = a.timestamp || a.date || '';
+        var tB = b.timestamp || b.date || '';
+        return new Date(tB).getTime() - new Date(tA).getTime();
       });
       this.store.feeActivityLog = allLogs;
       this._feeLogsHasMore = false;
@@ -1793,7 +1809,7 @@ window.SchoolApp = {
       }
 
       // 8. Fee activity logs
-      if (this.isFeeLogMigrated(schoolId) || this.isStorageVersion2(schoolId)) {
+      if (this.isFeeLogSubcollection(schoolId)) {
         await this.loadFeeActivityLogs(false);
       }
     } catch (e) {
@@ -2567,7 +2583,8 @@ window.SchoolApp = {
         var isPayment = (txn && txn.type === 'payment');
         var needsReceiptNo = isPayment && !txn.receiptNo;
         var counterRef = (needsReceiptNo && fs && db) ? fs.doc(db, 'tenant_data', currentSchoolId, 'counters', 'fee_receipts') : null;
-        var logDocRef = (logEntry && logEntry.id && this.isFeeLogMigrated(currentSchoolId) && fs && db)
+        var isSubcoll = this.isFeeLogSubcollection(currentSchoolId);
+        var logDocRef = (logEntry && logEntry.id && isSubcoll && fs && db)
           ? fs.doc(db, 'tenant_data', currentSchoolId, 'fee_activity_logs', logEntry.id)
           : null;
 
@@ -2653,7 +2670,18 @@ window.SchoolApp = {
             }
           }
 
-          if (self.store.feeActivityLog && !self.isFeeLogMigrated(currentSchoolId)) {
+          // Sync in-memory feeActivityLog
+          if (logEntry && logEntry.id) {
+            if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
+            var lIdx = self.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
+            if (lIdx !== -1) {
+              self.store.feeActivityLog[lIdx] = logEntry;
+            } else {
+              self.store.feeActivityLog.unshift(logEntry);
+            }
+          }
+
+          if (self.store.feeActivityLog && !isSubcoll) {
             await self.save(true);
           }
 
@@ -2667,13 +2695,19 @@ window.SchoolApp = {
           return f.date && String(f.date).startsWith(ymPrefix);
         });
 
-        // Gated: When feeLogMigrated is enabled, write log to subcollection in same batch
-        if (this.isFeeLogMigrated(currentSchoolId)) {
+        if (isSubcoll) {
           var batch = window.firestore.writeBatch(window.db);
           batch.set(docRef, { transactions: JSON.parse(JSON.stringify(monthTxns)) });
           if (logEntry && logEntry.id) {
             var logDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', logEntry.id);
             batch.set(logDocRef, JSON.parse(JSON.stringify(logEntry)));
+            if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+            var lIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
+            if (lIdx !== -1) {
+              this.store.feeActivityLog[lIdx] = logEntry;
+            } else {
+              this.store.feeActivityLog.unshift(logEntry);
+            }
           }
           var saveFn = () => batch.commit();
           var success = await this.saveWithRetry(saveFn);
@@ -2703,6 +2737,15 @@ window.SchoolApp = {
       }
     }
 
+    if (logEntry && logEntry.id) {
+      if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+      var lIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
+      if (lIdx !== -1) {
+        this.store.feeActivityLog[lIdx] = logEntry;
+      } else {
+        this.store.feeActivityLog.unshift(logEntry);
+      }
+    }
     return await this.save(bypassLoader);
   },
 
@@ -2774,8 +2817,21 @@ window.SchoolApp = {
         }
         console.log('[Fees] Bulk saved ' + txns.length + ' transactions across months.');
 
-        // Gated: When feeLogMigrated is enabled, write logs to subcollection without writing root
-        if (this.isFeeLogMigrated(currentSchoolId)) {
+        // In-memory feeActivityLog synchronization
+        if (Array.isArray(logEntries) && logEntries.length > 0) {
+          if (!self.store.feeActivityLog) self.store.feeActivityLog = [];
+          var existingLogMap = new Map();
+          self.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+          logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+          self.store.feeActivityLog = Array.from(existingLogMap.values());
+          self.store.feeActivityLog.sort(function(a, b) {
+            return new Date(b.timestamp || b.date || 0) - new Date(a.timestamp || a.date || 0);
+          });
+        }
+
+        // Subcollection write for all v2 / restructured / feeLogMigrated schools
+        var isSubcoll = this.isFeeLogSubcollection(currentSchoolId);
+        if (isSubcoll) {
           if (Array.isArray(logEntries) && logEntries.length > 0) {
             var batch = window.firestore.writeBatch(window.db);
             var opCount = 0;
@@ -2812,6 +2868,14 @@ window.SchoolApp = {
       }
     }
 
+    if (Array.isArray(logEntries) && logEntries.length > 0) {
+      if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+      var existingLogMap = new Map();
+      this.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+      logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+      this.store.feeActivityLog = Array.from(existingLogMap.values());
+    }
+
     return await this.save(bypassLoader);
   },
 
@@ -2829,6 +2893,8 @@ window.SchoolApp = {
     var yr = txnDate ? String(txnDate).slice(0, 4) : '';
     var mo = txnDate ? String(txnDate).slice(5, 7) : 'unknown';
 
+    var targetTxn = (this.store.fees || []).find(function(f) { return f.id === txnId; });
+
     this.store.fees = (this.store.fees || []).filter(function(f) {
       if (f.id === txnId) {
         if (!yr && f.date) yr = String(f.date).slice(0, 4);
@@ -2842,6 +2908,27 @@ window.SchoolApp = {
       this._feesYears[yr] = this._feesYears[yr].filter(function(f) { return f.id !== txnId; });
     }
 
+    // Record activity log for delete
+    var student = targetTxn ? (this.store.students || []).find(function(s) { return s.id === targetTxn.studentId; }) : null;
+    var studentName = student ? (student.firstName + ' ' + (student.lastName || '')).trim() : (targetTxn ? (targetTxn.studentName || 'Student') : 'Student');
+    var className = student ? (student.class + (student.section ? '-' + student.section : '')) : (targetTxn ? (targetTxn.className || '') : '');
+    var adminName = this.currentUser ? (this.currentUser.username || this.currentUser.firstName || 'admin') : 'admin';
+    var isSubcoll = this.isFeeLogSubcollection(currentSchoolId);
+
+    var deleteLog = {
+      id: this.generateId(),
+      timestamp: new Date().toISOString(),
+      studentId: targetTxn ? targetTxn.studentId : '',
+      studentName: studentName,
+      className: className,
+      feeHeadName: 'Delete Transaction',
+      amount: targetTxn ? -(targetTxn.amount || 0) : 0,
+      addedBy: adminName,
+      note: 'Deleted transaction: ' + txnId + (targetTxn && targetTxn.receiptNo ? ' (Receipt: ' + targetTxn.receiptNo + ')' : '')
+    };
+    if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+    this.store.feeActivityLog.unshift(deleteLog);
+
     if (!bypassLoader) this.showLoader('Deleting fee transaction...');
     if (this.isRestructured(currentSchoolId)) {
       try {
@@ -2852,6 +2939,12 @@ window.SchoolApp = {
           });
           var docRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fees_years', yr, 'months', mo);
           await window.firestore.setDoc(docRef, { transactions: monthTxns });
+        }
+        if (isSubcoll && window.firestore && window.db) {
+          var logDocRef = window.firestore.doc(window.db, 'tenant_data', currentSchoolId, 'fee_activity_logs', deleteLog.id);
+          await window.firestore.setDoc(logDocRef, JSON.parse(JSON.stringify(deleteLog)));
+        } else if (!isSubcoll) {
+          await this.save(true);
         }
         return true;
       } catch (err) {
@@ -4718,10 +4811,32 @@ window.SchoolApp = {
         this.store.fees.push(newDueTxns[i]);
       }
 
+      // Generate activity logs for automated fee dues
+      var autoLogs = [];
+      if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+      var stds = this.store.students || [];
+      for (var ai = 0; ai < newDueTxns.length; ai++) {
+        var nd = newDueTxns[ai];
+        var st = stds.find(function(s) { return s.id === nd.studentId; });
+        var aLog = {
+          id: this.generateId(),
+          timestamp: new Date().toISOString(),
+          studentId: nd.studentId,
+          studentName: st ? (st.firstName + ' ' + (st.lastName || '')).trim() : 'Student',
+          className: st ? (st.class + (st.section ? '-' + st.section : '')) : '',
+          feeHeadName: nd.description || 'Monthly Fee Due',
+          amount: nd.amount,
+          addedBy: 'system (auto-billing)',
+          note: 'Auto-reconciliation for period ' + (nd.billingPeriod || currentPeriod)
+        };
+        this.store.feeActivityLog.push(aLog);
+        autoLogs.push(aLog);
+      }
+
       // Restructured-aware persistence
       var saveSuccess = false;
       if (typeof this.saveFeeTransactions === 'function') {
-        saveSuccess = await this.saveFeeTransactions(newDueTxns, true);
+        saveSuccess = await this.saveFeeTransactions(newDueTxns, true, autoLogs);
       } else {
         saveSuccess = await this.save(true);
       }

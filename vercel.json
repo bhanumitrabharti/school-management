@@ -135,6 +135,36 @@
       "continue": false
     },
     {
+      "src": "/about\\.html",
+      "dest": "/about.html",
+      "continue": false
+    },
+    {
+      "src": "/about",
+      "dest": "/about.html",
+      "continue": false
+    },
+    {
+      "src": "/case-study\\.html",
+      "dest": "/case-study.html",
+      "continue": false
+    },
+    {
+      "src": "/case-study",
+      "dest": "/case-study.html",
+      "continue": false
+    },
+    {
+      "src": "/404\\.html",
+      "dest": "/404.html",
+      "continue": false
+    },
+    {
+      "src": "/404",
+      "dest": "/404.html",
+      "continue": false
+    },
+    {
       "src": "/",
       "has": [
         {
@@ -176,6 +206,17 @@
         }
       ],
       "dest": "/parents.html"
+    },
+    {
+      "src": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?:www\\.)?ctrlshifts\\.in$"
+        }
+      ],
+      "dest": "/404.html",
+      "status": 404
     },
     {
       "src": "/(.*)",

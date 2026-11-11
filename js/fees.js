@@ -1406,7 +1406,8 @@
   }
 
   function renderHistoryTab(dataContainer) {
-    if (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated() && !SchoolApp._feeLogsLoaded) {
+    var isSubcollSchool = (SchoolApp.isFeeLogSubcollection ? SchoolApp.isFeeLogSubcollection() : (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated()));
+    if (isSubcollSchool && !SchoolApp._feeLogsLoaded) {
       dataContainer.innerHTML = '<div class="empty-state"><span class="material-icons-round" style="animation: spin 1s infinite linear;">sync</span><h3>Loading Fee Activity Logs...</h3><p>Fetching records from subcollection...</p></div>';
       SchoolApp.loadFeeActivityLogs(false).then(function() {
         renderHistoryTab(dataContainer);
@@ -1422,7 +1423,76 @@
       studentMap[s.id] = s;
     });
 
-    var logs = (SchoolApp.store.feeActivityLog || []).filter(function(log) {
+    var rawLogs = (SchoolApp.store.feeActivityLog || []).slice();
+
+    // Gap handling: Identify transactions without matching logs
+    var knownTxnIds = new Set();
+    var knownReceipts = new Set();
+    var knownSignatures = new Set();
+
+    rawLogs.forEach(function(l) {
+      if (!l) return;
+      if (l.id) knownTxnIds.add(l.id);
+      if (l.txnId) knownTxnIds.add(l.txnId);
+      if (l.receiptNo) knownReceipts.add(String(l.receiptNo).trim());
+      var dt = l.timestamp ? String(l.timestamp).slice(0, 10) : (l.date ? String(l.date).slice(0, 10) : '');
+      var amt = Math.abs(parseFloat(l.amount || 0)).toFixed(2);
+      if (l.studentId && dt) {
+        knownSignatures.add(l.studentId + '|' + dt + '|' + amt);
+      }
+    });
+
+    var derivedLogs = [];
+    var allFees = SchoolApp.store.fees || [];
+    allFees.forEach(function(txn) {
+      if (!txn || !txn.id) return;
+      if (knownTxnIds.has(txn.id)) return;
+      if (txn.receiptNo && knownReceipts.has(String(txn.receiptNo).trim())) return;
+
+      var txnDt = txn.timestamp ? String(txn.timestamp).slice(0, 10) : (txn.date ? String(txn.date).slice(0, 10) : '');
+      var txnAmt = Math.abs(parseFloat(txn.amount || 0)).toFixed(2);
+      if (txn.studentId && txnDt && knownSignatures.has(txn.studentId + '|' + txnDt + '|' + txnAmt)) {
+        return;
+      }
+
+      // Check if any raw log's note references this txn id or receipt number
+      var noteMatch = rawLogs.some(function(l) {
+        if (!l || !l.note) return false;
+        if (l.note.indexOf(txn.id) !== -1) return true;
+        if (txn.receiptNo && l.note.indexOf(txn.receiptNo) !== -1) return true;
+        return false;
+      });
+      if (noteMatch) return;
+
+      // Derive log entry
+      var st = studentMap[txn.studentId];
+      var stName = st ? (st.firstName + ' ' + (st.lastName || '')).trim() : (txn.studentName || 'Student');
+      var stClass = st ? (st.class + (st.section ? '-' + st.section : '')) : (txn.className || '');
+      var isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
+      var isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
+      var headName = isReversal ? 'Void / Reversal' : (isPayment ? ('Payment (' + (txn.mode || 'Cash') + ')') : (txn.description || 'Fee Due'));
+      var adminUser = txn.recordedBy || txn.addedBy || txn.voidedBy || 'admin';
+      var ts = txn.timestamp || (txn.date ? (txn.date + 'T00:00:00.000Z') : new Date().toISOString());
+
+      derivedLogs.push({
+        id: 'derived_' + txn.id,
+        isDerived: true,
+        timestamp: ts,
+        date: txn.date || ts.slice(0, 10),
+        studentId: txn.studentId,
+        studentName: stName,
+        className: stClass,
+        feeHeadName: headName,
+        amount: isReversal ? -Math.abs(txn.amount || 0) : (txn.amount || 0),
+        addedBy: adminUser,
+        note: (txn.receiptNo ? ('Receipt: ' + txn.receiptNo + (txn.remarks ? ' | ' : '')) : '') + (txn.remarks || (isPayment ? 'Fee payment recorded' : (isReversal ? 'Payment reversed' : 'Fee due charged'))),
+        receiptNo: txn.receiptNo || null,
+        txnId: txn.id
+      });
+    });
+
+    var combinedLogs = rawLogs.concat(derivedLogs);
+    var logs = combinedLogs.filter(function(log) {
       return !!studentMap[log.studentId];
     });
 
@@ -1488,14 +1558,19 @@
 
       pageLogs.forEach(function(log) {
         var logDateStr = formatTxnDateTime(log);
+        var headHtml = escapeHTML(log.feeHeadName);
+        var noteHtml = escapeHTML(log.note || '—');
+        if (log.isDerived) {
+          noteHtml += ' <span class="badge badge-info" style="font-size:10px; margin-left:4px; padding:2px 6px; font-weight:600;">from payment records</span>';
+        }
         html += '<tr>';
         html += '<td>' + logDateStr + '</td>';
         html += '<td><strong style="color:var(--accent-primary); text-decoration:underline; cursor:pointer;" onclick="openStudentProfile(\'' + log.studentId + '\')">' + escapeHTML(log.studentName) + '</strong></td>';
         html += '<td><span class="badge badge-info">' + log.className + '</span></td>';
-        html += '<td>' + log.feeHeadName + '</td>';
+        html += '<td>' + headHtml + '</td>';
         html += '<td>₹' + parseFloat(log.amount || 0).toLocaleString('en-IN') + '</td>';
-        html += '<td><span class="badge badge-secondary">' + log.addedBy + '</span></td>';
-        html += '<td><span style="font-size: 12px; color: var(--text-secondary);">' + (log.note || '—') + '</span></td>';
+        html += '<td><span class="badge badge-secondary">' + escapeHTML(log.addedBy) + '</span></td>';
+        html += '<td><span style="font-size: 12px; color: var(--text-secondary);">' + noteHtml + '</span></td>';
         html += '</tr>';
       });
 
@@ -1510,9 +1585,9 @@
       html += '<button class="pagination-btn" ' + (state.historyCurrentPage >= totalPages ? 'disabled' : '') + ' data-page="next"><span class="material-icons-round">chevron_right</span></button>';
       html += '</div>';
 
-      if (SchoolApp.isFeeLogMigrated && SchoolApp.isFeeLogMigrated() && SchoolApp._feeLogsHasMore) {
+      if (isSubcollSchool && SchoolApp._feeLogsHasMore) {
         html += '<div style="text-align: center; margin: 12px 0;">';
-        html += '<button type="button" class="btn btn-secondary" id="fees-history-load-more-btn" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px;"><span class="material-icons-round" style="font-size: 18px;">expand_more</span> Load Older Logs (50 more)</button>';
+        html += '<button type="button" class="btn btn-secondary" id="fees-history-load-more-btn" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px;"><span class="material-icons-round" style="font-size: 18px;">expand_more</span> Load Older Logs (100 more)</button>';
         html += '</div>';
       }
 
@@ -1616,7 +1691,7 @@
       shellHtml += '<div class="stat-card green"><div class="stat-icon"><span class="material-icons-round">calendar_today</span></div>';
       shellHtml += '<div class="stat-info"><div class="stat-number" id="ledger-mtd-collection">₹0</div><div class="stat-label">MTD Collection</div></div></div>';
       shellHtml += '<div class="stat-card cyan"><div class="stat-icon"><span class="material-icons-round">account_balance_wallet</span></div>';
-      shellHtml += '<div class="stat-info"><div class="stat-number" id="ledger-cash-in-hand">₹0</div><div class="stat-label">Cash in Hand</div></div></div>';
+      shellHtml += '<div class="stat-info"><div class="stat-number" id="ledger-cash-in-hand">₹0</div><div class="stat-label">Cash Collected Today</div></div></div>';
       shellHtml += '</div>';
 
       shellHtml += '<div class="toolbar" id="fees-students-toolbar">';
@@ -2416,14 +2491,31 @@
       });
     }
 
+    var student = SchoolApp.store.students ? SchoolApp.store.students.find(function(s) { return s.id === txn.studentId; }) : null;
+    var studentName = student ? (student.firstName + ' ' + (student.lastName || '')).trim() : (txn.studentName || 'Student');
+    var className = student ? (student.class + (student.section ? '-' + student.section : '')) : (txn.className || '');
+    var voidLog = {
+      id: SchoolApp.generateId(),
+      timestamp: new Date().toISOString(),
+      studentId: txn.studentId,
+      studentName: studentName,
+      className: className,
+      feeHeadName: 'Void / Reversal',
+      amount: -Math.abs(txn.amount || 0),
+      addedBy: adminName,
+      note: 'Voided transaction: ' + (txn.receiptNo || txn.id) + ' | Reason: ' + reason.trim()
+    };
+    if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+    SchoolApp.store.feeActivityLog.unshift(voidLog);
+
     SchoolApp.showLoader('Processing reversal...');
     try {
       var success = false;
       if (typeof SchoolApp.saveFeeTransactions === 'function') {
-        success = await SchoolApp.saveFeeTransactions([txn, reversalTxn]);
+        success = await SchoolApp.saveFeeTransactions([txn, reversalTxn], true, [voidLog]);
       } else if (typeof SchoolApp.saveFeeTransaction === 'function') {
         var s1 = await SchoolApp.saveFeeTransaction(txn, true);
-        var s2 = await SchoolApp.saveFeeTransaction(reversalTxn, true);
+        var s2 = await SchoolApp.saveFeeTransaction(reversalTxn, true, voidLog);
         success = s1 && s2;
       } else {
         if (!SchoolApp.store.fees.some(function(f) { return f.id === revId; })) {
@@ -3715,9 +3807,25 @@
               timestamp: new Date().toISOString()
             };
 
+            var adminName = SchoolApp.currentUser ? (SchoolApp.currentUser.username || SchoolApp.currentUser.firstName || 'admin') : 'admin';
+            var sClass = student ? (student.class + (student.section ? '-' + student.section : '')) : '';
+            var paymentLog = {
+              id: SchoolApp.generateId(),
+              timestamp: newTxn.timestamp || new Date().toISOString(),
+              studentId: studentId,
+              studentName: student ? (student.firstName + ' ' + (student.lastName || '')).trim() : 'Student',
+              className: sClass,
+              feeHeadName: 'Payment (' + (mode || 'Cash') + ')',
+              amount: netAmt,
+              addedBy: adminName,
+              note: (newTxn.remarks || 'Fee payment recorded') + (discountAmt > 0 ? (' (₹' + discountAmt + ' discount)') : '')
+            };
+            if (!SchoolApp.store.feeActivityLog) SchoolApp.store.feeActivityLog = [];
+            SchoolApp.store.feeActivityLog.unshift(paymentLog);
+
             // Atomic reservation of receipt serial occurs inside saveFeeTransaction's Firestore transaction
             if (typeof SchoolApp.saveFeeTransaction === 'function') {
-              success = await SchoolApp.saveFeeTransaction(newTxn);
+              success = await SchoolApp.saveFeeTransaction(newTxn, false, paymentLog);
             } else {
               SchoolApp.store.fees.push(newTxn);
               success = await SchoolApp.save(true);
