@@ -55,6 +55,19 @@
   ],
   "routes": [
     {
+      "src": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!www\\.)[a-z0-9-]+\\.ctrlshifts\\.in$"
+        }
+      ],
+      "headers": {
+        "X-Robots-Tag": "noindex, nofollow"
+      },
+      "continue": true
+    },
+    {
       "src": "/api/registration-start(?:\\?.*)?",
       "dest": "/api/registration.js?action=start",
       "continue": false
@@ -193,19 +206,6 @@
     {
       "src": "/(?:service-account-key\\.json|.*firebase-adminsdk.*\\.json|\\.env.*|firestore\\.rules|firebase\\.json|\\.firebaserc|server\\.js|validate\\.js|netlify\\.toml|firestore-debug\\.log|.*\\.md)$",
       "status": 404
-    },
-    {
-      "src": "/(.*)",
-      "has": [
-        {
-          "type": "host",
-          "value": "^(?!www\\.)[a-z0-9-]+\\.ctrlshifts\\.in$"
-        }
-      ],
-      "headers": {
-        "X-Robots-Tag": "noindex, nofollow"
-      },
-      "continue": true
     },
     {
       "handle": "filesystem"
