@@ -542,6 +542,86 @@ async function runAllTests() {
     assert.ok(appJs.includes('[Fees] Failed to write delete fee_activity_log:'), 'deleteFeeTransaction must catch log write error');
   });
 
+  await recordTest('LOGIC-10', 'Reversal txns (isReversal:true, mode:Reversal, type:reversal, or negative amount with reversal description) classified as Void / Reversal with negative amount', async () => {
+    const liveReversalTxn = {
+      id: 'txn_rev_live',
+      type: 'payment',
+      mode: 'Cash',
+      amount: -1000,
+      isReversal: true,
+      description: 'Reversal: Payment (Voided)',
+      studentId: 's1',
+      timestamp: '2026-11-12T10:00:00.000Z'
+    };
+
+    const isReversal = liveReversalTxn.isReversal === true || liveReversalTxn.mode === 'Reversal' || liveReversalTxn.type === 'reversal' || (parseFloat(liveReversalTxn.amount) < 0 && /^reversal/i.test(liveReversalTxn.description || ''));
+    const isPayment = !isReversal && (liveReversalTxn.type === 'payment' || (!liveReversalTxn.type && liveReversalTxn.mode && liveReversalTxn.mode !== 'Reversal'));
+    const headName = isReversal ? 'Void / Reversal' : ('Payment (' + (liveReversalTxn.mode || 'Cash') + ')');
+    const amt = isReversal ? -Math.abs(parseFloat(liveReversalTxn.amount) || 0) : (parseFloat(liveReversalTxn.amount) || 0);
+
+    assert.strictEqual(isReversal, true, 'isReversal must be true');
+    assert.strictEqual(isPayment, false, 'isPayment must be false');
+    assert.strictEqual(headName, 'Void / Reversal', 'headName must be "Void / Reversal"');
+    assert.strictEqual(amt, -1000, 'amount must be -1000');
+
+    // Also test negative amount without isReversal: true but with description matching /^reversal/i
+    const descReversalTxn = {
+      id: 'txn_rev_desc',
+      type: 'payment',
+      mode: 'Cash',
+      amount: -750,
+      description: 'Reversal: receipt #123 voided',
+      studentId: 's1',
+      timestamp: '2026-11-12T11:00:00.000Z'
+    };
+    const isRevDesc = descReversalTxn.isReversal === true || descReversalTxn.mode === 'Reversal' || descReversalTxn.type === 'reversal' || (parseFloat(descReversalTxn.amount) < 0 && /^reversal/i.test(descReversalTxn.description || ''));
+    assert.strictEqual(isRevDesc, true, 'isReversal must match negative amount + reversal description');
+    const headNameDesc = isRevDesc ? 'Void / Reversal' : ('Payment (' + (descReversalTxn.mode || 'Cash') + ')');
+    assert.strictEqual(headNameDesc, 'Void / Reversal');
+
+    // Also verify actual js/fees.js code contains the exact expression
+    const feesJs = fs.readFileSync(path.join(ROOT_DIR, 'js/fees.js'), 'utf8');
+    assert.ok(feesJs.includes("var isReversal = txn.isReversal === true || txn.mode === 'Reversal' || txn.type === 'reversal' || (parseFloat(txn.amount) < 0 && /^reversal/i.test(txn.description || ''));"), 'fees.js must have the comprehensive isReversal check');
+    assert.ok(feesJs.includes("var isPayment = !isReversal && (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));"), 'fees.js must have isPayment check excluding reversal');
+  });
+
+  await recordTest('LOGIC-11', 'Legacy log persistence in js/app.js: logs unshifted before save() and removed on failure for single, bulk and delete', async () => {
+    const appJs = fs.readFileSync(path.join(ROOT_DIR, 'js/app.js'), 'utf8');
+
+    // 1. Verify single saveFeeTransaction code structure
+    const saveSingleMatch = appJs.match(/saveFeeTransaction: async function[\s\S]*?saveFeeTransactions: async function/);
+    assert.ok(saveSingleMatch, 'saveFeeTransaction found');
+    const singleCode = saveSingleMatch[0];
+    const logAddPosSingle = singleCode.lastIndexOf('this.store.feeActivityLog.unshift(logEntry)');
+    const saveCallPosSingle = singleCode.lastIndexOf('var saveOk = await this.save(bypassLoader)');
+    assert.ok(logAddPosSingle !== -1, 'logEntry must be unshifted into feeActivityLog');
+    assert.ok(saveCallPosSingle !== -1, 'save(bypassLoader) must be called');
+    assert.ok(logAddPosSingle < saveCallPosSingle, 'logEntry must be added BEFORE save() in saveFeeTransaction');
+    assert.ok(singleCode.includes('this.store.feeActivityLog.filter(function(l) { return l && l.id !== logEntry.id; })'), 'Must rollback logEntry on save failure');
+
+    // 2. Verify bulk saveFeeTransactions code structure
+    const saveBulkMatch = appJs.match(/saveFeeTransactions: async function[\s\S]*?deleteFeeTransaction: async function/);
+    assert.ok(saveBulkMatch, 'saveFeeTransactions found');
+    const bulkCode = saveBulkMatch[0];
+    const logAddPosBulk = bulkCode.lastIndexOf('addedIds.add(l.id)');
+    const saveCallPosBulk = bulkCode.lastIndexOf('var saveOk = await this.save(bypassLoader)');
+    assert.ok(logAddPosBulk !== -1, 'bulk logs must be added to feeActivityLog');
+    assert.ok(saveCallPosBulk !== -1, 'save(bypassLoader) must be called');
+    assert.ok(logAddPosBulk < saveCallPosBulk, 'logEntries must be added BEFORE save() in saveFeeTransactions');
+    assert.ok(bulkCode.includes('return !l || !addedIds.has(l.id)'), 'Must rollback addedIds on bulk save failure');
+
+    // 3. Verify deleteFeeTransaction legacy/root branch code structure
+    const deleteMatch = appJs.match(/deleteFeeTransaction: async function[\s\S]*?loadExamMarksTerm:/);
+    assert.ok(deleteMatch, 'deleteFeeTransaction found');
+    const deleteCode = deleteMatch[0];
+    const logAddPosDelete = deleteCode.lastIndexOf('this.store.feeActivityLog.unshift(deleteLog)');
+    const saveCallPosDelete = deleteCode.lastIndexOf('var saveOk = await this.save(true)');
+    assert.ok(logAddPosDelete !== -1, 'deleteLog must be unshifted into feeActivityLog on root path');
+    assert.ok(saveCallPosDelete !== -1, 'save(true) must be called on root path');
+    assert.ok(logAddPosDelete < saveCallPosDelete, 'deleteLog must be added BEFORE save() in deleteFeeTransaction root path');
+    assert.ok(deleteCode.includes('this.store.feeActivityLog.filter(function(l) { return l && l.id !== deleteLog.id; })'), 'Must rollback deleteLog on save failure');
+  });
+
   // ========================================================
   // 3. PART B WEBSITE SEO & METADATA TESTS
   // ========================================================
@@ -697,6 +777,58 @@ async function runAllTests() {
     assert.ok(caseHtml.includes('Significant Reduction in Administrative Overhead'), 'Significant reduction sentence present');
     assert.strictEqual(caseHtml.includes('within 24 hours'), false, 'No within 24 hours claim');
     assert.ok(caseHtml.includes('over 280 enrolled students'), 'Preserves over 280 enrolled students');
+  });
+
+  await recordTest('SEO-15', 'School-subdomain SEO: vercel.json X-Robots-Tag before filesystem, canonicals removed from index/parents/super-admin', async () => {
+    const vercel = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'vercel.json'), 'utf8'));
+
+    // Find the X-Robots-Tag route
+    const xRobotsRouteIdx = vercel.routes.findIndex(r => r.headers && r.headers['X-Robots-Tag'] === 'noindex, nofollow');
+    assert.ok(xRobotsRouteIdx !== -1, 'Route with X-Robots-Tag: noindex, nofollow must exist in vercel.json');
+
+    const fsHandleIdx = vercel.routes.findIndex(r => r.handle === 'filesystem');
+    assert.ok(fsHandleIdx !== -1, 'handle: filesystem must exist in vercel.json');
+    assert.ok(xRobotsRouteIdx < fsHandleIdx, 'X-Robots-Tag header route must be placed BEFORE handle: filesystem');
+
+    const route = vercel.routes[xRobotsRouteIdx];
+    assert.strictEqual(route.continue, true, 'X-Robots-Tag route must specify continue: true');
+    assert.ok(route.has && route.has[0], 'Route must have host condition');
+    const hostRegex = new RegExp(route.has[0].value);
+
+    // Subdomains must match
+    assert.strictEqual(hostRegex.test('greenwood.ctrlshifts.in'), true, 'Must match greenwood.ctrlshifts.in');
+    assert.strictEqual(hostRegex.test('kkgs.ctrlshifts.in'), true, 'Must match kkgs.ctrlshifts.in');
+    assert.strictEqual(hostRegex.test('svm-bokaro.ctrlshifts.in'), true, 'Must match svm-bokaro.ctrlshifts.in');
+    assert.strictEqual(hostRegex.test('parents.ctrlshifts.in'), true, 'Must match parents.ctrlshifts.in');
+
+    // Marketing domains must NOT match
+    assert.strictEqual(hostRegex.test('www.ctrlshifts.in'), false, 'Must NOT match www.ctrlshifts.in');
+    assert.strictEqual(hostRegex.test('ctrlshifts.in'), false, 'Must NOT match ctrlshifts.in');
+
+    // HTML checks
+    const indexHtml = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
+    assert.ok(indexHtml.includes('<meta name="robots" content="noindex">'), 'index.html has noindex');
+    assert.strictEqual(indexHtml.includes('<link rel="canonical" href="https://ctrlshifts.in">'), false, 'index.html canonical removed');
+    assert.strictEqual(indexHtml.includes('<link rel="canonical" href="https://ctrlshifts.in/">'), false, 'index.html canonical removed');
+
+    const superAdminHtml = fs.readFileSync(path.join(ROOT_DIR, 'super-admin.html'), 'utf8');
+    assert.ok(superAdminHtml.includes('<meta name="robots" content="noindex">'), 'super-admin.html has noindex');
+    assert.strictEqual(superAdminHtml.includes('<link rel="canonical"'), false, 'super-admin.html has no canonical');
+
+    const parentsHtml = fs.readFileSync(path.join(ROOT_DIR, 'parents.html'), 'utf8');
+    assert.ok(parentsHtml.includes('<meta name="robots" content="noindex">'), 'parents.html has noindex');
+    assert.strictEqual(parentsHtml.includes('<link rel="canonical" href="https://ctrlshifts.in'), false, 'parents.html has no canonical to marketing');
+  });
+
+  await recordTest('SEO-16', 'Version bump to v87 across all required files', async () => {
+    const versionJson = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'version.json'), 'utf8'));
+    assert.strictEqual(versionJson.version, 'v87', 'version.json must specify v87');
+
+    const swJs = fs.readFileSync(path.join(ROOT_DIR, 'sw.js'), 'utf8');
+    assert.ok(swJs.includes("const BUILD_VERSION = 'v87';"), 'sw.js must specify v87');
+
+    const appJs = fs.readFileSync(path.join(ROOT_DIR, 'js/app.js'), 'utf8');
+    assert.ok(appJs.includes("window.APP_VERSION = window.APP_VERSION || 'v87';"), 'js/app.js must specify v87');
   });
 
   // ========================================================

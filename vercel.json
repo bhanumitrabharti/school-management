@@ -195,6 +195,19 @@
       "status": 404
     },
     {
+      "src": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "^(?!www\\.)[a-z0-9-]+\\.ctrlshifts\\.in$"
+        }
+      ],
+      "headers": {
+        "X-Robots-Tag": "noindex, nofollow"
+      },
+      "continue": true
+    },
+    {
       "handle": "filesystem"
     },
     {

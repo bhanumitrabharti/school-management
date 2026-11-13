@@ -1464,8 +1464,8 @@
       if (!txn || !txn.id) return;
 
       // 1a. Derive entries ONLY for txns with type 'payment' or reversal (mode 'Reversal' / type 'reversal'). Never derive for dues/charges.
-      var isReversal = (txn.mode === 'Reversal' || txn.type === 'reversal');
-      var isPayment = (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
+      var isReversal = txn.isReversal === true || txn.mode === 'Reversal' || txn.type === 'reversal' || (parseFloat(txn.amount) < 0 && /^reversal/i.test(txn.description || ''));
+      var isPayment = !isReversal && (txn.type === 'payment' || (!txn.type && txn.mode && txn.mode !== 'Reversal'));
       if (txn.type === 'due' || txn.type === 'charge' || txn.type === 'monthly_due' || txn.type === 'fee_due') {
         isPayment = false;
       }
@@ -1519,9 +1519,9 @@
         studentName: stName,
         className: stClass,
         feeHeadName: headName,
-        amount: isReversal ? -Math.abs(txn.amount || 0) : (txn.amount || 0),
+        amount: isReversal ? -Math.abs(parseFloat(txn.amount) || 0) : (parseFloat(txn.amount) || 0),
         addedBy: adminUser,
-        note: (txn.receiptNo ? ('Receipt: ' + txn.receiptNo + (txn.remarks ? ' | ' : '')) : '') + (txn.remarks || (isPayment ? 'Fee payment recorded' : 'Payment reversed')),
+        note: (txn.receiptNo ? ('Receipt: ' + txn.receiptNo + ((txn.remarks || txn.description) ? ' | ' : '')) : '') + (txn.remarks || txn.description || (isPayment ? 'Fee payment recorded' : 'Payment reversed')),
         receiptNo: txn.receiptNo || null,
         txnId: txn.id
       });

@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v86';
+window.APP_VERSION = window.APP_VERSION || 'v87';
 if (typeof window.updateVersionUI === 'function') {
   window.updateVersionUI(window.APP_VERSION);
 }
@@ -2747,8 +2747,7 @@ window.SchoolApp = {
       }
     }
 
-    var saveOk = await this.save(bypassLoader);
-    if (saveOk && logEntry && logEntry.id) {
+    if (logEntry && logEntry.id) {
       if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
       var lIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === logEntry.id; });
       if (lIdx !== -1) {
@@ -2757,7 +2756,19 @@ window.SchoolApp = {
         this.store.feeActivityLog.unshift(logEntry);
       }
     }
-    return saveOk;
+
+    try {
+      var saveOk = await this.save(bypassLoader);
+      if (!saveOk && logEntry && logEntry.id && this.store.feeActivityLog) {
+        this.store.feeActivityLog = this.store.feeActivityLog.filter(function(l) { return l && l.id !== logEntry.id; });
+      }
+      return saveOk;
+    } catch (err) {
+      if (logEntry && logEntry.id && this.store.feeActivityLog) {
+        this.store.feeActivityLog = this.store.feeActivityLog.filter(function(l) { return l && l.id !== logEntry.id; });
+      }
+      throw err;
+    }
   },
 
   saveFeeTransactions: async function(txns, bypassLoader, logEntries) {
@@ -2889,15 +2900,36 @@ window.SchoolApp = {
       }
     }
 
-    var saveOk = await this.save(bypassLoader);
-    if (saveOk && Array.isArray(logEntries) && logEntries.length > 0) {
+    var addedIds = new Set();
+    if (Array.isArray(logEntries) && logEntries.length > 0) {
       if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
       var existingLogMap = new Map();
       this.store.feeActivityLog.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
-      logEntries.forEach(function(l) { if (l && l.id) existingLogMap.set(l.id, l); });
+      logEntries.forEach(function(l) {
+        if (l && l.id) {
+          existingLogMap.set(l.id, l);
+          addedIds.add(l.id);
+        }
+      });
       this.store.feeActivityLog = Array.from(existingLogMap.values());
     }
-    return saveOk;
+
+    try {
+      var saveOk = await this.save(bypassLoader);
+      if (!saveOk && addedIds.size > 0 && this.store.feeActivityLog) {
+        this.store.feeActivityLog = this.store.feeActivityLog.filter(function(l) {
+          return !l || !addedIds.has(l.id);
+        });
+      }
+      return saveOk;
+    } catch (err) {
+      if (addedIds.size > 0 && this.store.feeActivityLog) {
+        this.store.feeActivityLog = this.store.feeActivityLog.filter(function(l) {
+          return !l || !addedIds.has(l.id);
+        });
+      }
+      throw err;
+    }
   },
 
   deleteFeeTransaction: async function(txnId, txnDate, bypassLoader) {
@@ -2990,16 +3022,25 @@ window.SchoolApp = {
       }
     }
 
+    if (deleteLog && deleteLog.id) {
+      if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
+      var dlIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === deleteLog.id; });
+      if (dlIdx === -1) {
+        this.store.feeActivityLog.unshift(deleteLog);
+      }
+    }
+
     try {
       var saveOk = await this.save(true);
-      if (saveOk) {
-        if (!this.store.feeActivityLog) this.store.feeActivityLog = [];
-        var dlIdx = this.store.feeActivityLog.findIndex(function(l) { return l.id === deleteLog.id; });
-        if (dlIdx === -1) {
-          this.store.feeActivityLog.unshift(deleteLog);
-        }
+      if (!saveOk && deleteLog && deleteLog.id && this.store.feeActivityLog) {
+        this.store.feeActivityLog = this.store.feeActivityLog.filter(function(l) { return l && l.id !== deleteLog.id; });
       }
       return saveOk;
+    } catch (err) {
+      if (deleteLog && deleteLog.id && this.store.feeActivityLog) {
+        this.store.feeActivityLog = this.store.feeActivityLog.filter(function(l) { return l && l.id !== deleteLog.id; });
+      }
+      throw err;
     } finally {
       if (!bypassLoader) this.hideLoader();
     }
