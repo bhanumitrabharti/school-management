@@ -3826,6 +3826,7 @@
         }
 
         var doSave = async function() {
+          var student = s;
           var success = false;
           try {
             if (!SchoolApp.store.fees) SchoolApp.store.fees = [];

@@ -820,15 +820,15 @@ async function runAllTests() {
     assert.strictEqual(parentsHtml.includes('<link rel="canonical" href="https://ctrlshifts.in'), false, 'parents.html has no canonical to marketing');
   });
 
-  await recordTest('SEO-16', 'Version bump to v87 across all required files', async () => {
+  await recordTest('SEO-16', 'Version bump to v88 across all required files', async () => {
     const versionJson = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'version.json'), 'utf8'));
-    assert.strictEqual(versionJson.version, 'v87', 'version.json must specify v87');
+    assert.strictEqual(versionJson.version, 'v88', 'version.json must specify v88');
 
     const swJs = fs.readFileSync(path.join(ROOT_DIR, 'sw.js'), 'utf8');
-    assert.ok(swJs.includes("const BUILD_VERSION = 'v87';"), 'sw.js must specify v87');
+    assert.ok(swJs.includes("const BUILD_VERSION = 'v88';"), 'sw.js must specify v88');
 
     const appJs = fs.readFileSync(path.join(ROOT_DIR, 'js/app.js'), 'utf8');
-    assert.ok(appJs.includes("window.APP_VERSION = window.APP_VERSION || 'v87';"), 'js/app.js must specify v87');
+    assert.ok(appJs.includes("window.APP_VERSION = window.APP_VERSION || 'v88';"), 'js/app.js must specify v88');
   });
 
   // ========================================================

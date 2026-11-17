@@ -55,7 +55,7 @@ if (authEmulatorPort) {
   }
 }
 export const auth = authInst;
-window.APP_VERSION = window.APP_VERSION || 'v87';
+window.APP_VERSION = window.APP_VERSION || 'v88';
 if (typeof window.updateVersionUI === 'function') {
   window.updateVersionUI(window.APP_VERSION);
 }

@@ -1,7 +1,7 @@
 /**
  * js/parents.js
  * Paathshala Parent Portal — Lightweight Client Controller
- * Version: v87
+ * Version: v88
  *
  * Handles:
  *   - Turnstile verification
